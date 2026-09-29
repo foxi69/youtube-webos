@@ -2,6 +2,7 @@ import sha256 from 'tiny-sha256';
 import { configAddChangeListener, configRemoveChangeListener, segmentTypes, configGetAll } from './config';
 import { showNotification } from './notifications.js';
 import sponsorBlockUI from './Sponsorblock-UI.js';
+import sponsorBlockLabels, { isFullVideoSegment } from './sponsorblock-labels.js';
 import { isLegacyWebOS } from './webos-utils.js';
 import { getVideo, waitForChildAdd } from './utils.js';
 import './sponsorblock.css';
@@ -26,6 +27,7 @@ const CONFIG_MAPPING = {
 
 const EXTRA_CONFIG_KEYS = [
     'enableMutedSegments', 'sbMode_highlight', 'skipSegmentsOnce',
+    'sbFullVideoLabel', 'sbShowTimeWithSkips',
     // Color keys so the overlay redraws when the user changes a segment color
     ...Object.keys(segmentTypes).map(k => `${k}Color`)
 ];
@@ -41,7 +43,17 @@ const FETCH_CATEGORIES = encodeURIComponent(JSON.stringify([
     'musicofftopic', 'preview', 'chapter', 'poi_highlight',
     'filler', 'hook'
 ]));
-const FETCH_ACTION_TYPES = encodeURIComponent(JSON.stringify(['skip', 'mute']));
+/**
+ * Full-video labels are always requested.
+ *
+ * They were originally fetched only when the badge was switched on, to keep the
+ * default request identical. That made enabling the option mid-video do
+ * nothing: the segment list had already been fetched without them, so there was
+ * no label to show until the next video. One extra actionType on a request that
+ * happens anyway is a much smaller cost than a setting that silently does not
+ * apply.
+ */
+const FETCH_ACTION_TYPES = encodeURIComponent(JSON.stringify(['skip', 'mute', 'full']));
 
 const HAS_ABORT_CONTROLLER = typeof AbortController !== 'undefined';
 
@@ -120,9 +132,8 @@ class SponsorBlockHandler {
     // Progress-bar geometry
     // ==========================================
     //
-    // Node#isConnected and Element#closest are guaranteed by polyfills.js
-    // (imported via utils.js), so the private _isNodeConnected/_getClosest
-    // fallbacks that used to live here have been removed.
+    // Node#isConnected and Element#closest are guaranteed by polyfills.js,
+    // imported via utils.js.
 
     _getProgressBarAnchor() {
         if (!this.progressBar) return { container: null, asSibling: false };
@@ -193,13 +204,10 @@ class SponsorBlockHandler {
             ? this.progressBar
             : ytPB;
 
-        // PERF — READS first, in one batch. The old order was read → write
-        // top/left → read offsetWidth → write → read offsetHeight → write,
-        // which forced up to 3 synchronous reflows per sync on webOS.
-        // classList.contains and the inline-style read are recalc-free, unlike
-        // the earlier getComputedStyle(ytPB).opacity poll; the inline check
-        // still catches UI builds that hide via inline opacity without the
-        // zylon-hidden class.
+        // PERF - all READS first, in one batch: interleaving them with writes
+        // forced up to 3 synchronous reflows per sync on webOS. classList and
+        // the inline-style read are recalc-free, and the inline check still
+        // catches UI builds that hide via opacity without the zylon-hidden class.
         const isHidden = ytPB.classList.contains('zylon-hidden') || ytPB.style.opacity === '0';
         const width  = trackEl.offsetWidth;
         const height = trackEl.offsetHeight;
@@ -377,6 +385,7 @@ class SponsorBlockHandler {
             }
             this.rebuildSkipSegments();
             this.drawOverlay();
+            this.updateLabels();
         };
         
         const configKeys = [...Object.values(CONFIG_MAPPING), ...EXTRA_CONFIG_KEYS];
@@ -546,12 +555,16 @@ class SponsorBlockHandler {
                 this.executeChainSkip(video);
             }
 
-            // UI was already started, so now we just update the data
-            sponsorBlockUI.updateSegments(this.segments);
+            // UI was already started, so now we just update the data.
+            // Full-video labels are excluded: they are [0, 0] markers meaning
+            // "this whole video is X", not segments, and listing one would show
+            // a nonsense 0:00-to-0:00 row.
+            sponsorBlockUI.updateSegments(this.segments.filter(s => !isFullVideoSegment(s)));
             
             // Explicitly draw overlay now that data is ready
             // (checkForProgressBar might have run when segments were empty)
             this.drawOverlay();
+            this.updateLabels();
 
             if (this.highlightSegment) {
                 const config = configGetAll();
@@ -660,6 +673,7 @@ class SponsorBlockHandler {
             if (this.video?.duration) {
                 this.processSegments(this.video.duration);
                 this.drawOverlay();
+                this.updateLabels();
             }
         });
 
@@ -708,21 +722,18 @@ class SponsorBlockHandler {
                 });
             };
 
-            // PERF: split into two narrow observers. The old single observer
-            // used attributes + subtree:true, so YouTube's per-frame style
-            // writes on playhead/buffered-range descendants generated mutation
-            // records (and a callback invocation) every animation frame just to
-            // be filtered out again in JS. Semantics are unchanged:
-            // 1) childList-only subtree observer — catches the bar being
+            // PERF: two narrow observers rather than one attributes+subtree
+            // observer, which woke a callback every animation frame on
+            // YouTube's playhead style writes just to filter them out in JS.
+            // 1) childList-only subtree observer - catches the bar being
             //    destroyed/recreated by the framework.
             this.domObserver = new MutationObserver(scheduleCheck);
             this.domObserver.observe(observeTarget, { childList: true, subtree: true });
             this.observers.add(this.domObserver);
 
             // 2) attribute observer pinned to the tracked bar element itself
-            //    (no subtree) — matches the old `m.target === this.progressBar`
-            //    filter exactly; re-targeted in checkForProgressBar whenever
-            //    the bar is (re)acquired.
+            //    (no subtree); re-targeted in checkForProgressBar whenever the
+            //    bar is (re)acquired.
             this._attrObserver = new MutationObserver(scheduleCheck);
             this.observers.add(this._attrObserver);
             this.checkForProgressBar();
@@ -782,10 +793,8 @@ class SponsorBlockHandler {
         this.observePlayerUI();
     }
 
-    // Bounded poll for the progress bar. checkForProgressBar() used to give up
-    // silently when the bar was missing (`if (target)` with no else), relying
-    // entirely on the observer to call it back — which is exactly what fails on
-    // replay, since the chrome is rebuilt asynchronously AFTER playback starts.
+    // Bounded poll for the progress bar. The observer alone is not enough on
+    // replay: the chrome is rebuilt asynchronously AFTER playback starts.
     _scheduleBarRetry() {
         if (this._barRetryTimer || this.isDestroyed) return;
         let attempts = 0;
@@ -933,6 +942,8 @@ class SponsorBlockHandler {
         const len = this.segments.length;
         for (let i = 0; i < len; i++) {
             const segment = this.segments[i];
+            // A full-video label spans [0, 0] and would draw a zero-width bar.
+            if (isFullVideoSegment(segment)) continue;
             const isHighlight = segment.category === 'poi_highlight';
 
             if (isHighlight) {
@@ -973,6 +984,13 @@ class SponsorBlockHandler {
             fragment.appendChild(div);
         }
 
+        // Everything was filtered out (e.g. the only entry was a full-video
+        // label). Leave the bar clean rather than inserting an empty overlay.
+        if (!fragment.childNodes.length) {
+            this.overlay = null;
+            return;
+        }
+
         this.overlay = document.createElement('div');
         this.overlay.id = 'previewbar';
         this._lastSyncSig = null; // fresh element — force the next geometry sync
@@ -1000,6 +1018,20 @@ class SponsorBlockHandler {
             this.lastOverlayHash = null;
             this._scheduleBarRetry();
         }
+    }
+
+    /**
+     * Refresh the title badge and the skips-removed duration.
+     *
+     * Cheap and idempotent, so it is called from anywhere the inputs can move:
+     * after the fetch, on durationchange, and whenever a SponsorBlock setting
+     * changes.
+     */
+    updateLabels() {
+        if (this.isDestroyed) return;
+        const video = this.video || getVideo();
+        const duration = video && !isNaN(video.duration) ? video.duration : 0;
+        sponsorBlockLabels.update(this.segments, duration);
     }
 
     processSegments(duration) {
@@ -1440,6 +1472,7 @@ class SponsorBlockHandler {
 
         sponsorBlockUI.togglePopup(false);
         sponsorBlockUI.updateSegments([]);
+        sponsorBlockLabels.clear();
         if (this.overlay) {
             this.overlay.remove();
             this.overlay = null;

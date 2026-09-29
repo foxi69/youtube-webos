@@ -51,7 +51,7 @@ export const shortcutActions = {
   toggle_comments: 'Toggle Comments',
   toggle_description: 'Toggle Description',
   save_to_playlist: 'Save / Watch Later',
-  oled_toggle: 'Toggle OLED Care Mode',
+  oled_toggle: 'Toggle OLED Black Overlay',
   sb_manual_skip: 'Manual Skip / Jump to Highlight',
   config_menu: 'Open/Close Settings'
   //speed_up: 'Playback Speed +',
@@ -111,6 +111,8 @@ const configOptions = new Map([
   ['enableSponsorBlock', { default: true, desc: 'SponsorBlock' }],
   ['enableMutedSegments', { default: false, desc: 'Allow segments that mute audio' }],
   ['skipSegmentsOnce', { default: false, desc: 'Skip Segments Once' }],
+  ['sbFullVideoLabel', { default: false, desc: 'Show an icon when a video is entirely an advertisement' }],
+  ['sbShowTimeWithSkips', { default: false, desc: 'Show time with skips removed' }],
   ['sbMode_sponsor', { default: 'auto_skip', desc: 'Sponsor' }],
   ['sbMode_intro', { default: 'auto_skip', desc: 'Intermission/Intro' }],
   ['sbMode_outro', { default: 'auto_skip', desc: 'Endcards/Credits' }],

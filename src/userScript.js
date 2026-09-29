@@ -1,8 +1,5 @@
-// Dev diagnostics. Aliased away to an empty module unless the build is run
-// with `--env perf` (npm run build:perf), so this import costs nothing in a
-// normal build and no longer needs commenting in and out by hand.
-// MUST stay first: perf_mon installs "inner" probes underneath every other
-// hook in the bundle.
+// Dev diagnostics, aliased to an empty module unless built with `--env perf`.
+// MUST stay first: perf_mon installs "inner" probes underneath every other hook.
 import './perf_mon.js';
 
 import 'whatwg-fetch';
@@ -23,6 +20,7 @@ import './sponsorblock.js';
 import './emoji-font.js';
 import './screensaver-fix.js';
 import './yt-fixes.css';
+import './comments-fix.js';
 import './watch.js';
 import './lang-settings-fix';
 

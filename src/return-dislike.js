@@ -60,9 +60,8 @@ class ReturnYouTubeDislike {
     this.enableDislikes = enableDislikes;
     this.active = true;
     this.dislikesCount = 0;
-    // null until a fetch actually succeeds. The old code could not tell "the
-    // API said zero" from "the request failed", so a failure rendered a
-    // permanent 0 with no retry and no later correction.
+    // null until a fetch succeeds, so "the API said zero" stays distinct from
+    // "the request failed".
     this.dislikesValue = null;
     this.dislikeValueElement = null;
     this.dislikeFactoidElement = null;
@@ -137,9 +136,8 @@ class ReturnYouTubeDislike {
       this.injectPersistentStyles();
       this.setupNavigation();
 
-      // Panel detection must not sit behind the network. A cold first request
-      // to the RYD API can take seconds (up to the 8s race timeout), which used
-      // to burn the poll window on the first video of the session.
+      // Panel detection must not sit behind the network: a cold first request
+      // to the RYD API can take seconds, up to the 8s race timeout.
       this.observeBodyForPanel();
 
       if (this.enableDislikes) {
@@ -198,9 +196,8 @@ class ReturnYouTubeDislike {
       this.dislikesCount = 0;
       this.dislikesValue = null;   // unknown, NOT zero - never cached
 
-      // A cold DNS + TLS handshake to the RYD API on real TV hardware is much
-      // slower than on the simulator, and a transient failure used to be
-      // permanent for that video. Back off and try again.
+      // A cold DNS + TLS handshake on real TV hardware is much slower than on
+      // the simulator, so back off and retry rather than failing for good.
       if (this.active && error.name !== 'AbortError' && ++this.fetchAttempts <= FETCH_MAX_RETRIES) {
         const delay = FETCH_RETRY_BASE_MS * this.fetchAttempts;
         this.log('info', `Retrying dislike fetch in ${delay}ms (attempt ${this.fetchAttempts})`);
@@ -214,9 +211,9 @@ class ReturnYouTubeDislike {
   }
 
   /**
-   * Rewrite the already-injected factoid in place. Injection no longer waits
-   * for the network, so this is what turns the placeholder into the real number
-   * whenever the fetch lands - first try or third.
+   * Rewrite the already-injected factoid in place. Injection does not wait for
+   * the network, so this turns the placeholder into the real number whenever
+   * the fetch lands - first try or third.
    */
   updateDislikeDisplay() {
     const valueElement = this.dislikeValueElement;
@@ -228,7 +225,73 @@ class ReturnYouTubeDislike {
     valueElement.textContent = text;
     if (this.dislikeFactoidElement) {
       this.dislikeFactoidElement.setAttribute('aria-label', `${text} Dislikes`);
+      this.compensateHeaderGrowth(this.dislikeFactoidElement.parentElement);
     }
+  }
+
+  // YouTube measures each description row once, in the same task that renders
+  // it - before we can inject the dislike factoid and re-flow the stats with
+  // the .ryd-ready styles. The header row then grows, but YouTube keeps
+  // positioning every row below it with the old height, so they cover the
+  // Views/Date line. Push those rows down by the difference.
+  //
+  // Rows are absolutely positioned, so margin-top moves them without touching
+  // YouTube's inline height/transform. The value lives in our own stylesheet,
+  // keyed on attributes, so a YouTube re-render can't wipe it.
+  compensateHeaderGrowth(container) {
+    try {
+      const list = container && container.closest('yt-virtual-list');
+      const box = list && list.firstElementChild;
+      if (!box) return;
+
+      let row = container;
+      while (row && row.parentNode !== box) row = row.parentNode;
+      if (!row || !row.firstElementChild) return;
+
+      const inline = row.style.height || '';
+      const ytHeight = parseFloat(inline);
+      // 0 / unset = YouTube never measured this row (the #188 zero-height
+      // state); shifting against a bogus height would make things worse.
+      if (!ytHeight) return;
+      const unit = inline.indexOf('rem') !== -1
+        ? (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16)
+        : 1;
+      const delta = Math.round(row.firstElementChild.getBoundingClientRect().height - ytHeight * unit);
+
+      if (this.shiftedList && this.shiftedList !== list) this.clearHeaderShift();
+      this.shiftedList = list;
+      list.setAttribute('data-ryd-shift', '');
+      const rows = box.children;
+      for (let i = 0; i < rows.length; i++) {
+        if (rows[i] === row) rows[i].setAttribute('data-ryd-header', '');
+        else rows[i].removeAttribute('data-ryd-header');
+      }
+
+      let style = document.getElementById('ryd-shift-style');
+      if (!style) {
+        style = document.createElement('style');
+        style.id = 'ryd-shift-style';
+        document.head.appendChild(style);
+      }
+      const css = delta > 1
+        ? `yt-virtual-list[data-ryd-shift] > div > div:not([data-ryd-header]) { margin-top: ${delta}px !important; }`
+        : '';
+      if (style.textContent !== css) style.textContent = css;
+    } catch (error) {
+      this.log('error', 'Header shift error:', error);
+    }
+  }
+
+  clearHeaderShift() {
+    const list = this.shiftedList;
+    this.shiftedList = null;
+    if (list) {
+      list.removeAttribute('data-ryd-shift');
+      const hdr = list.querySelector('[data-ryd-header]');
+      if (hdr) hdr.removeAttribute('data-ryd-header');
+    }
+    const style = document.getElementById('ryd-shift-style');
+    if (style) style.textContent = '';
   }
 
   // --- Observer Logic ---
@@ -254,11 +317,7 @@ class ReturnYouTubeDislike {
     }
   }
 
-  // BOUNDED poll. This used to run at 2Hz for the entire lifetime of every
-  // watch page, doing a compound querySelector on each tick — the single
-  // largest idle cost on older hardware.
-  //
-  // It is only a safety net: the panel is also detected by handleFocusIn
+  // BOUNDED poll, and only a safety net: the panel is also detected by handleFocusIn
   // (focus is the only reliable signal for the role="dialog" description
   // panel) and by ui.js calling observeBodyForPanel() after the description
   // shortcut fires. So we give it ~10s per arm and then go idle until
@@ -563,13 +622,9 @@ class ReturnYouTubeDislike {
       if (isEnter) {
           const current = this.menuItemsCache[this.focusedIndex];
           // Only intercept Enter when the menuitem container is *itself* the
-          // active element. If focus is on a focusable descendant (e.g. the
-          // Description chip's inner <yt-button-container role="button">),
-          // the real Enter must reach YouTube's native handler — dispatching
-          // a synthetic keydown on the parent menuitem targets the wrong node
-          // and, being isTrusted=false, is rejected by YT's nav handlers
-          // anyway. Net effect of the old `contains` branch: real Enter was
-          // swallowed and the panel never opened.
+          // active element. With focus on a focusable descendant the real Enter
+          // must reach YouTube: a synthetic keydown on the parent targets the
+          // wrong node and is rejected anyway for isTrusted=false.
           if (current && current === document.activeElement) {
               e.preventDefault();
               e.stopPropagation();
@@ -635,7 +690,12 @@ class ReturnYouTubeDislike {
     // factoid at all, and it only appeared later when some unrelated mutation
     // or focus change happened to re-run this - the "it shows up a couple of
     // seconds late" symptom. Inject now, fill in the number when it arrives.
-    if (document.getElementById('ryd-dislike-factoid')) return;
+    const existing = document.getElementById('ryd-dislike-factoid');
+    if (existing) {
+      // Rows can be re-rendered while the panel is open; keep the shift in sync.
+      this.compensateHeaderGrowth(existing.parentElement);
+      return;
+    }
 
     try {
       // Check if we already detected the mode. If so, skip the DOM queries.
@@ -684,6 +744,7 @@ class ReturnYouTubeDislike {
       likesElement.insertAdjacentElement('afterend', dislikeElement);
       container.classList.add('ryd-ready');
       this.initialInjectionDone = true;
+      this.compensateHeaderGrowth(container);
 
     } catch (error) {
       this.log('error', 'Injection error:', error);
@@ -707,7 +768,6 @@ class ReturnYouTubeDislike {
       ${SELECTORS.panel} .ryd-ready div[idomkey="factoid-2"] { margin-top: 0 !important; }
       ${SELECTORS.panel} .ryd-ready div[idomkey="factoid-2"] ${SELECTORS.stdValue}, ${SELECTORS.panel} .ryd-ready div[idomkey="factoid-2"] ${SELECTORS.cptValue} { display: inline-block !important; margin-right: 0.2rem !important; }
       ${SELECTORS.panel} .ryd-ready div[idomkey="factoid-2"] ${SELECTORS.stdLabel}, ${SELECTORS.panel} .ryd-ready div[idomkey="factoid-2"] ${SELECTORS.cptLabel} { display: inline-block !important; }
-      ${SELECTORS.panel} .TXB27d, ${SELECTORS.panel} .ytVirtualListItem, yt-rich-text-list-view-model .TXB27d, yt-rich-text-list-view-model .ytVirtualListItem { position: relative !important; height: auto !important; margin-bottom: 1rem !important; }
       #ryd-dislike-factoid { flex: 0 0 auto !important; }
     `;
     document.head.appendChild(styleElement);
@@ -734,6 +794,7 @@ class ReturnYouTubeDislike {
 
     const el = document.getElementById('ryd-dislike-factoid');
     if (el) el.remove();
+    this.clearHeaderShift();
     if (window.returnYouTubeDislike === this) {
         const styles = document.getElementById('ryd-persistent-styles');
         if (styles) styles.remove();

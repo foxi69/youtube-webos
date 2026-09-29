@@ -4,6 +4,31 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.8.4] - 2026/09/29
+
+## Added
+### SponsorBlock
+
++ Added "Show time with skips removed" toggle. Puts the video time in parenthesis including your auto skipped segments to show an accurate video duration
+
+<img width="138" height="81" alt="webOS_TV_25_Simulator_1 4 3_0TEyp1NkYO" src="https://github.com/user-attachments/assets/d4f8420e-ef08-4a11-b8cc-e8b87a82246e" />
+
++ Added "Show an icon when a video is entirely an advertisement" toggle. On SponsorBlock desktop, it shows as a banner in the video title and tells you when the entire video has been labeled as "Sponsor", "Self Promo", or "Exclusive Access". Only shown in the video's title on video pages and not on the home screen - would be too much to query SponsorBlock API for hundreds of videos and inject them while scrolling.
+
+<img width="648" height="152" alt="webOS_TV_25_Simulator_1 4 3_clVxiXuxhO" src="https://github.com/user-attachments/assets/242bd0d6-9720-4db7-ab26-bb907cf7d87e" />
+
+## Performance Improvements
+
++ Spatial Navigation Polyfill performance improvements for legacy build (webOS 3-6)
+
+## Changes
+
++ "Toggle OLED Care Mode" renamed to "Toggle OLED Black Overlay" to better differentiate from OLED Care Mode, which blacks out a lot of elements for OLED TVs
+
+## Fixes
++ Add patch to fix https://github.com/NicholasBly/youtube-webos/issues/188 caused by a YouTube update.
++ Patch also fixes scrolling in some Description panels caused by button objects - https://github.com/NicholasBly/youtube-webos/issues/154
+
 ## [0.8.3] - 2026/08/30
 
 ### New Features
