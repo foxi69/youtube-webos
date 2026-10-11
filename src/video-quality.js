@@ -1,4 +1,4 @@
-import { configRead, configAddChangeListener, configRemoveChangeListener } from './config.js';
+import { configRead, configAddChangeListener } from './config.js';
 import { showNotification } from './notifications.js';
 import { isWebOS25 } from './webos-utils.js';
 import { sendKey, REMOTE_KEYS, SELECTORS, isWatchPage } from './utils.js';
@@ -24,7 +24,6 @@ let _shouldForce = false;
 let player = null;
 let lastVideoId = null;
 let initTimer = null;
-let configCleanup = null;
 let isDestroyed = false;
 let lastWriteTime = 0;
 let statePollingInterval = null;
@@ -394,16 +393,9 @@ export function destroyVideoQuality() {
     } catch { /* ignore */ }
   }
   
-  if (configCleanup) {
-    try {
-      configCleanup();
-    } catch { /* ignore */ }
-  }
-  
   player = null;
   lastVideoId = null;
   lastKnownState = null;
-  configCleanup = null;
   qualitySetForVideo.clear();
   videoBeingProcessed = null;
   _isWatchPageCached = false;
@@ -449,23 +441,6 @@ export function initVideoQuality() {
           startStatePolling();
       }
       
-      if (configAddChangeListener && !configCleanup) {
-        const onChange = (evt) => {
-          if (isDestroyed) return;
-          _shouldForce = !!evt.detail.newValue;
-          
-          if (_shouldForce) {
-            cachedQualitySettings = null;
-            setLocalStorageQuality();
-            qualitySetForVideo.clear();
-          } else {
-            clearLocalStorageQuality();
-          }
-        };
-        configCleanup = configAddChangeListener('forceHighResVideo', onChange) || 
-          (() => configRemoveChangeListener?.('forceHighResVideo', onChange));
-      }
-      
       DEBUG && console.info('[VideoQuality] ✅ Attached to player');
       
       handleStateChange(player.getPlayerState?.());
@@ -480,6 +455,9 @@ export function initVideoQuality() {
 
   if (attach()) return;
 
+  // Every 200ms for 10s, then - for a player that mounts late, e.g. after a
+  // slow start or an ad - once a second for another 50s, then it gives up
+  // until the next watch page.
   let attempts = 0;
   const poll = () => {
     if (isDestroyed) {
@@ -487,11 +465,11 @@ export function initVideoQuality() {
       initTimer = null;
       return;
     }
-    if (attach() || attempts++ >= 50) {
+    if (attach() || attempts++ >= 100) {
       clearTimeout(initTimer);
       initTimer = null;
     } else {
-      initTimer = setTimeout(poll, 200);
+      initTimer = setTimeout(poll, attempts > 50 ? 1000 : 200);
     }
   };
   
@@ -512,6 +490,20 @@ function handleNavigation(event) {
 }
 
 function setupListeners() {
+    // Registered once for the session, not per attach: the option is also
+    // switched off from the home screen, where the module is detached, and the
+    // 4320p record it wrote must go then too.
+    configAddChangeListener('forceHighResVideo', (evt) => {
+      _shouldForce = !!evt.detail.newValue;
+      if (_shouldForce) {
+        cachedQualitySettings = null;
+        setLocalStorageQuality();
+        qualitySetForVideo.clear();
+      } else {
+        clearLocalStorageQuality();
+      }
+    });
+
     window.addEventListener('yt-navigate-finish', handleNavigation);
 
     // Passed directly: handleNavigation falls back to isWatchPage() when the
