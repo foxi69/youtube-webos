@@ -539,6 +539,26 @@ function upgradeContinuation(data) {
   return changed;
 }
 
+// Continuations that carry no video thumbnails: live chat polls every few
+// seconds while a stream plays, and a scan of each would cost up to
+// SCAN_MAX_NODES for nothing.
+const NO_THUMBNAIL_CONTINUATIONS = {
+  liveChatContinuation: true,
+  commentRepliesContinuation: true,
+  commentSectionContinuation: true
+};
+
+/** Whether every key of the continuation is one known to hold no thumbnails. */
+function isThumbnailFreeContinuation(contents) {
+  if (!contents || typeof contents !== 'object') return false;
+  let any = false;
+  for (const key in contents) {
+    if (!NO_THUMBNAIL_CONTINUATIONS[key]) return false;
+    any = true;
+  }
+  return any;
+}
+
 /**
  * Last-resort bounded walk, used only when the schema paths produced nothing.
  * Keeps the module working through an InnerTube reshuffle instead of silently
@@ -598,7 +618,9 @@ export function upgradeResponseThumbnails(data, responseType) {
       changed += upgradeSectionList(getByPath(data, P.SEARCH));
       break;
     case 'CONTINUATION':
-      // Already handled above.
+      // Already handled above. A live chat or comment poll carries no video
+      // thumbnails and must not fall through to the scan below.
+      if (isThumbnailFreeContinuation(data.continuationContents)) return changed;
       break;
     case 'SHORTS_SEQUENCE':
       changed += upgradeItems(data.entries);
