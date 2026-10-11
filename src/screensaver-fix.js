@@ -1,6 +1,9 @@
 /**
  * On webOS, when a video element doesn't perfectly fill
  * the entire screen, the screensaver can kick in.
+ *
+ * Also asks the TV itself, through its power service, not to start the
+ * screensaver while a video plays (best effort; see registerScreenSaverRequest).
  */
 
 import { waitForChildAdd, sendKey, SELECTORS, REMOTE_KEYS, isWatchPage, isShortsPage, getVideo } from './utils';
@@ -109,6 +112,69 @@ const playerCtrlObs = new MutationObserver((mutations) => {
     }
   });
 });
+
+// --- webOS screensaver request ---
+// The Yellow-key keep-alive above is ignored by some TVs, so longer Shorts
+// still ended in the screensaver (NicholasBly/youtube-webos#46). The TV's
+// power service announces each screensaver it is about to start to the
+// clients registered for it, and a client answering ack:false holds it off.
+// Best effort: PalmServiceBridge (the webOS service bridge) may be missing or
+// the call refused on a given firmware; the keep-alive stays as the fallback.
+const TVPOWER_URI = 'luna://com.webos.service.tvpower/power/';
+const SCREENSAVER_CLIENT = 'youtube-webos';
+// A bridge collected before its answer arrives drops the answer; keep each
+// one-shot call referenced until its callback ran.
+const pendingLunaCalls = [];
+
+function lunaCall(method, params, onResponse, subscribe) {
+  const Bridge = typeof window !== 'undefined' ? window.PalmServiceBridge : null;
+  if (typeof Bridge !== 'function') return null;
+  try {
+    const bridge = new Bridge();
+    if (!subscribe) pendingLunaCalls.push(bridge);
+    bridge.onservicecallback = (msg) => {
+      if (!subscribe) {
+        const i = pendingLunaCalls.indexOf(bridge);
+        if (i !== -1) pendingLunaCalls.splice(i, 1);
+      }
+      if (!onResponse) return;
+      let res = null;
+      try { res = JSON.parse(msg); } catch { /* not JSON */ }
+      try { onResponse(res); } catch (e) { DEBUG && console.warn('[ScreensaverFix] luna callback failed:', e); }
+    };
+    bridge.call(TVPOWER_URI + method, JSON.stringify(params));
+    return bridge;
+  } catch (e) {
+    DEBUG && console.warn('[ScreensaverFix] luna call failed:', method, e);
+    return null;
+  }
+}
+
+function isVideoPlaying() {
+  if (lastPageType !== 'WATCH' && lastPageType !== 'SHORTS') return false;
+  const video = getVideo();
+  return !!(video && !video.paused && !video.ended);
+}
+
+// Held for the session: the subscription lasts as long as its bridge.
+let screenSaverSubscription = null;
+
+function registerScreenSaverRequest() {
+  screenSaverSubscription = lunaCall('registerScreenSaverRequest', { subscribe: true, clientName: SCREENSAVER_CLIENT }, (res) => {
+    if (!res || res.returnValue === false) {
+      DEBUG && console.info('[ScreensaverFix] Screensaver request refused:', res);
+      return;
+    }
+    // The first answer only confirms the subscription; each screensaver the
+    // TV is about to start comes with a timestamp to answer.
+    if (res.timestamp === undefined) return;
+    const playing = isVideoPlaying();
+    DEBUG && console.info(`[ScreensaverFix] Screensaver request: ${playing ? 'blocked (video playing)' : 'allowed'}`);
+    lunaCall('responseScreenSaverRequest', { clientName: SCREENSAVER_CLIENT, ack: !playing, timestamp: res.timestamp });
+  }, true);
+}
+
+registerScreenSaverRequest();
 
 let currentVideoElement = null;
 
@@ -226,6 +292,10 @@ window.addEventListener('beforeunload', () => {
   window.removeEventListener('ytaf-page-update', updateState);
   window.removeEventListener('hashchange', updateState);
   if (videoWait) videoWait.cancel();
+  if (screenSaverSubscription) {
+    try { screenSaverSubscription.cancel(); } catch { /* ignore */ }
+    screenSaverSubscription = null;
+  }
   currentVideoElement = null;
   setShortsKeepAlive(false);
 });
