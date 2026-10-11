@@ -22,8 +22,12 @@ const DEBUG = false;
  *             or a probe confirmed it. A tile can never land on a 404.
  *   'eager' - go straight to maxresdefault. Sharpest first paint; videos with
  *             no maxres need the correction path below to recover.
+ *   'sd'    - 'eager' with the ladder stopped at sddefault (640x480): drawn
+ *             from the first frame, so a tile is never swapped from a lower
+ *             rung, at about a quarter of the decode work of maxres; the rare
+ *             video with no sddefault is corrected to hqdefault.
  */
-let eagerMode = configRead('thumbnailQualityMode') === 'eager';
+let qualityMode = configRead('thumbnailQualityMode');
 
 /**
  * Emit WebP derivatives (~25-30% smaller) when the runtime can decode them.
@@ -52,6 +56,14 @@ const PROBE_IDLE_DELAY = 1200;
 // to about one visible row so a grey tile is corrected in one probe round
 // rather than after the whole backlog drains.
 const PROBE_URGENT_BURST = 4;
+// Remote arrow keys are the other scroll signal, and the only one for content
+// that is already loaded: moving across rows that are in memory fetches no
+// continuation, so the parse-based gate above never sees it. For this long
+// after the last arrow press neither probes nor promotions run: a promotion
+// writes a new background-image, a decode and a texture upload in the middle
+// of the row animation. Covers the remote's key-repeat interval with margin.
+const NAV_PAUSE_MS = 350;
+const NAV_KEY_CODES = { 37: true, 38: true, 39: true, 40: true };
 // Probes for tiles the app currently has rendered. These skip the idle gate
 // outright: an on-screen grey box is the whole reason verification exists, and
 // a HEAD is a few hundred bytes against an image request it is racing.
@@ -110,15 +122,27 @@ const FLOOR_RANK = RANK.hqdefault;
 const GUARANTEED_RANK = RANK.hqdefault;
 
 /**
- * A single rung, deliberately. maxresdefault and hq720 are both 1280x720 for
- * the overwhelming majority of uploads, so probing the second rung doubled
- * verification traffic to distinguish two files of identical size. A miss now
- * falls straight to the guaranteed floor.
+ * The best rung a mode emits or probes for. A single rung, deliberately:
+ * maxresdefault and hq720 are both 1280x720 for the overwhelming majority of
+ * uploads, so probing the second rung doubled verification traffic to
+ * distinguish two files of identical size. A miss falls straight to the
+ * guaranteed floor. In 'sd' mode the rung is sddefault instead.
  */
-const PROBE_LADDER = [RANK.maxresdefault];
+function usefulRankFor(mode) {
+  return mode === 'sd' ? RANK.sddefault : RANK.maxresdefault;
+}
 
-/** The best rung the module emits or probes for. */
-const usefulRank = PROBE_LADDER[0];
+/**
+ * Whether the mode draws its rung before any proof and corrects a miss
+ * afterwards ('sd', 'eager'), or draws only what is known to exist and waits
+ * for the probe ('safe').
+ */
+function drawsUnproven(mode) {
+  return mode === 'sd' || mode === 'eager';
+}
+
+/** The best rung the current mode emits or probes for. */
+let usefulRank = usefulRankFor(qualityMode);
 
 // A probe that learned nothing, unlike a miss: it ran out of time, or the
 // network failed. A missing rung is not an error: i.ytimg.com answers it with a
@@ -200,6 +224,10 @@ let probeTimer = null;
 // On a monotonic clock: a wall clock set back (the TV syncing its time) would
 // otherwise stretch the idle gate by however far it jumped.
 let lastParseAt = -Infinity;
+let lastNavAt = -Infinity;
+// Bumped when the verification cache is reset (a mode change across rungs). A
+// probe in flight against the old ladder must not write its answer into the new.
+let probeGeneration = 0;
 let urgentLeft = 0;
 let visibleBudget = 0;
 let visibleSample = null;
@@ -348,26 +376,26 @@ function upgradeEntry(entry, proven) {
 
   if (verified !== undefined) {
     // A verified answer is the truth for this video and outranks the mode:
-    // eager is a policy for the *unknown*, not a licence to re-emit a rung
-    // already watched 404. scheduleProbe is gated on `verified === undefined`,
-    // so a wrong answer here would never be revisited.
+    // drawing unproven rungs is a policy for the *unknown*, not a licence to
+    // re-emit a rung already watched 404. scheduleProbe is gated on
+    // `verified === undefined`, so a wrong answer here would never be revisited.
     ceiling = ceilingBeforeMode;
-  } else if (eagerMode) {
-    ceiling = RANK.maxresdefault;
+  } else if (drawsUnproven(qualityMode)) {
+    ceiling = usefulRank;
   }
 
-  // Both modes want the best rung that exists; they differ only in whether an
-  // *unproven* rung may be rendered while we find out. Not capped by slot
-  // width - that would land on hqdefault, matching the ceiling, so nothing
-  // would ever want more than was already proven and no probe would run.
-  const useful = RANK.maxresdefault;
+  // Every mode wants the best rung that exists up to its own cap; they differ
+  // in whether an *unproven* rung may be rendered while we find out. Not capped
+  // by slot width - that would land on hqdefault, matching the ceiling, so
+  // nothing would ever want more than was already proven and no probe would run.
+  const useful = usefulRank;
   let target = useful > ceiling ? ceiling : useful;
   // Never hand back something worse than YouTube offered.
   if (target < currentRank) target = currentRank;
 
   // Unresolved means a probe is coming and this entry's answer may still change:
-  // upward in safe mode once maxres is confirmed, downward in eager mode if the
-  // gamble missed. Both need the entry tracked so the answer can be written back.
+  // upward in safe mode once the rung is confirmed, downward in the modes that
+  // draw unproven rungs if the gamble missed. Both need the entry tracked so the answer can be written back.
   const unresolved = verified === undefined && (useful > ceiling || target > ceilingBeforeMode);
   if (unresolved) scheduleProbe(videoId);
 
@@ -866,18 +894,27 @@ function settledRank(videoId, resolved) {
   return floor !== undefined && floor > resolved ? floor : resolved;
 }
 
-function onProbeDone(videoId, rank) {
+function onProbeDone(videoId, rank, generation) {
   // Correcting a tile changes what is on screen, so the cached sample is stale.
   visibleSample = null;
   activeProbes--;
 
+  // Answered against a ladder that no longer applies (the mode changed while it
+  // was in flight): dropped, and the video is probed again when a parse next
+  // mentions it.
+  if (generation !== probeGeneration) {
+    drainProbes();
+    return;
+  }
+
   // Nothing learned (null: a timeout or a network error): nothing is saved, so
   // the next session asks again. The video is not re-queued this session
-  // (probeAttempted), so a flaky network cannot turn into a retry loop. Fast
-  // mode keeps the rung it drew - a timeout is no evidence against it - while
-  // 'safe' holds the floor for this session. A miss is an answer, and saved.
+  // (probeAttempted), so a flaky network cannot turn into a retry loop. The
+  // modes that draw unproven rungs keep what they drew - a timeout is no
+  // evidence against it - while 'safe' holds the floor for this session. A miss
+  // is an answer, and saved.
   const unknown = typeof rank !== 'number';
-  if (unknown && eagerMode) {
+  if (unknown && drawsUnproven(qualityMode)) {
     pendingEntries.delete(videoId);
     provenFloor.delete(videoId);
     drainProbes();
@@ -1036,14 +1073,14 @@ function admitToTier(videoId, onScreen) {
   return now() - lastParseAt >= PROBE_IDLE_DELAY;
 }
 
-function startProbe(videoId, onScreen) {
+function startProbe(videoId, onScreen, generation) {
   probeQueue.delete(videoId);
   latestParse.delete(videoId);
   if (qualityCache.has(videoId)) return;
   activeProbes++;
   resolveQuality(videoId, onScreen).then(
-    (rank) => onProbeDone(videoId, rank),
-    () => onProbeDone(videoId, null)
+    (rank) => onProbeDone(videoId, rank, generation),
+    () => onProbeDone(videoId, null, generation)
   );
 }
 
@@ -1051,6 +1088,16 @@ function startProbe(videoId, onScreen) {
 function runProbeRound() {
   probePump = null;
   if (!enabled || document.hidden) return;
+
+  // The idle callback can land after a key press that arrived in between.
+  const paused = navPauseLeft();
+  if (paused > 0) {
+    // Replace the idle timer, not defer to it: the queue is meant to resume as
+    // soon as the remote is quiet, not when the surface settles.
+    if (probeTimer) clearTimeout(probeTimer);
+    probeTimer = setTimeout(drainProbes, paused);
+    return;
+  }
 
   // Every slot taken: the probe that lands next drains again.
   const limit = MAX_CONCURRENT_PROBES - activeProbes;
@@ -1061,6 +1108,7 @@ function runProbeRound() {
   // hundred earlier entries, which at three concurrent probes is minutes of
   // waiting for a correction the user is looking at right now.
   const rendered = probeQueue.size >= VISIBILITY_SORT_MIN_QUEUE ? sampleRenderedIds() : null;
+  const generation = probeGeneration;
   const ids = pickProbeIds(rendered, limit);
   let heldByIdle = false;
   for (let i = 0; i < ids.length; i++) {
@@ -1069,7 +1117,7 @@ function runProbeRound() {
       heldByIdle = true;
       continue;
     }
-    startProbe(ids[i], onScreen);
+    startProbe(ids[i], onScreen, generation);
   }
 
   // Whatever the gate held back gets picked up once the surface goes quiet:
@@ -1086,7 +1134,27 @@ function drainProbes() {
     probeTimer = null;
   }
   if (!enabled || probePump || probeQueue.size === 0) return;
+
+  // Mid-navigation: not even the on-screen tier. A probe for a visible tile is
+  // an <img> load that competes with the row animation for decode time, and its
+  // result queues a promotion on top. Come back once the remote is quiet.
+  const paused = navPauseLeft();
+  if (paused > 0) {
+    probeTimer = setTimeout(drainProbes, paused);
+    return;
+  }
   probePump = idle(runProbeRound);
+}
+
+/** Arrow keydown, capture phase: just a timestamp, nothing else runs here. */
+function onNavKey(e) {
+  if (NAV_KEY_CODES[e.keyCode]) lastNavAt = now();
+}
+
+/** Milliseconds left on the navigation pause; 0 when the remote is quiet. */
+function navPauseLeft() {
+  const left = NAV_PAUSE_MS - (now() - lastNavAt);
+  return left > 0 ? left : 0;
 }
 
 // --- Live promotion -------------------------------------------------------
@@ -1099,6 +1167,15 @@ function runPromotionSweep() {
   if (!enabled || pendingPromotions.size === 0) return;
   if (document.hidden) {
     pendingPromotions.clear();
+    return;
+  }
+
+  // Mid-navigation: a promotion is a style write that decodes a bigger image
+  // and re-rasterises the tile while the rows are moving. Wait for the remote
+  // to go quiet; nothing is lost, the pending map keeps the corrections.
+  const paused = navPauseLeft();
+  if (paused > 0) {
+    promoteTimer = setTimeout(runPromotionSweep, paused);
     return;
   }
 
@@ -1170,7 +1247,8 @@ function flushCache() {
   }
 }
 
-export function cleanup() {
+/** Stops everything queued; `keepCache` false drops the pending save instead of writing it. */
+export function cleanup(keepCache = true) {
   probeQueue.clear();
   visibleSample = null;
   visibleBudget = 0;
@@ -1190,17 +1268,44 @@ export function cleanup() {
     clearTimeout(promoteTimer);
     promoteTimer = null;
   }
-  flushCache();
-  // In-flight probes are left to settle on their own; their results are still
-  // worth caching, and the sweep is a no-op once disabled.
+  if (keepCache) {
+    flushCache();
+  } else if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+  // In-flight probes are left to settle on their own. Switched off, their
+  // results are still worth caching; after a strategy change
+  // (resetVerification) the generation they carry is stale and they are dropped.
+}
+
+/**
+ * Forget every verified rank. The cache is only meaningful against the ladder
+ * that produced it: 'sd' records sddefault as a video's answer, the other modes
+ * record maxres or the floor. A cached answer is never re-probed, so crossing
+ * that line would freeze every known video at the old mode's ceiling. Starting
+ * over costs one re-probe per video, spread over normal use.
+ */
+function resetVerification() {
+  probeGeneration++;
+  cleanup(false);
+  qualityCache.clear();
+  unconfirmed.clear();
+  dropStoredCache();
 }
 
 if (enabled) loadCache();
 document.addEventListener('visibilitychange', handleVisibilityChange);
 window.addEventListener('pagehide', flushCache);
+// Unconditional and passive: one property read per key press. Registering it
+// only while enabled would need matching teardown for no measurable gain.
+document.addEventListener('keydown', onNavKey, { capture: true, passive: true });
 
 configAddChangeListener('thumbnailQualityMode', (evt) => {
-  eagerMode = evt.detail.newValue === 'eager';
+  const previousUseful = usefulRank;
+  qualityMode = evt.detail.newValue;
+  usefulRank = usefulRankFor(qualityMode);
+  if (usefulRank !== previousUseful) resetVerification();
 });
 
 configAddChangeListener('upgradeThumbnails', (evt) => {
