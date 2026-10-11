@@ -73,6 +73,9 @@ const playerCtrlObs = new MutationObserver((mutations) => {
   if (!video || !(video instanceof HTMLVideoElement) || !video.isConnected) {
     DEBUG && console.warn('[ScreensaverFix] Video element gone, disconnecting observer');
     playerCtrlObs.disconnect();
+    // The page may still be the watch page with a new <video>: look again.
+    // (ytaf-page-update fires on a page-type change only.)
+    setTimeout(updateState, 0);
     return;
   }
 
@@ -109,81 +112,110 @@ const playerCtrlObs = new MutationObserver((mutations) => {
 
 let currentVideoElement = null;
 
-const updateState = async () => {
-  const isWatch = isWatchPage();
-  const isShorts = isShortsPage();
-  
-  const newPageType = isWatch ? 'WATCH' : (isShorts ? 'SHORTS' : 'OTHER');
+// The <video> itself, or a player subtree mounted with it inside.
+const holdsVideo = (node) =>
+  node instanceof HTMLVideoElement || !!(node.querySelector && node.querySelector('video'));
 
-  // Optimization: If the page type hasn't changed, ignore
-  if (newPageType === lastPageType) return;
-  lastPageType = newPageType;
-
-  // 1. Handle Shorts Mode
-  if (newPageType === 'SHORTS') {
-    // Ensure Watch logic is disabled
-    if (currentVideoElement) {
-        playerCtrlObs.disconnect();
-        currentVideoElement = null;
+// waitForChildAdd cancels through an AbortSignal-like object; AbortController
+// is missing on webOS 3 (Chromium 38), so this is the minimal stand-in.
+function createWaitCanceller() {
+  let onAbort = null;
+  return {
+    addEventListener(type, fn) { if (type === 'abort') onAbort = fn; },
+    removeEventListener(type, fn) { if (onAbort === fn) onAbort = null; },
+    cancel() {
+      const fn = onAbort;
+      onAbort = null;
+      if (fn) fn();
     }
-    setShortsKeepAlive(true);
-    return;
-  }
+  };
+}
 
-  // 2. Handle Other Modes (Disable Shorts KeepAlive)
-  setShortsKeepAlive(false);
+// The pending wait for a <video> on the watch page, cancelled on a page change
+// so its observer does not outlive the page.
+let videoWait = null;
 
-  // 3. Handle Watch Mode
-  if (newPageType !== 'WATCH') {
-    // If we are here, it's 'OTHER'. Ensure watchers are off.
-    playerCtrlObs.disconnect();
-    currentVideoElement = null;
-    return;
-  }
+function unbindVideo() {
+  playerCtrlObs.disconnect();
+  currentVideoElement = null;
+}
 
-  // -- Watch Page Logic Below --
+// The watch page's <video>, waited for when it has not mounted yet; null when
+// it never does (left the page, or the 30s wait ran out).
+async function findWatchVideo() {
+  const playerContainer = document.getElementById(SELECTORS.PLAYER_CONTAINER);
+  // If container exists, search inside it. If not, fallback to body.
+  const searchRoot = playerContainer || document.body;
 
+  // Shared cached lookup (isConnected-guarded, invalidated on page change).
+  const found = getVideo() || searchRoot.querySelector('video');
+  if (found) return found;
+
+  const wait = createWaitCanceller();
+  videoWait = wait;
   try {
-    const playerContainer = document.getElementById(SELECTORS.PLAYER_CONTAINER);
-    
-    // If container exists, search inside it. If not, fallback to body.
-    const searchRoot = playerContainer || document.body;
-    
-    // Shared cached lookup (isConnected-guarded, invalidated on page change).
-    let video = getVideo() || searchRoot.querySelector('video');
+    const node = await waitForChildAdd(searchRoot, holdsVideo, false, wait);
+    // The added node can be a player subtree with the <video> inside.
+    return node instanceof HTMLVideoElement ? node : node.querySelector('video');
+  } catch (e) {
+    DEBUG && console.info('[ScreensaverFix] No video element to attach to:', e.message);
+    return null;
+  } finally {
+    if (videoWait === wait) videoWait = null;
+  }
+}
 
-    // If not found immediately, use the waiter (scoped to root)
-    if (!video) {
-         video = await waitForChildAdd(
-            searchRoot,
-            (node) => node instanceof HTMLVideoElement,
-            false
-        );
-    }
-    
+async function bindWatchVideo() {
+  try {
+    const video = await findWatchVideo();
+
     // Double check we are still on Watch page after await
-    if (lastPageType !== 'WATCH') return;
+    if (!video || lastPageType !== 'WATCH' || video === currentVideoElement) return;
 
-    if (video && video !== currentVideoElement) {
-      if (currentVideoElement) {
-        playerCtrlObs.disconnect();
-      }
-      
-      currentVideoElement = video;
-      
-      if (video.isConnected) {
-        playerCtrlObs.observe(video, {
-          attributes: true,
-          attributeFilter: ['style']
-        });
-      }
+    if (currentVideoElement) playerCtrlObs.disconnect();
+    currentVideoElement = video;
+
+    if (video.isConnected) {
+      playerCtrlObs.observe(video, {
+        attributes: true,
+        attributeFilter: ['style']
+      });
     }
   } catch (e) {
     console.warn('[ScreensaverFix] Error attaching to video element:', e);
   }
+}
+
+const updateState = async () => {
+  const isWatch = isWatchPage();
+  const isShorts = isShortsPage();
+
+  const newPageType = isWatch ? 'WATCH' : (isShorts ? 'SHORTS' : 'OTHER');
+
+  if (newPageType === lastPageType) {
+    // Watch to watch: bind a remounted <video>, or one that mounted after the
+    // wait for it ran out; a wait still running is left to find it.
+    if (newPageType !== 'WATCH') return;
+    if (currentVideoElement ? currentVideoElement.isConnected : videoWait) return;
+    unbindVideo();
+  }
+  lastPageType = newPageType;
+
+  if (videoWait) {
+    videoWait.cancel();
+    videoWait = null;
+  }
+
+  // Shorts: the keep-alive; any other page switches it off.
+  setShortsKeepAlive(newPageType === 'SHORTS');
+
+  if (newPageType === 'WATCH') await bindWatchVideo();
+  else unbindVideo();
 };
 
 window.addEventListener('ytaf-page-update', updateState);
+// A video-to-video navigation keeps the page type and may replace the <video>.
+window.addEventListener('hashchange', updateState);
 
 // Initial Check
 if(document.body) updateState();
@@ -192,6 +224,8 @@ else document.addEventListener('DOMContentLoaded', updateState);
 window.addEventListener('beforeunload', () => {
   playerCtrlObs.disconnect();
   window.removeEventListener('ytaf-page-update', updateState);
+  window.removeEventListener('hashchange', updateState);
+  if (videoWait) videoWait.cancel();
   currentVideoElement = null;
   setShortsKeepAlive(false);
 });
