@@ -60,16 +60,48 @@ const CONFIG_KEYS = {
   THUMBNAILS: 'upgradeThumbnails'
 };
 
-const EMOJI_RE = /[\u00A9\u00AE\u203C\u2049\u2122\u2139\u2194-\u2199\u21A9\u21AA\u231A\u231B\u2328\u23CF\u23E9-\u23F3\u23F8-\u23FA\u24C2\u25AA\u25AB\u25B6\u25C0\u25FB-\u25FE\u2600-\u2604\u260E\u2611\u2614\u2615\u2618\u261D\u2620\u2622\u2623\u2626\u262A\u262E\u262F\u2638-\u263A\u2640\u2642\u2648-\u2653\u265F\u2660\u2663\u2665\u2666\u2668\u267B\u267E\u267F\u2692-\u2697\u2699\u269B\u269C\u26A0\u26A1\u26AA\u26AB\u26B0\u26B1\u26BD\u26BE\u26C4\u26C5\u26CE\u26CF\u26D1\u26D3\u26D4\u26E9\u26EA\u26F0-\u26F5\u26F7-\u26FA\u26FD\u2702\u2705\u2708-\u270D\u270F\u2712\u2714\u2716\u271D\u2721\u2728\u2733\u2734\u2744\u2747\u274C\u274E\u2753-\u2755\u2757\u2763\u2764\u2795-\u2797\u27A1\u27B0\u27BF\u2934\u2935\u2B05-\u2B07\u2B1B\u2B1C\u2B50\u2B55\u3030\u303D\u3297\u3299]|[\uD83C-\uDBFF][\uDC00-\uDFFF]/;
+// One emoji character: the symbols below in the BMP, or any astral character
+// (a surrogate pair).
+const EMOJI_CHAR_RE = /[©®‼⁉™ℹ↔-↙↩↪⌚⌛⌨⏏⏩-⏳⏸-⏺Ⓜ▪▫▶◀◻-◾☀-☄☎☑☔☕☘☝☠☢☣☦☪☮☯☸-☺♀♂♈-♓♟♠♣♥♦♨♻♾♿⚒-⚗⚙⚛⚜⚠⚡⚪⚫⚰⚱⚽⚾⛄⛅⛎⛏⛑⛓⛔⛩⛪⛰-⛵⛷-⛺⛽✂✅✈-✍✏✒✔✖✝✡✨✳✴❄❇❌❎❓-❕❗❣❤➕-➗➡➰➿⤴⤵⬅-⬇⬛⬜⭐⭕〰〽㊗㊙]|[\uD83C-\uDBFF][\uDC00-\uDFFF]/;
+// What may follow one: the emoji presentation selector, a skin tone, a tag
+// character (the subdivision flags).
+const EMOJI_MODIFIER = '(?:\\uFE0F|\\uD83C[\\uDFFB-\\uDFFF]|\\uDB40[\\uDC20-\\uDC7F])';
+const EMOJI_CHAR = `(?:${EMOJI_CHAR_RE.source})`;
+// One emoji as twemoji draws it, the unit that is wrapped: a flag (two
+// regional indicators), a keycap, or a character with its modifiers and the
+// characters zero-width-joined to it. Wrapped one code point at a time, a
+// thumbs-up and its skin tone, or a family, came apart into several images,
+// and a keycap (#️⃣) was not wrapped at all. (From mirijanristic's fork.)
+const EMOJI_RE = new RegExp(
+  '\\uD83C[\\uDDE6-\\uDDFF]\\uD83C[\\uDDE6-\\uDDFF]|[#*0-9]\\uFE0F?\\u20E3|' +
+  `${EMOJI_CHAR}${EMOJI_MODIFIER}*(?:\\u200D${EMOJI_CHAR}${EMOJI_MODIFIER}*)*`
+);
 const EMOJI_RE_CAP = new RegExp(`(${EMOJI_RE.source})`, 'g');
 const EMOJI_RE_GLOBAL = new RegExp(EMOJI_RE.source, 'g');
-// Includes our own sentinels: a title that ships \u200B/\u200C verbatim could
+// Includes our own sentinels: a title that ships ​/‌ verbatim could
 // otherwise forge an "already wrapped" region that emoji-font.js then treats
 // as its own output. Stripping first also makes processEmojiString idempotent.
-const CLEAN_TEXT_RE = /[\u200B\u200C\u2060\uFEFF]/g;
+const CLEAN_TEXT_RE = /[​‌⁠﻿]/g;
 // Single-scan gate for "does this string need any emoji work at all" - most
-// YouTube titles are plain text and reject here.
-const NEEDS_TEXT_WORK_RE = new RegExp(EMOJI_RE.source + '|[\\u200B\\u200C\\u2060\\uFEFF]');
+// YouTube titles are plain text and reject here. Every emoji holds an emoji
+// character or the keycap mark.
+const NEEDS_TEXT_WORK_RE = new RegExp(EMOJI_CHAR_RE.source + '|\\u20E3|[\\u200B\\u200C\\u2060\\uFEFF]');
+// A sentinel to strip or an emoji to wrap, in one scan (wrapAttributedContent).
+const ATTRIBUTED_WORK_RE = new RegExp(`[\\u200B\\u200C\\u2060\\uFEFF]|(${EMOJI_RE.source})`, 'g');
+// An emoji or a sentinel written as a JSON escape (😀): the code
+// points of EMOJI_CHAR_RE and CLEAN_TEXT_RE and the keycap mark (U+00A9,
+// U+00AE, U+2000 to U+32FF, the surrogates, U+FEFF), loosely. An escaped
+// ASCII character (& in a URL) does not match.
+const ESCAPED_EMOJI_RE = /\\u(?:00[aA][9eE]|2[0-9a-fA-F]{3}|3[0-2][0-9a-fA-F]{2}|[dD][89abAB][0-9a-fA-F]{2}|[fF][eE][fF][fF])/;
+
+/**
+ * Whether the JSON text can hold anything the emoji walk would change: one
+ * native scan of the text, so the walk over every item of a response (the
+ * most expensive pass on webOS 3 and 4) is skipped for the ones without.
+ */
+function mayNeedEmojiWork(text) {
+  return NEEDS_TEXT_WORK_RE.test(text) || ESCAPED_EMOJI_RE.test(text);
+}
 
 const IGNORE_ON_SHORTS = new Set(['SEARCH', 'PLAYER', 'ACTION']);
 
@@ -92,6 +124,13 @@ const cfgFlags = {
   hideEndcards: false,
   upgradeThumbnails: false
 };
+
+// cfgFlags with the legacy emoji fix off: what the filters get for a response
+// whose text holds nothing the fix would change (hookedParse).
+const cfgFlagsNoEmoji = Object.assign({}, cfgFlags);
+// Every filter off and only the legacy emoji fix left: for the responses the
+// Shorts player must get unfiltered, whose text still needs its emoji wrapped.
+const cfgFlagsEmojiOnly = Object.assign({}, cfgFlags);
 
 function recomputeFilterFlags() {
   cfgEmojiFixEffective = !!cfgSnapshot[CONFIG_KEYS.EMOJI_FIX] && cachedWebOSVersion <= 4;
@@ -124,6 +163,11 @@ function recomputeFilterFlags() {
     cfgFlags.hideEndcards ||
     cfgFlags.upgradeThumbnails
   );
+
+  Object.assign(cfgFlagsNoEmoji, cfgFlags);
+  cfgFlagsNoEmoji.enableLegacyEmojiFix = false;
+  for (const k in cfgFlagsEmojiOnly) cfgFlagsEmojiOnly[k] = false;
+  cfgFlagsEmojiOnly.enableLegacyEmojiFix = cfgFlags.enableLegacyEmojiFix;
 }
 
 recomputeFilterFlags();
@@ -178,7 +222,7 @@ function processEmojiString(str) {
   if (!NEEDS_TEXT_WORK_RE.test(str)) return str;
   let cleanedStr = str.replace(CLEAN_TEXT_RE, '');
 
-  const replaced = cleanedStr.replace(EMOJI_RE_GLOBAL, '\u200B$&\u200C');
+  const replaced = cleanedStr.replace(EMOJI_RE_GLOBAL, '​$&‌');
   if (EMOJI_DEBUG && replaced !== str) {
     console.log(`[AdBlock-Emoji] Wrapped emoji in string: "${str}"`);
   }
@@ -186,7 +230,7 @@ function processEmojiString(str) {
 }
 
 // Idempotent by construction: the sentinels are stripped first, then re-wrapped
-// from the cleaned text. That also stops a title shipping \u200B/\u200C verbatim
+// from the cleaned text. That also stops a title shipping ​/‌ verbatim
 // from forging an "already wrapped" region.
 function splitIntoRuns(text, originalRun = {}) {
     if (!NEEDS_TEXT_WORK_RE.test(text)) return null;
@@ -196,16 +240,83 @@ function splitIntoRuns(text, originalRun = {}) {
 
     const parts = cleanText.split(EMOJI_RE_CAP);
     const newRuns = [];
-    
+
     for (let i = 0; i < parts.length; i++) {
         if (!parts[i]) continue;
-        if (i % 2 === 1) { 
-            newRuns.push(Object.assign({}, originalRun, { text: '\u200B' + parts[i] + '\u200C' }));
+        if (i % 2 === 1) {
+            newRuns.push(Object.assign({}, originalRun, { text: '​' + parts[i] + '‌' }));
         } else {
             newRuns.push(Object.assign({}, originalRun, { text: parts[i] }));
         }
     }
     return newRuns;
+}
+
+/** Whether `obj` has offset runs (commandRuns, styleRuns...) over its `content`. */
+function hasOffsetRuns(obj) {
+  for (const key in obj) {
+    if (key.slice(-4) === 'Runs' && Array.isArray(obj[key])) return true;
+  }
+  return false;
+}
+
+/**
+ * An attributed string's `content` wrapped, and the offsets of its runs
+ * (UTF-16 units of `content`) moved with the characters they name: a run
+ * starting at an emoji starts at its opening sentinel, one ending with it
+ * ends after the closing one. Without this a mention, link or timestamp after
+ * an emoji pointed two characters early per emoji. (From mirijanristic's fork.)
+ */
+function wrapAttributedContent(obj) {
+  const src = obj.content;
+  // Each edit as three numbers: where it starts and ends in `src`, and +1 for
+  // a wrapped emoji or -1 for a stripped sentinel.
+  const edits = [];
+  let out = '';
+  let last = 0;
+  ATTRIBUTED_WORK_RE.lastIndex = 0;
+  let m = ATTRIBUTED_WORK_RE.exec(src);
+  while (m !== null) {
+    out += src.slice(last, m.index);
+    if (m[1]) {
+      out += '​' + m[1] + '‌';
+      edits.push(m.index, m.index + m[1].length, 1);
+    } else {
+      edits.push(m.index, m.index + 1, -1);
+    }
+    last = m.index + m[0].length;
+    m = ATTRIBUTED_WORK_RE.exec(src);
+  }
+  if (edits.length === 0) return;
+  out += src.slice(last);
+
+  // Where offset `p` of `src` lands in `out`.
+  const moved = (p) => {
+    let shift = 0;
+    for (let i = 0; i < edits.length; i += 3) {
+      if (edits[i + 2] === -1) {
+        if (edits[i] < p) shift--;
+      } else if (edits[i + 1] <= p) {
+        shift += 2;
+      } else if (edits[i] < p) {
+        shift++;
+      }
+    }
+    return p + shift;
+  };
+  for (const key in obj) {
+    const runs = obj[key];
+    if (key.slice(-4) !== 'Runs' || !Array.isArray(runs)) continue;
+    for (let i = 0; i < runs.length; i++) {
+      const run = runs[i];
+      if (!run || typeof run !== 'object') continue;
+      const start = typeof run.startIndex === 'number' ? run.startIndex : 0;
+      const newStart = moved(start);
+      if (typeof run.length === 'number') run.length = moved(start + run.length) - newStart;
+      if (newStart !== start) run.startIndex = newStart;
+    }
+  }
+  obj.content = out;
 }
 
 // Non-recursive: the emoji/text fields of a single node, in place.
@@ -230,8 +341,9 @@ function processTextFieldsInPlace(obj) {
     obj.sectionString = processEmojiString(obj.sectionString); 
   }
   
-  if (typeof obj.content === 'string' && EMOJI_RE.test(obj.content)) {
-     obj.content = processEmojiString(obj.content);
+  if (typeof obj.content === 'string' && NEEDS_TEXT_WORK_RE.test(obj.content)) {
+    if (hasOffsetRuns(obj)) wrapAttributedContent(obj);
+    else obj.content = processEmojiString(obj.content);
   }
   
   if (!justBuiltRuns && Array.isArray(obj.runs)) {
@@ -427,26 +539,40 @@ function hookedParse(text, reviver) {
   try {
     const responseType = detectResponseType(data);
 
-    if (isShortsPage() && responseType && IGNORE_ON_SHORTS.has(responseType)) return data;
+    // The legacy emoji fix walks every item it filters; a text without an
+    // emoji in it is filtered with the fix left out (one native scan of the
+    // text instead). (From mirijanristic's fork.)
+    const flags = cfgFlags.enableLegacyEmojiFix && !mayNeedEmojiWork(text) ? cfgFlagsNoEmoji : cfgFlags;
+
+    if (isShortsPage() && responseType && IGNORE_ON_SHORTS.has(responseType)) {
+      // The Shorts player gets these unfiltered, but their titles, comments
+      // and descriptions still need the emoji wrapped on webOS 3 and 4, or
+      // they render as boxes there (NicholasBly/youtube-webos#74).
+      if (flags.enableLegacyEmojiFix) {
+        applySchemaFilters(data, responseType, cfgFlagsEmojiOnly);
+        if (data.frameworkUpdates) walkAndProcess(data.frameworkUpdates, true, false, 20);
+      }
+      return data;
+    }
 
     if (FORCE_FALLBACK) {
       if (DEBUG) debugLog('FORCE_FALLBACK active. Using fallback filters.');
-      if (!Array.isArray(data)) applyFallbackFilters(data, cfgFlags);
+      if (!Array.isArray(data)) applyFallbackFilters(data, flags);
     } else if (responseType && SCHEMA_REGISTRY.paths[responseType]) {
       if (DEBUG) debugLog(`Schema Match: [${responseType}]`);
-      applySchemaFilters(data, responseType, cfgFlags);
+      applySchemaFilters(data, responseType, flags);
     } else if (responseType === 'ACTION' || responseType === 'PLAYER') {
       if (DEBUG) debugLog(`Schema Match: [${responseType}]`);
-      applySchemaFilters(data, responseType, cfgFlags);
+      applySchemaFilters(data, responseType, flags);
     } else if(text.length > 10000 && !Array.isArray(data)) {
       if (DEBUG) logSchemaMiss(data, text.length);
-      applyFallbackFilters(data, cfgFlags);
-    } else if ((cfgFlags.removeGlobalShorts || cfgFlags.removeLiveVideos) && !Array.isArray(data)) {
+      applyFallbackFilters(data, flags);
+    } else if ((flags.removeGlobalShorts || flags.removeLiveVideos) && !Array.isArray(data)) {
       // The guide arrives in its own small response, which matches no content
       // schema and is under the fallback's size threshold - so without this it
       // was never looked at. removeBlockedNavEntries() early-returns when the
       // settings are off, and its search is depth-bounded.
-      removeBlockedNavEntries(data, cfgFlags.removeGlobalShorts, cfgFlags.removeLiveVideos);
+      removeBlockedNavEntries(data, flags.removeGlobalShorts, flags.removeLiveVideos);
     }
 
     // Thumbnail rewriting runs after filtering, so shelves and ad slots that
@@ -454,15 +580,15 @@ function hookedParse(text, reviver) {
     // already resolved above instead of detecting the shape a second time.
     if (cfgFlags.upgradeThumbnails) upgradeResponseThumbnails(data, responseType);
 
-    if (cfgFlags.enableTrackingBlock) {
+    if (flags.enableTrackingBlock) {
         // trackingParams across the whole tree at depth 15, then emoji on
         // frameworkUpdates as a small targeted walk at depth 20.
         walkAndProcess(data, false, true, 15);
         if (DEBUG) debugLog('Stripped trackingParams globally');
-        if (cfgFlags.enableLegacyEmojiFix && data.frameworkUpdates) {
+        if (flags.enableLegacyEmojiFix && data.frameworkUpdates) {
             walkAndProcess(data.frameworkUpdates, true, false, 20);
         }
-    } else if (cfgFlags.enableLegacyEmojiFix && data.frameworkUpdates) {
+    } else if (flags.enableLegacyEmojiFix && data.frameworkUpdates) {
         walkAndProcess(data.frameworkUpdates, true, false, 20);
     }
 
