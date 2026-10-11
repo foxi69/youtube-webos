@@ -5,6 +5,7 @@ import sponsorBlockUI from './Sponsorblock-UI.js';
 import sponsorBlockLabels, { isFullVideoSegment } from './sponsorblock-labels.js';
 import { isLegacyWebOS } from './webos-utils.js';
 import { getVideo, waitForChildAdd } from './utils.js';
+import { fetchJsonWithTimeout } from './fetch-timeout.js';
 import './sponsorblock.css';
 
 const SPONSORBLOCK_CONFIG = {
@@ -1615,31 +1616,23 @@ class SponsorBlockHandler {
         if (this.abortController) {
             this.abortController.abort();
         }
+        // One controller for this call (both servers); destroy() aborts it.
+        const controller = HAS_ABORT_CONTROLLER ? new AbortController() : null;
+        this.abortController = controller;
 
         const tryFetch = async (url) => {
-            if (this.isDestroyed) return null;
+            if (this.isDestroyed || (controller && controller.signal.aborted)) return null;
 
             try {
                 const fetchURL = `${url}/skipSegments/${hashPrefix}?categories=${FETCH_CATEGORIES}&actionTypes=${FETCH_ACTION_TYPES}`;
 
+                // The deadline covers the body too: a server stalling
+                // mid-answer used to hang here for good, so the fallback
+                // server, the retries and the next refresh never ran.
+                const res = await fetchJsonWithTimeout(fetchURL, SPONSORBLOCK_CONFIG.timeout,
+                    controller ? { signal: controller.signal } : undefined);
 
-                let res;
-                if (HAS_ABORT_CONTROLLER) {
-                    this.abortController = new AbortController();
-                    const timeoutId = setTimeout(() => this.abortController.abort(), SPONSORBLOCK_CONFIG.timeout);
-                    try {
-                        res = await fetch(fetchURL, { signal: this.abortController.signal });
-                    } finally {
-                        clearTimeout(timeoutId);
-                    }
-                } else {
-                    res = await Promise.race([
-                        fetch(fetchURL),
-                        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), SPONSORBLOCK_CONFIG.timeout))
-                    ]);
-                }
-
-                if (res.ok) return await res.json();
+                if (res.ok) return res.data;
                 // 404 is the API saying it has nothing for this prefix - an
                 // answer, not a failure worth retrying.
                 return res.status === 404 ? [] : null;
@@ -1653,6 +1646,7 @@ class SponsorBlockHandler {
 
         let res = await tryFetch(SPONSORBLOCK_CONFIG.primaryAPI);
         if (!res) res = await tryFetch(SPONSORBLOCK_CONFIG.fallbackAPI);
+        if (this.abortController === controller) this.abortController = null;
         return res;
     }
 
