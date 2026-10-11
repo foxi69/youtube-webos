@@ -151,6 +151,7 @@ const configOptions = new Map([
   ['enableLegacyEmojiFix', { default: true, desc: 'Emoji + Characters Fix' }],
   ['hideGuestSignInPrompts', { default: false, desc: 'Guest Mode: Hide Sign-in Buttons' }],
   ['forceHighResVideo', { default: false, desc: 'Force Max Quality' }],
+  ['showQualityOnStart', { default: false, desc: 'Show Video Quality on Start' }],
   ['forceVideoCodec', { default: 'auto', desc: 'Force Video Codec' }],
   ['subtitleTranslateLang', { default: 'off', desc: 'Auto-Translate Subtitles' }],
   //['enablePlaybackSpeed', { default: true, desc: 'Playback Speed Control' }],

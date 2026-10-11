@@ -653,6 +653,7 @@ function createOptionsPanel() {
   // --- Page 2: Player ---
   makePage(1).appendChild(createSection('Video Player',
   [createConfigCheckbox('forceHighResVideo'),
+  createConfigCheckbox('showQualityOnStart'),
   //createConfigCheckbox('enablePlaybackSpeed'),
   createVideoCodecControl(),
   createAlignedCycleControl('subtitleTranslateLang', subtitleTranslateLanguages),
