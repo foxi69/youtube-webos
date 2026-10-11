@@ -3,6 +3,7 @@ import { isShortsPage } from './utils';
 import { getWebOSVersion } from './webos-utils';
 import { FetchRegistry } from './hooks';
 import { upgradeResponseThumbnails, thumbnailHookRequired } from './thumbnail-quality.js';
+import { raiseRowsAhead } from './rows-ahead.js';
 
 const DEBUG = false;
 const EMOJI_DEBUG = false; 
@@ -61,7 +62,8 @@ const CONFIG_KEYS = {
   GUEST_PROMPTS: 'hideGuestSignInPrompts',
   EMOJI_FIX: 'enableLegacyEmojiFix',
   ENDCARDS: 'hideEndcards',
-  THUMBNAILS: 'upgradeThumbnails'
+  THUMBNAILS: 'upgradeThumbnails',
+  ROWS_AHEAD: 'loadRowsAhead'
 };
 
 // One emoji character: the symbols below in the BMP, or any astral character
@@ -117,6 +119,8 @@ const BADGE_MEMBERS = 4;
 // configGetAll() returns the live reference, so this binds once at load.
 const cfgSnapshot = configGetAll();
 let anyFilterEnabled = false;
+// The same without Load Rows Ahead, which runs before everything else.
+let anyResponseFilterEnabled = false;
 let cfgEmojiFixEffective = false;
 
 // Singleton passed to the filters, refreshed by recomputeFilterFlags() rather
@@ -135,7 +139,8 @@ const cfgFlags = {
   hideGuestPrompts: false,
   enableLegacyEmojiFix: false,
   hideEndcards: false,
-  upgradeThumbnails: false
+  upgradeThumbnails: false,
+  loadRowsAhead: false
 };
 
 // cfgFlags with the legacy emoji fix off: what the filters get for a response
@@ -168,8 +173,9 @@ function recomputeFilterFlags() {
   cfgFlags.enableLegacyEmojiFix = cfgEmojiFixEffective;
   cfgFlags.hideEndcards = !!cfgSnapshot[CONFIG_KEYS.ENDCARDS];
   cfgFlags.upgradeThumbnails = !!cfgSnapshot[CONFIG_KEYS.THUMBNAILS];
+  cfgFlags.loadRowsAhead = !!cfgSnapshot[CONFIG_KEYS.ROWS_AHEAD];
 
-  anyFilterEnabled = !!(
+  anyResponseFilterEnabled = !!(
     cfgFlags.enableAdBlock ||
     cfgFlags.enableTrackingBlock ||
     cfgFlags.removeGlobalShorts ||
@@ -183,6 +189,7 @@ function recomputeFilterFlags() {
     cfgFlags.hideEndcards ||
     cfgFlags.upgradeThumbnails
   );
+  anyFilterEnabled = anyResponseFilterEnabled || cfgFlags.loadRowsAhead;
 
   Object.assign(cfgFlagsNoEmoji, cfgFlags);
   cfgFlagsNoEmoji.enableLegacyEmojiFix = false;
@@ -559,6 +566,10 @@ function hookedParse(text, reviver) {
 
   try {
     const responseType = detectResponseType(data);
+    // Before the Shorts guard below: a browse response parsed while a Short
+    // plays still wants its rows ahead.
+    if (cfgFlags.loadRowsAhead) raiseRowsAhead(data, responseType);
+    if (!anyResponseFilterEnabled) return data;
 
     // The legacy emoji fix walks every item it filters; a text without an
     // emoji in it is filtered with the fix left out (one native scan of the
@@ -1265,13 +1276,14 @@ function findObjects(haystack, needlesArray, maxDepth = 10) {
  * prompts, trackingParams - all of them Ad Blocking's), the endcards and the
  * legacy emoji rewrite. Ad Blocking being off must not take the emoji fix down
  * with it - on webOS 3 and 4 that is what stops titles rendering as tofu
- * boxes, and it has its own setting.
+ * boxes, and it has its own setting. Load Rows Ahead is on the same hook.
  */
 export function parseHookRequired() {
   return !!(
     cfgSnapshot[CONFIG_KEYS.ADBLOCK] ||
     cfgSnapshot[CONFIG_KEYS.ENDCARDS] ||
     cfgEmojiFixEffective ||
+    cfgSnapshot[CONFIG_KEYS.ROWS_AHEAD] ||
     thumbnailHookRequired()
   );
 }

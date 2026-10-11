@@ -661,7 +661,7 @@ function createOptionsPanel() {
   createConfigCheckbox('enableReturnYouTubeDislike')]));
   // The logo in the header also cycles the theme, but a remote cannot focus
   // it, so the setting needs a row of its own to be reachable on a TV.
-  const interfaceGroup = [createAlignedCycleControl('uiTheme', uiThemes), createConfigCheckbox('enableAutoLogin'), createConfigCheckbox('autoSelectAccount'), createConfigCheckbox('upgradeThumbnails'), createThumbnailQualityControl(), createLogoControl(), createConfigCheckbox('showWatch'), createConfigCheckbox('enableOledCareMode'), createConfigCheckbox('disableNotifications')];
+  const interfaceGroup = [createAlignedCycleControl('uiTheme', uiThemes), createConfigCheckbox('enableAutoLogin'), createConfigCheckbox('autoSelectAccount'), createConfigCheckbox('upgradeThumbnails'), createThumbnailQualityControl(), createLogoControl(), createConfigCheckbox('showWatch'), createConfigCheckbox('enableOledCareMode'), createConfigCheckbox('disableNotifications'), createConfigCheckbox('loadRowsAhead')];
   // The cast block only exists on webOS 25 (see userScript.js).
   if (isWebOS25()) interfaceGroup.push(createConfigCheckbox('blockWebosCast'));
   // --- Page 3: Interface ---
@@ -1677,6 +1677,8 @@ configAddChangeListener('hideGuestSignInPrompts', () => syncAdblockHook());
 configAddChangeListener('hideEndcards', () => syncAdblockHook());
 // Max Thumbnail Quality rewrites URLs inside the same JSON.parse hook.
 configAddChangeListener('upgradeThumbnails', () => syncAdblockHook());
+// Load Rows Ahead raises the continuation threshold inside the same hook.
+configAddChangeListener('loadRowsAhead', () => syncAdblockHook());
 
 configAddChangeListener('videoShelfOpacity', () => {
   // Cheap update — just retargets the CSS custom property and toggles the

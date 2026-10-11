@@ -147,6 +147,7 @@ const configOptions = new Map([
   ['enableOledCareMode', { default: false, desc: 'OLED-Care Mode (True Black UI)' }],
   ['videoShelfOpacity', { default: 100, desc: 'Video shelf opacity' }],
   ['fixMultilineTitles', { default: true, desc: 'Fix Multiline Titles' }],
+  ['loadRowsAhead', { default: true, desc: 'Load Rows Ahead' }],
   ['removeBlackBorders', { default: false, desc: 'New Liquid Glass UI' }],
   ['forcePreviews', { default: 'disabled', desc: 'Force Previews' }],
   ['enableLegacyEmojiFix', { default: true, desc: 'Emoji + Characters Fix' }],
