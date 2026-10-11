@@ -62,6 +62,7 @@ export const shortcutActions = {
   sleep_timer: 'Sleep Timer (15/30/60/90/120 min, off)',
   audio_only: 'Toggle Audio-Only Mode',
   sb_manual_skip: 'Manual Skip / Jump to Highlight',
+  jump_to_live: 'Jump to Live',
   config_menu: 'Open/Close Settings'
   //speed_up: 'Playback Speed +',
   //speed_down: 'Playback Speed -',

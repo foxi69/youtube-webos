@@ -139,7 +139,8 @@ const ACTION_SCOPES = {
     save_to_playlist: 'VIDEO',
     sb_skip_prev: 'VIDEO',
     sb_manual_skip: 'VIDEO',
-    audio_only: 'VIDEO'
+    audio_only: 'VIDEO',
+    jump_to_live: 'VIDEO'
     // speed_up: 'VIDEO',
     // speed_down: 'VIDEO',
     // speed_reset: 'VIDEO'
@@ -1241,6 +1242,40 @@ function playPauseLogic(video) {
     }
 }
 
+// --- Jump to Live ---
+// On a live stream that was paused or rewound, back to the live edge
+// (NicholasBly/youtube-webos#148). The player's own seekToLiveHead keeps its
+// live state right; the <video>'s seekable range is the fallback.
+function isLiveStream(player, video) {
+    try {
+        const data = player && typeof player.getVideoData === 'function' ? player.getVideoData() : null;
+        if (data && data.isLive === true) return true;
+    } catch (e) { /* not the player API we know */ }
+    return video.duration === Infinity;
+}
+
+function jumpToLiveLogic(video) {
+    const player = document.getElementById(SELECTORS.PLAYER_ID);
+    if (!isLiveStream(player, video)) {
+        showNotification('Not a live stream');
+        return;
+    }
+    try {
+        if (player && typeof player.seekToLiveHead === 'function') {
+            player.seekToLiveHead();
+        } else {
+            const ranges = video.seekable;
+            if (!ranges || !ranges.length) { showNotification('Live edge not available'); return; }
+            video.currentTime = Math.max(0, ranges.end(ranges.length - 1) - 1);
+        }
+        if (video.paused) video.play();
+        showNotification('Jumped to Live');
+    } catch (e) {
+        console.warn('[Shortcut] Jump to live failed:', e);
+        showNotification('Live edge not available');
+    }
+}
+
 // --- Sleep Timer ---
 // Each press steps to the next duration; past the last one it switches off.
 // When it runs out the video is paused, so the TV's own idle timer and
@@ -1340,6 +1375,9 @@ function handleShortcutAction(action) {
         break;
     case 'play_pause':
         playPauseLogic(video);
+        break;
+    case 'jump_to_live':
+        jumpToLiveLogic(video);
         break;
 
     // case 'speed_up':
