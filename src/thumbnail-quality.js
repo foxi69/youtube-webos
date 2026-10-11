@@ -403,9 +403,11 @@ function upgradeEntry(entry, proven) {
   // a probe verifies the exact URL it fetched. At or below it we are relying on
   // hqdefault always existing, which is a `/vi/` guarantee only.
   const next = buildUrl(videoId, QUALITY_NAMES[target], target <= GUARANTEED_RANK);
+  // Tracked even when the URL stays as sent: the probe's answer still has to
+  // be written back into this entry.
+  if (unresolved) trackPending(videoId, entry, ceilingBeforeMode);
   if (next === url) return 0;
   entry.url = next;
-  if (unresolved) trackPending(videoId, entry, ceilingBeforeMode);
   return 1;
 }
 
