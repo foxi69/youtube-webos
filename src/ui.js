@@ -1660,8 +1660,6 @@ function initGlobalStyles() {
     // not config — YouTube never touches it.
     const style = createElement('style');
     style.textContent = `
-        :root { --ytaf-oled-opacity: 1; }
-
         html.ytaf-oled-blackout .webOs-watch { display: none !important; }
         html.ytaf-audio-only video { visibility: hidden !important; }
 
@@ -1681,7 +1679,8 @@ function initGlobalStyles() {
            Same reason ytaf-hide-logo / ytaf-fix-titles / ytaf-remove-borders
            already live on documentElement.
 
-           Opacity flows through the --ytaf-oled-opacity custom property, so a
+           The shelf backdrop's opacity is a rule of its own in
+           <style id="ytaf-oled-opacity"> (syncOledShelfOpacity), so a
            videoShelfOpacity slider tick never rebuilds this block; the
            conditional rules sit under html.oled-transparent-shelf. */
         html.oled-theme-active #container,
@@ -1697,7 +1696,6 @@ function initGlobalStyles() {
         html.oled-theme-active .k82tDb { background-color: #000 !important; }
         html.oled-theme-active .ytLrGuideResponseGradient { display: none; }
         html.oled-theme-active .iha0pc { color: #000 !important; }
-        html.oled-theme-active .Jx9xPc { background-color: rgba(0, 0, 0, var(--ytaf-oled-opacity)) !important; }
         html.oled-theme-active .p0DeOc { background-color: #000 !important; background-image: none !important; }
         html.oled-theme-active ytlr-player-focus-ring { border: 0.375rem solid rgb(200, 200, 200) !important; }
         html.oled-theme-active ytlr-surface-page { background-image: none !important; background-color: #000 !important; }
@@ -1781,9 +1779,18 @@ function updateLogoState() {
   });
 }
 
+// The shelf backdrop's opacity, written as a rule of its own rather than a CSS
+// custom property: Chromium 38 (webOS 3) has no var() and dropped the whole
+// declaration, leaving the shelf un-blacked. From mirijanristic's fork.
 function syncOledShelfOpacity() {
   const opacityVal = configRead('videoShelfOpacity');
-  document.documentElement.style.setProperty('--ytaf-oled-opacity', String(opacityVal / 100));
+  let style = document.getElementById('ytaf-oled-opacity');
+  if (!style) {
+    style = document.createElement('style');
+    style.id = 'ytaf-oled-opacity';
+    (document.head || document.documentElement).appendChild(style);
+  }
+  style.textContent = `html.oled-theme-active .Jx9xPc { background-color: rgba(0, 0, 0, ${opacityVal / 100}) !important; }`;
   document.documentElement.classList.toggle('oled-transparent-shelf', opacityVal > 50);
 }
 
