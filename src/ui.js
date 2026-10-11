@@ -5,6 +5,7 @@ import './auto-login.js';
 import './return-dislike.js';
 import { initVideoQuality } from './video-quality.js';
 import { initLogoStyle } from './logo-style.js';
+import { initMathLetters } from './math-letters.js';
 // import { initPlaybackSpeed, stepSpeed, resetSpeed } from './playback-speed.js';
 import sponsorBlockUI from './Sponsorblock-UI.js';
 import { sendKey, REMOTE_KEYS, COLOR_CODE_MAP, isGuestMode, isWatchPage, isShortsPage, isSearchPage, SELECTORS, getVideo, SYNTHETIC_KEY_FLAG } from './utils.js';
@@ -1837,6 +1838,7 @@ const startupMenuKey = ensureMenuKey(false);
 initGlobalStyles();
 initVideoQuality();
 initLogoStyle();
+initMathLetters();
 // initPlaybackSpeed();
 
 // Initial apply (will skip UI elements if they don't exist yet, but handle global styles)
