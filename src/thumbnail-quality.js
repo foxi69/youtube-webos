@@ -72,6 +72,13 @@ const PROMOTION_DEBOUNCE = 150;
 const PROMOTION_RETRY_DELAY = 900;
 const PROMOTION_MAX_ATTEMPTS = 5;
 const CACHE_KEY = 'ytaf-thumb-quality';
+// Which ladder the stored answers were measured against and the revision of
+// what a stored answer may be, e.g. "5r2". Kept beside the cache rather than
+// inside it so the cache format, and its one-split parse, stay as they were.
+const CACHE_CAP_KEY = 'ytaf-thumb-quality-cap';
+// 2: a timeout or a network error is no longer saved as a miss. Caches of an
+// older revision may hold such misses, and are dropped once.
+const CACHE_REVISION = 2;
 const CACHE_LIMIT = 1200;
 const CACHE_SAVE_DEBOUNCE = 4000;
 const PENDING_LIMIT = 1500;
@@ -110,6 +117,14 @@ const GUARANTEED_RANK = RANK.hqdefault;
  */
 const PROBE_LADDER = [RANK.maxresdefault];
 
+/** The best rung the module emits or probes for. */
+const usefulRank = PROBE_LADDER[0];
+
+// A probe that learned nothing, unlike a miss: it ran out of time, or the
+// network failed. A missing rung is not an error: i.ytimg.com answers it with a
+// 404 (or a tiny grey placeholder), which a HEAD reads and an image loads.
+const UNKNOWN = 'unknown';
+
 // Anchored so it cannot match mid-string, and `\w+` on the basename so
 // A/B-test variants (hqdefault_custom_2) are captured and then rejected by the
 // RANK lookup rather than being rewritten to a name that has no custom-variant
@@ -139,6 +154,12 @@ let enabled = !!configRead('upgradeThumbnails');
 
 /** videoId -> verified rank. Survives navigation and restarts. */
 const qualityCache = new Map();
+/**
+ * Cached entries a probe that learned nothing put there ('safe' only): the
+ * floor for this session, left out of the saved cache so the next session asks
+ * again.
+ */
+const unconfirmed = new Set();
 /** Insertion-ordered probe backlog: videoId -> true. */
 const probeQueue = new Map();
 const inFlight = new Set();
@@ -190,8 +211,30 @@ function capSet(map, key, value, limit) {
 // Compact "id:rank,id:rank" rather than JSON: it parses with one split on
 // startup and avoids the hooked JSON.stringify entirely.
 
+/** What CACHE_CAP_KEY holds for the current ladder and revision. */
+function capMarker() {
+  return usefulRank + 'r' + CACHE_REVISION;
+}
+
+/** Forgets the stored answers and records the ladder the next ones are measured against. */
+function dropStoredCache() {
+  try {
+    window.localStorage.removeItem(CACHE_KEY);
+    window.localStorage.setItem(CACHE_CAP_KEY, capMarker());
+  } catch {
+    // Storage refused: the answers are still forgotten for this session.
+  }
+}
+
 function loadCache() {
   try {
+    // The cache is only valid against the ladder and the revision that wrote
+    // it. Any other marker, or none (a build that saved timeouts as misses),
+    // means every stored answer is suspect: drop it once and start over.
+    if (window.localStorage.getItem(CACHE_CAP_KEY) !== capMarker()) {
+      dropStoredCache();
+      return;
+    }
     const raw = window.localStorage.getItem(CACHE_KEY);
     if (!raw) return;
     const parts = raw.split(',');
@@ -217,9 +260,10 @@ function saveCache() {
     let skip = qualityCache.size - CACHE_LIMIT;
     qualityCache.forEach((rank, id) => {
       if (skip-- > 0) return;
-      out.push(id + ':' + rank);
+      if (!unconfirmed.has(id)) out.push(id + ':' + rank);
     });
     window.localStorage.setItem(CACHE_KEY, out.join(','));
+    window.localStorage.setItem(CACHE_CAP_KEY, capMarker());
   } catch {
     // Ignore.
   }
@@ -667,6 +711,12 @@ export function thumbnailHookRequired() {
 
 // --- Verification ---------------------------------------------------------
 
+/**
+ * Whether the URL exists, by a HEAD request: true, false, UNKNOWN (a timeout or
+ * a network error), or null when the answer carried no readable Content-Length
+ * (a cross-origin answer on older Chromium), in which case the caller loads the
+ * image instead. A grey placeholder answered 200 with a tiny body is missing.
+ */
 function headExists(url) {
   return new Promise((resolve) => {
     let xhr;
@@ -674,23 +724,22 @@ function headExists(url) {
       xhr = new XMLHttpRequest();
       xhr.open('HEAD', url, true);
     } catch {
-      resolve(false);
+      resolve(UNKNOWN);
       return;
     }
     xhr.timeout = PROBE_TIMEOUT;
     xhr.onload = () => {
       if (xhr.status < 200 || xhr.status >= 300) return resolve(false);
       const length = parseInt(xhr.getResponseHeader('Content-Length'), 10);
-      // A grey placeholder answers 200 with a tiny body; treat it as missing.
-      resolve(isNaN(length) ? true : length > PLACEHOLDER_MAX_BYTES);
+      resolve(isNaN(length) ? null : length > PLACEHOLDER_MAX_BYTES);
     };
-    xhr.onerror = () => resolve(false);
-    xhr.ontimeout = () => resolve(false);
-    xhr.onabort = () => resolve(false);
+    xhr.onerror = () => resolve(UNKNOWN);
+    xhr.ontimeout = () => resolve(UNKNOWN);
+    xhr.onabort = () => resolve(UNKNOWN);
     try {
       xhr.send();
     } catch {
-      resolve(false);
+      resolve(UNKNOWN);
     }
   });
 }
@@ -715,13 +764,15 @@ function imageExists(url) {
     try {
       img = new Image();
     } catch {
-      resolve(false);
+      resolve(UNKNOWN);
       return;
     }
     let settled = false;
+    let timer = null;
     const finish = (ok) => {
       if (settled) return;
       settled = true;
+      clearTimeout(timer);
       img.onload = null;
       img.onerror = null;
       resolve(ok);
@@ -729,8 +780,10 @@ function imageExists(url) {
     // A missing derivative can also come back 200 with a grey placeholder, which
     // loads fine and has to be caught on its dimensions instead.
     img.onload = () => finish(img.naturalWidth > PLACEHOLDER_MAX_WIDTH);
-    img.onerror = () => finish(false);
-    setTimeout(() => finish(false), PROBE_TIMEOUT);
+    // A missing rung loads as the placeholder above; an error is a load that
+    // never got an answer, which says nothing about the rung.
+    img.onerror = () => finish(UNKNOWN);
+    timer = setTimeout(() => finish(UNKNOWN), PROBE_TIMEOUT);
     img.src = url;
   });
 }
@@ -748,18 +801,21 @@ function scheduleProbe(videoId) {
   probeQueue.set(videoId, true);
 }
 
-/** Walk the ladder high-to-low, stopping at the first rung that exists. */
+/**
+ * The useful rung if it exists, else the guaranteed floor; null when the probe
+ * learned nothing (a timeout or a network error).
+ */
 async function resolveQuality(videoId, onScreen) {
   // On screen: the browser already holds the answer, so ask it. Off screen: a
   // HEAD, because an <img> there would pull down a full image nobody is looking
   // at - the correction path only has to be exact for tiles that are visible.
-  const check = onScreen ? imageExists : headExists;
-  for (let i = 0; i < PROBE_LADDER.length; i++) {
-    const rank = PROBE_LADDER[i];
-    if (await check(buildUrl(videoId, QUALITY_NAMES[rank]))) return rank;
-    if (!enabled) break;
-  }
-  return FLOOR_RANK;
+  const rank = usefulRank;
+  const url = buildUrl(videoId, QUALITY_NAMES[rank]);
+  let exists = await (onScreen ? imageExists : headExists)(url);
+  // A HEAD whose length could not be read: ask the image, never assume.
+  if (exists === null) exists = await imageExists(url);
+  if (exists === UNKNOWN) return null;
+  return exists ? rank : FLOOR_RANK;
 }
 
 /** Rewrite the entries we gambled on now that the answer is known. */
@@ -786,12 +842,26 @@ function onProbeDone(videoId, rank) {
   visibleSample = null;
   activeProbes--;
 
-  // A network error is cached as the floor rather than left blank. An unknown
-  // video is re-scheduled by the next parse that mentions it, and on a surface
-  // where the same tiles scroll past repeatedly that is an endless retry loop.
-  const resolved = typeof rank === 'number' ? rank : FLOOR_RANK;
+  // Nothing learned (null: a timeout or a network error): nothing is saved, so
+  // the next session asks again. The video is not re-queued this session
+  // (probeAttempted), so a flaky network cannot turn into a retry loop. Fast
+  // mode keeps the rung it drew - a timeout is no evidence against it - while
+  // 'safe' holds the floor for this session. A miss is an answer, and saved.
+  const unknown = typeof rank !== 'number';
+  if (unknown && eagerMode) {
+    pendingEntries.delete(videoId);
+    provenFloor.delete(videoId);
+    drainProbes();
+    return;
+  }
+  const resolved = unknown ? FLOOR_RANK : rank;
   capSet(qualityCache, videoId, resolved, CACHE_LIMIT);
-  scheduleSave();
+  if (unknown) {
+    unconfirmed.add(videoId);
+  } else {
+    unconfirmed.delete(videoId);
+    scheduleSave();
+  }
 
   // Queued unconditionally: the sweep already skips elements that are on the
   // right URL, so letting it decide cannot lose a promotion the way a capped
