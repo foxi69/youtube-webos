@@ -163,7 +163,11 @@ const unconfirmed = new Set();
 /** Insertion-ordered probe backlog: videoId -> true. */
 const probeQueue = new Map();
 const inFlight = new Set();
-/** Every videoId ever enqueued this session. Nothing is probed twice. */
+/**
+ * Every videoId enqueued this session: one attempt each, answered or not. A
+ * video the verification cache evicts is taken out, so it may be probed again
+ * when it comes back.
+ */
 const probeAttempted = new Set();
 const pendingPromotions = new Map();
 const promotionAttempts = new Map();
@@ -202,9 +206,16 @@ function debugLog(...args) {
   if (DEBUG) console.info('[ThumbQuality]', ...args);
 }
 
+/** Sets `key`, dropping the oldest entry at `limit`; returns the dropped key, or null. */
 function capSet(map, key, value, limit) {
-  if (map.size >= limit) map.delete(map.keys().next().value);
+  let evicted = null;
+  // Only a new key makes room: overwriting one must not cost another video.
+  if (map.size >= limit && !map.has(key)) {
+    evicted = map.keys().next().value;
+    map.delete(evicted);
+  }
   map.set(key, value);
+  return evicted;
 }
 
 // --- Persistent cache -----------------------------------------------------
@@ -794,7 +805,8 @@ function scheduleProbe(videoId) {
   // One attempt per video per session, whatever the outcome. A video that was
   // enqueued and never reached, or probed and failed, must not come back: the
   // same tiles stream past on every scroll, and re-queueing them was what
-  // turned a settled surface into a permanent trickle of requests.
+  // turned a settled surface into a permanent trickle of requests. (Only an
+  // eviction from the verification cache takes a video out again.)
   if (probeAttempted.has(videoId)) return;
   if (probeAttempted.size >= PROBE_ATTEMPT_LIMIT) return;
   probeAttempted.add(videoId);
@@ -855,7 +867,13 @@ function onProbeDone(videoId, rank) {
     return;
   }
   const resolved = unknown ? FLOOR_RANK : rank;
-  capSet(qualityCache, videoId, resolved, CACHE_LIMIT);
+  // A video the cache no longer remembers may be probed again when it comes
+  // back; the one-attempt rule is for videos that were never answered.
+  const evicted = capSet(qualityCache, videoId, resolved, CACHE_LIMIT);
+  if (evicted !== null) {
+    probeAttempted.delete(evicted);
+    unconfirmed.delete(evicted);
+  }
   if (unknown) {
     unconfirmed.add(videoId);
   } else {
