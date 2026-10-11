@@ -4,7 +4,7 @@ import { showNotification } from './notifications.js';
 import sponsorBlockUI from './Sponsorblock-UI.js';
 import sponsorBlockLabels, { isFullVideoSegment } from './sponsorblock-labels.js';
 import { isLegacyWebOS } from './webos-utils.js';
-import { getVideo, waitForChildAdd } from './utils.js';
+import { getVideo } from './utils.js';
 import { fetchJsonWithTimeout } from './fetch-timeout.js';
 import './sponsorblock.css';
 
@@ -173,6 +173,10 @@ class SponsorBlockHandler {
 
         this._skipWatchdogTimer = null;
         this._videoWait = null;
+        this._videoWaitTimer = null;
+        // The highlight's auto jump, waiting for a <video> to be bound.
+        this.highlightPending = false;
+        this._barObserverStarted = false;
         this._attrObserver = null;
         this._lastSyncSig = null;
 
@@ -708,8 +712,11 @@ class SponsorBlockHandler {
             this.highlightSegment = this.segments.find(s => s.category === 'poi_highlight');
             this.scheduleRefresh();
 
-            // Use 'this.video' if start() already found it, or re-query
-            const video = this.video || getVideo();
+            // A <video> that mounted after start() gave up waiting is bound
+            // now: a local getVideo() here left this.video null, so no
+            // listener was ever attached to it.
+            if (!this.video) this.start();
+            const video = this.video;
             if (video && video.duration && !isNaN(video.duration)) {
                 this.processSegments(video.duration);
             }
@@ -735,7 +742,9 @@ class SponsorBlockHandler {
                 const config = configGetAll();
                 const hlMode = config.sbMode_highlight;
                 if (hlMode === 'auto_skip') {
-                    this.jumpToNextHighlight();
+                    // No <video> yet: jumped to as soon as one is bound.
+                    if (this.video) this.jumpToNextHighlight();
+                    else this.highlightPending = true;
                 } else if (hlMode === 'ask') {
                     showNotification('Highlight available: Press Blue to jump');
                 }
@@ -748,33 +757,67 @@ class SponsorBlockHandler {
         }
     }
 
+    /**
+     * Binds the <video>, or waits for it to mount. Re-entered on a late mount,
+     * after the fetch, on a PLAYING state without a <video>, and when the
+     * element is replaced; the window listeners and the bar watch are set up
+     * once and are not touched by a rebind.
+     */
     start() {
+        if (this.isDestroyed) return;
+        this._bindWindowEvents();
+
         // getVideo() caches with an isConnected guard and invalidates on page
-        // change; waitForChildAdd() is the shared MutationObserver-based waiter.
-        // Together they replace a 4Hz polling timer AND fire the instant the
-        // element mounts instead of up to 250ms late.
-        this.video = getVideo();
-        if (!this.video) {
-            if (!this._videoWait) {
-                this._videoWait = waitForChildAdd(
-                    document.body, (n) => n instanceof HTMLVideoElement, false, null, 10000
-                ).then(() => {
-                    this._videoWait = null;
-                    if (!this.isDestroyed) this.start();
-                }).catch(() => { this._videoWait = null; });
-            }
+        // change; the wait below fires the instant the element mounts.
+        const video = getVideo();
+        if (video) {
+            this._stopVideoWait();
+            this.bindVideo(video);
             return;
         }
+        this._waitForVideo();
+    }
 
-        // CSS is loaded via static import (./sponsorblock.css) — no runtime
-        // <style> injection needed.
-        this.resetSegmentTracking();
+    // Waits for the <video> itself, or a player subtree mounted with one
+    // inside (the old wait matched only a bare <video> node, and gave up for
+    // good after 10s). A wait that runs out is armed again by the next
+    // PLAYING state and when the segments arrive.
+    _waitForVideo() {
+        if (this._videoWait || this.isDestroyed) return;
+        const hasVideo = (n) => n.nodeType === 1 &&
+            (n instanceof HTMLVideoElement || !!(n.querySelector && n.querySelector('video')));
+        const obs = new MutationObserver((mutations) => {
+            for (let i = 0; i < mutations.length; i++) {
+                const added = mutations[i].addedNodes;
+                for (let j = 0; j < added.length; j++) {
+                    if (hasVideo(added[j])) {
+                        this._stopVideoWait();
+                        if (!this.isDestroyed) this.start();
+                        return;
+                    }
+                }
+            }
+        });
+        obs.observe(document.body, { childList: true, subtree: true });
+        this.observers.add(obs);
+        this._videoWait = obs;
+        this._videoWaitTimer = setTimeout(() => this._stopVideoWait(), 30000);
+    }
 
-        if (this.boundStateChange) {
-            // start() can now be re-entered (late video mount / element rebind);
-            // never double-register the window listeners.
-            window.removeEventListener('yt-player-state-change', this.boundStateChange);
+    _stopVideoWait() {
+        if (this._videoWaitTimer) {
+            clearTimeout(this._videoWaitTimer);
+            this._videoWaitTimer = null;
         }
+        if (this._videoWait) {
+            this._videoWait.disconnect();
+            this.observers.delete(this._videoWait);
+            this._videoWait = null;
+        }
+    }
+
+    _bindWindowEvents() {
+        if (this.boundStateChange) return;
         this.boundStateChange = (e) => {
             const state = e.detail.state;
             
@@ -790,6 +833,8 @@ class SponsorBlockHandler {
                 this._anchorCacheBar = null;
                 this._lastSyncSig = null;
             } else if (state === 1) { // PLAYING
+                // A <video> that mounted after the wait for it ran out.
+                if (!this.video) this.start();
                 // Check for progress bar existence on play in case UI was destroyed (e.g. after side-panel interaction)
                 this._ensureObserverAlive();
                 this.checkForProgressBar();
@@ -815,6 +860,38 @@ class SponsorBlockHandler {
             }
         };
         window.addEventListener('resize', this.boundResize);
+    }
+
+    /** Lets go of the bound <video>: its listeners, the frame loop, the mute. */
+    _unbindVideo() {
+        const old = this.video;
+        if (!old) return;
+        this.leaveMutedSegment();
+        this.stopHighFreqLoop();
+        if (this.isTimeListenerActive) {
+            old.removeEventListener('timeupdate', this.boundTimeUpdate);
+            this.isTimeListenerActive = false;
+        }
+        const events = this.listeners.get(old);
+        if (events) {
+            events.forEach((handler, type) => { old.removeEventListener(type, handler); });
+            this.listeners.delete(old);
+        }
+        if (this.chainSkipVideo === old && this.boundChainSkipRetry) {
+            old.removeEventListener('loadedmetadata', this.boundChainSkipRetry);
+            this.boundChainSkipRetry = null;
+            this.chainSkipVideo = null;
+        }
+        this.video = null;
+    }
+
+    bindVideo(video) {
+        if (this.video === video) return;
+        this._unbindVideo();
+        this.video = video;
+        // CSS is loaded via static import (./sponsorblock.css) — no runtime
+        // <style> injection needed.
+        this.resetSegmentTracking();
 
         this.addEvent(this.video, 'seeked', () => {
             if (this.isDestroyed) return;
@@ -859,8 +936,22 @@ class SponsorBlockHandler {
 
         if (this.video.duration) this.processSegments(this.video.duration);
 
-        this.observePlayerUI();
-        this.checkForProgressBar();
+        // Segments that arrived before the <video>: the start chain, and a
+        // bar tracked before it had no duration to draw with.
+        if (this.skipSegments.length) this.executeChainSkip(this.video);
+        this.drawOverlay();
+        this.updateLabels();
+
+        if (this.highlightPending) {
+            this.highlightPending = false;
+            this.jumpToNextHighlight();
+        }
+
+        if (!this._barObserverStarted) {
+            this._barObserverStarted = true;
+            this.observePlayerUI();
+            this.checkForProgressBar();
+        }
     }
 
     observePlayerUI() {
@@ -931,21 +1022,10 @@ class SponsorBlockHandler {
         }
     }
 
+    // Only the <video> is rebound: re-running the whole setup re-ran
+    // observePlayerUI() and dropped the bar observers with every new element.
     _rebindVideo() {
-        this.leaveMutedSegment();
-        const old = this.video;
-        if (old) {
-            if (this.isTimeListenerActive) {
-                old.removeEventListener('timeupdate', this.boundTimeUpdate);
-                this.isTimeListenerActive = false;
-            }
-            const events = this.listeners.get(old);
-            if (events) {
-                events.forEach((handler, type) => { old.removeEventListener(type, handler); });
-                this.listeners.delete(old);
-            }
-        }
-        this.video = null;
+        this._unbindVideo();
         this.log('info', 'Video element was replaced — rebinding');
         this.start();
     }
@@ -1626,7 +1706,8 @@ class SponsorBlockHandler {
         this.segments = segments;
         this.segmentsSig = sig;
         this.highlightSegment = this.segments.find(s => s.category === 'poi_highlight');
-        const video = this.video || getVideo();
+        if (!this.video) this.start();
+        const video = this.video;
         if (video && video.duration && !isNaN(video.duration)) this.processSegments(video.duration);
         this.rebuildSkipSegments();
         sponsorBlockUI.updateSegments(this.segments.filter(s => !isFullVideoSegment(s)));
@@ -1728,7 +1809,7 @@ class SponsorBlockHandler {
             this._barRetryTimer = null;
         }
         this._observedRoot = null;
-        this._videoWait = null;
+        this._stopVideoWait();
 
         sponsorBlockUI.togglePopup(false);
         sponsorBlockUI.updateSegments([]);
