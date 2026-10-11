@@ -1,5 +1,3 @@
-/*global navigate*/
-import './spatial-navigation-polyfill.js';
 import { logoStyles, thumbnailQualityModes, videoCodecModes, uiThemes } from './config.js';
 import { configAddChangeListener, configRead, configWrite, configGetDesc, segmentTypes, configGetDefault, shortcutActions, sbModes, sbModesHighlight, forcePreviewModes } from './config.js';
 import './ui.css';
@@ -174,32 +172,94 @@ const isEngagementPanelVisible = () => {
     return !!(panel && window.getComputedStyle(panel).display !== 'none');
 };
 
-// Both of these are best-effort. window.__spatialNavigation__ comes from our
-// own polyfill, but that polyfill bails out entirely if the platform ever ships
-// a native window.navigate, and it seals its API object - so an assignment to a
-// property that isn't there throws "object is not extensible" and takes the
-// whole bundle down with it. Feature-check instead of assuming; the worst case
-// is that we lose an optimisation, not the app.
-function setSpatialNav(prop, value) {
-  const sn = window.__spatialNavigation__;
-  if (!sn || !(prop in sn)) return false;
-  try {
-    sn[prop] = value;
-    return true;
-  } catch (err) {
-    console.warn(`[UI] could not set __spatialNavigation__.${prop}:`, err);
-    return false;
+// --- Settings panel navigation ---
+//
+// The arrows move focus between the tab buttons and the controls of the open
+// page by where they sit on screen. This used to be the WICG spatial-navigation
+// polyfill (~110 KB, and a focusin listener with a forced layout on every focus
+// change in the whole app) for what is a handful of rows; the search below is
+// all the panel needs. Ported from mirijanristic's fork (panel/keyboard.js).
+
+// The aligned cycle rows carry a hidden spacer checkbox (dummyBox) - it is
+// tabIndex -1 and must never be a target.
+const PANEL_FOCUSABLES = 'input:not([disabled]), .shortcut-control-row, button:not([disabled])';
+
+/** The controls of `page` that can take focus, in document order. */
+function pageFocusables(page) {
+  const out = [];
+  if (!page) return out;
+  const nodes = page.querySelectorAll(PANEL_FOCUSABLES);
+  for (let i = 0; i < nodes.length; i++) {
+    if (nodes[i].tabIndex !== -1) out.push(nodes[i]);
   }
+  return out;
 }
 
-setSpatialNav('keyMode', 'NONE');
-// We drive spatial navigation ourselves (see the options-panel keydown handler
-// below), and only ever inside the settings panel. Left on, the polyfill's
-// global focusin listener forces a synchronous layout on every focus change in
-// the whole YouTube app - one per remote keypress - to maintain a fallback
-// search origin that is only read from navigate(). showOptionsPanel() turns it
-// back on for as long as the panel is open.
-setSpatialNav('trackFocus', false);
+/**
+ * The box a move measures: a checkbox's whole label row (or cycle row), not the
+ * small box at its left, which would overlap nothing above or below it.
+ */
+function boxOf(el) {
+  const row = el.tagName === 'INPUT' ? el.closest('label, .shortcut-control-row') : null;
+  return (row || el).getBoundingClientRect();
+}
+
+/**
+ * The candidate nearest to `from` in `dir`, judged by the centres of their
+ * boxes (boxOf). Left and Right stay within the row: only candidates that
+ * overlap `from` vertically count. Up and Down need a candidate at least half a
+ * row ahead - in the two-column Filters section the rows of one line are not
+ * quite the same height (the last label's margin stretches its neighbour), and
+ * a centre a fraction of a pixel lower must not count as "below". They prefer a
+ * candidate that overlaps `from` horizontally but take the nearest one
+ * otherwise. Among those, the one closest ahead wins, then the one closest
+ * sideways. Returns null when nothing lies that way.
+ */
+function nearestInDirection(from, dir, candidates) {
+  const a = boxOf(from);
+  const ax = (a.left + a.right) / 2;
+  const ay = (a.top + a.bottom) / 2;
+  const vertical = dir === 'up' || dir === 'down';
+  const minAhead = vertical ? Math.max(1, a.height / 2) : 0;
+  let best = null;
+  let bestOverlap = false;
+  let bestAhead = Infinity;
+  let bestAside = Infinity;
+
+  for (let i = 0; i < candidates.length; i++) {
+    const el = candidates[i];
+    if (el === from) continue;
+    const b = boxOf(el);
+    if (b.width === 0 && b.height === 0) continue;
+    const bx = (b.left + b.right) / 2;
+    const by = (b.top + b.bottom) / 2;
+
+    let ahead;
+    if (dir === 'up') ahead = ay - by;
+    else if (dir === 'down') ahead = by - ay;
+    else if (dir === 'left') ahead = ax - bx;
+    else ahead = bx - ax;
+    if (ahead <= minAhead) continue;
+
+    const aside = vertical ? Math.abs(bx - ax) : Math.abs(by - ay);
+    const overlap = vertical
+      ? b.right > a.left && b.left < a.right
+      : b.bottom > a.top && b.top < a.bottom;
+    if (!vertical && !overlap) continue;
+
+    let better;
+    if (overlap !== bestOverlap) better = overlap;
+    else if (ahead !== bestAhead) better = ahead < bestAhead;
+    else better = aside < bestAside;
+    if (better) {
+      best = el;
+      bestOverlap = overlap;
+      bestAhead = ahead;
+      bestAside = aside;
+    }
+  }
+  return best;
+}
 const ARROW_KEY_CODE = { 
   [REMOTE_KEYS.LEFT.code]: 'left', 
   [REMOTE_KEYS.UP.code]: 'up', 
@@ -341,7 +401,9 @@ function createAlignedCycleControl(configKey, displayMap) {
     label.style.alignItems = 'center';
 	label.style.lineHeight = 'inherit';
     
+    // A spacer only: never a focus target (Up/Down, the wrap-around).
     const dummyBox = createElement('input', {
+      tabIndex: -1,
       style: {
         visibility: 'hidden',
         paddingLeft: '2.2vh'
@@ -514,6 +576,13 @@ function createOptionsPanel() {
 	  sponsorBlockUI.togglePopup(activePage === SPONSOR_PAGE && isWatchPage());
 	};
 
+  // The tab buttons and the controls of the open page.
+  const panelFocusables = () => tabBtns.concat(pageFocusables(pages[activePage]));
+  const moveFocus = (dir) => {
+    const target = nearestInDirection(document.activeElement, dir, panelFocusables());
+    if (target) target.focus();
+  };
+
   // Keyboard Navigation for the Options Panel
   elmContainer.addEventListener('keydown', (evt) => {
     if (getKeyColor(evt.charCode || evt.keyCode) === 'green') return; // Let global handler handle close if mapped to green (or config_menu logic)
@@ -526,7 +595,7 @@ function createOptionsPanel() {
         // Prevent modifying row from navigating away
         if (preFocus.classList.contains('shortcut-control-row')) return;
 
-        navigate(dir);
+        moveFocus(dir);
         
         // Tab menu wrap-around logic
         if (preFocus === document.activeElement && preFocus.classList.contains('ytaf-tab-btn')) {
@@ -537,7 +606,7 @@ function createOptionsPanel() {
         
         evt.preventDefault(); evt.stopPropagation(); return;
       } else if (dir === 'up' || dir === 'down') {
-        navigate(dir);
+        moveFocus(dir);
         const postFocus = document.activeElement;
 
         if (dir === 'up' && preFocus !== postFocus) {
@@ -549,15 +618,7 @@ function createOptionsPanel() {
 
         if (preFocus === postFocus) {
           const activeTabBtn = tabBtns[activePage];
-		  const visiblePage = pages[activePage];
-		  let pageFocusables = [];
-
-		  if (visiblePage) {
-			  pageFocusables = Array.from(visiblePage.querySelectorAll('input:not([disabled]), .shortcut-control-row, button:not([disabled])'))
-				  .filter(el => el.tabIndex !== -1);
-		  }
-          
-          const focusables = [activeTabBtn, ...pageFocusables].filter(Boolean);
+          const focusables = [activeTabBtn].concat(pageFocusables(pages[activePage])).filter(Boolean);
           
           if (focusables.length > 0) {
             if (dir === 'up') focusables[focusables.length - 1].focus();
@@ -779,9 +840,6 @@ function showOptionsPanel(visible) {
     }
 
     console.info('Showing and focusing options panel!');
-    // Arm the polyfill's search-origin tracking for as long as we might call
-    // navigate(); the focus below is what seeds it.
-    setSpatialNav('trackFocus', true);
     optionsPanel.style.display = 'block';
     // The other three tabs are built here, one per frame, now that the panel is
     // on screen. Doing it inside the keydown handler is what made opening the
@@ -807,8 +865,6 @@ function showOptionsPanel(visible) {
     optionsPanel.blur();
     optionsPanelVisible = false;
     lastSafeFocus = null;
-    // Stop paying a forced layout per focus change across the whole app again.
-    setSpatialNav('trackFocus', false);
     // A held Back (or whichever key closed the panel) must not go on to
     // YouTube as a page back.
     swallowHeldKey();
