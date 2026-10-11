@@ -118,6 +118,8 @@ const configOptions = new Map([
   ['thumbnailQualityMode', { default: 'safe', desc: 'Thumbnail Strategy' }],
   ['removeGlobalShorts', { default: false, desc: 'Remove Shorts (Global)' }],
   ['removeLiveVideos', { default: false, desc: 'Remove Live Videos (Global)' }],
+  ['removeUpcomingVideos', { default: false, desc: 'Remove Upcoming Videos' }],
+  ['removeMembersOnly', { default: false, desc: 'Remove Members-Only Videos' }],
   ['removeTopLiveGames', { default: false, desc: 'Remove Top Live Games' }],
   ['removeMostRelevant', { default: false, desc: 'Remove "Most Relevant" Shelf' }],
   ['enableSponsorBlock', { default: true, desc: 'SponsorBlock' }],

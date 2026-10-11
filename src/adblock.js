@@ -43,6 +43,8 @@ const YT_CONSTANTS = {
   SHELF_TYPE_SHORTS: 'TVHTML5_SHELF_RENDERER_TYPE_SHORTS',
   TILE_STYLE_SHORTS: 'TILE_STYLE_YTLR_SHORTS',
   BADGE_STYLE_LIVE: 'THUMBNAIL_OVERLAY_BADGE_STYLE_LIVE',
+  BADGE_STYLE_UPCOMING: 'THUMBNAIL_OVERLAY_BADGE_STYLE_UPCOMING',
+  CONTENT_TYPE_LIVE: 'TILE_CONTENT_TYPE_LIVE',
   CONTENT_TYPE_SHORTS: 'TILE_CONTENT_TYPE_SHORTS',
   VIDEO_TYPE_REEL_AD: 'REEL_VIDEO_TYPE_AD'
 };
@@ -52,6 +54,8 @@ const CONFIG_KEYS = {
   TRACKING: 'enableTrackingBlock',
   SHORTS: 'removeGlobalShorts',
   LIVE: 'removeLiveVideos',
+  UPCOMING: 'removeUpcomingVideos',
+  MEMBERS: 'removeMembersOnly',
   LIVE_GAMES: 'removeTopLiveGames',
   MOST_RELEVANT: 'removeMostRelevant',
   GUEST_PROMPTS: 'hideGuestSignInPrompts',
@@ -105,6 +109,11 @@ function mayNeedEmojiWork(text) {
 
 const IGNORE_ON_SHORTS = new Set(['SEARCH', 'PLAYER', 'ACTION']);
 
+// The badges an item is removed for (hasWantedBadge), as bits of cfgFlags.badgeMask.
+const BADGE_LIVE = 1;
+const BADGE_UPCOMING = 2;
+const BADGE_MEMBERS = 4;
+
 // configGetAll() returns the live reference, so this binds once at load.
 const cfgSnapshot = configGetAll();
 let anyFilterEnabled = false;
@@ -117,6 +126,10 @@ const cfgFlags = {
   enableTrackingBlock: false,
   removeGlobalShorts: false,
   removeLiveVideos: false,
+  removeUpcomingVideos: false,
+  removeMembersOnly: false,
+  // BADGE_* bits of the three above, so an item's badges are read once.
+  badgeMask: 0,
   removeTopLiveGames: false,
   removeMostRelevant: false,
   hideGuestPrompts: false,
@@ -143,6 +156,11 @@ function recomputeFilterFlags() {
   cfgFlags.enableTrackingBlock = adBlock && !!cfgSnapshot[CONFIG_KEYS.TRACKING];
   cfgFlags.removeGlobalShorts = adBlock && !!cfgSnapshot[CONFIG_KEYS.SHORTS];
   cfgFlags.removeLiveVideos = adBlock && !!cfgSnapshot[CONFIG_KEYS.LIVE];
+  cfgFlags.removeUpcomingVideos = adBlock && !!cfgSnapshot[CONFIG_KEYS.UPCOMING];
+  cfgFlags.removeMembersOnly = adBlock && !!cfgSnapshot[CONFIG_KEYS.MEMBERS];
+  cfgFlags.badgeMask = (cfgFlags.removeLiveVideos ? BADGE_LIVE : 0) |
+    (cfgFlags.removeUpcomingVideos ? BADGE_UPCOMING : 0) |
+    (cfgFlags.removeMembersOnly ? BADGE_MEMBERS : 0);
   cfgFlags.removeTopLiveGames = adBlock && !!cfgSnapshot[CONFIG_KEYS.LIVE_GAMES];
   cfgFlags.removeMostRelevant = adBlock && !!cfgSnapshot[CONFIG_KEYS.MOST_RELEVANT];
   cfgFlags.hideGuestPrompts = adBlock && !!cfgSnapshot[CONFIG_KEYS.GUEST_PROMPTS];
@@ -156,6 +174,8 @@ function recomputeFilterFlags() {
     cfgFlags.enableTrackingBlock ||
     cfgFlags.removeGlobalShorts ||
     cfgFlags.removeLiveVideos ||
+    cfgFlags.removeUpcomingVideos ||
+    cfgFlags.removeMembersOnly ||
     cfgFlags.removeTopLiveGames ||
     cfgFlags.removeMostRelevant ||
     cfgFlags.hideGuestPrompts ||
@@ -167,6 +187,7 @@ function recomputeFilterFlags() {
   Object.assign(cfgFlagsNoEmoji, cfgFlags);
   cfgFlagsNoEmoji.enableLegacyEmojiFix = false;
   for (const k in cfgFlagsEmojiOnly) cfgFlagsEmojiOnly[k] = false;
+  cfgFlagsEmojiOnly.badgeMask = 0;
   cfgFlagsEmojiOnly.enableLegacyEmojiFix = cfgFlags.enableLegacyEmojiFix;
 }
 
@@ -878,9 +899,10 @@ function getShelfTitleOptimized(shelf) {
 }
 
 /**
- * Is this item a live stream?
+ * Does this item carry one of the wanted badges (BADGE_* bits): a live stream,
+ * an upcoming stream or premiere, a members-only video?
  *
- * The badge lives at, from an item in a shelf's item list:
+ * The live badge lives at, from an item in a shelf's item list:
  *   lockupViewModel.contentImage.thumbnailViewModel
  *     .overlays[].thumbnailBottomOverlayViewModel
  *     .badges[].thumbnailBadgeViewModel.badgeStyle
@@ -890,38 +912,105 @@ function getShelfTitleOptimized(shelf) {
  * guaranteed, so hardcoding the first entry would miss the badge whenever
  * anything else is attached to the thumbnail.
  *
- * The older tileRenderer shape and a plain text check are kept as fallbacks so
- * this keeps working if the viewModel schema is swapped out again.
+ * The older tileRenderer shape is kept as a fallback so this keeps working if
+ * the viewModel schema is swapped out again: its time-status overlay says
+ * LIVE or UPCOMING, and its metadata lines carry the badges (members only,
+ * upcoming) as metadataBadgeRenderer styles. Only the style enums are read,
+ * never the badge text, so this works in every language, and a video without
+ * one of them is never touched.
  */
-function isLiveItem(item, removeLiveVideos) {
-  if (!removeLiveVideos || !item) return false;
+function hasWantedBadge(item, want) {
+  if (!want || !item) return false;
 
-  const overlays = item.lockupViewModel?.contentImage?.thumbnailViewModel?.overlays;
-  if (Array.isArray(overlays)) {
-    for (let i = 0; i < overlays.length; i++) {
-      const badges = overlays[i]?.thumbnailBottomOverlayViewModel?.badges;
-      if (!Array.isArray(badges)) continue;
-      for (let b = 0; b < badges.length; b++) {
-        if (badges[b]?.thumbnailBadgeViewModel?.badgeStyle === YT_CONSTANTS.BADGE_STYLE_LIVE) {
-          return true;
+  const lockup = item.lockupViewModel;
+  if (lockup) {
+    const overlays = lockup.contentImage?.thumbnailViewModel?.overlays;
+    if (Array.isArray(overlays)) {
+      for (let i = 0; i < overlays.length; i++) {
+        const overlay = overlays[i];
+        if (!overlay) continue;
+        if (hasWantedThumbnailBadge(overlay.thumbnailBottomOverlayViewModel?.badges, want)) return true;
+        if (hasWantedThumbnailBadge(overlay.thumbnailOverlayBadgeViewModel?.thumbnailBadges, want)) return true;
+      }
+    }
+    if (want & BADGE_MEMBERS) {
+      const rows = lockup.metadata?.lockupMetadataViewModel?.metadata?.contentMetadataViewModel?.metadataRows;
+      if (Array.isArray(rows)) {
+        for (let i = 0; i < rows.length; i++) {
+          const badges = rows[i]?.badges;
+          if (!Array.isArray(badges)) continue;
+          for (let b = 0; b < badges.length; b++) {
+            if (isMembersStyle(badges[b]?.badgeViewModel?.badgeStyle)) return true;
+          }
         }
       }
     }
   }
 
-  // Fallback 1: the tileRenderer schema this app already handles elsewhere.
-  const tileBadges = item.tileRenderer?.header?.tileHeaderRenderer?.thumbnailOverlays;
-  if (Array.isArray(tileBadges)) {
-    for (let i = 0; i < tileBadges.length; i++) {
-      const style = tileBadges[i]?.thumbnailOverlayTimeStatusRenderer?.style;
-      if (style === 'LIVE' || style === 'THUMBNAIL_OVERLAY_TIME_STATUS_RENDERER_STYLE_LIVE') return true;
+  const tile = item.tileRenderer;
+  if (tile) {
+    if ((want & BADGE_LIVE) && tile.contentType === YT_CONSTANTS.CONTENT_TYPE_LIVE) return true;
+    const timeStatus = tile.header?.tileHeaderRenderer?.thumbnailOverlays;
+    if (Array.isArray(timeStatus)) {
+      for (let i = 0; i < timeStatus.length; i++) {
+        const style = timeStatus[i]?.thumbnailOverlayTimeStatusRenderer?.style;
+        if (!style) continue;
+        if ((want & BADGE_LIVE) && (style === 'LIVE' || style === 'THUMBNAIL_OVERLAY_TIME_STATUS_RENDERER_STYLE_LIVE')) return true;
+        if ((want & BADGE_UPCOMING) && (style === 'UPCOMING' || style === 'THUMBNAIL_OVERLAY_TIME_STATUS_RENDERER_STYLE_UPCOMING')) return true;
+      }
+    }
+    if (want & (BADGE_UPCOMING | BADGE_MEMBERS)) {
+      const lines = tile.metadata?.tileMetadataRenderer?.lines;
+      if (Array.isArray(lines)) {
+        for (let i = 0; i < lines.length; i++) {
+          const lineItems = lines[i]?.lineRenderer?.items;
+          if (!Array.isArray(lineItems)) continue;
+          for (let j = 0; j < lineItems.length; j++) {
+            if (isWantedMetadataBadge(lineItems[j]?.lineItemRenderer?.badge?.metadataBadgeRenderer?.style, want)) return true;
+          }
+        }
+      }
+    }
+    if ((want & BADGE_UPCOMING) && tile.upcomingEventData) return true;
+  }
+
+  // The video renderers some surfaces (watch-next, search) still send.
+  const video = item.videoRenderer || item.gridVideoRenderer || item.compactVideoRenderer;
+  if (video) {
+    if ((want & BADGE_UPCOMING) && video.upcomingEventData) return true;
+    const badges = video.badges;
+    if ((want & (BADGE_UPCOMING | BADGE_MEMBERS)) && Array.isArray(badges)) {
+      for (let b = 0; b < badges.length; b++) {
+        if (isWantedMetadataBadge(badges[b]?.metadataBadgeRenderer?.style, want)) return true;
+      }
     }
   }
 
-  // Fallback 2: an explicit live badge anywhere on the item.
-  if (item.tileRenderer?.contentType === 'TILE_CONTENT_TYPE_LIVE') return true;
-
   return false;
+}
+
+function hasWantedThumbnailBadge(badges, want) {
+  if (!Array.isArray(badges)) return false;
+  for (let b = 0; b < badges.length; b++) {
+    const style = badges[b]?.thumbnailBadgeViewModel?.badgeStyle;
+    if (!style) continue;
+    if ((want & BADGE_LIVE) && style === YT_CONSTANTS.BADGE_STYLE_LIVE) return true;
+    if ((want & BADGE_UPCOMING) && style === YT_CONSTANTS.BADGE_STYLE_UPCOMING) return true;
+    if ((want & BADGE_MEMBERS) && isMembersStyle(style)) return true;
+  }
+  return false;
+}
+
+function isWantedMetadataBadge(style, want) {
+  if (!style) return false;
+  if ((want & BADGE_MEMBERS) && isMembersStyle(style)) return true;
+  return !!(want & BADGE_UPCOMING) && style === 'UPCOMING';
+}
+
+// BADGE_STYLE_TYPE_MEMBERS_ONLY on a metadata badge, a *_MEMBERS_ONLY style
+// on the view-model badges.
+function isMembersStyle(style) {
+  return typeof style === 'string' && style.indexOf('MEMBERS_ONLY') !== -1;
 }
 
 function isReelAd(item) {
@@ -954,7 +1043,7 @@ function shouldDropItem(item, config) {
   if (config.enableAdBlock && (hasAdRenderer(item) || isReelAd(item))) return true;
   if (config.hideGuestPrompts && isGuestPrompt(item)) return true;
   if (config.removeGlobalShorts && isShortsItem(item)) return true;
-  return config.removeLiveVideos && isLiveItem(item, true);
+  return hasWantedBadge(item, config.badgeMask);
 }
 
 /** Whether a whole shelf goes: the Shorts shelf by type or title, the titled shelves. */

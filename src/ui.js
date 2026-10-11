@@ -619,8 +619,10 @@ function createOptionsPanel() {
   const elRemoveLiveVideos = createConfigCheckbox('removeLiveVideos');
   const elRemoveTopLiveGames = createConfigCheckbox('removeTopLiveGames');
   const elRemoveMostRelevant = createConfigCheckbox('removeMostRelevant');
+  const elRemoveUpcoming = createConfigCheckbox('removeUpcomingVideos');
+  const elRemoveMembersOnly = createConfigCheckbox('removeMembersOnly');
   let elGuestPrompts = null;
-  cosmeticGroup.push(elRemoveGlobalShorts, elRemoveLiveVideos, elRemoveTopLiveGames, elRemoveMostRelevant);
+  cosmeticGroup.push(elRemoveGlobalShorts, elRemoveLiveVideos, elRemoveTopLiveGames, elRemoveMostRelevant, elRemoveUpcoming, elRemoveMembersOnly);
   if (isGuestMode()) { elGuestPrompts = createConfigCheckbox('hideGuestSignInPrompts'); cosmeticGroup.push(elGuestPrompts); }
 
   pageFilters.appendChild(createSection('Cosmetic Filtering', cosmeticGroup, 'ytaf-section-2col'));
@@ -634,7 +636,7 @@ function createOptionsPanel() {
   // Blocking, so it genuinely does nothing while Ad Blocking is off. Greying it
   // out is what tells the user that, instead of leaving a checkbox that looks
   // armed but is inert.
-  const adBlockDependents = [elTrackingBlock, elRemoveGlobalShorts, elRemoveLiveVideos, elRemoveTopLiveGames, elRemoveMostRelevant, elGuestPrompts];
+  const adBlockDependents = [elTrackingBlock, elRemoveGlobalShorts, elRemoveLiveVideos, elRemoveTopLiveGames, elRemoveMostRelevant, elRemoveUpcoming, elRemoveMembersOnly, elGuestPrompts];
   const updateDependencyState = () => {
     const enabled = configRead('enableAdBlock');
     adBlockDependents.forEach(el => { setState(el, enabled); });
