@@ -1185,14 +1185,19 @@ class SponsorBlockHandler {
     processSegments(duration) {
         if (!duration || isNaN(duration)) return;
 
+        // The end always comes from the one the API gave (apiEnd, kept on the
+        // first clamp). Overwriting segment[1] with the duration lost it for
+        // good: a short duration reported early (before the real one) cut the
+        // segment off for the rest of the video. From mirijanristic's fork.
         let changed = false;
         for (const segment of this.segments) {
-            if (segment.segment[1] > duration) {
-                segment.segment[1] = duration;
-                changed = true;
+            if (segment.apiEnd === undefined) segment.apiEnd = segment.segment[1];
+            let end = Math.min(segment.apiEnd, duration);
+            if (this.isLegacyWebOSVer && end >= duration - 0.5) {
+                end = Math.max(0, duration - 0.30);
             }
-            if (this.isLegacyWebOSVer && segment.segment[1] >= duration - 0.5) {
-                segment.segment[1] = Math.max(0, duration - 0.30);
+            if (segment.segment[1] !== end) {
+                segment.segment[1] = end;
                 changed = true;
             }
         }
