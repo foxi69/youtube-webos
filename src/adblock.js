@@ -76,7 +76,6 @@ const IGNORE_ON_SHORTS = new Set(['SEARCH', 'PLAYER', 'ACTION']);
 // configGetAll() returns the live reference, so this binds once at load.
 const cfgSnapshot = configGetAll();
 let anyFilterEnabled = false;
-let cfgNeedsContentFiltering = false;
 let cfgEmojiFixEffective = false;
 
 // Singleton passed to the filters, refreshed by recomputeFilterFlags() rather
@@ -96,7 +95,6 @@ const cfgFlags = {
 
 function recomputeFilterFlags() {
   cfgEmojiFixEffective = !!cfgSnapshot[CONFIG_KEYS.EMOJI_FIX] && cachedWebOSVersion <= 4;
-  cfgNeedsContentFiltering = !!(cfgSnapshot[CONFIG_KEYS.ADBLOCK] || cfgSnapshot[CONFIG_KEYS.GUEST_PROMPTS] || cfgEmojiFixEffective);
 
   cfgFlags.enableAdBlock = !!cfgSnapshot[CONFIG_KEYS.ADBLOCK];
   cfgFlags.enableTrackingBlock = !!cfgSnapshot[CONFIG_KEYS.TRACKING];
@@ -419,22 +417,21 @@ function hookedParse(text, reviver) {
 
   try {
     const responseType = detectResponseType(data);
-    const needsContentFiltering = cfgNeedsContentFiltering;
 
     if (isShortsPage() && responseType && IGNORE_ON_SHORTS.has(responseType)) return data;
 
     if (FORCE_FALLBACK) {
       if (DEBUG) debugLog('FORCE_FALLBACK active. Using fallback filters.');
-      if (!Array.isArray(data)) applyFallbackFilters(data, cfgFlags, needsContentFiltering);
+      if (!Array.isArray(data)) applyFallbackFilters(data, cfgFlags);
     } else if (responseType && SCHEMA_REGISTRY.paths[responseType]) {
       if (DEBUG) debugLog(`Schema Match: [${responseType}]`);
-      applySchemaFilters(data, responseType, cfgFlags, needsContentFiltering);
+      applySchemaFilters(data, responseType, cfgFlags);
     } else if (responseType === 'ACTION' || responseType === 'PLAYER') {
       if (DEBUG) debugLog(`Schema Match: [${responseType}]`);
-      applySchemaFilters(data, responseType, cfgFlags, needsContentFiltering);
+      applySchemaFilters(data, responseType, cfgFlags);
     } else if(text.length > 10000 && !Array.isArray(data)) {
       if (DEBUG) logSchemaMiss(data, text.length);
-      applyFallbackFilters(data, cfgFlags, needsContentFiltering);
+      applyFallbackFilters(data, cfgFlags);
     } else if ((cfgFlags.removeGlobalShorts || cfgFlags.removeLiveVideos) && !Array.isArray(data)) {
       // The guide arrives in its own small response, which matches no content
       // schema and is under the fallback's size threshold - so without this it
@@ -479,7 +476,7 @@ function detectResponseType(data) {
   return null;
 }
 
-function applySchemaFilters(data, responseType, config, needsContentFiltering) {
+function applySchemaFilters(data, responseType, config) {
   removeBlockedNavEntries(data, config.removeGlobalShorts, config.removeLiveVideos);
   const schema = SCHEMA_REGISTRY.paths[responseType];
   switch (responseType) {
@@ -488,7 +485,7 @@ function applySchemaFilters(data, responseType, config, needsContentFiltering) {
             const entries = getByPath(data, schema.listPath);
             if (Array.isArray(entries)) {
                 const oldLen = entries.length;
-                filterItemsOptimized(entries, config, needsContentFiltering);
+                filterItemsOptimized(entries, config);
                 if (DEBUG && entries.length !== oldLen) debugLog(`SHORTS_SEQUENCE: Removed ${oldLen - entries.length} items`);
             }
         }
@@ -500,7 +497,7 @@ function applySchemaFilters(data, responseType, config, needsContentFiltering) {
             contents = findObjects(data, ['sectionListRenderer'], 8).sectionListRenderer?.contents;
             if (DEBUG && contents) debugLog(`${responseType}: Using fallback search`);
         }
-        if (Array.isArray(contents)) processSectionListOptimized(contents, config, needsContentFiltering, responseType);
+        if (Array.isArray(contents)) processSectionListOptimized(contents, config, responseType);
       }
       break;
     case 'BROWSE_TABS':
@@ -509,7 +506,7 @@ function applySchemaFilters(data, responseType, config, needsContentFiltering) {
         if (Array.isArray(tabs)) {
           for (let i = 0; i < tabs.length; i++) {
             const gridContents = tabs[i].tabRenderer?.content?.sectionListRenderer?.contents || tabs[i].tabRenderer?.content?.tvSurfaceContentRenderer?.content?.sectionListRenderer?.contents;
-            if (Array.isArray(gridContents)) processSectionListOptimized(gridContents, config, needsContentFiltering, 'BROWSE_TAB_GENERIC');
+            if (Array.isArray(gridContents)) processSectionListOptimized(gridContents, config, 'BROWSE_TAB_GENERIC');
           }
         }
       }
@@ -521,14 +518,14 @@ function applySchemaFilters(data, responseType, config, needsContentFiltering) {
             contents = findObjects(data, ['sectionListRenderer'], 8).sectionListRenderer?.contents;
             if (DEBUG && contents) debugLog(`${responseType}: Using fallback search`);
         }
-        if (Array.isArray(contents)) processSectionListOptimized(contents, config, needsContentFiltering, responseType);
+        if (Array.isArray(contents)) processSectionListOptimized(contents, config, responseType);
       }
       break;
     case 'CONTINUATION':
-      filterContinuation(data, config, needsContentFiltering);
+      filterContinuation(data, config);
       break;
     case 'ACTION':
-      filterActions(data, config, needsContentFiltering);
+      filterActions(data, config);
       break;
     case 'PLAYER':
     case 'NEXT':
@@ -553,7 +550,7 @@ function applySchemaFilters(data, responseType, config, needsContentFiltering) {
             pivotContents = findObjects(data, ['pivot'], 8).pivot?.sectionListRenderer?.contents;
             if (DEBUG && pivotContents) debugLog(`${responseType}: Found pivot via fallback search`);
          }
-         if (Array.isArray(pivotContents)) processSectionListOptimized(pivotContents, config, needsContentFiltering, `${responseType} (Pivot)`);
+         if (Array.isArray(pivotContents)) processSectionListOptimized(pivotContents, config, `${responseType} (Pivot)`);
       }
       if (config.enableLegacyEmojiFix) {
         if (responseType === 'NEXT') {
@@ -572,40 +569,40 @@ function applySchemaFilters(data, responseType, config, needsContentFiltering) {
   // continuation inlined); those get their filters too, or their ads and
   // Shorts got through.
   if (responseType !== 'CONTINUATION' && data.continuationContents) {
-    filterContinuation(data, config, needsContentFiltering);
+    filterContinuation(data, config);
   }
   if (responseType !== 'ACTION' && (data.onResponseReceivedActions || data.onResponseReceivedEndpoints)) {
-    filterActions(data, config, needsContentFiltering);
+    filterActions(data, config);
   }
 }
 
-function filterListLogged(items, config, needsContentFiltering, label, skipEmoji) {
+function filterListLogged(items, config, label, skipEmoji) {
   if (!Array.isArray(items)) return;
   const oldLen = items.length;
-  filterItemsOptimized(items, config, needsContentFiltering, skipEmoji);
+  filterItemsOptimized(items, config, skipEmoji);
   if (DEBUG && oldLen !== items.length) debugLog(`${label}: Removed ${oldLen - items.length} items`);
 }
 
-function filterContinuation(data, config, needsContentFiltering) {
+function filterContinuation(data, config) {
   const schema = SCHEMA_REGISTRY.paths.CONTINUATION;
   // The whole continuation is walked for emoji at the end, once, so the
   // filters below skip their own per-item walk.
   const walksAfter = !!config.enableLegacyEmojiFix;
-  processSectionListOptimized(getByPath(data, schema.sectionPath), config, needsContentFiltering, 'CONTINUATION (Section)', walksAfter);
-  processSectionListOptimized(getByPath(data, schema.tvSurfacePath), config, needsContentFiltering, 'CONTINUATION (TV Surface)', walksAfter);
-  filterListLogged(getByPath(data, schema.gridPath), config, needsContentFiltering, 'CONTINUATION (Grid)', walksAfter);
-  filterListLogged(getByPath(data, schema.horizontalPath), config, needsContentFiltering, 'CONTINUATION (Horizontal)', walksAfter);
+  processSectionListOptimized(getByPath(data, schema.sectionPath), config, 'CONTINUATION (Section)', walksAfter);
+  processSectionListOptimized(getByPath(data, schema.tvSurfacePath), config, 'CONTINUATION (TV Surface)', walksAfter);
+  filterListLogged(getByPath(data, schema.gridPath), config, 'CONTINUATION (Grid)', walksAfter);
+  filterListLogged(getByPath(data, schema.horizontalPath), config, 'CONTINUATION (Horizontal)', walksAfter);
   if (walksAfter && data.continuationContents) findAndProcessText(data.continuationContents, 20);
 }
 
 // The received actions and the received endpoints: a body can carry both, and
 // only the first of the two used to be looked at.
-function filterActions(data, config, needsContentFiltering) {
+function filterActions(data, config) {
   const walksAfter = !!config.enableLegacyEmojiFix;
   const lists = [data.onResponseReceivedActions, data.onResponseReceivedEndpoints];
   for (let i = 0; i < lists.length; i++) {
     if (!Array.isArray(lists[i])) continue;
-    processActions(lists[i], config, needsContentFiltering, walksAfter);
+    processActions(lists[i], config, walksAfter);
     if (walksAfter) findAndProcessText(lists[i], 20);
   }
 }
@@ -691,7 +688,7 @@ function removeBlockedNavEntries(data, removeGlobalShorts, removeLiveVideos) {
   }
 }
 
-function applyFallbackFilters(data, config, needsContentFiltering) {
+function applyFallbackFilters(data, config) {
   removeBlockedNavEntries(data, config.removeGlobalShorts, config.removeLiveVideos);
   if (config.enableAdBlock) removePlayerAdsOptimized(data);
   if (config.hideEndcards) removeEndcardsOptimized(data);
@@ -702,40 +699,40 @@ function applyFallbackFilters(data, config, needsContentFiltering) {
       delete found.playerOverlayRenderer.timelyActionRenderers;
       if (DEBUG) debugLog('FALLBACK: Removed timelyActionRenderers');
   }
-  if (Array.isArray(found.pivot?.sectionListRenderer?.contents)) processSectionListOptimized(found.pivot.sectionListRenderer.contents, config, needsContentFiltering, 'Fallback Pivot');
-  if (Array.isArray(found.sectionListRenderer?.contents)) processSectionListOptimized(found.sectionListRenderer.contents, config, needsContentFiltering, 'Fallback sectionListRenderer');
-  if (Array.isArray(found.sectionListContinuation?.contents)) processSectionListOptimized(found.sectionListContinuation.contents, config, needsContentFiltering, 'Fallback sectionListContinuation');
+  if (Array.isArray(found.pivot?.sectionListRenderer?.contents)) processSectionListOptimized(found.pivot.sectionListRenderer.contents, config, 'Fallback Pivot');
+  if (Array.isArray(found.sectionListRenderer?.contents)) processSectionListOptimized(found.sectionListRenderer.contents, config, 'Fallback sectionListRenderer');
+  if (Array.isArray(found.sectionListContinuation?.contents)) processSectionListOptimized(found.sectionListContinuation.contents, config, 'Fallback sectionListContinuation');
   
   if (found.gridRenderer?.items) {
       const oldLen = found.gridRenderer.items.length;
-      filterItemsOptimized(found.gridRenderer.items, config, needsContentFiltering);
+      filterItemsOptimized(found.gridRenderer.items, config);
       if (DEBUG && oldLen !== found.gridRenderer.items.length) debugLog(`FALLBACK (Grid): Removed ${oldLen - found.gridRenderer.items.length} items`);
   }
   if (found.gridContinuation?.items) {
       const oldLen = found.gridContinuation.items.length;
-      filterItemsOptimized(found.gridContinuation.items, config, needsContentFiltering);
+      filterItemsOptimized(found.gridContinuation.items, config);
       if (DEBUG && oldLen !== found.gridContinuation.items.length) debugLog(`FALLBACK (Grid Continuation): Removed ${oldLen - found.gridContinuation.items.length} items`);
   }
   if (Array.isArray(found.entries)) {
       const oldLen = found.entries.length;
-      filterItemsOptimized(found.entries, config, needsContentFiltering);
+      filterItemsOptimized(found.entries, config);
       if (DEBUG && oldLen !== found.entries.length) debugLog(`FALLBACK (Entries): Removed ${oldLen - found.entries.length} items`);
   }
   
-  processActions(data.onResponseReceivedActions, config, needsContentFiltering);
-  processActions(data.onResponseReceivedEndpoints, config, needsContentFiltering);
+  processActions(data.onResponseReceivedActions, config);
+  processActions(data.onResponseReceivedEndpoints, config);
 }
 
-function processActions(actions, config, needsContentFiltering, skipEmoji) {
+function processActions(actions, config, skipEmoji) {
   if (!Array.isArray(actions)) return;
   for (let i = 0; i < actions.length; i++) {
     const action = actions[i];
     if (!action) continue;
     if (action.reloadContinuationItemsCommand?.continuationItems) {
-      filterItemsOptimized(action.reloadContinuationItemsCommand.continuationItems, config, needsContentFiltering, skipEmoji);
+      filterItemsOptimized(action.reloadContinuationItemsCommand.continuationItems, config, skipEmoji);
     }
     if (action.appendContinuationItemsAction?.continuationItems) {
-      filterItemsOptimized(action.appendContinuationItemsAction.continuationItems, config, needsContentFiltering, skipEmoji);
+      filterItemsOptimized(action.appendContinuationItemsAction.continuationItems, config, skipEmoji);
     }
   }
 }
@@ -792,25 +789,94 @@ function isLiveItem(item, removeLiveVideos) {
   return false;
 }
 
-function isReelAd(item, enableAdBlock) {
-  if (!enableAdBlock) return false;
+function isReelAd(item) {
   const endpoint = item.command?.reelWatchEndpoint;
   return endpoint?.adClientParams?.isAd === true || endpoint?.adClientParams?.isAd === 'true' || endpoint?.videoType === YT_CONSTANTS.VIDEO_TYPE_REEL_AD;
 }
 
-function hasAdRenderer(item, enableAdBlock) {
-  return enableAdBlock && (item.adSlotRenderer || item.tvMastheadRenderer);
+function hasAdRenderer(item) {
+  return !!(item.adSlotRenderer || item.tvMastheadRenderer);
 }
 
-function hasGuestPromptRenderer(item, hideGuestPrompts) {
-  return hideGuestPrompts && (item.feedNudgeRenderer || item.alertWithActionsRenderer);
+function isGuestPrompt(item) {
+  return !!(item.feedNudgeRenderer || item.alertWithActionsRenderer || item.gridButtonRenderer?.title?.runs?.[0]?.text === UI_STRINGS.GUEST_PROMPT_TEXT);
+}
+
+function isShortsItem(item) {
+  const tile = item.tileRenderer;
+  if (tile && (tile.style === YT_CONSTANTS.TILE_STYLE_SHORTS || tile.contentType === YT_CONSTANTS.CONTENT_TYPE_SHORTS || tile.onSelectCommand?.reelWatchEndpoint)) return true;
+  return !!(item.reelItemRenderer || item.contentType === YT_CONSTANTS.CONTENT_TYPE_SHORTS || item.onSelectCommand?.reelWatchEndpoint);
+}
+
+/**
+ * Whether an item (a tile, a lockup, a nudge) goes under the flags: the one
+ * rule for items in a shelf, in a grid or continuation, and bare in a section
+ * list. Before it was shared, a bare Shorts tile or live lockup in search
+ * results was only checked for ad renderers and got through.
+ */
+function shouldDropItem(item, config) {
+  if (!item || typeof item !== 'object') return false;
+  if (config.enableAdBlock && (hasAdRenderer(item) || isReelAd(item))) return true;
+  if (config.hideGuestPrompts && isGuestPrompt(item)) return true;
+  if (config.removeGlobalShorts && isShortsItem(item)) return true;
+  return config.removeLiveVideos && isLiveItem(item, true);
+}
+
+/** Whether a whole shelf goes: the Shorts shelf by type or title, the titled shelves. */
+function shouldDropShelf(shelf, config) {
+  const { removeGlobalShorts, removeTopLiveGames, removeMostRelevant } = config;
+  if (removeGlobalShorts && shelf.tvhtml5ShelfRendererType === YT_CONSTANTS.SHELF_TYPE_SHORTS) return true;
+  if (!removeGlobalShorts && !removeTopLiveGames && !removeMostRelevant) return false;
+  const title = getShelfTitleOptimized(shelf);
+  return (removeGlobalShorts && title === UI_STRINGS.SHORTS_TITLE) ||
+    (removeTopLiveGames && title === UI_STRINGS.TOP_LIVE_GAMES_TITLE) ||
+    (removeMostRelevant && title === UI_STRINGS.MOST_RELEVANT_TITLE);
+}
+
+// Counts carried through one section's item lists: the items they had and the
+// items left once filtered. Reused across calls rather than allocated per shelf.
+const listTally = { had: 0, left: 0 };
+
+/**
+ * Filters every item list of a section in place and returns how many lists it
+ * had: a shelf's horizontal list, grid and expanded list
+ * (expandedShelfContentsRenderer, never filtered before), or the grid or
+ * horizontal list a section list carries bare (search results). The emoji
+ * walk is left to the caller, which walks the whole section.
+ */
+function filterSectionItemLists(section, config) {
+  listTally.had = 0;
+  listTally.left = 0;
+  let lists = 0;
+  const shelf = section.shelfRenderer;
+  if (shelf) {
+    const content = shelf.content;
+    if (!content) return 0;
+    lists += filterTalliedList(content.horizontalListRenderer?.items, config);
+    lists += filterTalliedList(content.gridRenderer?.items, config);
+    lists += filterTalliedList(content.expandedShelfContentsRenderer?.items, config);
+    return lists;
+  }
+  lists += filterTalliedList(section.gridRenderer?.items, config);
+  lists += filterTalliedList(section.horizontalListRenderer?.items, config);
+  return lists;
+}
+
+function filterTalliedList(items, config) {
+  if (!Array.isArray(items)) return 0;
+  listTally.had += items.length;
+  filterItemsOptimized(items, config, true);
+  listTally.left += items.length;
+  return 1;
 }
 
 // skipEmoji: see filterItemsOptimized below.
-function processSectionListOptimized(contents, config, needsContentFiltering, contextName = '', skipEmoji = false) {
+function processSectionListOptimized(contents, config, contextName = '', skipEmoji = false) {
   if (!Array.isArray(contents) || contents.length === 0) return;
-  const { enableAdBlock, removeGlobalShorts, removeTopLiveGames, removeMostRelevant, hideGuestPrompts } = config;
   const enableLegacyEmojiFix = skipEmoji ? false : config.enableLegacyEmojiFix;
+  // With nothing to check and no emoji to wrap the pass would walk every
+  // shelf only to keep everything.
+  if (!enableLegacyEmojiFix && !anyItemCheck(config)) return;
   const initialCount = contents.length;
   let writeIdx = 0;
 
@@ -818,38 +884,26 @@ function processSectionListOptimized(contents, config, needsContentFiltering, co
     const item = contents[i];
     let keepItem = true;
 
-    if (item.shelfRenderer) {
+    if (!item || typeof item !== 'object') {
+      // Kept as sent.
+    } else if (item.shelfRenderer) {
       const shelf = item.shelfRenderer;
-      if (removeGlobalShorts && shelf.tvhtml5ShelfRendererType === YT_CONSTANTS.SHELF_TYPE_SHORTS) keepItem = false;
-      else if (removeGlobalShorts || removeTopLiveGames || removeMostRelevant) {
-        const title = getShelfTitleOptimized(shelf);
-        if (removeGlobalShorts && title === UI_STRINGS.SHORTS_TITLE) keepItem = false;
-        else if (removeTopLiveGames && title === UI_STRINGS.TOP_LIVE_GAMES_TITLE) keepItem = false;
-        else if (removeMostRelevant && title === UI_STRINGS.MOST_RELEVANT_TITLE) keepItem = false;
+      if (shouldDropShelf(shelf, config)) keepItem = false;
+      // A shelf we emptied has to go with its items. Left in place it still
+      // has a title and a content box, so the app renders the header plus a
+      // <ytlr-ghost-surface> of skeleton tiles and waits forever for content
+      // that was already removed - the "Live now" row of grey boxes.
+      // Only a shelf the filter emptied: one whose content uses some other
+      // renderer was never filtered here, and one that arrived with an empty
+      // list (filled later by its own continuation) was not emptied here.
+      else if (filterSectionItemLists(item, config) > 0 && listTally.had > 0 && listTally.left === 0) {
+        keepItem = false;
+        if (DEBUG) debugLog(`${contextName ? contextName + ': ' : ''}Dropped emptied shelf "${getShelfTitleOptimized(shelf)}"`);
       }
-      if (keepItem && shelf.content) {
-        // skipEmoji: the `findAndProcessText(item, 20)` below walks this whole
-        // shelf, nested items included, so doing it per-item here as well was
-        // pure duplicate work.
-        const horizItems = shelf.content.horizontalListRenderer?.items;
-        const gridItems = shelf.content.gridRenderer?.items;
-        if (horizItems) filterItemsOptimized(horizItems, config, needsContentFiltering, true);
-        if (gridItems) filterItemsOptimized(gridItems, config, needsContentFiltering, true);
-
-        // A shelf we emptied has to go with its items. Left in place it still
-        // has a title and a content box, so the app renders the header plus a
-        // <ytlr-ghost-surface> of skeleton tiles and waits forever for content
-        // that was already removed - the "Live now" row of grey boxes.
-        // Guarded on the lists having existed: a shelf whose content uses some
-        // other renderer was never filtered here and must not be judged empty.
-        if ((horizItems || gridItems) && !horizItems?.length && !gridItems?.length) {
-          keepItem = false;
-          if (DEBUG) debugLog(`${contextName ? contextName + ': ' : ''}Dropped emptied shelf "${getShelfTitleOptimized(shelf)}"`);
-        }
-      }
-    } 
-    else if (hasAdRenderer(item, enableAdBlock) || hasGuestPromptRenderer(item, hideGuestPrompts) || isReelAd(item, enableAdBlock)) {
-      keepItem = false;
+    } else if (filterSectionItemLists(item, config) === 0) {
+      // A bare grid or horizontal list keeps its (filtered) place, and with
+      // it its continuation; anything else is an item of its own.
+      if (shouldDropItem(item, config)) keepItem = false;
     }
 
     if (keepItem) {
@@ -859,46 +913,35 @@ function processSectionListOptimized(contents, config, needsContentFiltering, co
     }
   }
   contents.length = writeIdx;
-  
+
   if (DEBUG) {
     const removed = initialCount - writeIdx;
     if (removed > 0) debugLog(`${contextName ? contextName + ': ' : ''}Filtered ${removed} top-level items from ${initialCount}`);
   }
 }
 
+// Whether any per-item or per-shelf check is on at all.
+function anyItemCheck(config) {
+  return !!(config.enableAdBlock || config.hideGuestPrompts || config.removeGlobalShorts || config.removeLiveVideos || config.removeTopLiveGames || config.removeMostRelevant);
+}
+
 // skipEmoji: set when the caller is about to run its own findAndProcessText
 // over an ancestor of these items. Without it every tile in a shelf was walked
 // twice - once here and once again as part of the shelf's own walk - which on a
 // 150 KB browse response meant ~10k redundant node visits per parse.
-function filterItemsOptimized(items, config, needsContentFiltering, skipEmoji) {
+function filterItemsOptimized(items, config, skipEmoji) {
   if (!Array.isArray(items) || items.length === 0) return items;
-  const { enableAdBlock, removeGlobalShorts, removeLiveVideos, hideGuestPrompts } = config;
   const enableLegacyEmojiFix = skipEmoji ? false : config.enableLegacyEmojiFix;
-  if (!removeGlobalShorts && !removeLiveVideos && !needsContentFiltering) return items;
+  const anyCheck = anyItemCheck(config);
+  if (!anyCheck && !enableLegacyEmojiFix) return items;
 
   let writeIdx = 0;
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
-    let keep = true;
-
-    if (needsContentFiltering) {
-      if (hasAdRenderer(item, enableAdBlock) || isReelAd(item, enableAdBlock) || hasGuestPromptRenderer(item, hideGuestPrompts)) keep = false;
-      else if (hideGuestPrompts && item.gridButtonRenderer?.title?.runs?.[0]?.text === UI_STRINGS.GUEST_PROMPT_TEXT) keep = false;
-    }
-
-    if (keep && removeGlobalShorts) {
-      const tile = item.tileRenderer;
-      if (tile && (tile.style === YT_CONSTANTS.TILE_STYLE_SHORTS || tile.contentType === YT_CONSTANTS.CONTENT_TYPE_SHORTS || tile.onSelectCommand?.reelWatchEndpoint)) keep = false;
-      else if (item.reelItemRenderer || item.contentType === YT_CONSTANTS.CONTENT_TYPE_SHORTS || item.onSelectCommand?.reelWatchEndpoint) keep = false;
-    }
-
-    if (keep && removeLiveVideos && isLiveItem(item, true)) keep = false;
-
-    if (keep) {
-      if (enableLegacyEmojiFix) findAndProcessText(item, 20);
-      if (writeIdx !== i) items[writeIdx] = item;
-      writeIdx++;
-    }
+    if (anyCheck && shouldDropItem(item, config)) continue;
+    if (enableLegacyEmojiFix) findAndProcessText(item, 20);
+    if (writeIdx !== i) items[writeIdx] = item;
+    writeIdx++;
   }
   items.length = writeIdx;
   return items;
