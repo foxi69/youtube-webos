@@ -1251,7 +1251,7 @@ function isLiveStream(player, video) {
     try {
         const data = player && typeof player.getVideoData === 'function' ? player.getVideoData() : null;
         if (data && data.isLive === true) return true;
-    } catch (e) { /* not the player API we know */ }
+    } catch { /* not the player API we know */ }
     return video.duration === Infinity;
 }
 
