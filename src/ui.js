@@ -1661,7 +1661,8 @@ configAddChangeListener('enableAdBlock', () => {
 });
 
 function syncTrackingBlock() {
-  if (configRead('enableTrackingBlock')) initTrackingBlock();
+  // Greyed out in the panel while Ad Blocking is off, so off then as well.
+  if (configRead('enableAdBlock') && configRead('enableTrackingBlock')) initTrackingBlock();
   else destroyTrackingBlock();
 }
 

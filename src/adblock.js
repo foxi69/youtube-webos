@@ -96,13 +96,18 @@ const cfgFlags = {
 function recomputeFilterFlags() {
   cfgEmojiFixEffective = !!cfgSnapshot[CONFIG_KEYS.EMOJI_FIX] && cachedWebOSVersion <= 4;
 
-  cfgFlags.enableAdBlock = !!cfgSnapshot[CONFIG_KEYS.ADBLOCK];
-  cfgFlags.enableTrackingBlock = !!cfgSnapshot[CONFIG_KEYS.TRACKING];
-  cfgFlags.removeGlobalShorts = !!cfgSnapshot[CONFIG_KEYS.SHORTS];
-  cfgFlags.removeLiveVideos = !!cfgSnapshot[CONFIG_KEYS.LIVE];
-  cfgFlags.removeTopLiveGames = !!cfgSnapshot[CONFIG_KEYS.LIVE_GAMES];
-  cfgFlags.removeMostRelevant = !!cfgSnapshot[CONFIG_KEYS.MOST_RELEVANT];
-  cfgFlags.hideGuestPrompts = !!cfgSnapshot[CONFIG_KEYS.GUEST_PROMPTS];
+  const adBlock = !!cfgSnapshot[CONFIG_KEYS.ADBLOCK];
+  cfgFlags.enableAdBlock = adBlock;
+  // Tracking Block, the Shorts, Live, Top live games and Most relevant filters
+  // and the guest-prompt filter are Ad Blocking's own: the panel greys them out
+  // while Ad Blocking is off, so they must genuinely do nothing then.
+  cfgFlags.enableTrackingBlock = adBlock && !!cfgSnapshot[CONFIG_KEYS.TRACKING];
+  cfgFlags.removeGlobalShorts = adBlock && !!cfgSnapshot[CONFIG_KEYS.SHORTS];
+  cfgFlags.removeLiveVideos = adBlock && !!cfgSnapshot[CONFIG_KEYS.LIVE];
+  cfgFlags.removeTopLiveGames = adBlock && !!cfgSnapshot[CONFIG_KEYS.LIVE_GAMES];
+  cfgFlags.removeMostRelevant = adBlock && !!cfgSnapshot[CONFIG_KEYS.MOST_RELEVANT];
+  cfgFlags.hideGuestPrompts = adBlock && !!cfgSnapshot[CONFIG_KEYS.GUEST_PROMPTS];
+  // Independent switches on the same hook.
   cfgFlags.enableLegacyEmojiFix = cfgEmojiFixEffective;
   cfgFlags.hideEndcards = !!cfgSnapshot[CONFIG_KEYS.ENDCARDS];
   cfgFlags.upgradeThumbnails = !!cfgSnapshot[CONFIG_KEYS.THUMBNAILS];
@@ -320,7 +325,11 @@ export function initTrackingBlock() {
     window.XMLHttpRequest.prototype.open = function(method, url) {
       // Fallback for older engines that might not support optional chaining properly
       const urlStr = typeof url === 'string' ? url : (url && url.toString ? url.toString() : '');
-      this.__adblockBlocked = !!urlStr && TELEMETRY_REGEX.test(urlStr);
+      // The path alone, as the fetch side tests it: a blocked path named in a
+      // query parameter (a redirect or a next= URL) must not block the request.
+      const query = urlStr.indexOf('?');
+      const path = query === -1 ? urlStr : urlStr.slice(0, query);
+      this.__adblockBlocked = !!path && TELEMETRY_REGEX.test(path);
 
       if (this.__adblockBlocked) {
         if (DEBUG) console.info('[AdBlock] Blocked telemetry XHR request:', urlStr);
@@ -921,8 +930,9 @@ function processSectionListOptimized(contents, config, contextName = '', skipEmo
 }
 
 // Whether any per-item or per-shelf check is on at all.
+// Every one of them counts only with Ad Blocking on (recomputeFilterFlags).
 function anyItemCheck(config) {
-  return !!(config.enableAdBlock || config.hideGuestPrompts || config.removeGlobalShorts || config.removeLiveVideos || config.removeTopLiveGames || config.removeMostRelevant);
+  return config.enableAdBlock;
 }
 
 // skipEmoji: set when the caller is about to run its own findAndProcessText
@@ -1036,15 +1046,15 @@ function findObjects(haystack, needlesArray, maxDepth = 10) {
 /**
  * Is the JSON.parse hook needed at all?
  *
- * It carries two independent things: the response filters (ads, Shorts, guest
- * prompts, endcards, trackingParams) and the legacy emoji rewrite. Ad Blocking
- * being off must not take the emoji fix down with it - on webOS 3 and 4 that is
- * what stops titles rendering as tofu boxes, and it has its own setting.
+ * It carries independent things: the response filters (ads, Shorts, guest
+ * prompts, trackingParams - all of them Ad Blocking's), the endcards and the
+ * legacy emoji rewrite. Ad Blocking being off must not take the emoji fix down
+ * with it - on webOS 3 and 4 that is what stops titles rendering as tofu
+ * boxes, and it has its own setting.
  */
 export function parseHookRequired() {
   return !!(
     cfgSnapshot[CONFIG_KEYS.ADBLOCK] ||
-    cfgSnapshot[CONFIG_KEYS.GUEST_PROMPTS] ||
     cfgSnapshot[CONFIG_KEYS.ENDCARDS] ||
     cfgEmojiFixEffective ||
     thumbnailHookRequired()
@@ -1085,7 +1095,8 @@ export function destroyAdblock() {
 
 initAdblock();
 
-if (cfgSnapshot[CONFIG_KEYS.TRACKING]) {
+// Tracking Block is Ad Blocking's: its network hooks go in only with both on.
+if (cfgFlags.enableTrackingBlock) {
   try {
     initTrackingBlock();
   } catch (e) {
