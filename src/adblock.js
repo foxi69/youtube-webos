@@ -525,44 +525,11 @@ function applySchemaFilters(data, responseType, config, needsContentFiltering) {
       }
       break;
     case 'CONTINUATION':
-      if (schema?.sectionPath) {
-        const secList = getByPath(data, schema.sectionPath);
-        if (Array.isArray(secList)) processSectionListOptimized(secList, config, needsContentFiltering, 'CONTINUATION (Section)');
-      }
-      if (schema?.tvSurfacePath) {
-        const tvList = getByPath(data, schema.tvSurfacePath);
-        if (Array.isArray(tvList)) processSectionListOptimized(tvList, config, needsContentFiltering, 'CONTINUATION (TV Surface)');
-      }
-      if (schema?.gridPath) {
-        const gridItems = getByPath(data, schema.gridPath);
-        if (Array.isArray(gridItems)) {
-            const oldLen = gridItems.length;
-            filterItemsOptimized(gridItems, config, needsContentFiltering);
-            if (DEBUG && oldLen !== gridItems.length) debugLog(`CONTINUATION (Grid): Removed ${oldLen - gridItems.length} items`);
-        }
-      }
-      if (schema?.horizontalPath) {
-        const horizItems = getByPath(data, schema.horizontalPath);
-        if (Array.isArray(horizItems)) {
-            const oldLen = horizItems.length;
-            filterItemsOptimized(horizItems, config, needsContentFiltering);
-            if (DEBUG && oldLen !== horizItems.length) debugLog(`CONTINUATION (Horizontal): Removed ${oldLen - horizItems.length} items`);
-        }
-      }
-      if (config.enableLegacyEmojiFix && data.continuationContents) {
-          findAndProcessText(data.continuationContents, 20);
-      }
+      filterContinuation(data, config, needsContentFiltering);
       break;
-    case 'ACTION': {
-      const actions = data.onResponseReceivedActions || data.onResponseReceivedEndpoints;
-      if (Array.isArray(actions)) {
-        processActions(actions, config, needsContentFiltering);
-        if (config.enableLegacyEmojiFix) {
-            findAndProcessText(actions, 20);
-        }
-      }
+    case 'ACTION':
+      filterActions(data, config, needsContentFiltering);
       break;
-    }
     case 'PLAYER':
     case 'NEXT':
       if (config.enableAdBlock) {
@@ -598,6 +565,48 @@ function applySchemaFilters(data, responseType, config, needsContentFiltering) {
         }
       }
       break;
+  }
+
+  // A response is typed by its main content, but can carry a continuation or
+  // received actions beside it (a browse or watch-next page with its first
+  // continuation inlined); those get their filters too, or their ads and
+  // Shorts got through.
+  if (responseType !== 'CONTINUATION' && data.continuationContents) {
+    filterContinuation(data, config, needsContentFiltering);
+  }
+  if (responseType !== 'ACTION' && (data.onResponseReceivedActions || data.onResponseReceivedEndpoints)) {
+    filterActions(data, config, needsContentFiltering);
+  }
+}
+
+function filterListLogged(items, config, needsContentFiltering, label, skipEmoji) {
+  if (!Array.isArray(items)) return;
+  const oldLen = items.length;
+  filterItemsOptimized(items, config, needsContentFiltering, skipEmoji);
+  if (DEBUG && oldLen !== items.length) debugLog(`${label}: Removed ${oldLen - items.length} items`);
+}
+
+function filterContinuation(data, config, needsContentFiltering) {
+  const schema = SCHEMA_REGISTRY.paths.CONTINUATION;
+  // The whole continuation is walked for emoji at the end, once, so the
+  // filters below skip their own per-item walk.
+  const walksAfter = !!config.enableLegacyEmojiFix;
+  processSectionListOptimized(getByPath(data, schema.sectionPath), config, needsContentFiltering, 'CONTINUATION (Section)', walksAfter);
+  processSectionListOptimized(getByPath(data, schema.tvSurfacePath), config, needsContentFiltering, 'CONTINUATION (TV Surface)', walksAfter);
+  filterListLogged(getByPath(data, schema.gridPath), config, needsContentFiltering, 'CONTINUATION (Grid)', walksAfter);
+  filterListLogged(getByPath(data, schema.horizontalPath), config, needsContentFiltering, 'CONTINUATION (Horizontal)', walksAfter);
+  if (walksAfter && data.continuationContents) findAndProcessText(data.continuationContents, 20);
+}
+
+// The received actions and the received endpoints: a body can carry both, and
+// only the first of the two used to be looked at.
+function filterActions(data, config, needsContentFiltering) {
+  const walksAfter = !!config.enableLegacyEmojiFix;
+  const lists = [data.onResponseReceivedActions, data.onResponseReceivedEndpoints];
+  for (let i = 0; i < lists.length; i++) {
+    if (!Array.isArray(lists[i])) continue;
+    processActions(lists[i], config, needsContentFiltering, walksAfter);
+    if (walksAfter) findAndProcessText(lists[i], 20);
   }
 }
 
@@ -713,19 +722,20 @@ function applyFallbackFilters(data, config, needsContentFiltering) {
       if (DEBUG && oldLen !== found.entries.length) debugLog(`FALLBACK (Entries): Removed ${oldLen - found.entries.length} items`);
   }
   
-  const actions = data.onResponseReceivedActions || data.onResponseReceivedEndpoints;
-  processActions(actions, config, needsContentFiltering);
+  processActions(data.onResponseReceivedActions, config, needsContentFiltering);
+  processActions(data.onResponseReceivedEndpoints, config, needsContentFiltering);
 }
 
-function processActions(actions, config, needsContentFiltering) {
+function processActions(actions, config, needsContentFiltering, skipEmoji) {
   if (!Array.isArray(actions)) return;
   for (let i = 0; i < actions.length; i++) {
     const action = actions[i];
+    if (!action) continue;
     if (action.reloadContinuationItemsCommand?.continuationItems) {
-      filterItemsOptimized(action.reloadContinuationItemsCommand.continuationItems, config, needsContentFiltering);
+      filterItemsOptimized(action.reloadContinuationItemsCommand.continuationItems, config, needsContentFiltering, skipEmoji);
     }
     if (action.appendContinuationItemsAction?.continuationItems) {
-      filterItemsOptimized(action.appendContinuationItemsAction.continuationItems, config, needsContentFiltering);
+      filterItemsOptimized(action.appendContinuationItemsAction.continuationItems, config, needsContentFiltering, skipEmoji);
     }
   }
 }
@@ -796,9 +806,11 @@ function hasGuestPromptRenderer(item, hideGuestPrompts) {
   return hideGuestPrompts && (item.feedNudgeRenderer || item.alertWithActionsRenderer);
 }
 
-function processSectionListOptimized(contents, config, needsContentFiltering, contextName = '') {
+// skipEmoji: see filterItemsOptimized below.
+function processSectionListOptimized(contents, config, needsContentFiltering, contextName = '', skipEmoji = false) {
   if (!Array.isArray(contents) || contents.length === 0) return;
-  const { enableAdBlock, removeGlobalShorts, removeTopLiveGames, removeMostRelevant, hideGuestPrompts, enableLegacyEmojiFix } = config;
+  const { enableAdBlock, removeGlobalShorts, removeTopLiveGames, removeMostRelevant, hideGuestPrompts } = config;
+  const enableLegacyEmojiFix = skipEmoji ? false : config.enableLegacyEmojiFix;
   const initialCount = contents.length;
   let writeIdx = 0;
 
