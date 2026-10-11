@@ -32,7 +32,8 @@ let shortcutDebounceTime = 100;
 // they still have to swallow the duplicate one physical press produces: the
 // colour buttons emit two codes that both map to the same name (red 403/166,
 // green 404/172, yellow 405/170, blue 406/167/191) in the same tick. No remote
-// repeats inside 50ms, and held-key repeat is already dropped by evt.repeat.
+// repeats inside 50ms; a held seek key's repeats go through, so holding it
+// keeps seeking.
 const BURST_DUPLICATE_MS = 50;
 
 // Seek Burst Variables
@@ -804,6 +805,12 @@ function showOptionsPanel(visible) {
     lastSafeFocus = null;
     // Stop paying a forced layout per focus change across the whole app again.
     setSpatialNav('trackFocus', false);
+    // A held Back (or whichever key closed the panel) must not go on to
+    // YouTube as a page back.
+    swallowHeldKey();
+    // The binding may have changed while the panel was open: if no key opens
+    // it any more, Green does again.
+    ensureMenuKey(true);
   }
 }
 
@@ -1395,26 +1402,86 @@ function handleShortcutAction(action) {
 
 // --- Global Input Handler ---
 
+// Whether `el` takes typed text: a textarea, or an input other than a checkbox
+// or a colour. A digit with one of the panel's checkboxes focused is still a
+// shortcut (a digit bound to the menu must close the panel from there too).
+function isTextBox(el) {
+  if (!el) return false;
+  if (el.tagName === 'TEXTAREA') return true;
+  return el.tagName === 'INPUT' && el.type !== 'checkbox' && el.type !== 'color';
+}
+
+const isSyntheticKey = (evt) => !!evt[SYNTHETIC_KEY_FLAG] || evt.isTrusted === false;
+
+// The key that closed the settings panel (Back, Escape, an Enter, the menu
+// key) is swallowed until it is released: a held Back keeps repeating, and
+// once the panel's own handler is gone the repeats would reach YouTube as a
+// page back. heldKeyCode is the trusted key currently down, so
+// showOptionsPanel(false) knows which one closed it. Keys this mod sends
+// itself pass (play/pause sends Back).
+let heldKeyCode = null;
+let swallowedKeyCode = null;
+let swallowTimer = null;
+
+function releaseSwallowedKey() {
+  swallowedKeyCode = null;
+  if (swallowTimer) { clearTimeout(swallowTimer); swallowTimer = null; }
+}
+
+function armSwallowTimer(ms) {
+  if (swallowTimer) clearTimeout(swallowTimer);
+  // A keyup the TV never delivers must not hold the key for good.
+  swallowTimer = setTimeout(releaseSwallowedKey, ms);
+}
+
+function swallowHeldKey() {
+  if (heldKeyCode === null) return;
+  swallowedKeyCode = heldKeyCode;
+  armSwallowTimer(2000);
+}
+
+window.addEventListener('keydown', (evt) => {
+  if (isSyntheticKey(evt)) return;
+  const code = evt.keyCode;
+  if (swallowedKeyCode !== null && code === swallowedKeyCode) {
+    // A held key keeps sliding the window; its keyup ends it.
+    if (evt.repeat) armSwallowTimer(1000);
+    evt.preventDefault();
+    evt.stopImmediatePropagation();
+    return;
+  }
+  heldKeyCode = code;
+}, true);
+
+window.addEventListener('keyup', (evt) => {
+  if (isSyntheticKey(evt)) return;
+  if (evt.keyCode === heldKeyCode) heldKeyCode = null;
+  if (swallowedKeyCode !== null && evt.keyCode === swallowedKeyCode) {
+    releaseSwallowedKey();
+    evt.preventDefault();
+    evt.stopImmediatePropagation();
+  }
+}, true);
+
 const eventHandler = (evt) => {
-  if (evt.repeat) return;
   // Keys this mod synthesises (screensaver keep-alive sends Yellow, play/pause
   // sends Back) must never trigger a binding.
-  if (evt[SYNTHETIC_KEY_FLAG] || evt.isTrusted === false) return true;
+  if (isSyntheticKey(evt)) return true;
 
-  const code = evt.keyCode || evt.charCode; 
+  const code = evt.keyCode || evt.charCode;
   const keyColor = getKeyColor(code);
-  
+
   // FAST FAIL: If typing in a native text box, let standard characters (like 0-9) pass through instantly
-  if (!keyColor && (evt.target.tagName === 'INPUT' || evt.target.tagName === 'TEXTAREA')) {
+  if (!keyColor && isTextBox(evt.target)) {
       return true;
   }
 
   // Identify Key (Name)
   let keyName = keyColor;
   const isNumberKey = evt.type === 'keydown' && evt.keyCode >= 48 && evt.keyCode <= 57;
-  
+
   if (isNumberKey) {
-      if (isSearchPage()) return true; 
+      if (isSearchPage()) return true;
       keyName = String(evt.keyCode - 48);
   }
 
@@ -1432,8 +1499,18 @@ const eventHandler = (evt) => {
   if (actionScope === 'VIDEO' && !isVideoPage) return true;
 
   // --- Proceed to Debounce and Execution ---
-  
+
   const isBurstAction = action === 'seek_15_fwd' || action === 'seek_15_back';
+
+  // A held bound key: its repeats are one press and never reach YouTube (a
+  // held digit would jump the video to a percentage). The seeks batch their
+  // presses, repeats included, so a held seek key keeps seeking.
+  if (evt.repeat && !isBurstAction) {
+      evt.preventDefault();
+      evt.stopPropagation();
+      return false;
+  }
+
   const now = Date.now();
 
   const dedupeWindow = isBurstAction ? BURST_DUPLICATE_MS : shortcutDebounceTime;
@@ -1449,11 +1526,11 @@ const eventHandler = (evt) => {
   shortcutDebounceTime = 100;
   lastShortcutTime = now;
   lastShortcutKey = keyName;
-  
+
   evt.preventDefault();
   evt.stopPropagation();
   handleShortcutAction(action);
-  
+
   return false;
 };
 
@@ -1627,12 +1704,20 @@ function applyTheme(theme) {
   updateLogoState();
 }
 
-const menuKeyExists = shortcutKeys.some(key => shortcutCache[key] === 'config_menu');
-
-if (!menuKeyExists) {
+// The key that opens the settings panel. With none bound (the viewer gave the
+// menu key another action), Green opens it again; `announce` says so in a
+// toast. Runs at start and whenever the panel closes, so a binding changed in
+// the panel takes effect without a restart.
+function ensureMenuKey(announce) {
+    const key = shortcutKeys.find(k => shortcutCache[k] === 'config_menu');
+    if (key) return key;
     console.warn('[UI] No menu keybind found. Forcing Green button to Open Settings.');
     configWrite('shortcut_key_green', 'config_menu');
+    if (announce) showNotification('Press [GREEN] to open the settings');
+    return 'green';
 }
+
+const startupMenuKey = ensureMenuKey(false);
 
 // --- Start-up ---
 initGlobalStyles();
@@ -1699,7 +1784,9 @@ syncTrackingBlock();
   };
   const check = () => {
     if (pageReady() || Date.now() - startedAt > 30000) {
-      setTimeout(() => showNotification('Press [GREEN] to open the settings', 6000), 1000);
+      // The key bound at start (a viewer may have moved the menu off Green).
+      const label = startupMenuKey.toUpperCase();
+      setTimeout(() => showNotification(`Press [${label}] to open the settings`, 6000), 1000);
       return;
     }
     setTimeout(check, 500);
