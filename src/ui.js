@@ -621,8 +621,10 @@ function createOptionsPanel() {
   const elRemoveLiveVideos = createConfigCheckbox('removeLiveVideos');
   const elRemoveTopLiveGames = createConfigCheckbox('removeTopLiveGames');
   const elRemoveMostRelevant = createConfigCheckbox('removeMostRelevant');
+  const elRemoveUpcoming = createConfigCheckbox('removeUpcomingVideos');
+  const elRemoveMembersOnly = createConfigCheckbox('removeMembersOnly');
   let elGuestPrompts = null;
-  cosmeticGroup.push(elRemoveGlobalShorts, elRemoveLiveVideos, elRemoveTopLiveGames, elRemoveMostRelevant);
+  cosmeticGroup.push(elRemoveGlobalShorts, elRemoveLiveVideos, elRemoveTopLiveGames, elRemoveMostRelevant, elRemoveUpcoming, elRemoveMembersOnly);
   if (isGuestMode()) { elGuestPrompts = createConfigCheckbox('hideGuestSignInPrompts'); cosmeticGroup.push(elGuestPrompts); }
 
   pageFilters.appendChild(createSection('Cosmetic Filtering', cosmeticGroup, 'ytaf-section-2col'));
@@ -636,7 +638,7 @@ function createOptionsPanel() {
   // Blocking, so it genuinely does nothing while Ad Blocking is off. Greying it
   // out is what tells the user that, instead of leaving a checkbox that looks
   // armed but is inert.
-  const adBlockDependents = [elTrackingBlock, elRemoveGlobalShorts, elRemoveLiveVideos, elRemoveTopLiveGames, elRemoveMostRelevant, elGuestPrompts];
+  const adBlockDependents = [elTrackingBlock, elRemoveGlobalShorts, elRemoveLiveVideos, elRemoveTopLiveGames, elRemoveMostRelevant, elRemoveUpcoming, elRemoveMembersOnly, elGuestPrompts];
   const updateDependencyState = () => {
     const enabled = configRead('enableAdBlock');
     adBlockDependents.forEach(el => { setState(el, enabled); });
@@ -662,7 +664,7 @@ function createOptionsPanel() {
   createConfigCheckbox('enableReturnYouTubeDislike')]));
   // The logo in the header also cycles the theme, but a remote cannot focus
   // it, so the setting needs a row of its own to be reachable on a TV.
-  const interfaceGroup = [createAlignedCycleControl('uiTheme', uiThemes), createConfigCheckbox('enableAutoLogin'), createConfigCheckbox('autoSelectAccount'), createConfigCheckbox('upgradeThumbnails'), createThumbnailQualityControl(), createLogoControl(), createConfigCheckbox('showWatch'), createConfigCheckbox('enableOledCareMode'), createConfigCheckbox('disableNotifications')];
+  const interfaceGroup = [createAlignedCycleControl('uiTheme', uiThemes), createConfigCheckbox('enableAutoLogin'), createConfigCheckbox('autoSelectAccount'), createConfigCheckbox('upgradeThumbnails'), createThumbnailQualityControl(), createLogoControl(), createConfigCheckbox('showWatch'), createConfigCheckbox('enableOledCareMode'), createConfigCheckbox('disableNotifications'), createConfigCheckbox('loadRowsAhead')];
   // The cast block only exists on webOS 25 (see userScript.js).
   if (isWebOS25()) interfaceGroup.push(createConfigCheckbox('blockWebosCast'));
   // --- Page 3: Interface ---
@@ -1786,7 +1788,8 @@ configAddChangeListener('enableAdBlock', () => {
 });
 
 function syncTrackingBlock() {
-  if (configRead('enableTrackingBlock')) initTrackingBlock();
+  // Greyed out in the panel while Ad Blocking is off, so off then as well.
+  if (configRead('enableAdBlock') && configRead('enableTrackingBlock')) initTrackingBlock();
   else destroyTrackingBlock();
 }
 
@@ -1799,6 +1802,8 @@ configAddChangeListener('hideGuestSignInPrompts', () => syncAdblockHook());
 configAddChangeListener('hideEndcards', () => syncAdblockHook());
 // Max Thumbnail Quality rewrites URLs inside the same JSON.parse hook.
 configAddChangeListener('upgradeThumbnails', () => syncAdblockHook());
+// Load Rows Ahead raises the continuation threshold inside the same hook.
+configAddChangeListener('loadRowsAhead', () => syncAdblockHook());
 
 configAddChangeListener('videoShelfOpacity', () => {
   // Cheap update — just retargets the CSS custom property and toggles the
