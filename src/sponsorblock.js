@@ -548,13 +548,13 @@ class SponsorBlockHandler {
         for (let i = firstSegIdx + 1; i < segments.length; i++) {
             const current = segments[i];
 
-            // If we hit a manual_skip that starts before our chain ends, truncate the chain
+            // A manual segment ends the chain: at its start when that is inside
+            // the chain, where the chain got to otherwise. Passing over one
+            // that starts past the chain's end let a later auto segment close
+            // behind it carry the jump into it. It is offered there instead.
             if (current.mode !== 'auto_skip') {
-                if (current.start <= finalSeekTime) {
-                    finalSeekTime = Math.min(finalSeekTime, current.start);
-                    break;
-                }
-                continue; 
+                finalSeekTime = Math.min(finalSeekTime, current.start);
+                break;
             }
 
             const gapToNext = current.start - finalSeekTime;
@@ -566,12 +566,17 @@ class SponsorBlockHandler {
             }
         }
 
+        // Cut at the very start by a manual segment: a jump to where playback
+        // already is would only come back through 'seeked' and seek again,
+        // for good.
+        if (finalSeekTime <= CHAIN_SKIP_CONSTANTS.START_THRESHOLD) return null;
         if (chainSegs.length === 1 && finalSeekTime - firstSeg.start < 1) return null;
 
         // PERF: build the description only once the chain is known-valid —
         // this path runs on every 'seeked' event.
         return {
             endTime: finalSeekTime,
+            segments: chainSegs,
             chainDescription: chainSegs
                 .map(s => `${s.category}[${s.start.toFixed(1)}s-${s.end.toFixed(1)}s]`)
                 .join(' → ')
@@ -604,6 +609,14 @@ class SponsorBlockHandler {
         const chain = this.buildSkipChain(this.skipSegments);
         if (!chain) return false;
         if (chain.endTime >= video.duration) return false;
+        // The segment the "skip to previous" shortcut seeked back into plays,
+        // as it does everywhere else.
+        if (this.tempWhitelistIndex !== -1 &&
+            chain.segments.some(seg => seg.originalIndex === this.tempWhitelistIndex)) return false;
+        // With "Skip Segments Once", a chain already skipped (the viewer went
+        // back to the start) plays through like any other skipped segment.
+        if (configGetAll().skipSegmentsOnce && this.skippedSegmentIndices &&
+            chain.segments.every(seg => this.skippedSegmentIndices.has(seg.originalIndex))) return false;
 
         this.log('info', `Executing chain skip: ${chain.chainDescription}`);
 
