@@ -954,22 +954,39 @@ class SponsorBlockHandler {
         }
     }
 
-    observePlayerUI() {
+    _disconnectBarObservers() {
         if (this.domObserver) {
             this.domObserver.disconnect();
             this.observers.delete(this.domObserver);
+            this.domObserver = null;
         }
         if (this._attrObserver) {
-            // observePlayerUI can re-run via start() (late mount / video rebind);
-            // drop the old attribute observer so it doesn't leak.
             this._attrObserver.disconnect();
             this.observers.delete(this._attrObserver);
             this._attrObserver = null;
         }
+        if (this._finderObserver) {
+            this._finderObserver.disconnect();
+            this.observers.delete(this._finderObserver);
+            this._finderObserver = null;
+        }
+    }
 
-        const OPTIMAL_SELECTOR = 'ytlr-progress-bar';
+    observePlayerUI() {
+        // Re-run when the observed root was torn down: the old observers go,
+        // including a finder still waiting (they used to pile up, one more
+        // per call).
+        this._disconnectBarObservers();
+
+        // Both bar layouts: the old finder waited for ytlr-progress-bar only,
+        // and never attached where the TV UI renders the multi-markers bar
+        // without it. The outer renderer is the one the overlay sits beside.
+        const BAR_SELECTOR = 'ytlr-progress-bar, ytlr-multi-markers-player-bar-renderer';
+        const findBar = () => document.querySelector('ytlr-multi-markers-player-bar-renderer') ||
+                              document.querySelector('ytlr-progress-bar');
 
         const startOptimizedObserver = (targetNode) => {
+            this._disconnectBarObservers();
             // Observe parent to catch if the bar itself is destroyed/recreated by the framework
             const observeTarget = targetNode.parentNode || targetNode;
             this._observedRoot = observeTarget;
@@ -1001,24 +1018,22 @@ class SponsorBlockHandler {
             this.checkForProgressBar();
         };
 
-        const candidate = document.querySelector(OPTIMAL_SELECTOR);
+        const candidate = findBar();
         if (candidate) {
             startOptimizedObserver(candidate);
         } else {
             const root = document.querySelector('ytlr-app') || document.body;
-            this.log('info', 'Waiting for optimized container:', OPTIMAL_SELECTOR);
+            this.log('info', 'Waiting for optimized container:', BAR_SELECTOR);
 
-            const finderObserver = new MutationObserver((mutations, obs) => {
-                const found = document.querySelector(OPTIMAL_SELECTOR);
-                if (found) {
-                    obs.disconnect();
-                    this.observers.delete(obs);
-                    startOptimizedObserver(found);
-                }
+            // One finder at a time, kept on the instance so it can be dropped.
+            const finderObserver = new MutationObserver(() => {
+                const found = findBar();
+                if (found) startOptimizedObserver(found);
             });
 
             finderObserver.observe(root, { childList: true, subtree: true });
             this.observers.add(finderObserver);
+            this._finderObserver = finderObserver;
         }
     }
 
@@ -1039,7 +1054,9 @@ class SponsorBlockHandler {
     // fires a hashchange -> full re-init -> fresh observers; replay fires no
     // hashchange, so nothing ever re-armed them.
     _ensureObserverAlive() {
-        if (this.isDestroyed) return;
+        if (this.isDestroyed || !this._barObserverStarted) return;
+        // A finder is already waiting for the bar to come back.
+        if (this._finderObserver) return;
         if (this._observedRoot && this._observedRoot.isConnected) return;
         this.log('info', 'Observer root was destroyed — re-attaching');
         this.observePlayerUI();
