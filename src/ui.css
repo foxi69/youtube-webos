@@ -207,7 +207,7 @@
   outline: none;
 }
 
-.ytaf-ui-container label:focus-within {
+.ytaf-ui-container label.ytaf-focused {
   background: rgba(0, 212, 255, 0.2);
   border-radius: 0.75vh;
   box-shadow: 0 0 0 0.19vh #00d4ff;
@@ -215,7 +215,7 @@
 }
 
 .ytaf-ui-container.theme-classic-red .shortcut-control-row:focus,
-.ytaf-ui-container.theme-classic-red label:focus-within {
+.ytaf-ui-container.theme-classic-red label.ytaf-focused {
   background: rgba(255, 0, 0, 0.1);
   box-shadow: 0 0 0 0.19vh rgba(255, 0, 0, 0.5);
   outline: none;
@@ -674,7 +674,7 @@
 }
 
 .ytaf-ui-container.theme-fox .shortcut-control-row:focus,
-.ytaf-ui-container.theme-fox label:focus-within {
+.ytaf-ui-container.theme-fox label.ytaf-focused {
   background: rgba(255, 122, 26, 0.12);
   box-shadow: 0 0 0 0.19vh rgba(255, 140, 42, 0.6);
   outline: none;

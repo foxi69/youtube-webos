@@ -524,6 +524,16 @@ function createOptionsPanel() {
     }
   });
 
+  // Chrome 38 to 59 (webOS 3/4) have no :focus-within, and a selector they do
+  // not know drops the whole rule - so the label row of the focused checkbox
+  // carries a class instead (ui.css). From mirijanristic's fork.
+  const markLabel = (evt, on) => {
+    const label = evt.target.closest ? evt.target.closest('label') : null;
+    if (label) label.classList.toggle('ytaf-focused', on);
+  };
+  elmContainer.addEventListener('focusin', (evt) => markLabel(evt, true));
+  elmContainer.addEventListener('focusout', (evt) => markLabel(evt, false));
+
   let activePage = 0;
   elmContainer.activePage = 0;
   // One element per entry of SETTINGS_PAGES, filled as each page is built.
