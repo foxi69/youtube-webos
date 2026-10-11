@@ -604,7 +604,9 @@ export function upgradeResponseThumbnails(data, responseType) {
       changed += upgradeItems(data.entries);
       break;
     case 'ACTION':
-      changed += upgradeActions(data.onResponseReceivedActions || data.onResponseReceivedEndpoints);
+      // A body can carry both lists, and the second is not a fallback.
+      changed += upgradeActions(data.onResponseReceivedActions);
+      changed += upgradeActions(data.onResponseReceivedEndpoints);
       break;
     case 'NEXT':
       changed += upgradeSectionList(getByPath(data, P.PIVOT));
