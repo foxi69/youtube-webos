@@ -35,9 +35,17 @@ const TELEMETRY_REGEX = new RegExp(
 
 const UI_STRINGS = {
   SHORTS_TITLE: 'Shorts',
-  TOP_LIVE_GAMES_TITLE: 'Top live games',
-  MOST_RELEVANT_TITLE: 'Most relevant',
   GUEST_PROMPT_TEXT: 'Sign in for better recommendations'
+};
+
+// The shelves removed by their title. The TV sends the title in the account's
+// language and these shelves carry no language-independent marker that has
+// been seen in a response, so each language needs its exact title here
+// (NicholasBly/youtube-webos#101); only the English ones are confirmed.
+// Compared trimmed and lower-cased.
+const SHELF_TITLES = {
+  TOP_LIVE_GAMES: new Set(['top live games']),
+  MOST_RELEVANT: new Set(['most relevant'])
 };
 
 const YT_CONSTANTS = {
@@ -906,7 +914,7 @@ function processActions(actions, config, skipEmoji) {
 
 function getShelfTitleOptimized(shelf) {
   if (!shelf) return '';
-  return shelf.title?.runs?.[0]?.text || shelf.headerRenderer?.shelfHeaderRenderer?.avatarLockup?.avatarLockupRenderer?.title?.runs?.[0]?.text || '';
+  return shelf.title?.runs?.[0]?.text || shelf.title?.simpleText || shelf.headerRenderer?.shelfHeaderRenderer?.avatarLockup?.avatarLockupRenderer?.title?.runs?.[0]?.text || '';
 }
 
 /**
@@ -1063,9 +1071,12 @@ function shouldDropShelf(shelf, config) {
   if (removeGlobalShorts && shelf.tvhtml5ShelfRendererType === YT_CONSTANTS.SHELF_TYPE_SHORTS) return true;
   if (!removeGlobalShorts && !removeTopLiveGames && !removeMostRelevant) return false;
   const title = getShelfTitleOptimized(shelf);
-  return (removeGlobalShorts && title === UI_STRINGS.SHORTS_TITLE) ||
-    (removeTopLiveGames && title === UI_STRINGS.TOP_LIVE_GAMES_TITLE) ||
-    (removeMostRelevant && title === UI_STRINGS.MOST_RELEVANT_TITLE);
+  if (removeGlobalShorts && title === UI_STRINGS.SHORTS_TITLE) return true;
+  if (!title || (!removeTopLiveGames && !removeMostRelevant)) return false;
+  // Once per shelf, and only with one of the two filters on.
+  const key = title.trim().toLowerCase();
+  return (removeTopLiveGames && SHELF_TITLES.TOP_LIVE_GAMES.has(key)) ||
+    (removeMostRelevant && SHELF_TITLES.MOST_RELEVANT.has(key));
 }
 
 // Counts carried through one section's item lists: the items they had and the
