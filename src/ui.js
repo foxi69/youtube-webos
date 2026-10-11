@@ -1222,13 +1222,14 @@ function playPauseLogic(video) {
                         }
                     }, 250);
                 }
-                
-                // Cleanup CSS and overlay
-                setTimeout(() => {
-                  document.body.classList.remove('ytaf-hide-controls');
-                  if (watchOverlay) watchOverlay.style.opacity = '';
-                }, 750);
             }
+
+            // Cleanup CSS and overlay (on Shorts too, or the controls and the
+            // clock stay hidden after leaving them)
+            setTimeout(() => {
+              document.body.classList.remove('ytaf-hide-controls');
+              if (watchOverlay) watchOverlay.style.opacity = '';
+            }, 750);
         }
     }
 }
