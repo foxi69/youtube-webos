@@ -510,6 +510,7 @@ class SponsorBlockHandler {
                 if (config[configKey] !== 'disable') this.activeCategories.add(cat);
             }
             this.rebuildSkipSegments();
+            this._startBarWatch();
             this.drawOverlay();
             this.updateLabels();
         };
@@ -735,6 +736,7 @@ class SponsorBlockHandler {
             
             // Explicitly draw overlay now that data is ready
             // (checkForProgressBar might have run when segments were empty)
+            this._startBarWatch();
             this.drawOverlay();
             this.updateLabels();
 
@@ -947,11 +949,34 @@ class SponsorBlockHandler {
             this.jumpToNextHighlight();
         }
 
-        if (!this._barObserverStarted) {
-            this._barObserverStarted = true;
-            this.observePlayerUI();
-            this.checkForProgressBar();
-        }
+        this._startBarWatch();
+    }
+
+    /** Whether drawOverlay() would draw a mark for this segment. */
+    _isDrawable(segment, config) {
+        // A full-video label spans [0, 0] and would draw a zero-width bar.
+        if (isFullVideoSegment(segment)) return false;
+        const mode = segment.category === 'poi_highlight'
+            ? config.sbMode_highlight
+            : config[CONFIG_MAPPING[segment.category]];
+        return !!mode && mode !== 'disable';
+    }
+
+    /**
+     * PERF: the bar is only watched once there is something to draw on it. A
+     * video with no segments (kept alive by the periodic refresh) or only a
+     * whole-video label used to run the observers, the bar poll and the
+     * overlay machinery for nothing. Called when the <video> is bound, when
+     * segments arrive or change, and when a setting changes; once started it
+     * stays on for the video.
+     */
+    _startBarWatch() {
+        if (this._barObserverStarted || this.isDestroyed || !this.segments.length) return;
+        const config = configGetAll();
+        if (!this.segments.some(seg => this._isDrawable(seg, config))) return;
+        this._barObserverStarted = true;
+        this.observePlayerUI();
+        this.checkForProgressBar();
     }
 
     _disconnectBarObservers() {
@@ -1090,18 +1115,25 @@ class SponsorBlockHandler {
             this._rebindVideo();
         }
 
+        if (!this._barObserverStarted) return;
+
         this._ensureObserverAlive();
 
-        // Check if both the overlay AND the tracked progress bar are ACTUALLY in the DOM
-        if (this.overlay && this.overlay.isConnected &&
-            this.progressBar && this.progressBar.isConnected) {
-            
-            // Ensure the sibling overlay syncs visibility when attributes mutate
-            const { container, asSibling } = this._getProgressBarAnchor();
-            if (asSibling && container) {
-                this._syncOverlayPosition(container);
+        // PERF: cheap path keyed on the tracked bar still being in the DOM.
+        // Re-sync only when there is an overlay; a bar drawn with nothing to
+        // show (every segment filtered out) needs no re-acquire either - it
+        // used to run the selector list, getComputedStyle and a full overlay
+        // rebuild on every mutation. Input changes call drawOverlay() directly.
+        if (this.progressBar && this.progressBar.isConnected) {
+            if (this.overlay && this.overlay.isConnected) {
+                // Ensure the sibling overlay syncs visibility when attributes mutate
+                const { container, asSibling } = this._getProgressBarAnchor();
+                if (asSibling && container) {
+                    this._syncOverlayPosition(container);
+                }
+                return;
             }
-            return;
+            if (!this.overlay && this.lastOverlayHash !== null) return;
         }
 
         // If the overlay was orphaned or wiped, clear it so drawOverlay creates a fresh one
@@ -1174,7 +1206,7 @@ class SponsorBlockHandler {
     }
 
     drawOverlay() {
-        if (this.isDestroyed || !this.segments.length) return;
+        if (this.isDestroyed || !this._barObserverStarted || !this.segments.length) return;
 
         // FIX (replay): a detached progressBar is still truthy. Drawing against
         // it inserted the overlay into an orphaned subtree — which is why the
@@ -1206,21 +1238,12 @@ class SponsorBlockHandler {
         if (this.overlay) this.overlay.remove();
 
         const fragment = document.createDocumentFragment();
-        const highlightMode = config.sbMode_highlight;
 
         const len = this.segments.length;
         for (let i = 0; i < len; i++) {
             const segment = this.segments[i];
-            // A full-video label spans [0, 0] and would draw a zero-width bar.
-            if (isFullVideoSegment(segment)) continue;
+            if (!this._isDrawable(segment, config)) continue;
             const isHighlight = segment.category === 'poi_highlight';
-
-            if (isHighlight) {
-                if (!highlightMode || highlightMode === 'disable') continue;
-            } else {
-                const mode = config[CONFIG_MAPPING[segment.category]];
-                if (!mode || mode === 'disable') continue;
-            }
 
             // Destructuring avoidance for speed, plus batch styling execution
             const start = segment.segment[0];
@@ -1728,6 +1751,8 @@ class SponsorBlockHandler {
         if (video && video.duration && !isNaN(video.duration)) this.processSegments(video.duration);
         this.rebuildSkipSegments();
         sponsorBlockUI.updateSegments(this.segments.filter(s => !isFullVideoSegment(s)));
+        // The first drawable segments of a video that had none start the bar watch.
+        this._startBarWatch();
         this.lastOverlayHash = null;
         this.drawOverlay();
         this.updateLabels();
