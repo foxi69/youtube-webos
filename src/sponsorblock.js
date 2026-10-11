@@ -450,26 +450,34 @@ class SponsorBlockHandler {
         this.currentManualSegment = null;
     }
 
-    // O(log N) - Finds segment containing time
+    // Index of the segment containing time, or -1. Segments overlap (a
+    // self-promo inside a sponsor, say), so this is a scan, not a binary
+    // search: that one missed the outer segment once the probe landed on a
+    // nested one already behind. When several contain the time a manual one
+    // wins, since a skip must stop there. From mirijanristic's fork.
     findSegmentAtTime(time) {
-        if (this.skipSegments.length === 0) return -1;
-
-        let left = 0;
-        let right = this.skipSegments.length - 1;
-
-        while (left <= right) {
-            const mid = (left + right) >>> 1;
-            const seg = this.skipSegments[mid];
-
-            if (time >= seg.start && time < seg.end) {
-                return mid;
-            } else if (time < seg.start) {
-                right = mid - 1;
-            } else {
-                left = mid + 1;
-            }
+        let found = -1;
+        for (let i = 0; i < this.skipSegments.length; i++) {
+            const seg = this.skipSegments[i];
+            if (seg.start > time) break;
+            if (time >= seg.end) continue;
+            if (seg.mode === 'manual_skip') return i;
+            if (found === -1) found = i;
         }
-        return -1;
+        return found;
+    }
+
+    // Points nextSegmentIndex/nextSegmentStart at the segment holding time,
+    // or else the next one to start.
+    aimPast(time) {
+        const inside = this.findSegmentAtTime(time);
+        this.nextSegmentIndex = inside !== -1 ? inside : this.findNextSegmentIndex(time);
+        if (this.nextSegmentIndex < this.skipSegments.length) {
+            this.nextSegmentStart = this.skipSegments[this.nextSegmentIndex].start;
+        } else {
+            this.nextSegmentStart = Infinity;
+            this.toggleTimeListener(false);
+        }
     }
 
     // O(log N) - Finds first segment starting after or at time
@@ -1329,20 +1337,24 @@ class SponsorBlockHandler {
             return;
         }
 
-        // Check the predicted segment index first (O(1)) before Binary Search (O(log N))
+        // The predicted segment is trusted outright only when it is a manual
+        // one holding the playhead; otherwise the scan decides, since a manual
+        // segment nested in the predicted one takes precedence.
         let segmentIdx = -1;
         const expectedSeg = this.skipSegments[this.nextSegmentIndex];
 
         if (expectedSeg && currentTime >= expectedSeg.start) {
-			// Only apply the 1.5s frame drop gap to auto_skip segments
-			const isAutoSkip = expectedSeg.mode === 'auto_skip';
-			if (currentTime < expectedSeg.end || (isAutoSkip && (currentTime - expectedSeg.end) < 1.5)) {
-				segmentIdx = this.nextSegmentIndex;
-			} else {
-				// Fallback to Binary Search
-				segmentIdx = this.findSegmentAtTime(currentTime);
-			}
-		}
+            if (expectedSeg.mode === 'manual_skip' && currentTime < expectedSeg.end) {
+                segmentIdx = this.nextSegmentIndex;
+            } else {
+                segmentIdx = this.findSegmentAtTime(currentTime);
+                // Only apply the 1.5s frame drop gap to auto_skip segments
+                if (segmentIdx === -1 && expectedSeg.mode === 'auto_skip' &&
+                    currentTime - expectedSeg.end < 1.5) {
+                    segmentIdx = this.nextSegmentIndex;
+                }
+            }
+        }
 
         if (segmentIdx === -1) {
             // We aren't in a segment. Since resetSegmentTracking was correct, 
@@ -1414,6 +1426,11 @@ class SponsorBlockHandler {
             const next = this.skipSegments[i];
 
             if (next.mode !== 'auto_skip') {
+                // A manual segment already behind the playhead has had its
+                // turn: stopping at its start sent the skip backwards, into
+                // the outer segment again, and the "Skipped" toast repeated
+                // ~4 times a second while nothing was skipped.
+                if (next.end <= currentTime) continue;
                 if (next.start < jumpTarget) {
                     jumpTarget = next.start;
                 }
@@ -1430,11 +1447,6 @@ class SponsorBlockHandler {
             return;
         }
 
-        this.lastSkipTime = currentTime;
-        this.lastSkippedSegmentIndex = segmentIdx;
-        
-        segmentsToMark.forEach(idx => { this.skippedSegmentIndices.add(idx); });
-
         if (this.isLegacyWebOSVer) {
             const duration = this.video.duration;
             if (jumpTarget >= duration - 0.5) {
@@ -1442,11 +1454,21 @@ class SponsorBlockHandler {
             }
         }
 
-        if (jumpTarget > currentTime + 0.05) {
-            this.isSkipping = true;
-            this._armSkipWatchdog();
-            this.video.currentTime = jumpTarget;
+        if (jumpTarget <= currentTime + 0.05) {
+            // Nothing ahead to skip: the segment ends here, or a manual one
+            // starts here. Aim past it without booking or announcing a skip.
+            this.aimPast(jumpTarget);
+            return;
         }
+
+        this.lastSkipTime = currentTime;
+        this.lastSkippedSegmentIndex = segmentIdx;
+        
+        segmentsToMark.forEach(idx => { this.skippedSegmentIndices.add(idx); });
+
+        this.isSkipping = true;
+        this._armSkipWatchdog();
+        this.video.currentTime = jumpTarget;
 
         if (!this.isLegacyWebOSVer) {
             const timeRemaining = this.video.duration - this.video.currentTime;
@@ -1455,24 +1477,8 @@ class SponsorBlockHandler {
             }
         }
 
-        this.nextSegmentIndex = segmentIdx + 1;
-        // Re-find next index properly via binary search just to be safe after a skip
-        const targetSegIdx = this.findSegmentAtTime(jumpTarget);
-        
-        if (targetSegIdx !== -1) {
-            // We landed exactly inside a manual segment (or another adjacent segment)
-            this.nextSegmentIndex = targetSegIdx;
-            this.nextSegmentStart = this.skipSegments[targetSegIdx].start;
-        } else {
-            // No immediate segment, look for the next upcoming one
-            this.nextSegmentIndex = this.findNextSegmentIndex(jumpTarget);
-            if (this.nextSegmentIndex < this.skipSegments.length) {
-                this.nextSegmentStart = this.skipSegments[this.nextSegmentIndex].start;
-            } else {
-                this.nextSegmentStart = Infinity;
-                this.toggleTimeListener(false);
-            }
-        }
+        // The landing point may itself be inside a segment (a manual one, say).
+        this.aimPast(jumpTarget);
 
         this.requestAF(() => {
             const uniqueNames = [...new Set(skippedCategories)];
