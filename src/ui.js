@@ -934,8 +934,9 @@ function performBurstSeek(seconds, video) {
 	
     // Reset accumulators if direction changes (e.g. going from +15 to -15)
 	if ((seekAccumulator > 0 && seconds < 0) || (seekAccumulator < 0 && seconds > 0)) {
+        // Only the toast's running total restarts; the part not applied to
+        // the video yet still counts (+5, +5, -5 must move +5, not -5).
         seekAccumulator = 0;
-        pendingSeekOffset = 0; // Reset pending seek to prevent jitter
     }
 
     seekAccumulator += seconds;
@@ -967,7 +968,6 @@ function performBurstSeek(seconds, video) {
 
     seekResetTimer = setTimeout(() => {
         seekAccumulator = 0;
-        pendingSeekOffset = 0;
         activeSeekNotification = null;
         seekResetTimer = null;
     }, 1200);
