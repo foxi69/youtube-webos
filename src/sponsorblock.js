@@ -42,10 +42,13 @@ const CHAIN_SKIP_CONSTANTS = {
 // By the API's names: the settings' 'musicofftopic' is 'music_offtopic' on the
 // server. Requesting the settings' spelling silently returned none of them.
 // normalizeSegments() maps the answer back to the settings' name.
+// exclusive_access is a full-video label only (actionType 'full'): it has no
+// mode, so it never reaches the skip, mute or bar paths, but without asking
+// for it the "Exclusive Access" badge could never appear.
 const FETCH_CATEGORIES = encodeURIComponent(JSON.stringify([
     'sponsor', 'intro', 'outro', 'interaction', 'selfpromo',
     'music_offtopic', 'preview', 'chapter', 'poi_highlight',
-    'filler', 'hook'
+    'filler', 'hook', 'exclusive_access'
 ]));
 
 // Waits before asking again when both servers failed. An empty answer is an
