@@ -47,10 +47,10 @@ const PROBE_ATTEMPT_LIMIT = 4000;
 // without needing a scroll listener: while the user is moving, probes stay
 // parked and the network is left to the app.
 const PROBE_IDLE_DELAY = 1200;
-// Probes allowed past the idle gate on each parse, taken from the head of the
-// queue - i.e. the top of the response, i.e. what is on screen. Sized to about
-// one visible row so a grey tile is corrected in one probe round rather than
-// after the whole backlog drains.
+// Probes allowed past the idle gate on each parse: the first videos that parse
+// queued, which is the top of the response, which is what is on screen. Sized
+// to about one visible row so a grey tile is corrected in one probe round
+// rather than after the whole backlog drains.
 const PROBE_URGENT_BURST = 4;
 // Probes for tiles the app currently has rendered. These skip the idle gate
 // outright: an on-screen grey box is the whole reason verification exists, and
@@ -160,9 +160,15 @@ const qualityCache = new Map();
  * again.
  */
 const unconfirmed = new Set();
-/** Insertion-ordered probe backlog: videoId -> true. */
-const probeQueue = new Map();
-const inFlight = new Set();
+/** Insertion-ordered probe backlog of videoIds. */
+const probeQueue = new Set();
+// The videos the current parse queued; deferProbes() makes them the latest
+// parse and empties it.
+const queuedByParse = [];
+// The videos the latest parse queued: the only ones the urgent budget
+// (PROBE_URGENT_BURST per parse) is spent on, so a parse never pays for the
+// backlog of the ones before it.
+const latestParse = new Set();
 /**
  * Every videoId enqueued this session: one attempt each, answered or not. A
  * video the verification cache evicts is taken out, so it may be probed again
@@ -191,11 +197,18 @@ let saveTimer = null;
 let promoteTimer = null;
 let probePump = null;
 let probeTimer = null;
-let lastParseAt = 0;
-let urgentBudget = 0;
+// On a monotonic clock: a wall clock set back (the TV syncing its time) would
+// otherwise stretch the idle gate by however far it jumped.
+let lastParseAt = -Infinity;
+let urgentLeft = 0;
 let visibleBudget = 0;
 let visibleSample = null;
 let visibleSampleAt = 0;
+
+const now =
+  window.performance && typeof window.performance.now === 'function'
+    ? () => window.performance.now()
+    : () => Date.now();
 
 const idle =
   typeof window.requestIdleCallback === 'function'
@@ -655,12 +668,13 @@ export function upgradeResponseThumbnails(data, responseType) {
   // continuation is still evidence the surface is moving. drainProbes() reads
   // this to decide whether the app has gone quiet, so without it the whole
   // scroll gate is inert and probes drain straight into an active scroll.
-  lastParseAt = Date.now();
+  lastParseAt = now();
 
   // Checked before the switch: any response type can carry a continuation
   // alongside its own contents, and the type it gets classified as depends on
   // whichever signature detectResponseType() happens to test first.
   let changed = data.continuationContents ? upgradeContinuation(data) : 0;
+  let scanned = false;
 
   switch (responseType) {
     case 'HOME_BROWSE':
@@ -698,15 +712,18 @@ export function upgradeResponseThumbnails(data, responseType) {
       break;
     default:
       changed += scanForThumbnails(data);
-      if (changed) deferProbes();
-      return changed;
+      scanned = true;
   }
 
   // A known response type that yielded nothing means the shape moved.
-  if (changed === 0) changed += scanForThumbnails(data);
+  if (changed === 0 && !scanned) changed += scanForThumbnails(data);
 
   if (DEBUG && changed) debugLog(`${responseType}: rewrote ${changed} thumbnail URLs`);
-  if (changed) deferProbes();
+  // Not gated on `changed`: a response that rewrote nothing can still have
+  // queued probes (a URL already at its rung), and those must start now rather
+  // than wait for some later parse that happens to change a URL. deferProbes()
+  // returns at once when the queue is empty.
+  deferProbes();
   // Scrolling is what brings a stale tile on screen, and scrolling is what
   // produces parses - so this is the cheapest possible trigger for a retry.
   if (pendingPromotions.size > 0 && !promoteTimer) {
@@ -810,7 +827,8 @@ function scheduleProbe(videoId) {
   if (probeAttempted.has(videoId)) return;
   if (probeAttempted.size >= PROBE_ATTEMPT_LIMIT) return;
   probeAttempted.add(videoId);
-  probeQueue.set(videoId, true);
+  probeQueue.add(videoId);
+  queuedByParse.push(videoId);
 }
 
 /**
@@ -849,7 +867,6 @@ function settledRank(videoId, resolved) {
 }
 
 function onProbeDone(videoId, rank) {
-  inFlight.delete(videoId);
   // Correcting a tile changes what is on screen, so the cached sample is stale.
   visibleSample = null;
   activeProbes--;
@@ -900,17 +917,27 @@ function onProbeDone(videoId, rank) {
 }
 
 /**
- * Called from the parse. The head of the queue is the top of the response - what
- * the user is looking at - so a small burst goes through immediately; the tail
- * waits for the surface to settle.
+ * Called from the parse. The first videos this parse queued are the top of the
+ * response - what the user is looking at - so a small burst of them goes
+ * through immediately; everything else waits for the surface to settle.
  */
 function deferProbes() {
-  if (!enabled || probeQueue.size === 0) return;
-  urgentBudget = PROBE_URGENT_BURST;
+  if (!enabled || probeQueue.size === 0) {
+    queuedByParse.length = 0;
+    return;
+  }
+  // A parse that queued nothing (a small response among the ones the surface
+  // keeps fetching) leaves the latest parse and its budget as they are: its
+  // head is still the freshest content on screen.
+  if (queuedByParse.length > 0) {
+    latestParse.clear();
+    for (let i = 0; i < queuedByParse.length; i++) latestParse.add(queuedByParse[i]);
+    queuedByParse.length = 0;
+    urgentLeft = PROBE_URGENT_BURST;
+  }
   visibleBudget = PROBE_VISIBLE_BURST;
   drainProbes();
-  if (probeTimer) clearTimeout(probeTimer);
-  probeTimer = setTimeout(drainProbes, PROBE_IDLE_DELAY);
+  if (!probeTimer) probeTimer = setTimeout(drainProbes, PROBE_IDLE_DELAY);
 }
 
 /**
@@ -923,8 +950,8 @@ function deferProbes() {
  * Reading .style.backgroundImage touches no layout at all.
  */
 function sampleRenderedIds() {
-  const now = Date.now();
-  if (visibleSample && now - visibleSampleAt < VISIBLE_SAMPLE_TTL) return visibleSample;
+  const at = now();
+  if (visibleSample && at - visibleSampleAt < VISIBLE_SAMPLE_TTL) return visibleSample;
 
   let nodes;
   try {
@@ -949,7 +976,7 @@ function sampleRenderedIds() {
   }
 
   visibleSample = ids;
-  visibleSampleAt = now;
+  visibleSampleAt = at;
   return ids;
 }
 
@@ -964,17 +991,93 @@ function sameIds(a, b) {
   return true;
 }
 
-/** First queued id that is on screen, else the head of the queue. */
-function nextProbeId(rendered) {
-  if (rendered && rendered.size > 0) {
-    const iterator = probeQueue.keys();
-    let step = iterator.next();
-    while (!step.done) {
-      if (rendered.has(step.value)) return step.value;
-      step = iterator.next();
-    }
+/** Appends to `picked`, up to `limit`, the ids of `set` that are queued and not picked yet. */
+function takeFrom(set, picked, limit) {
+  const iterator = set.values();
+  let step = iterator.next();
+  while (!step.done && picked.length < limit) {
+    const id = step.value;
+    if (probeQueue.has(id) && picked.indexOf(id) === -1) picked.push(id);
+    step = iterator.next();
   }
-  return probeQueue.keys().next().value;
+}
+
+/**
+ * Up to `limit` queued ids: the on-screen ones first, then the latest parse's in
+ * the order it queued them, then the head of the queue. Each tier is read from
+ * its own small set against the queue, so a pick costs the size of those sets
+ * plus `limit`, not a pass over the whole queue (up to PROBE_ATTEMPT_LIMIT ids,
+ * drained three at a time).
+ */
+function pickProbeIds(rendered, limit) {
+  const picked = [];
+  if (limit <= 0) return picked;
+  if (rendered) takeFrom(rendered, picked, limit);
+  if (picked.length < limit) takeFrom(latestParse, picked, limit);
+  if (picked.length < limit) takeFrom(probeQueue, picked, limit);
+  return picked;
+}
+
+/**
+ * Whether a picked video may go now, spending the budget of its tier. On-screen
+ * work goes now, the latest parse's head next, everything else waits for the
+ * surface to settle so it never competes with an active scroll. A tile one tier
+ * refuses falls through to the tiers below rather than holding the queue.
+ */
+function admitToTier(videoId, onScreen) {
+  if (onScreen && visibleBudget > 0) {
+    visibleBudget--;
+    return true;
+  }
+  if (urgentLeft > 0 && latestParse.has(videoId)) {
+    urgentLeft--;
+    return true;
+  }
+  return now() - lastParseAt >= PROBE_IDLE_DELAY;
+}
+
+function startProbe(videoId, onScreen) {
+  probeQueue.delete(videoId);
+  latestParse.delete(videoId);
+  if (qualityCache.has(videoId)) return;
+  activeProbes++;
+  resolveQuality(videoId, onScreen).then(
+    (rank) => onProbeDone(videoId, rank),
+    () => onProbeDone(videoId, null)
+  );
+}
+
+/** One round of the queue, from the idle callback: as many probes as the slots and tiers allow. */
+function runProbeRound() {
+  probePump = null;
+  if (!enabled || document.hidden) return;
+
+  // Every slot taken: the probe that lands next drains again.
+  const limit = MAX_CONCURRENT_PROBES - activeProbes;
+  if (limit <= 0) return;
+
+  // Document order is a decent proxy for visibility at first paint and a poor
+  // one afterwards: scroll far enough and the tiles on screen sit behind a few
+  // hundred earlier entries, which at three concurrent probes is minutes of
+  // waiting for a correction the user is looking at right now.
+  const rendered = probeQueue.size >= VISIBILITY_SORT_MIN_QUEUE ? sampleRenderedIds() : null;
+  const ids = pickProbeIds(rendered, limit);
+  let heldByIdle = false;
+  for (let i = 0; i < ids.length; i++) {
+    const onScreen = rendered ? rendered.has(ids[i]) : false;
+    if (!admitToTier(ids[i], onScreen)) {
+      heldByIdle = true;
+      continue;
+    }
+    startProbe(ids[i], onScreen);
+  }
+
+  // Whatever the gate held back gets picked up once the surface goes quiet:
+  // for the idle gate that is the rest of its delay, not a whole new one.
+  if (probeQueue.size > 0 && !probeTimer) {
+    const delay = heldByIdle ? Math.max(50, PROBE_IDLE_DELAY - (now() - lastParseAt)) : PROBE_IDLE_DELAY;
+    probeTimer = setTimeout(drainProbes, delay);
+  }
 }
 
 function drainProbes() {
@@ -983,47 +1086,7 @@ function drainProbes() {
     probeTimer = null;
   }
   if (!enabled || probePump || probeQueue.size === 0) return;
-
-  probePump = idle(() => {
-    probePump = null;
-    if (!enabled || document.hidden) return;
-
-    // Document order is a decent proxy for visibility at first paint and a poor
-    // one afterwards: scroll far enough and the tiles on screen sit behind a
-    // few hundred earlier entries, which at three concurrent probes is minutes
-    // of waiting for a correction the user is looking at right now.
-    const rendered = probeQueue.size >= VISIBILITY_SORT_MIN_QUEUE ? sampleRenderedIds() : null;
-
-    while (activeProbes < MAX_CONCURRENT_PROBES && probeQueue.size > 0) {
-      const videoId = nextProbeId(rendered);
-      const onScreen = rendered ? rendered.has(videoId) : false;
-
-      // Two tiers, which is the debounce split expressed through the gate that
-      // is already here: on-screen work goes now, everything else waits for the
-      // surface to settle so it never competes with an active scroll.
-      if (onScreen) {
-        if (visibleBudget <= 0) break;
-        visibleBudget--;
-      } else if (urgentBudget > 0) {
-        urgentBudget--;
-      } else if (Date.now() - lastParseAt < PROBE_IDLE_DELAY) {
-        break;
-      }
-
-      probeQueue.delete(videoId);
-      if (qualityCache.has(videoId)) continue;
-
-      inFlight.add(videoId);
-      activeProbes++;
-      resolveQuality(videoId, onScreen).then(
-        (rank) => onProbeDone(videoId, rank),
-        () => onProbeDone(videoId, null)
-      );
-    }
-
-    // Whatever the gate held back gets picked up once the surface goes quiet.
-    if (probeQueue.size > 0 && !probeTimer) probeTimer = setTimeout(drainProbes, PROBE_IDLE_DELAY);
-  });
+  probePump = idle(runProbeRound);
 }
 
 // --- Live promotion -------------------------------------------------------
@@ -1114,7 +1177,9 @@ export function cleanup() {
   pendingEntries.clear();
   provenFloor.clear();
   promotionAttempts.clear();
-  urgentBudget = 0;
+  queuedByParse.length = 0;
+  latestParse.clear();
+  urgentLeft = 0;
   probeAttempted.clear();
   if (probeTimer) {
     clearTimeout(probeTimer);
