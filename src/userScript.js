@@ -20,6 +20,7 @@ import { isWebOS25, simulatorMode } from './webos-utils.js';
 import { initBlockWebOSCast } from './block-webos-cast';
 import './app_api/index';
 import './ui.js'; // Registers the green-key handler, options panel, video-quality, global styles
+import './keyboard-search.js';
 import './sponsorblock.js';
 import './emoji-font.js';
 import './screensaver-fix.js';

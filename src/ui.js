@@ -681,7 +681,7 @@ function createOptionsPanel() {
   createConfigCheckbox('enableReturnYouTubeDislike')]));
   // The logo in the header also cycles the theme, but a remote cannot focus
   // it, so the setting needs a row of its own to be reachable on a TV.
-  const interfaceGroup = [createAlignedCycleControl('uiTheme', uiThemes), createConfigCheckbox('enableAutoLogin'), createConfigCheckbox('autoSelectAccount'), createConfigCheckbox('upgradeThumbnails'), createThumbnailQualityControl(), createLogoControl(), createConfigCheckbox('showWatch'), createConfigCheckbox('enableOledCareMode'), createConfigCheckbox('disableNotifications'), createConfigCheckbox('loadRowsAhead')];
+  const interfaceGroup = [createAlignedCycleControl('uiTheme', uiThemes), createConfigCheckbox('enableAutoLogin'), createConfigCheckbox('autoSelectAccount'), createConfigCheckbox('upgradeThumbnails'), createThumbnailQualityControl(), createLogoControl(), createConfigCheckbox('showWatch'), createConfigCheckbox('enableOledCareMode'), createConfigCheckbox('disableNotifications'), createConfigCheckbox('loadRowsAhead'), createConfigCheckbox('keyboardSearch')];
   // The cast block only exists on webOS 25 (see userScript.js).
   if (isWebOS25()) interfaceGroup.push(createConfigCheckbox('blockWebosCast'));
   // --- Page 3: Interface ---
