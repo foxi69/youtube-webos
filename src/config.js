@@ -160,6 +160,9 @@ const configOptions = new Map([
   //['enablePlaybackSpeed', { default: true, desc: 'Playback Speed Control' }],
   ['blockWebosCast', { default: true, desc: 'Block webOS Cast Service (webOS 25)' }],
   ['disableNotifications', { default: false, desc: 'Disable Notifications' }],
+  // A fox button in the top-right corner that the Magic Remote pointer can
+  // click to open the panel: for remotes with no colour buttons (#189).
+  ['pointerSettingsButton', { default: true, desc: 'Settings Button for the Pointer' }],
   ['disableAnimations', { default: false, desc: 'Disable Animations' }],
   // Percent, 40-100 in steps of 10: dims the browse UI, never the video.
   ['uiBrightness', { default: 100, desc: 'UI Brightness' }]

@@ -734,7 +734,7 @@ function createOptionsPanel() {
   createConfigCheckbox('enableReturnYouTubeDislike')]));
   // The logo in the header also cycles the theme, but a remote cannot focus
   // it, so the setting needs a row of its own to be reachable on a TV.
-  const interfaceGroup = [createAlignedCycleControl('uiTheme', uiThemes), createConfigCheckbox('enableAutoLogin'), createConfigCheckbox('autoSelectAccount'), createConfigCheckbox('upgradeThumbnails'), createThumbnailQualityControl(), createLogoControl(), createConfigCheckbox('showWatch'), createConfigCheckbox('enableOledCareMode'), createConfigCheckbox('disableNotifications'), createConfigCheckbox('loadRowsAhead'), createConfigCheckbox('disableAnimations')];
+  const interfaceGroup = [createAlignedCycleControl('uiTheme', uiThemes), createConfigCheckbox('enableAutoLogin'), createConfigCheckbox('autoSelectAccount'), createConfigCheckbox('upgradeThumbnails'), createThumbnailQualityControl(), createLogoControl(), createConfigCheckbox('showWatch'), createConfigCheckbox('enableOledCareMode'), createConfigCheckbox('disableNotifications'), createConfigCheckbox('loadRowsAhead'), createConfigCheckbox('pointerSettingsButton'), createConfigCheckbox('disableAnimations')];
   // The cast block only exists on webOS 25 (see userScript.js).
   if (isWebOS25()) interfaceGroup.push(createConfigCheckbox('blockWebosCast'));
   // --- Page 3: Interface ---
@@ -1913,8 +1913,8 @@ configAddChangeListener('videoShelfOpacity', () => {
 //
 // A dark layer over the browse UI (home, search, channels...), never over the
 // watch page or Shorts, so the video itself is not dimmed. It lets every
-// pointer event through, and it sits under the settings panel, notifications
-// and the clock (ui.css), so only YouTube's own UI dims.
+// pointer event through, and it sits under the settings panel, notifications,
+// the clock and the pointer button (ui.css), so only YouTube's own UI dims.
 let dimOverlay = null;
 function syncUiBrightness() {
   const brightness = Number(configRead('uiBrightness')) || 100;
@@ -1933,6 +1933,78 @@ function syncUiBrightness() {
 }
 configAddChangeListener('uiBrightness', syncUiBrightness);
 window.addEventListener('ytaf-page-update', syncUiBrightness);
+
+// --- Settings button for the Magic Remote pointer ---
+//
+// Remotes with no colour buttons (the LG MR26, NicholasBly/youtube-webos#189)
+// had no way into the panel. A fox button in the top-right corner shows while
+// the pointer is in use - on a real move, never on its own - and fades a few
+// seconds after the last one, or as soon as webOS hides the pointer. A click
+// opens or closes the panel. It is a plain <div> with no tabindex (tabIndex
+// -1) and takes no focus on click, so neither D-pad navigation nor YouTube's
+// focus model can ever land on it.
+const POINTER_BUTTON_HIDE_MS = 4000;
+let pointerButton = null;
+let pointerButtonTimer = 0;
+let lastPointerX = -1;
+let lastPointerY = -1;
+
+function hidePointerButton() {
+  clearTimeout(pointerButtonTimer);
+  if (pointerButton) pointerButton.classList.remove('ytaf-visible');
+}
+
+function createPointerButton() {
+  const swallow = (evt) => { evt.preventDefault(); evt.stopPropagation(); };
+  const btn = createElement('div', {
+    id: 'ytaf-pointer-btn',
+    title: 'YouTube Extended settings',
+    events: {
+      // preventDefault keeps focus where it is (no blur of the panel's row).
+      mousedown: swallow,
+      mouseup: swallow,
+      click: (evt) => {
+        swallow(evt);
+        showOptionsPanel(!optionsPanelVisible);
+        showPointerButton();
+      }
+    }
+  }, createElement('img', { src: logoOrangeUrl, alt: '' }));
+  btn.setAttribute('role', 'button');
+  document.body.appendChild(btn);
+  return btn;
+}
+
+function showPointerButton() {
+  if (!configRead('pointerSettingsButton') || !document.body) return;
+  if (!pointerButton) pointerButton = createPointerButton();
+  pointerButton.classList.toggle('ytaf-below-clock', !!configRead('showWatch'));
+  pointerButton.classList.add('ytaf-visible');
+  clearTimeout(pointerButtonTimer);
+  pointerButtonTimer = setTimeout(hidePointerButton, POINTER_BUTTON_HIDE_MS);
+}
+
+document.addEventListener('mousemove', (evt) => {
+  // Chrome sends a synthetic mousemove with unchanged coordinates when the
+  // page scrolls under a resting pointer; only a real move counts.
+  if (evt.clientX === lastPointerX && evt.clientY === lastPointerY) return;
+  lastPointerX = evt.clientX;
+  lastPointerY = evt.clientY;
+  showPointerButton();
+}, true);
+// webOS reports the pointer appearing and disappearing (it hides on a D-pad
+// press or after a few idle seconds).
+document.addEventListener('cursorStateChange', (evt) => {
+  if (evt.detail && evt.detail.visibility === false) hidePointerButton();
+});
+window.addEventListener('keydown', (evt) => {
+  if (evt.keyCode in ARROW_KEY_CODE) hidePointerButton();
+}, true);
+// Picking a video with the pointer must not leave the button over it.
+window.addEventListener('ytaf-page-update', (evt) => {
+  if (evt.detail.isWatch || evt.detail.isShorts) hidePointerButton();
+});
+configAddChangeListener('pointerSettingsButton', (evt) => { if (!evt.detail.newValue) hidePointerButton(); });
 
 // Apply initial states on boot
 syncUiBrightness();

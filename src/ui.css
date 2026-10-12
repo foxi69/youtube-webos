@@ -779,3 +779,49 @@
   z-index: 999;
   display: none;
 }
+
+/* ---------------------------------------------------------------------------
+   Settings button for the Magic Remote pointer (ui.js showPointerButton).
+   Top-right; moved under the clock when Display Time in UI is on. Above the
+   panel so it can close it too. */
+#ytaf-pointer-btn {
+  position: fixed;
+  top: 2.8vh;
+  right: 2.8vh;
+  width: 7.4vh;
+  height: 7.4vh;
+  border-radius: 50%;
+  background: rgba(26, 16, 8, 0.85);
+  border: 0.28vh solid #ff8c2a;
+  box-shadow: 0 0.4vh 1.5vh rgba(0, 0, 0, 0.5);
+  z-index: 1001;
+  display: none;
+  cursor: pointer;
+  -webkit-transition: -webkit-transform 0.15s ease, background-color 0.15s ease;
+  transition: transform 0.15s ease, background-color 0.15s ease;
+}
+
+#ytaf-pointer-btn.ytaf-visible {
+  display: block;
+}
+
+#ytaf-pointer-btn.ytaf-below-clock {
+  top: 9vh;
+}
+
+#ytaf-pointer-btn:hover {
+  background: rgba(255, 122, 26, 0.35);
+  -webkit-transform: scale(1.1);
+  transform: scale(1.1);
+}
+
+#ytaf-pointer-btn img {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 5vh;
+  height: 5vh;
+  margin: -2.5vh 0 0 -2.5vh;
+  object-fit: contain;
+  pointer-events: none;
+}
