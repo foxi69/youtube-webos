@@ -736,7 +736,7 @@ function createOptionsPanel() {
   createConfigCheckbox('enableReturnYouTubeDislike')]));
   // The logo in the header also cycles the theme, but a remote cannot focus
   // it, so the setting needs a row of its own to be reachable on a TV.
-  const interfaceGroup = [createAlignedCycleControl('uiTheme', uiThemes), createConfigCheckbox('enableAutoLogin'), createConfigCheckbox('autoSelectAccount'), createConfigCheckbox('upgradeThumbnails'), createThumbnailQualityControl(), createLogoControl(), createConfigCheckbox('showWatch'), createConfigCheckbox('enableOledCareMode'), createConfigCheckbox('disableNotifications'), createConfigCheckbox('loadRowsAhead')];
+  const interfaceGroup = [createAlignedCycleControl('uiTheme', uiThemes), createConfigCheckbox('enableAutoLogin'), createConfigCheckbox('autoSelectAccount'), createConfigCheckbox('upgradeThumbnails'), createThumbnailQualityControl(), createLogoControl(), createConfigCheckbox('showWatch'), createConfigCheckbox('enableOledCareMode'), createConfigCheckbox('disableNotifications'), createConfigCheckbox('loadRowsAhead'), createConfigCheckbox('disableAnimations')];
   // The cast block only exists on webOS 25 (see userScript.js).
   if (isWebOS25()) interfaceGroup.push(createConfigCheckbox('blockWebosCast'));
   // --- Page 3: Interface ---
@@ -1754,13 +1754,36 @@ function initGlobalStyles() {
             background-color: rgba(0, 0, 0, 0.3) !important;
         }
         body .ytLrWatchDefault2025Shadow { background-color: rgba(11, 11, 11, 0.5) !important; }
+
+        /* Disable Animations. Scoped to YouTube's own app root, so the settings
+           panel, notifications and the clock (all on <body>) keep theirs.
+           Near-zero durations rather than "none": a transitionend or
+           animationend that YouTube waits for still fires, just at once.
+           Chrome 38 (webOS 3) only knows the -webkit- animation properties. */
+        html.ytaf-no-animations ytlr-app,
+        html.ytaf-no-animations ytlr-app *,
+        html.ytaf-no-animations ytlr-app *:before,
+        html.ytaf-no-animations ytlr-app *:after {
+            -webkit-transition-duration: 0.01ms !important;
+            transition-duration: 0.01ms !important;
+            -webkit-transition-delay: 0s !important;
+            transition-delay: 0s !important;
+            -webkit-animation-duration: 0.01ms !important;
+            animation-duration: 0.01ms !important;
+            -webkit-animation-delay: 0s !important;
+            animation-delay: 0s !important;
+            -webkit-animation-iteration-count: 1 !important;
+            animation-iteration-count: 1 !important;
+            scroll-behavior: auto !important;
+        }
     `;
     document.head.appendChild(style);
 
     const syncClass = (cls, key) => document.documentElement.classList.toggle(cls, !!configRead(key));
     const CLASS_KEYS = {
         'ytaf-fix-titles': 'fixMultilineTitles',
-        'ytaf-remove-borders': 'removeBlackBorders'
+        'ytaf-remove-borders': 'removeBlackBorders',
+        'ytaf-no-animations': 'disableAnimations'
     };
     for (const [cls, key] of Object.entries(CLASS_KEYS)) {
         syncClass(cls, key);

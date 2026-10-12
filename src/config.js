@@ -159,7 +159,8 @@ const configOptions = new Map([
   ['subtitleTranslateLang', { default: 'off', desc: 'Auto-Translate Subtitles' }],
   //['enablePlaybackSpeed', { default: true, desc: 'Playback Speed Control' }],
   ['blockWebosCast', { default: true, desc: 'Block webOS Cast Service (webOS 25)' }],
-  ['disableNotifications', { default: false, desc: 'Disable Notifications' }]
+  ['disableNotifications', { default: false, desc: 'Disable Notifications' }],
+  ['disableAnimations', { default: false, desc: 'Disable Animations' }]
 ]);
 
 // Register shortcut keys 0-9
