@@ -126,7 +126,8 @@ A „Teszt” oszlop értékei:
 | Felirat-fordítás | `subtitle-translate.js` | YouTube-válaszok | `tlang` paraméter a YouTube felirat-URL-jéhez | nem tesztelt (csak TV) |
 | Emoji- és karakterjavítás (`enableLegacyEmojiFix`, be; csak webOS 3/4) | `emoji-font.js` | DOM szöveg | képek: `cdnjs.cloudflare.com/.../twemoji/16.0.1/72x72/*.png`; CSS: `fonts.googleapis.com` | statikusan ellenőrizve; DOM-írás csak `textContent`-tel és `createElement`-tel |
 | Nyelvi beállítás javítása | `lang-settings-fix.ts:11, 54` | `PREF` cookie (`hl` mező), `.youtube.com` domain | nincs | statikusan ellenőrizve |
-| Kodekkényszerítés, videóminőség, lejátszási sebesség | `force-codec.js`, `video-quality.js`, `playback-speed.js` | `localStorage` (YouTube saját minőség-kulcsa) | nincs | [T-bench] `force-codec-test`: 48/48 sikeres; `settings-speed-test`: 0/1 |
+| Kodekkényszerítés, videóminőség | `force-codec.js`, `video-quality.js` | `localStorage` (YouTube saját minőség-kulcsa) | nincs | [T-bench] `force-codec-test`: 48/48 sikeres |
+| Lejátszási sebesség | `playback-speed.js` | – | – | **nincs a csomagban**: a modult semmi nem importálja (`ui.js:9` kikommentezve, `config.js:183` a beállítás is), a webpack-statisztikában sem szerepel; a `settings-speed-test` ezért nem tud lefutni |
 | Billentyűzetes keresés | `keyboard-search.js` | billentyűesemények csak a keresőoldalon | nincs; nem tárol és nem küld semmit | statikusan ellenőrizve |
 | Beállítópanel (zöld gomb, Magic Remote gomb) | `ui.js`, `config.js` | `localStorage`: `ytaf-configuration` | nincs | [T-bench] `panel-test`: sikertelen (elavult teszt, I-05); csak TV |
 | Óra, hátralévő idő, némított előnézet, kommentjavítás, logóstílus | `watch.js`, `time-remaining.js`, `mute-previews.js`, `comments-fix.js`, `logo-style.js` | DOM | logó: `www.gstatic.com` (YouTube-logó PNG) | nem tesztelt (csak TV) |
@@ -138,7 +139,7 @@ A repó saját tesztkészletének összesítése [T], a kiadott bundle-ön futta
 - Sikertelen: `modern-smoke` 7/14, `new-features-test` 18/21, `dependency-test`, `panel-test`, `spatnav-correctness`, `perfmon-test`.
 - A `smoke`, a `modern-smoke` és a `spatnav-correctness` sikertelen esetei a 0.8.6-ban eltávolított térbeli navigációs modulra (`src/spatial-navigation*.js`) hivatkoznak. Ezek a tesztek elavultak, nem a kód hibáját mutatják.
 - A `perfmon-test` a kiadásból szándékosan kihagyott `perf_mon` modult várja, ezért ott a hiba elvárt.
-- A többi sikertelen eset okát (`new-features-test`, `dependency-test`, `panel-test`, `module-behaviour-test`, `dislike-timing-test`, `settings-speed-test`) **nem tártam fel**. Ezek funkcionális hibát is jelezhetnek, de egyik sem érint hálózati vagy hitelesítési útvonalat. Ezeket a funkciókat ezért „nem ellenőrzöttnek” kell tekinteni (I-05).
+- A többi sikertelen eset okát (`new-features-test`, `dependency-test`, `panel-test`, `module-behaviour-test`, `dislike-timing-test`) a jelentés első változata idején nem tártam fel. Utólag kiderült, hogy mind elavult teszt volt, nem az app hibája (13. fejezet). A `settings-speed-test` a csomagban nem szereplő sebességfunkciót teszteli.
 
 ---
 
@@ -387,7 +388,7 @@ A `JSON.parse`, `JSON.stringify`, `fetch` és `XMLHttpRequest` globális felül�
 - **I-03:** A README a `dist/` mappát is letöltési forrásként ajánlja. Az ottani IPK-k hash-e eltér a `repo.json` hash-étől (tartalmuk azonos, 2.3), ezért a felhasználó nem tudja őket hash alapján ellenőrizni. Javaslat: csak a Releases oldalt ajánlani, vagy determinisztikus csomagolást használni.
 - **I-04:** Helyi nyomok: a `ytaf-thumb-quality` kulcs a böngészett videók azonosítóit tárolja `localStorage`-ben (csak bekapcsolt bélyegkép-javításnál), a `PREF` cookie-t 10 évre írja. Mindkettő a készüléken marad.
 - **I-05:**
-  - A repó `bench/` tesztjei részben elavultak (a 0.8.6-ban törölt térbeli navigációra hivatkoznak), több teszt felderítetlen okból sikertelen (4. fejezet), és a `jsdom` nem szerepel a függőségek között. Ezért a beállítópanel, a bélyegkép-javítás és a sebességmenü működése nem tekinthető igazoltnak.
+  - A repó `bench/` tesztjei részben elavultak (a 0.8.6-ban törölt térbeli navigációra hivatkoznak), több teszt felderítetlen okból sikertelen (4. fejezet), és a `jsdom` nem szerepel a függőségek között. Ezért a beállítópanel és a bélyegkép-javítás működése nem tekinthető igazoltnak. (Javítva, lásd 13. fejezet.)
   - A GitHub Actions lépései főverzió-taggel vannak hivatkozva (`@v7`), nem commit-SHA-val. A workflow-k `contents: write` jogot kapnak, `pull_request_target` nincs.
   - A `sync-upstream.yml` csak PR-t nyit, nem merge-el automatikusan.
 
@@ -483,3 +484,44 @@ A végső döntéshez szükséges a valós TV-n, tesztfiókkal végzett forgalom
 3. A `trustLevel: netcast` / `privilegedJail` tényleges Luna-hozzáférésének felmérése (F-09).
 4. Minden új verziónál: diff a vizsgált `0c9ca90`-hoz képest, reprodukálható build és hash-ellenőrzés.
 5. A harmadik fél szolgáltatók (RYD, `sponsorblock.inf.re`) adatkezelési gyakorlatának felülvizsgálata.
+
+---
+
+## 13. Javítások állapota (a v0.8.7 audit után)
+
+Ezek a változások a `claude/hopeful-darwin-4p3s81` ágon vannak, és **a v0.8.7 kiadásban még nincsenek benne**. A következő kiadással kerülnek a TV-re. A fenti 1–12. fejezet a v0.8.7 csomagra vonatkozik, és változatlanul érvényes rá.
+
+| Megállapítás | Állapot | Változás |
+|---|---|---|
+| F-01 Frissítési / ellátásilánc-bizalom | **nyitott – a kiadó beállításain múlik** | kódból nem javítható: az immutable release és az ágvédelem repóbeállítás, a build-attesztációt a kiadónak kell bevezetnie |
+| F-02 RYD alapértelmezetten be | **javítva** | `config.js`: `enableReturnYouTubeDislike` alapértéke `false`. Csak új telepítésre hat: meglévő mentett beállítás megtartja a korábbi értékét. A README beállítástáblája jelzi az adatküldést. |
+| F-03 Nem hivatalos SponsorBlock-tükör elsődlegesen | **javítva** | `sponsorblock.js`: elsődleges a hivatalos `sponsor.ajay.app`, a tükör (`sponsorblock.inf.re`) csak tartalék |
+| F-04 Automatikus fiókválasztás alapértelmezetten | **változatlan, szándékosan** | ez a funkció lényege, és helyi beállítás (nem küld adatot); közös TV-n a felhasználónak kell kikapcsolnia |
+| F-05 Manifest jogosultságok | **változatlan** | eltávolításuk valós TV-n tesztelés nélkül eltörheti a deep linket, a DIAL-t vagy a régi TV-ken a cross-origin kéréseket |
+| F-06 Indítási paraméterek a konzolnaplóban | **javítva** | `launch.js`, `userScript.js`: csak a paraméterek nevei kerülnek a naplóba. A `__ytaf_debug__` dump megmaradt: kézzel, devtoolsból kapcsolható, és aki devtoolshoz fér, a munkamenet adatait így is látja. |
+| F-07 Külső CDN webOS 3/4 alatt | **változatlan** | a twemoji-képkészlet túl nagy az IPK-hoz; a Google Fonts CSS-e user agentenként változik, ezért SRI-vel nem rögzíthető |
+| F-08 Build-eszközlánc sérülékenységei | **változatlan, a kiadó döntése szerint** | a `@webos-tools/cli` a legfrissebb (3.2.6), és csak a buildhez kell; a TV-re telepített csomagba nem kerül |
+| I-02 RYD URL-kódolás | **javítva** | `return-dislike.js`: `encodeURIComponent(videoID)` |
+| I-03 `dist/` csomagok hash-e | **dokumentálva** | a README a Releases oldalt ajánlja, és jelzi, hogy a `dist/` hash-e eltér a `repo.json`-étól |
+| I-05 Elavult tesztek | **javítva** | lásd lent |
+
+**A tesztek javítása (I-05):**
+
+- A „sikertelen” panel-, függőség- és új-funkció-tesztek valódi oka az volt, hogy az app szándékosan figyelmen kívül hagyja a nem megbízható (`isTrusted === false`) billentyűeseményeket (`ui.js` `isSyntheticKey`, v0.8.7-ben az 1553. sor). A jsdom `dispatchEvent()` pedig mindig ilyet küld, így ezek a tesztek a beállítópanelt soha meg sem nyitották.
+- Új segédfüggvény (`bench/chrome38-env.cjs` `dispatchTrusted`) a távirányítóhoz hasonlóan megbízható eseményt küld.
+- A tesztek a jelenlegi kódot követik:
+  - hattabos beállítópanel;
+  - a bélyegképeket a modul már a JSON-válaszban javítja, nem a DOM-ban;
+  - a „4.3k” formátum 0.8.3 óta érvényes;
+  - a `JSON.parse` hook kikapcsolva átengedő marad.
+- A 0.8.6-ban eltávolított térbeli navigációs polyfill tesztjei törölve.
+- A `jsdom` (30.1.1) dev-függőség lett. Ellenőriztem, hogy a lockfile változása után a `v0.8.7` forrásból mindkét csomag továbbra is bájtra azonos a kiadottal.
+
+**Ellenőrzés a javított kódon** [T]:
+
+- A repó tesztjei mind sikeresek: `polyfill-conformance` 264, `launch-test` 7/7, `smoke` 10/10, `modern-smoke` 10/10, `adblock-test` 27, `new-features-test` 21, `dependency-test` 11, `module-behaviour-test` 14, `panel-test` 21, `dislike-timing-test` 11, `sponsorblock-labels-test` 71, `force-codec-test` 48, emoji-tesztek.
+- Dinamikus teszt (`tools/audit-dyn-test.cjs`):
+  - alapbeállítással nem ment kérés a `returnyoutubedislikeapi.com`-ra;
+  - a SponsorBlock a `sponsor.ajay.app`-ot kérdezte;
+  - a naplóban csak `handleLaunch [contentTarget]` és `RELAUNCH: [contentTarget]` szerepelt;
+  - bekapcsolt RYD mellett is 0 hitelesítési adat ment harmadik félnek.
