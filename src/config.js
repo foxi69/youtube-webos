@@ -39,10 +39,18 @@ export const logoStyles = {
  *             never land on a 404. Upgrades past that arrive once verified.
  * 'eager'   - go straight to maxresdefault. Sharpest first paint, but videos
  *             with no maxres show a grey box until the correction lands.
+ * 'sd'      - 'eager' semantics, but never reaches past sddefault (640x480):
+ *             about a quarter of the decode work of maxres per tile, and drawn
+ *             from the first frame, so a new tile is never swapped from a lower
+ *             rung; the rare video with no sddefault shows a grey box until the
+ *             correction lands, and no probe or correction runs while the
+ *             remote's arrow keys are moving. The choice for smooth row-to-row
+ *             navigation.
  */
 export const thumbnailQualityModes = {
   safe: 'Original',
-  eager: 'Fast'
+  eager: 'Fast',
+  sd: 'Smooth (SD)'
 };
 
 export const shortcutActions = {
