@@ -1767,7 +1767,7 @@ export {};
     hideEndcards: false,
     enableAutoLogin: true,
     hideLogo: false,
-    showWatch: false,
+    clockMode: 'off',
     enableOledCareMode: false,
     videoShelfOpacity: 100,
     fixMultilineTitles: true,
@@ -2435,8 +2435,11 @@ export {};
     },
 
     {
-      key: 'showWatch',
-      label: 'Display Time in UI',
+      key: 'clockMode',
+      label: 'Clock in UI',
+      enabledWhen: function (v) {
+        return v === 'time' || v === 'datetime';
+      },
       lamp: 'CLOCK',
       module: 'watch.js',
       pages: ALL_PAGES,
