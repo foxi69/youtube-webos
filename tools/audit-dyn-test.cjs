@@ -11,6 +11,11 @@ const fs = require('fs');
 
 const [bundle, year, outFile] = process.argv.slice(2);
 
+// `host` is `domain` or one of its subdomains. A bare suffix test would also
+// match evilyoutube.com, and a leak to it would pass as first-party.
+const onDomain = (host, domain) => host === domain || host.endsWith('.' + domain);
+const SPONSORBLOCK_HOSTS = ['sponsor.ajay.app', 'sponsorblock.inf.re'];
+
 const SECRETS = {
   SID: 'SYNTHSID0000cookie1111',
   SAPISID: 'SYNTHSAPISID2222cookie',
@@ -53,9 +58,9 @@ const PNG = Buffer.from(
     requests.push({ method: req.method(), url, headers, body: req.postData() || null, type: req.resourceType() });
     const host = new URL(url).hostname;
     if (url.startsWith('https://www.youtube.com/tv')) return route.fulfill({ status: 200, contentType: 'text/html', body: PAGE });
-    if (host.endsWith('ytimg.com') || host.includes('cloudflare') || host.includes('gstatic')) return route.fulfill({ status: 200, contentType: 'image/png', body: PNG });
+    if (onDomain(host, 'ytimg.com') || onDomain(host, 'cdnjs.cloudflare.com') || onDomain(host, 'gstatic.com')) return route.fulfill({ status: 200, contentType: 'image/png', body: PNG });
     if (host === 'returnyoutubedislikeapi.com') return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '{"dislikes":4242}' });
-    if (host.includes('sponsor')) return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '[{"videoID":"dQw4w9WgXcQ","segments":[{"category":"sponsor","actionType":"skip","segment":[1,5],"UUID":"x"}]}]' });
+    if (SPONSORBLOCK_HOSTS.includes(host)) return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '[{"videoID":"dQw4w9WgXcQ","segments":[{"category":"sponsor","actionType":"skip","segment":[1,5],"UUID":"x"}]}]' });
     return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '{}' });
   });
 
@@ -118,7 +123,7 @@ const PNG = Buffer.from(
   const leaks = [];
   for (const r of requests) {
     const host = new URL(r.url).hostname;
-    const firstParty = host === 'www.youtube.com' || host.endsWith('.youtube.com');
+    const firstParty = onDomain(host, 'youtube.com');
     const hay = r.url + '\n' + JSON.stringify(r.headers) + '\n' + (r.body || '');
     for (const v of secretVals) if (hay.includes(v)) leaks.push({ host, firstParty, secret: v, url: r.url });
   }
@@ -129,10 +134,10 @@ const PNG = Buffer.from(
   console.log('third-party requests:');
   for (const r of requests) {
     const h = new URL(r.url).hostname;
-    if (!h.endsWith('youtube.com')) console.log(' ', r.method, r.url, '| cookie:', r.headers.cookie ? 'YES' : 'no', '| referer:', r.headers.referer || '-', '| auth:', r.headers.authorization ? 'YES' : 'no');
+    if (!onDomain(h, 'youtube.com')) console.log(' ', r.method, r.url, '| cookie:', r.headers.cookie ? 'YES' : 'no', '| referer:', r.headers.referer || '-', '| auth:', r.headers.authorization ? 'YES' : 'no');
   }
   console.log('youtube.com requests:');
-  for (const r of requests) if (new URL(r.url).hostname.endsWith('youtube.com')) console.log(' ', r.method, r.url.slice(0, 110), '| body:', (r.body || '').slice(0, 80));
+  for (const r of requests) if (onDomain(new URL(r.url).hostname, 'youtube.com')) console.log(' ', r.method, r.url.slice(0, 110), '| body:', (r.body || '').slice(0, 80));
   console.log('luna calls:', JSON.stringify(luna));
   console.log('credential occurrences:', JSON.stringify(leaks));
   console.log('state:', JSON.stringify(state).slice(0, 600));
