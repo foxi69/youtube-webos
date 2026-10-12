@@ -1,5 +1,6 @@
 import { configRead, configAddChangeListener } from './config.js';
 import { SYNTHETIC_KEY_FLAG } from './utils.js';
+import { fetchJsonWithTimeout } from './fetch-timeout.js';
 
 // Global cache for API responses
 const dislikeCache = new Map();
@@ -172,15 +173,14 @@ class ReturnYouTubeDislike {
     try {
       const fetchOptions = {};
       if (HAS_ABORT_CONTROLLER && this.abortController) fetchOptions.signal = this.abortController.signal;
-      
-      const response = await Promise.race([
-        fetch(`https://returnyoutubedislikeapi.com/votes?videoId=${this.videoID}`, fetchOptions),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 8000))
-      ]);
-      
+
+      // One deadline for headers and body, and the timer is always cleared.
+      const response = await fetchJsonWithTimeout(
+        `https://returnyoutubedislikeapi.com/votes?videoId=${this.videoID}`, 8000, fetchOptions);
+
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      
-      const data = await response.json();
+
+      const data = response.data;
       this.dislikesCount = data?.dislikes || 0;
       this.dislikesValue = this.dislikesCount;
       this.fetchAttempts = 0;
