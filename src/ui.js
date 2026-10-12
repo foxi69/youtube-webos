@@ -374,6 +374,22 @@ function createThumbnailQualityControl() {
   return control;
 }
 
+// Turning subtitles on automatically needs a language to turn on. Greyed out
+// and dropped from the focus order while Auto-Translate Subtitles is Off, like
+// the thumbnail strategy row, so the rows below do not move.
+function createSubtitleAutoEnableControl() {
+  const control = createConfigCheckbox('subtitleAutoEnable');
+  const input = control.querySelector('input');
+  const sync = () => {
+    const on = configRead('subtitleTranslateLang') !== 'off';
+    control.style.opacity = on ? '1' : '0.5';
+    if (input) input.tabIndex = on ? 0 : -1;
+  };
+  configAddChangeListener('subtitleTranslateLang', sync);
+  sync();
+  return control;
+}
+
 function createSegmentControl(key) {
   const isHighlight = key === 'sbMode_highlight';
   const modesMap = isHighlight ? sbModesHighlight : sbModes;
@@ -659,6 +675,7 @@ function createOptionsPanel() {
   //createConfigCheckbox('enablePlaybackSpeed'),
   createVideoCodecControl(),
   createAlignedCycleControl('subtitleTranslateLang', subtitleTranslateLanguages),
+  createSubtitleAutoEnableControl(),
   createConfigCheckbox('hideEndcards'),
   createConfigCheckbox('enableScrollSeek'),
   createConfigCheckbox('enableReturnYouTubeDislike')]));
