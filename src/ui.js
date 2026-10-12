@@ -628,6 +628,12 @@ function createOptionsPanel() {
 			if (dir === 'right' && idx === tabBtns.length - 1) tabBtns[0].focus();
 			else if (dir === 'left' && idx === 0) tabBtns[tabBtns.length - 1].focus();
 		}
+
+        // Moving along the tabs opens the tab under the focus, so the open tab
+        // and the focused one are never two different buttons: Down then leads
+        // into the page that is on screen.
+        const focusedTab = tabBtns.indexOf(document.activeElement);
+        if (focusedTab !== -1) setActivePage(focusedTab);
         
         evt.preventDefault(); evt.stopPropagation(); return;
       } else if (dir === 'up' || dir === 'down') {
