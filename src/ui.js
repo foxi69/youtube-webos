@@ -1,5 +1,3 @@
-/*global navigate*/
-import './spatial-navigation-polyfill.js';
 import { logoStyles, thumbnailQualityModes, videoCodecModes, uiThemes } from './config.js';
 import { configAddChangeListener, configRead, configWrite, configGetDesc, segmentTypes, configGetDefault, shortcutActions, sbModes, sbModesHighlight, forcePreviewModes } from './config.js';
 import './ui.css';
@@ -7,6 +5,7 @@ import './auto-login.js';
 import './return-dislike.js';
 import { initVideoQuality } from './video-quality.js';
 import { initLogoStyle } from './logo-style.js';
+import { initMathLetters } from './math-letters.js';
 // import { initPlaybackSpeed, stepSpeed, resetSpeed } from './playback-speed.js';
 import sponsorBlockUI from './Sponsorblock-UI.js';
 import { sendKey, REMOTE_KEYS, COLOR_CODE_MAP, isGuestMode, isWatchPage, isShortsPage, isSearchPage, SELECTORS, getVideo, SYNTHETIC_KEY_FLAG } from './utils.js';
@@ -174,32 +173,94 @@ const isEngagementPanelVisible = () => {
     return !!(panel && window.getComputedStyle(panel).display !== 'none');
 };
 
-// Both of these are best-effort. window.__spatialNavigation__ comes from our
-// own polyfill, but that polyfill bails out entirely if the platform ever ships
-// a native window.navigate, and it seals its API object - so an assignment to a
-// property that isn't there throws "object is not extensible" and takes the
-// whole bundle down with it. Feature-check instead of assuming; the worst case
-// is that we lose an optimisation, not the app.
-function setSpatialNav(prop, value) {
-  const sn = window.__spatialNavigation__;
-  if (!sn || !(prop in sn)) return false;
-  try {
-    sn[prop] = value;
-    return true;
-  } catch (err) {
-    console.warn(`[UI] could not set __spatialNavigation__.${prop}:`, err);
-    return false;
+// --- Settings panel navigation ---
+//
+// The arrows move focus between the tab buttons and the controls of the open
+// page by where they sit on screen. This used to be the WICG spatial-navigation
+// polyfill (~110 KB, and a focusin listener with a forced layout on every focus
+// change in the whole app) for what is a handful of rows; the search below is
+// all the panel needs. Ported from mirijanristic's fork (panel/keyboard.js).
+
+// The aligned cycle rows carry a hidden spacer checkbox (dummyBox) - it is
+// tabIndex -1 and must never be a target.
+const PANEL_FOCUSABLES = 'input:not([disabled]), .shortcut-control-row, button:not([disabled])';
+
+/** The controls of `page` that can take focus, in document order. */
+function pageFocusables(page) {
+  const out = [];
+  if (!page) return out;
+  const nodes = page.querySelectorAll(PANEL_FOCUSABLES);
+  for (let i = 0; i < nodes.length; i++) {
+    if (nodes[i].tabIndex !== -1) out.push(nodes[i]);
   }
+  return out;
 }
 
-setSpatialNav('keyMode', 'NONE');
-// We drive spatial navigation ourselves (see the options-panel keydown handler
-// below), and only ever inside the settings panel. Left on, the polyfill's
-// global focusin listener forces a synchronous layout on every focus change in
-// the whole YouTube app - one per remote keypress - to maintain a fallback
-// search origin that is only read from navigate(). showOptionsPanel() turns it
-// back on for as long as the panel is open.
-setSpatialNav('trackFocus', false);
+/**
+ * The box a move measures: a checkbox's whole label row (or cycle row), not the
+ * small box at its left, which would overlap nothing above or below it.
+ */
+function boxOf(el) {
+  const row = el.tagName === 'INPUT' ? el.closest('label, .shortcut-control-row') : null;
+  return (row || el).getBoundingClientRect();
+}
+
+/**
+ * The candidate nearest to `from` in `dir`, judged by the centres of their
+ * boxes (boxOf). Left and Right stay within the row: only candidates that
+ * overlap `from` vertically count. Up and Down need a candidate at least half a
+ * row ahead - in the two-column Filters section the rows of one line are not
+ * quite the same height (the last label's margin stretches its neighbour), and
+ * a centre a fraction of a pixel lower must not count as "below". They prefer a
+ * candidate that overlaps `from` horizontally but take the nearest one
+ * otherwise. Among those, the one closest ahead wins, then the one closest
+ * sideways. Returns null when nothing lies that way.
+ */
+function nearestInDirection(from, dir, candidates) {
+  const a = boxOf(from);
+  const ax = (a.left + a.right) / 2;
+  const ay = (a.top + a.bottom) / 2;
+  const vertical = dir === 'up' || dir === 'down';
+  const minAhead = vertical ? Math.max(1, a.height / 2) : 0;
+  let best = null;
+  let bestOverlap = false;
+  let bestAhead = Infinity;
+  let bestAside = Infinity;
+
+  for (let i = 0; i < candidates.length; i++) {
+    const el = candidates[i];
+    if (el === from) continue;
+    const b = boxOf(el);
+    if (b.width === 0 && b.height === 0) continue;
+    const bx = (b.left + b.right) / 2;
+    const by = (b.top + b.bottom) / 2;
+
+    let ahead;
+    if (dir === 'up') ahead = ay - by;
+    else if (dir === 'down') ahead = by - ay;
+    else if (dir === 'left') ahead = ax - bx;
+    else ahead = bx - ax;
+    if (ahead <= minAhead) continue;
+
+    const aside = vertical ? Math.abs(bx - ax) : Math.abs(by - ay);
+    const overlap = vertical
+      ? b.right > a.left && b.left < a.right
+      : b.bottom > a.top && b.top < a.bottom;
+    if (!vertical && !overlap) continue;
+
+    let better;
+    if (overlap !== bestOverlap) better = overlap;
+    else if (ahead !== bestAhead) better = ahead < bestAhead;
+    else better = aside < bestAside;
+    if (better) {
+      best = el;
+      bestOverlap = overlap;
+      bestAhead = ahead;
+      bestAside = aside;
+    }
+  }
+  return best;
+}
 const ARROW_KEY_CODE = { 
   [REMOTE_KEYS.LEFT.code]: 'left', 
   [REMOTE_KEYS.UP.code]: 'up', 
@@ -341,7 +402,9 @@ function createAlignedCycleControl(configKey, displayMap) {
     label.style.alignItems = 'center';
 	label.style.lineHeight = 'inherit';
     
+    // A spacer only: never a focus target (Up/Down, the wrap-around).
     const dummyBox = createElement('input', {
+      tabIndex: -1,
       style: {
         visibility: 'hidden',
         paddingLeft: '2.2vh'
@@ -425,10 +488,8 @@ function createPreviewControl(key) {
   return createCycleControl(key, configGetDesc(key), Object.keys(forcePreviewModes), forcePreviewModes);
 }
 
-function createOpacityControl(key) {
-  const step = 5;
-  const min = 0;
-  const max = 100;
+// A percentage stepped with Left/Right and clamped at both ends.
+function createOpacityControl(key, step = 5, min = 0, max = 100) {
   
   const displayValueGetter = () => `${configRead(key)}%`;
   
@@ -461,6 +522,16 @@ function createOptionsPanel() {
       blur: () => console.info('Options panel blurred!')
     }
   });
+
+  // Chrome 38 to 59 (webOS 3/4) have no :focus-within, and a selector they do
+  // not know drops the whole rule - so the label row of the focused checkbox
+  // carries a class instead (ui.css). From mirijanristic's fork.
+  const markLabel = (evt, on) => {
+    const label = evt.target.closest ? evt.target.closest('label') : null;
+    if (label) label.classList.toggle('ytaf-focused', on);
+  };
+  elmContainer.addEventListener('focusin', (evt) => markLabel(evt, true));
+  elmContainer.addEventListener('focusout', (evt) => markLabel(evt, false));
 
   let activePage = 0;
   elmContainer.activePage = 0;
@@ -514,6 +585,13 @@ function createOptionsPanel() {
 	  sponsorBlockUI.togglePopup(activePage === SPONSOR_PAGE && isWatchPage());
 	};
 
+  // The tab buttons and the controls of the open page.
+  const panelFocusables = () => tabBtns.concat(pageFocusables(pages[activePage]));
+  const moveFocus = (dir) => {
+    const target = nearestInDirection(document.activeElement, dir, panelFocusables());
+    if (target) target.focus();
+  };
+
   // Keyboard Navigation for the Options Panel
   elmContainer.addEventListener('keydown', (evt) => {
     if (getKeyColor(evt.charCode || evt.keyCode) === 'green') return; // Let global handler handle close if mapped to green (or config_menu logic)
@@ -526,7 +604,7 @@ function createOptionsPanel() {
         // Prevent modifying row from navigating away
         if (preFocus.classList.contains('shortcut-control-row')) return;
 
-        navigate(dir);
+        moveFocus(dir);
         
         // Tab menu wrap-around logic
         if (preFocus === document.activeElement && preFocus.classList.contains('ytaf-tab-btn')) {
@@ -537,7 +615,7 @@ function createOptionsPanel() {
         
         evt.preventDefault(); evt.stopPropagation(); return;
       } else if (dir === 'up' || dir === 'down') {
-        navigate(dir);
+        moveFocus(dir);
         const postFocus = document.activeElement;
 
         if (dir === 'up' && preFocus !== postFocus) {
@@ -549,15 +627,7 @@ function createOptionsPanel() {
 
         if (preFocus === postFocus) {
           const activeTabBtn = tabBtns[activePage];
-		  const visiblePage = pages[activePage];
-		  let pageFocusables = [];
-
-		  if (visiblePage) {
-			  pageFocusables = Array.from(visiblePage.querySelectorAll('input:not([disabled]), .shortcut-control-row, button:not([disabled])'))
-				  .filter(el => el.tabIndex !== -1);
-		  }
-          
-          const focusables = [activeTabBtn, ...pageFocusables].filter(Boolean);
+          const focusables = [activeTabBtn].concat(pageFocusables(pages[activePage])).filter(Boolean);
           
           if (focusables.length > 0) {
             if (dir === 'up') focusables[focusables.length - 1].focus();
@@ -664,7 +734,7 @@ function createOptionsPanel() {
   createConfigCheckbox('enableReturnYouTubeDislike')]));
   // The logo in the header also cycles the theme, but a remote cannot focus
   // it, so the setting needs a row of its own to be reachable on a TV.
-  const interfaceGroup = [createAlignedCycleControl('uiTheme', uiThemes), createConfigCheckbox('enableAutoLogin'), createConfigCheckbox('autoSelectAccount'), createConfigCheckbox('upgradeThumbnails'), createThumbnailQualityControl(), createLogoControl(), createConfigCheckbox('showWatch'), createConfigCheckbox('enableOledCareMode'), createConfigCheckbox('disableNotifications'), createConfigCheckbox('loadRowsAhead')];
+  const interfaceGroup = [createAlignedCycleControl('uiTheme', uiThemes), createConfigCheckbox('enableAutoLogin'), createConfigCheckbox('autoSelectAccount'), createConfigCheckbox('upgradeThumbnails'), createThumbnailQualityControl(), createLogoControl(), createConfigCheckbox('showWatch'), createConfigCheckbox('enableOledCareMode'), createConfigCheckbox('disableNotifications'), createConfigCheckbox('loadRowsAhead'), createConfigCheckbox('pointerSettingsButton'), createConfigCheckbox('disableAnimations')];
   // The cast block only exists on webOS 25 (see userScript.js).
   if (isWebOS25()) interfaceGroup.push(createConfigCheckbox('blockWebosCast'));
   // --- Page 3: Interface ---
@@ -714,6 +784,8 @@ function createOptionsPanel() {
     const playerUITweaks = [
         createOpacityControl('videoShelfOpacity'),
         createElement('div', { text: 'Adjusts opacity of black background underneath videos (Requires OLED-care mode)', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px' } }),
+        createOpacityControl('uiBrightness', 10, 40, 100),
+        createElement('div', { text: 'Dims the YouTube menus and thumbnails; never the playing video or this panel', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px' } }),
   	  createPreviewControl('forcePreviews'),
   	  createElement('div', { text: 'Forces the video thumbnail preview on/off on app load', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px' } }),
   	  createConfigCheckbox('fixMultilineTitles'),
@@ -779,9 +851,6 @@ function showOptionsPanel(visible) {
     }
 
     console.info('Showing and focusing options panel!');
-    // Arm the polyfill's search-origin tracking for as long as we might call
-    // navigate(); the focus below is what seeds it.
-    setSpatialNav('trackFocus', true);
     optionsPanel.style.display = 'block';
     // The other three tabs are built here, one per frame, now that the panel is
     // on screen. Doing it inside the keydown handler is what made opening the
@@ -807,8 +876,6 @@ function showOptionsPanel(visible) {
     optionsPanel.blur();
     optionsPanelVisible = false;
     lastSafeFocus = null;
-    // Stop paying a forced layout per focus change across the whole app again.
-    setSpatialNav('trackFocus', false);
     // A held Back (or whichever key closed the panel) must not go on to
     // YouTube as a page back.
     swallowHeldKey();
@@ -1594,8 +1661,6 @@ function initGlobalStyles() {
     // not config — YouTube never touches it.
     const style = createElement('style');
     style.textContent = `
-        :root { --ytaf-oled-opacity: 1; }
-
         html.ytaf-oled-blackout .webOs-watch { display: none !important; }
         html.ytaf-audio-only video { visibility: hidden !important; }
 
@@ -1615,7 +1680,8 @@ function initGlobalStyles() {
            Same reason ytaf-hide-logo / ytaf-fix-titles / ytaf-remove-borders
            already live on documentElement.
 
-           Opacity flows through the --ytaf-oled-opacity custom property, so a
+           The shelf backdrop's opacity is a rule of its own in
+           <style id="ytaf-oled-opacity"> (syncOledShelfOpacity), so a
            videoShelfOpacity slider tick never rebuilds this block; the
            conditional rules sit under html.oled-transparent-shelf. */
         html.oled-theme-active #container,
@@ -1631,7 +1697,6 @@ function initGlobalStyles() {
         html.oled-theme-active .k82tDb { background-color: #000 !important; }
         html.oled-theme-active .ytLrGuideResponseGradient { display: none; }
         html.oled-theme-active .iha0pc { color: #000 !important; }
-        html.oled-theme-active .Jx9xPc { background-color: rgba(0, 0, 0, var(--ytaf-oled-opacity)) !important; }
         html.oled-theme-active .p0DeOc { background-color: #000 !important; background-image: none !important; }
         html.oled-theme-active ytlr-player-focus-ring { border: 0.375rem solid rgb(200, 200, 200) !important; }
         html.oled-theme-active ytlr-surface-page { background-image: none !important; background-color: #000 !important; }
@@ -1689,13 +1754,36 @@ function initGlobalStyles() {
             background-color: rgba(0, 0, 0, 0.3) !important;
         }
         body .ytLrWatchDefault2025Shadow { background-color: rgba(11, 11, 11, 0.5) !important; }
+
+        /* Disable Animations. Scoped to YouTube's own app root, so the settings
+           panel, notifications and the clock (all on <body>) keep theirs.
+           Near-zero durations rather than "none": a transitionend or
+           animationend that YouTube waits for still fires, just at once.
+           Chrome 38 (webOS 3) only knows the -webkit- animation properties. */
+        html.ytaf-no-animations ytlr-app,
+        html.ytaf-no-animations ytlr-app *,
+        html.ytaf-no-animations ytlr-app *:before,
+        html.ytaf-no-animations ytlr-app *:after {
+            -webkit-transition-duration: 0.01ms !important;
+            transition-duration: 0.01ms !important;
+            -webkit-transition-delay: 0s !important;
+            transition-delay: 0s !important;
+            -webkit-animation-duration: 0.01ms !important;
+            animation-duration: 0.01ms !important;
+            -webkit-animation-delay: 0s !important;
+            animation-delay: 0s !important;
+            -webkit-animation-iteration-count: 1 !important;
+            animation-iteration-count: 1 !important;
+            scroll-behavior: auto !important;
+        }
     `;
     document.head.appendChild(style);
 
     const syncClass = (cls, key) => document.documentElement.classList.toggle(cls, !!configRead(key));
     const CLASS_KEYS = {
         'ytaf-fix-titles': 'fixMultilineTitles',
-        'ytaf-remove-borders': 'removeBlackBorders'
+        'ytaf-remove-borders': 'removeBlackBorders',
+        'ytaf-no-animations': 'disableAnimations'
     };
     for (const [cls, key] of Object.entries(CLASS_KEYS)) {
         syncClass(cls, key);
@@ -1715,9 +1803,18 @@ function updateLogoState() {
   });
 }
 
+// The shelf backdrop's opacity, written as a rule of its own rather than a CSS
+// custom property: Chromium 38 (webOS 3) has no var() and dropped the whole
+// declaration, leaving the shelf un-blacked. From mirijanristic's fork.
 function syncOledShelfOpacity() {
   const opacityVal = configRead('videoShelfOpacity');
-  document.documentElement.style.setProperty('--ytaf-oled-opacity', String(opacityVal / 100));
+  let style = document.getElementById('ytaf-oled-opacity');
+  if (!style) {
+    style = document.createElement('style');
+    style.id = 'ytaf-oled-opacity';
+    (document.head || document.documentElement).appendChild(style);
+  }
+  style.textContent = `html.oled-theme-active .Jx9xPc { background-color: rgba(0, 0, 0, ${opacityVal / 100}) !important; }`;
   document.documentElement.classList.toggle('oled-transparent-shelf', opacityVal > 50);
 }
 
@@ -1764,6 +1861,7 @@ const startupMenuKey = ensureMenuKey(false);
 initGlobalStyles();
 initVideoQuality();
 initLogoStyle();
+initMathLetters();
 // initPlaybackSpeed();
 
 // Initial apply (will skip UI elements if they don't exist yet, but handle global styles)
@@ -1806,12 +1904,110 @@ configAddChangeListener('upgradeThumbnails', () => syncAdblockHook());
 configAddChangeListener('loadRowsAhead', () => syncAdblockHook());
 
 configAddChangeListener('videoShelfOpacity', () => {
-  // Cheap update — just retargets the CSS custom property and toggles the
-  // transparent-shelf class. No <style> rebuild.
+  // Cheap update — rewrites the one-rule opacity <style> and toggles the
+  // transparent-shelf class. No rebuild of the global stylesheet.
   if (configRead('enableOledCareMode')) syncOledShelfOpacity();
 });
 
+// --- UI Brightness ---
+//
+// A dark layer over the browse UI (home, search, channels...), never over the
+// watch page or Shorts, so the video itself is not dimmed. It lets every
+// pointer event through, and it sits under the settings panel, notifications,
+// the clock and the pointer button (ui.css), so only YouTube's own UI dims.
+let dimOverlay = null;
+function syncUiBrightness() {
+  const brightness = Number(configRead('uiBrightness')) || 100;
+  const on = brightness < 100 && !isWatchPage() && !isShortsPage();
+  if (!on) {
+    if (dimOverlay) dimOverlay.style.display = 'none';
+    return;
+  }
+  if (!dimOverlay) {
+    if (!document.body) return;
+    dimOverlay = createElement('div', { id: 'ytaf-dim-overlay' });
+    document.body.appendChild(dimOverlay);
+  }
+  dimOverlay.style.opacity = String((100 - Math.max(0, brightness)) / 100);
+  dimOverlay.style.display = 'block';
+}
+configAddChangeListener('uiBrightness', syncUiBrightness);
+window.addEventListener('ytaf-page-update', syncUiBrightness);
+
+// --- Settings button for the Magic Remote pointer ---
+//
+// Remotes with no colour buttons (the LG MR26, NicholasBly/youtube-webos#189)
+// had no way into the panel. A fox button in the top-right corner shows while
+// the pointer is in use - on a real move, never on its own - and fades a few
+// seconds after the last one, or as soon as webOS hides the pointer. A click
+// opens or closes the panel. It is a plain <div> with no tabindex (tabIndex
+// -1) and takes no focus on click, so neither D-pad navigation nor YouTube's
+// focus model can ever land on it.
+const POINTER_BUTTON_HIDE_MS = 4000;
+let pointerButton = null;
+let pointerButtonTimer = 0;
+let lastPointerX = -1;
+let lastPointerY = -1;
+
+function hidePointerButton() {
+  clearTimeout(pointerButtonTimer);
+  if (pointerButton) pointerButton.classList.remove('ytaf-visible');
+}
+
+function createPointerButton() {
+  const swallow = (evt) => { evt.preventDefault(); evt.stopPropagation(); };
+  const btn = createElement('div', {
+    id: 'ytaf-pointer-btn',
+    title: 'YouTube Extended settings',
+    events: {
+      // preventDefault keeps focus where it is (no blur of the panel's row).
+      mousedown: swallow,
+      mouseup: swallow,
+      click: (evt) => {
+        swallow(evt);
+        showOptionsPanel(!optionsPanelVisible);
+        showPointerButton();
+      }
+    }
+  }, createElement('img', { src: logoOrangeUrl, alt: '' }));
+  btn.setAttribute('role', 'button');
+  document.body.appendChild(btn);
+  return btn;
+}
+
+function showPointerButton() {
+  if (!configRead('pointerSettingsButton') || !document.body) return;
+  if (!pointerButton) pointerButton = createPointerButton();
+  pointerButton.classList.toggle('ytaf-below-clock', !!configRead('showWatch'));
+  pointerButton.classList.add('ytaf-visible');
+  clearTimeout(pointerButtonTimer);
+  pointerButtonTimer = setTimeout(hidePointerButton, POINTER_BUTTON_HIDE_MS);
+}
+
+document.addEventListener('mousemove', (evt) => {
+  // Chrome sends a synthetic mousemove with unchanged coordinates when the
+  // page scrolls under a resting pointer; only a real move counts.
+  if (evt.clientX === lastPointerX && evt.clientY === lastPointerY) return;
+  lastPointerX = evt.clientX;
+  lastPointerY = evt.clientY;
+  showPointerButton();
+}, true);
+// webOS reports the pointer appearing and disappearing (it hides on a D-pad
+// press or after a few idle seconds).
+document.addEventListener('cursorStateChange', (evt) => {
+  if (evt.detail && evt.detail.visibility === false) hidePointerButton();
+});
+window.addEventListener('keydown', (evt) => {
+  if (evt.keyCode in ARROW_KEY_CODE) hidePointerButton();
+}, true);
+// Picking a video with the pointer must not leave the button over it.
+window.addEventListener('ytaf-page-update', (evt) => {
+  if (evt.detail.isWatch || evt.detail.isShorts) hidePointerButton();
+});
+configAddChangeListener('pointerSettingsButton', (evt) => { if (!evt.detail.newValue) hidePointerButton(); });
+
 // Apply initial states on boot
+syncUiBrightness();
 syncAdblockHook();
 syncTrackingBlock();
 
