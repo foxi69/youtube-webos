@@ -395,7 +395,8 @@ function upgradeEntry(entry, proven) {
 
   // Unresolved means a probe is coming and this entry's answer may still change:
   // upward in safe mode once the rung is confirmed, downward in the modes that
-  // draw unproven rungs if the gamble missed. Both need the entry tracked so the answer can be written back.
+  // draw unproven rungs if the gamble missed. Both need the entry tracked so
+  // the answer can be written back.
   const unresolved = verified === undefined && (useful > ceiling || target > ceilingBeforeMode);
   if (unresolved) scheduleProbe(videoId);
 
@@ -770,10 +771,12 @@ export function thumbnailHookRequired() {
 // --- Verification ---------------------------------------------------------
 
 /**
- * Whether the URL exists, by a HEAD request: true, false, UNKNOWN (a timeout or
- * a network error), or null when the answer carried no readable Content-Length
- * (a cross-origin answer on older Chromium), in which case the caller loads the
- * image instead. A grey placeholder answered 200 with a tiny body is missing.
+ * Whether the URL exists, by a HEAD request: true, false, UNKNOWN (a timeout),
+ * or null when the HEAD could not tell - no readable Content-Length (a
+ * cross-origin answer on older Chromium) or a request error, which is also
+ * what a cross-origin 404 without CORS headers looks like - in which case the
+ * caller loads the image instead. A grey placeholder answered 200 with a tiny
+ * body is missing.
  */
 function headExists(url) {
   return new Promise((resolve) => {
@@ -791,7 +794,7 @@ function headExists(url) {
       const length = parseInt(xhr.getResponseHeader('Content-Length'), 10);
       resolve(isNaN(length) ? null : length > PLACEHOLDER_MAX_BYTES);
     };
-    xhr.onerror = () => resolve(UNKNOWN);
+    xhr.onerror = () => resolve(null);
     xhr.ontimeout = () => resolve(UNKNOWN);
     xhr.onabort = () => resolve(UNKNOWN);
     try {
@@ -807,10 +810,12 @@ function headExists(url) {
  *
  * Used for tiles the app has already rendered, where it costs nothing: the
  * browser has been to that URL, so this resolves out of the cache - including
- * the cached 404 that made the tile grey in the first place. It also sidesteps
+ * the cached 404 that made the tile grey in the first place (its body is the
+ * grey placeholder, which loads and is caught on its width). It also sidesteps
  * the one real fragility of the HEAD path, which is that XHR is subject to CORS
  * and a cross-origin 404 from i.ytimg.com need not carry the headers to let us
- * read it. An <img> has no such constraint: `error` fires regardless of origin.
+ * read it, so a HEAD that could not tell falls back to this. An `error` here is
+ * a load that never got an answer, not a miss.
  *
  * This is the same signal the network hooks were being asked for, taken at the
  * layer that actually has it - a CSS background-image load never passes through
@@ -872,7 +877,8 @@ async function resolveQuality(videoId, onScreen) {
   const rank = usefulRank;
   const url = buildUrl(videoId, QUALITY_NAMES[rank]);
   let exists = await (onScreen ? imageExists : headExists)(url);
-  // A HEAD whose length could not be read: ask the image, never assume.
+  // A HEAD that could not tell (no readable length, or a request error): ask
+  // the image, never assume. A network that is down fails both: UNKNOWN.
   if (exists === null) exists = await imageExists(url);
   if (exists === UNKNOWN) return null;
   return exists ? rank : FLOOR_RANK;
