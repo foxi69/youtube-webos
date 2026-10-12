@@ -488,10 +488,8 @@ function createPreviewControl(key) {
   return createCycleControl(key, configGetDesc(key), Object.keys(forcePreviewModes), forcePreviewModes);
 }
 
-function createOpacityControl(key) {
-  const step = 5;
-  const min = 0;
-  const max = 100;
+// A percentage stepped with Left/Right and clamped at both ends.
+function createOpacityControl(key, step = 5, min = 0, max = 100) {
   
   const displayValueGetter = () => `${configRead(key)}%`;
   
@@ -786,6 +784,8 @@ function createOptionsPanel() {
     const playerUITweaks = [
         createOpacityControl('videoShelfOpacity'),
         createElement('div', { text: 'Adjusts opacity of black background underneath videos (Requires OLED-care mode)', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px' } }),
+        createOpacityControl('uiBrightness', 10, 40, 100),
+        createElement('div', { text: 'Dims the YouTube menus and thumbnails; never the playing video or this panel', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px' } }),
   	  createPreviewControl('forcePreviews'),
   	  createElement('div', { text: 'Forces the video thumbnail preview on/off on app load', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px' } }),
   	  createConfigCheckbox('fixMultilineTitles'),
@@ -1904,12 +1904,38 @@ configAddChangeListener('upgradeThumbnails', () => syncAdblockHook());
 configAddChangeListener('loadRowsAhead', () => syncAdblockHook());
 
 configAddChangeListener('videoShelfOpacity', () => {
-  // Cheap update — just retargets the CSS custom property and toggles the
-  // transparent-shelf class. No <style> rebuild.
+  // Cheap update — rewrites the one-rule opacity <style> and toggles the
+  // transparent-shelf class. No rebuild of the global stylesheet.
   if (configRead('enableOledCareMode')) syncOledShelfOpacity();
 });
 
+// --- UI Brightness ---
+//
+// A dark layer over the browse UI (home, search, channels...), never over the
+// watch page or Shorts, so the video itself is not dimmed. It lets every
+// pointer event through, and it sits under the settings panel, notifications
+// and the clock (ui.css), so only YouTube's own UI dims.
+let dimOverlay = null;
+function syncUiBrightness() {
+  const brightness = Number(configRead('uiBrightness')) || 100;
+  const on = brightness < 100 && !isWatchPage() && !isShortsPage();
+  if (!on) {
+    if (dimOverlay) dimOverlay.style.display = 'none';
+    return;
+  }
+  if (!dimOverlay) {
+    if (!document.body) return;
+    dimOverlay = createElement('div', { id: 'ytaf-dim-overlay' });
+    document.body.appendChild(dimOverlay);
+  }
+  dimOverlay.style.opacity = String((100 - Math.max(0, brightness)) / 100);
+  dimOverlay.style.display = 'block';
+}
+configAddChangeListener('uiBrightness', syncUiBrightness);
+window.addEventListener('ytaf-page-update', syncUiBrightness);
+
 // Apply initial states on boot
+syncUiBrightness();
 syncAdblockHook();
 syncTrackingBlock();
 
