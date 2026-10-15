@@ -300,6 +300,10 @@ const ids = (r) => itemsOf(r).map((i) => (i.tileRenderer || i.lockupViewModel).c
     keywords.focus();
     const typed = key(win, 65, keywords);
     t('typing in the text box is not blocked by the panel', !typed.defaultPrevented);
+    keywords.value = 'ab';
+    keywords.setSelectionRange(1, 1);
+    key(win, RIGHT, keywords);
+    t('Right inside the text moves the cursor, not the focus', win.document.activeElement === keywords);
     keywords.value = '  Spoiler  ';
     key(win, ENTER, keywords);
     keywords.value = 'spoiler';
@@ -325,8 +329,8 @@ const ids = (r) => itemsOf(r).map((i) => (i.tileRenderer || i.lockupViewModel).c
     const player = labels('#ytaf-page-player');
     t('Player tab: Prefer Original Audio and the seek step', player.indexOf('Prefer Original Audio over Dubbed') !== -1 &&
       player.some((l) => l.indexOf('Left/Right Seek Step') !== -1), player.join('|'));
-    const iface = labels('#ytaf-page-interface');
-    t('Interface tab: Start Page, long-press menu and DeArrow', iface.some((l) => l.indexOf('Start Page') !== -1) &&
+    const iface = labels('#ytaf-page-ui-tweaks');
+    t('UI Tweaks tab: Start Page, long-press menu and DeArrow', iface.some((l) => l.indexOf('Start Page') !== -1) &&
       iface.indexOf('More Options in the Long-Press Menu') !== -1 && iface.indexOf('DeArrow: Replace Clickbait Titles') !== -1, iface.join('|'));
     t('no jsdomError (panel)', errors.length === 0, errors[0]);
   }

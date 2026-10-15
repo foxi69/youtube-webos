@@ -126,13 +126,9 @@ keyboard (OK on the box) or a USB/Bluetooth one, then OK; select an entry to rem
 | Setting | Default |
 |---|---|
 | **UI Theme** (Fox, Blue, Red) | Fox |
-| **Start Page** (Home, Subscriptions, Library, History; not on a launch into a video) | Home |
 | Bypass Nag Screens (also "Are you still watching?") | On |
 | **Auto Login** (off: always ask who is watching) | On |
 | **Separate Settings for Each Account** | Off |
-| **More Options in the Long-Press Menu** | Off |
-| **DeArrow: Replace Clickbait Titles** (asks sponsor.ajay.app by hash prefix, like SponsorBlock) | Off |
-| **DeArrow: Replace Clickbait Thumbnails** (needs the titles above) | Off |
 | Max Thumbnail Quality | Off |
 | Thumbnail Strategy (Original, Fast, **Smooth (SD)**) | Original |
 | YouTube Logo (Default, Premium, Hidden) | Default |
@@ -184,6 +180,10 @@ Each category can be set to Auto Skip, Manual Skip, Show in Seek Bar or Disable,
 | Fix Multiline Titles | On |
 | New Liquid Glass UI | Off |
 | Emoji + Characters Fix (webOS 3-4 only) | On |
+| **Start Page** (Home, Subscriptions, Library, History; not on a launch into a video) | Home |
+| **More Options in the Long-Press Menu** | Off |
+| **DeArrow: Replace Clickbait Titles** (asks sponsor.ajay.app by hash prefix, like SponsorBlock) | Off |
+| **DeArrow: Replace Clickbait Thumbnails** (needs the titles above) | Off |
 
 **Auto-Translate Subtitles** offers about 30 languages: Hungarian, English, German, Spanish, French, Italian,
 Portuguese, Dutch, Polish, Czech, Slovak, Romanian, Croatian, Serbian, Slovenian, Bulgarian, Greek, Turkish,

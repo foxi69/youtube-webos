@@ -718,9 +718,21 @@ function createOptionsPanel() {
 
   // The tab buttons and the controls of the open page.
   const panelFocusables = () => tabBtns.concat(pageFocusables(pages[activePage]));
+  // Focuses a control and scrolls the open page so it is in full view, with
+  // half a row of its neighbours: focus() alone does not scroll on every TV.
+  const focusInView = (el) => {
+    el.focus();
+    const page = pages[activePage];
+    if (!page || !page.contains(el)) return;
+    const box = page.getBoundingClientRect();
+    const row = boxOf(el);
+    const margin = row.height / 2;
+    if (row.bottom + margin > box.bottom) page.scrollTop += row.bottom + margin - box.bottom;
+    else if (row.top - margin < box.top) page.scrollTop -= box.top - row.top + margin;
+  };
   const moveFocus = (dir) => {
     const target = nearestInDirection(document.activeElement, dir, panelFocusables());
-    if (target) target.focus();
+    if (target) focusInView(target);
   };
 
   // Keyboard Navigation for the Options Panel
@@ -728,8 +740,10 @@ function createOptionsPanel() {
     if (getKeyColor(evt.charCode || evt.keyCode) === 'green') return; // Let global handler handle close if mapped to green (or config_menu logic)
 
     // A text box keeps the keys it types with, Left and Right included (they
-    // move the cursor); Up and Down still leave it. OK adds what was typed, or
-    // with nothing typed is left to the TV, which opens its keyboard.
+    // move the cursor) until the cursor is at that end of the text, where they
+    // move on to the Add button and back; Up and Down still leave it. OK adds
+    // what was typed, or with nothing typed is left to the TV, which opens its
+    // keyboard.
     const textBox = isTextBox(document.activeElement) ? document.activeElement : null;
     if (textBox) {
       const code = evt.keyCode;
@@ -742,7 +756,10 @@ function createOptionsPanel() {
         return;
       }
       const isVertical = code === REMOTE_KEYS.UP.code || code === REMOTE_KEYS.DOWN.code;
-      if (!isVertical && code !== 27 && code !== REMOTE_KEYS.BACK.code) {
+      const caret = typeof textBox.selectionStart === 'number' ? textBox.selectionStart : 0;
+      const leavesBox = (code === REMOTE_KEYS.RIGHT.code && caret >= textBox.value.length) ||
+        (code === REMOTE_KEYS.LEFT.code && caret === 0 && textBox.selectionEnd === 0);
+      if (!isVertical && !leavesBox && code !== 27 && code !== REMOTE_KEYS.BACK.code) {
         evt.stopPropagation();
         return;
       }
@@ -788,8 +805,8 @@ function createOptionsPanel() {
           const focusables = [activeTabBtn].concat(pageFocusables(pages[activePage])).filter(Boolean);
           
           if (focusables.length > 0) {
-            if (dir === 'up') focusables[focusables.length - 1].focus();
-            else if (dir === 'down') focusables[0].focus();
+            if (dir === 'up') focusInView(focusables[focusables.length - 1]);
+            else if (dir === 'down') focusInView(focusables[0]);
           }
         }
         evt.preventDefault(); evt.stopPropagation(); return;
@@ -828,6 +845,30 @@ function createOptionsPanel() {
   // A page element: the first one visible, the others hidden until their tab
   // is picked. They are appended in build order, which does not matter since
   // only one is ever displayed.
+  // The room a page has under the heading and the tabs, so a long page
+  // scrolls inside the panel. ui.css says 94vh - 15vh, but the heading and the
+  // tabs take more than 15vh, so the bottom rows of a full page were cut off
+  // by the panel's edge instead of scrolling into view. Measured when the
+  // panel is shown; the pages built later get the same.
+  let pageMaxHeight = '';
+  const fitPages = () => {
+    const screenH = window.innerHeight || document.documentElement.clientHeight || 0;
+    const page = pages[activePage];
+    if (!screenH || !page) return;
+    const frame = window.getComputedStyle(elmContainer);
+    const pageStyle = window.getComputedStyle(page);
+    // Where the open page starts in the panel: the heading, the tabs and their margins.
+    const room = screenH * 0.94 - page.offsetTop -
+      (parseFloat(frame.borderTopWidth) || 0) - (parseFloat(frame.borderBottomWidth) || 0) -
+      (parseFloat(pageStyle.paddingTop) || 0) - (parseFloat(pageStyle.paddingBottom) || 0);
+    if (room < 100) return;
+    pageMaxHeight = Math.floor(room) + 'px';
+    for (let i = 0; i < pages.length; i++) {
+      if (pages[i]) pages[i].style.maxHeight = pageMaxHeight;
+    }
+  };
+  elmContainer.fitPages = fitPages;
+
   const makePage = (index) => {
     const page = createElement('div', {
       class: 'ytaf-settings-page ytaf-page-sectioned',
@@ -835,6 +876,7 @@ function createOptionsPanel() {
       style: index === 0 ? {} : { display: 'none' }
     });
     pages[index] = page;
+    if (pageMaxHeight) page.style.maxHeight = pageMaxHeight;
     elmContainer.appendChild(page);
     return page;
   };
@@ -890,7 +932,7 @@ function createOptionsPanel() {
       createAlignedCycleControl('minVideoLength', minVideoLengthModes),
       createListEditor('blockedChannels', {
         placeholder: 'Channel name, then OK',
-        emptyText: 'None. Block one here, or with a long press on a video (Interface tab).',
+        emptyText: 'None. Block one here, or with a long press on a video (UI Tweaks tab).',
         channelButton: true
       }),
       createListEditor('blockedKeywords', {
@@ -938,12 +980,7 @@ function createOptionsPanel() {
   const updateClockRow = () => setState(elClockDuringPlayback, configRead('clockMode') !== 'off');
   configAddChangeListener('clockMode', updateClockRow);
   updateClockRow();
-  // DeArrow's thumbnails come with its titles.
-  const elDeArrowThumbnails = createConfigCheckbox('enableDeArrowThumbnails');
-  const updateDeArrowRow = () => setState(elDeArrowThumbnails, configRead('enableDeArrow'));
-  configAddChangeListener('enableDeArrow', updateDeArrowRow);
-  updateDeArrowRow();
-  const interfaceGroup = [createAlignedCycleControl('uiTheme', uiThemes), createAlignedCycleControl('startPage', startPageModes), createConfigCheckbox('enableAutoLogin'), createConfigCheckbox('autoSelectAccount'), createPerAccountControl(), createConfigCheckbox('extendLongPressMenu'), createConfigCheckbox('enableDeArrow'), elDeArrowThumbnails, createConfigCheckbox('upgradeThumbnails'), createThumbnailQualityControl(), createLogoControl(), createAlignedCycleControl('clockMode', clockModes), elClockDuringPlayback, createConfigCheckbox('enableOledCareMode'), createConfigCheckbox('disableNotifications'), createConfigCheckbox('loadRowsAhead'), createConfigCheckbox('keyboardSearch'), createConfigCheckbox('pointerSettingsButton'), createConfigCheckbox('disableAnimations')];
+  const interfaceGroup = [createAlignedCycleControl('uiTheme', uiThemes), createConfigCheckbox('enableAutoLogin'), createConfigCheckbox('autoSelectAccount'), createPerAccountControl(), createConfigCheckbox('upgradeThumbnails'), createThumbnailQualityControl(), createLogoControl(), createAlignedCycleControl('clockMode', clockModes), elClockDuringPlayback, createConfigCheckbox('enableOledCareMode'), createConfigCheckbox('disableNotifications'), createConfigCheckbox('loadRowsAhead'), createConfigCheckbox('keyboardSearch'), createConfigCheckbox('pointerSettingsButton'), createConfigCheckbox('disableAnimations')];
   // The cast block only exists on webOS 25 (see userScript.js).
   if (isWebOS25()) interfaceGroup.push(createConfigCheckbox('blockWebosCast'));
   // --- Page 3: Interface ---
@@ -1008,6 +1045,20 @@ function createOptionsPanel() {
 
     pageUITweaks.appendChild(createSection('Player UI Tweaks', playerUITweaks));
 
+    // Where the app starts and what the tiles and their menus show. On this
+    // page, which has room, as the Interface page is full.
+    // DeArrow's thumbnails come with its titles.
+    const elDeArrowThumbnails = createConfigCheckbox('enableDeArrowThumbnails');
+    const updateDeArrowRow = () => setState(elDeArrowThumbnails, configRead('enableDeArrow'));
+    configAddChangeListener('enableDeArrow', updateDeArrowRow);
+    updateDeArrowRow();
+    pageUITweaks.appendChild(createSection('Browsing', [
+      createAlignedCycleControl('startPage', startPageModes),
+      createConfigCheckbox('extendLongPressMenu'),
+      createConfigCheckbox('enableDeArrow'),
+      elDeArrowThumbnails
+    ]));
+
       }
   ];
 
@@ -1069,6 +1120,9 @@ function showOptionsPanel(visible) {
 
     console.info('Showing and focusing options panel!');
     optionsPanel.style.display = 'block';
+    // Measured in the next frame, not here: the measuring forces a layout,
+    // which would hold up the key press that opens the panel.
+    requestAnimationFrame(optionsPanel.fitPages);
     // Rows that depend on the page under the panel (the video's channel).
     window.dispatchEvent(new CustomEvent('ytaf-panel-show'));
     // The other three tabs are built here, one per frame, now that the panel is
