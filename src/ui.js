@@ -720,15 +720,25 @@ function createOptionsPanel() {
   const panelFocusables = () => tabBtns.concat(pageFocusables(pages[activePage]));
   // Focuses a control and scrolls the open page so it is in full view, with
   // half a row of its neighbours: focus() alone does not scroll on every TV.
+  // The first and the last control take the page to its top and its end, so
+  // what sits above the first or below the last (a heading, a note, the
+  // page's padding) comes into view with the arrows too, not only with the
+  // Magic Remote wheel. The part in view is the page's box within the panel's.
   const focusInView = (el) => {
     el.focus();
     const page = pages[activePage];
     if (!page || !page.contains(el)) return;
-    const box = page.getBoundingClientRect();
+    const shown = pageFocusables(page).filter((c) => c.getClientRects().length > 0);
+    if (el === shown[0]) { page.scrollTop = 0; return; }
+    if (el === shown[shown.length - 1]) { page.scrollTop = page.scrollHeight; return; }
+    const pageBox = page.getBoundingClientRect();
+    const panelBox = elmContainer.getBoundingClientRect();
+    const top = Math.max(pageBox.top, panelBox.top);
+    const bottom = Math.min(pageBox.bottom, panelBox.bottom);
     const row = boxOf(el);
     const margin = row.height / 2;
-    if (row.bottom + margin > box.bottom) page.scrollTop += row.bottom + margin - box.bottom;
-    else if (row.top - margin < box.top) page.scrollTop -= box.top - row.top + margin;
+    if (row.bottom + margin > bottom) page.scrollTop += row.bottom + margin - bottom;
+    else if (row.top - margin < top) page.scrollTop -= top - row.top + margin;
   };
   const moveFocus = (dir) => {
     const target = nearestInDirection(document.activeElement, dir, panelFocusables());

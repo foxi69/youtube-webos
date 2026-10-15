@@ -27,7 +27,7 @@ Fixes from the security audit of 0.8.7 (SECURITY_AUDIT.md), and five features fr
 ## Fixes
 
 + Return YouTube Dislike: the video id is URL-encoded in the API request.
-+ Settings panel: a page longer than the room under the tabs was cut off at the panel's bottom edge instead of scrolling, as ui.css counted 15vh for the heading and the tabs, which take more. The room is now measured when the panel opens, and moving with the arrows scrolls the focused row into full view. The new Browsing rows went to the UI Tweaks tab, so the Interface tab is as long as in 0.8.7.
++ Settings panel: a page longer than the room under the tabs was cut off at the panel's bottom edge instead of scrolling, as ui.css counted 15vh for the heading and the tabs, which take more. The room is now measured when the panel opens, and moving with the arrows scrolls the focused row into full view; the first and the last control take the page to its top and its end, so a note or margin below the last control is reached without the Magic Remote wheel. The new Browsing rows went to the UI Tweaks tab, so the Interface tab is as long as in 0.8.7.
 
 ## Tests
 
