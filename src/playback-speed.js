@@ -1,7 +1,7 @@
 import { AudioEngine } from './speed/audio-engine.js';
 import { installMseHook, isSupportedSpeed, SUPPORTED_SPEEDS } from './speed/mse-hook.js';
 import { showNotification } from './notifications.js';
-import { configRead } from './config.js';
+import { configRead, configAddChangeListener } from './config.js';
 import { SELECTORS } from './utils.js';
 
 export const SPEED_BUTTON_TYPE = 'TRANSPORT_CONTROLS_BUTTON_TYPE_SPEED_BUTTON';
@@ -223,6 +223,7 @@ export function createSpeedController({ win, getPlayer, notify, configRead }) {
     if (!videoData || !videoData.video_id) return;
     lastReloadAt = Date.now();
     player.loadVideoById(videoData.video_id, at);
+    restorePosition(player, at);
     // If YouTube's own menu is bound (native-menu.js), keep what it shows in
     // line with the real speed once the reloaded video has started.
     const setRate = player.__ytafOriginalSetPlaybackRate;
@@ -236,6 +237,27 @@ export function createSpeedController({ win, getPlayer, notify, configRead }) {
         }
       }, 2500);
     }
+  }
+
+  // On webOS 25, loadVideoById(id, at) starts up to ~25 s before `at`, even at
+  // 1x without the engine. Seek back once the reloaded video plays.
+  function restorePosition(player, at) {
+    let tries = 40;
+    const timer = win.setInterval(() => {
+      let state, now;
+      try {
+        state = player.getPlayerState();
+        now = player.getCurrentTime();
+      } catch {
+        state = null;
+      }
+      if (state === 1) {
+        if (Math.abs(now - at) > 2) player.seekTo(at, true);
+        win.clearInterval(timer);
+      } else if (--tries <= 0 || state === null) {
+        win.clearInterval(timer);
+      }
+    }, 250);
   }
 
   function setSpeed(speed, { immediate = false } = {}) {
@@ -272,6 +294,14 @@ export function createSpeedController({ win, getPlayer, notify, configRead }) {
 
   function reset() {
     setSpeed(1);
+  }
+
+  // Option turned off mid-video: go back to 1x now, not on the next video.
+  function stop() {
+    if (currentSpeed === 1) return;
+    const previousSpeed = currentSpeed;
+    currentSpeed = 1;
+    scheduleReload(pending ? pending.fromSpeed : previousSpeed, true);
   }
 
     function onRateRequest() {}
@@ -323,6 +353,7 @@ export function createSpeedController({ win, getPlayer, notify, configRead }) {
     cycle,
     step,
     reset,
+    stop,
     onRateRequest,
     onError,
     createAudioSink,
@@ -383,6 +414,10 @@ export function initPlaybackSpeed() {
       document.querySelector('.html5-video-player')
   });
   window.ytafSpeed = speedInstance ? speedInstance.controller : null;
+  if (speedInstance)
+    configAddChangeListener('enablePlaybackSpeed', ({ detail }) => {
+      if (!detail.newValue) speedInstance.controller.stop();
+    });
   return speedInstance;
 }
 
