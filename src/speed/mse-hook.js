@@ -165,6 +165,7 @@ export function installMseHook(
 ) {
   const origAddSourceBuffer = win.MediaSource.prototype.addSourceBuffer;
   const origCreateObjectURL = win.URL.createObjectURL;
+  const origRevokeObjectURL = win.URL.revokeObjectURL;
   const origSrcDesc = Object.getOwnPropertyDescriptor(
     win.HTMLMediaElement.prototype,
     'src'
@@ -195,6 +196,12 @@ export function installMseHook(
       urlToMs.set(url, obj);
     }
     return url;
+  };
+
+  // Don't keep every MediaSource (and its audio engine) alive for the session.
+  win.URL.revokeObjectURL = function (url) {
+    urlToMs.delete(url);
+    return origRevokeObjectURL.call(this, url);
   };
 
   if (origSrcDesc) {
@@ -342,6 +349,7 @@ export function installMseHook(
 
     sb.appendBuffer = function (data) {
       const u8 = new Uint8Array(data);
+      let appended = false;
       try {
         let isInit = false;
         if (isMp4) {
@@ -359,6 +367,7 @@ export function installMseHook(
           } else if (isWebm) {
             modified = rewriteTimecodeScale(modified, speed).data;
           }
+          appended = true;
           origAppendBuffer.call(this, modified.buffer || modified);
         } else {
           if (looksLikeInitStart(u8)) {
@@ -366,9 +375,14 @@ export function installMseHook(
             // play at 1x while the audio is stretched. Say so; B2 falls back to 1x.
             throw new Error('init segment split across appends');
           }
+          appended = true;
           origAppendBuffer.call(this, data);
         }
       } catch (e) {
+        // Errors of the native append itself (e.g. QuotaExceededError, which
+        // YouTube handles by evicting) are YouTube's to handle, not a reason
+        // to drop the speed or to append a second time.
+        if (appended) throw e;
         if (onError) onError(e);
         origAppendBuffer.call(this, data);
       }
@@ -427,6 +441,7 @@ export function installMseHook(
   function uninstall() {
     win.MediaSource.prototype.addSourceBuffer = origAddSourceBuffer;
     win.URL.createObjectURL = origCreateObjectURL;
+    win.URL.revokeObjectURL = origRevokeObjectURL;
     if (origSrcDesc) {
       Object.defineProperty(win.HTMLMediaElement.prototype, 'src', origSrcDesc);
     }

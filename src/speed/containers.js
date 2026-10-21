@@ -1,3 +1,6 @@
+// Far above what a media fragment holds (a few hundred samples).
+const MAX_TRUN_SAMPLES = 100000;
+
 export function parseBoxes(u8, start, end) {
   const boxes = [];
   let i = start;
@@ -339,6 +342,23 @@ export function demuxFragments(u8, { timescale, trex }) {
           }
 
           let trunDataOffset = baseDataOffset + dataOffset;
+
+          // A malformed count must not make us loop over billions of samples:
+          // the per-sample fields have to fit in the box, and the count is
+          // capped for samples without per-sample fields.
+          const bytesPerSample =
+            4 *
+            (((flags >> 8) & 1) +
+              ((flags >> 9) & 1) +
+              ((flags >> 10) & 1) +
+              ((flags >> 11) & 1));
+          if (
+            sampleCount > MAX_TRUN_SAMPLES ||
+            p + sampleCount * bytesPerSample > trun.end
+          ) {
+            moofValid = false;
+            break;
+          }
 
           for (let s = 0; s < sampleCount; s++) {
             let duration = trafDefaultDuration;

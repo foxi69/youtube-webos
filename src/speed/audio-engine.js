@@ -58,7 +58,15 @@ export class AudioEngine {
     this.anchorPending = false;
     this.stalledTicks = 0;
 
-    this.tickInterval = this.win.setInterval(() => this.tick(), 50);
+    this.tickInterval = this.win.setInterval(() => {
+      // An error here would otherwise repeat every 50 ms with silent audio;
+      // reporting it falls back to 1x.
+      try {
+        this.tick();
+      } catch (e) {
+        this.reportError(e);
+      }
+    }, 50);
 
     this.onPause = () => {
       // Pause must be silent at once: stop everything, including the buffer
@@ -269,6 +277,11 @@ export class AudioEngine {
     this.stopFuture();
     if (this.decoder && this.decoder.state !== 'closed') this.decoder.close();
     if (this.ctx.state !== 'closed') this.ctx.close();
+    // Free the compressed and decoded audio even if something still
+    // references the engine.
+    this.chunks = [];
+    this.pcm = [];
+    this.sentToDecoder.clear();
   }
 
   reportError(e) {

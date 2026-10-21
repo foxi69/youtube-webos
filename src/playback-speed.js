@@ -63,14 +63,14 @@ export function installSpeedButtonPatch(win, isOn) {
   };
 }
 
-export function enableNativeSpeedMenu(win) {
+export function enableNativeSpeedMenu(win, isOn = () => true) {
   const proto = (win.Object || Object).prototype;
   const previous = Object.getOwnPropertyDescriptor(proto, 'enableSpeedOptions');
   Object.defineProperty(proto, 'enableSpeedOptions', {
     configurable: true,
     enumerable: false,
     get() {
-      return true;
+      return isOn();
     },
     set(value) {
       Object.defineProperty(this, 'enableSpeedOptions', {
@@ -314,27 +314,6 @@ export function createSpeedController({ win, getPlayer, notify, configRead }) {
     return engine;
   }
 
-  function handleKey(evt) {
-    // YTAF's ui.js reads colour keys from charCode, the webOS docs from keyCode:
-    // accept both.
-    const code = evt.keyCode || evt.charCode;
-    if (code === 405 || code === 170) {
-      if (evt.type === 'keydown') {
-        evt.preventDefault();
-        if (evt.stopPropagation) evt.stopPropagation();
-        // YouTube re-dispatches remote keys from its own listeners on document
-        // (seen on the TV: one press cycled twice); ours runs first, so stop them.
-        if (evt.stopImmediatePropagation) evt.stopImmediatePropagation();
-        cycle();
-        return true;
-      } else if (evt.type === 'keypress' || evt.type === 'keyup') {
-        evt.preventDefault();
-        return true;
-      }
-    }
-    return false;
-  }
-
   return {
         activeEngine: () => (activeSink ? activeSink.engine : null),
     lastReloadAt: () => lastReloadAt,
@@ -347,8 +326,7 @@ export function createSpeedController({ win, getPlayer, notify, configRead }) {
     onRateRequest,
     onError,
     createAudioSink,
-    releaseAudioSink,
-    handleKey
+    releaseAudioSink
   };
 }
 
@@ -372,22 +350,17 @@ export function installSpeedFeature(win, { notify, configRead: cfgRead, getPlaye
     onNativeAudio: ctrl.releaseAudioSink
   });
 
-  const restoreMenu = enableNativeSpeedMenu(win);
+  const isOn = () => cfgRead('enablePlaybackSpeed') !== false;
+  const restoreMenu = enableNativeSpeedMenu(win, isOn);
   const restoreRateHook = hookRateAssignments(win, ctrl);
-  const restoreButton = installSpeedButtonPatch(
-    win,
-    () => cfgRead('enablePlaybackSpeed') !== false
-  );
+  const restoreButton = installSpeedButtonPatch(win, isOn);
   const bindTimer =
     typeof win.setInterval === 'function'
       ? win.setInterval(() => bindPlayerRate(getPlayer(), ctrl), 1000)
       : null;
 
-  const keyHandler = (evt) => ctrl.handleKey(evt);
-  win.document.addEventListener('keydown', keyHandler, true);
-  win.document.addEventListener('keypress', keyHandler, true);
-  win.document.addEventListener('keyup', keyHandler, true);
-
+  // No key listener of its own: the speed keys go through the button mapping
+  // (speed_up / speed_down / speed_reset), so Yellow keeps YouTube's search.
   return {
     controller: ctrl,
     uninstall() {
@@ -396,9 +369,6 @@ export function installSpeedFeature(win, { notify, configRead: cfgRead, getPlaye
       restoreRateHook();
       restoreButton();
       if (bindTimer !== null) win.clearInterval(bindTimer);
-      win.document.removeEventListener('keydown', keyHandler, true);
-      win.document.removeEventListener('keypress', keyHandler, true);
-      win.document.removeEventListener('keyup', keyHandler, true);
     }
   };
 }
