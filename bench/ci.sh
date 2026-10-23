@@ -36,6 +36,7 @@ run feed-features-test "$B"
 run emoji-loop-test "$B" 40
 run force-codec-test "$B"
 run sponsorblock-labels-test "$B"
+run mono-audio-test "$B"
 
 # Coverage stops here: c8 reads the bundle on disk when it reports, so that
 # must still be the build the tests ran (the modern build reuses the path).

@@ -3,6 +3,7 @@ import { installMseHook, isSupportedSpeed, SUPPORTED_SPEEDS } from './speed/mse-
 import { showNotification } from './notifications.js';
 import { configRead, configAddChangeListener } from './config.js';
 import { SELECTORS } from './utils.js';
+import { downmix } from './mono-audio.js';
 
 export const SPEED_BUTTON_TYPE = 'TRANSPORT_CONTROLS_BUTTON_TYPE_SPEED_BUTTON';
 export const SPEED_OVERLAY_TYPE = 'CLIENT_OVERLAY_TYPE_VIDEO_PLAYBACK_SPEED';
@@ -339,6 +340,8 @@ export function createSpeedController({ win, getPlayer, notify, configRead }) {
     releaseAudioSink();
 
     const engine = new AudioEngine({ win, speed, onError });
+    // Mono Audio: the engine plays the sound itself, past the <video>.
+    downmix(engine.gain, !!(configRead && configRead('monoAudio')));
     if (element) {
       engine.attachVideo(element);
       engine.setVolume(element.volume, element.muted);
@@ -431,6 +434,10 @@ export function initPlaybackSpeed() {
   if (speedInstance) {
     configAddChangeListener('enablePlaybackSpeed', ({ detail }) => {
       if (!detail.newValue) speedInstance.controller.stop();
+    });
+    configAddChangeListener('monoAudio', ({ detail }) => {
+      const engine = speedInstance.controller.activeEngine();
+      if (engine) downmix(engine.gain, detail.newValue);
     });
     // The next video (autoplay, a tile) keeps the speed but starts at the
     // quality YouTube picks, 2160p on a 4K TV: cap it once it plays.
