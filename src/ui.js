@@ -1007,6 +1007,7 @@ function createOptionsPanel() {
   createSubtitleAutoEnableControl(),
   createConfigCheckbox('disableAutoCaptions'),
   createConfigCheckbox('forceOriginalAudio'),
+  createConfigCheckbox('monoAudio'),
   createAlignedCycleControl('timeRemainingMode', timeRemainingModes),
   createConfigCheckbox('hideEndcards'),
   createConfigCheckbox('enableScrollSeek'),

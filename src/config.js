@@ -207,6 +207,8 @@ const configOptions = new Map([
   ['disableAutoCaptions', { default: false, desc: "Don't Turn On Subtitles by Themselves" }],
   // Drops the dubbed audio tracks from the player response, so the original plays.
   ['forceOriginalAudio', { default: false, desc: 'Prefer Original Audio over Dubbed' }],
+  // Left and right mixed into one, on both speakers.
+  ['monoAudio', { default: false, desc: 'Mono Audio' }],
   ['seekStep', { default: '0', desc: 'Left/Right Seek Step (Controls Hidden)' }],
   // Remaining time and/or the wall-clock end time beside the duration.
   ['timeRemainingMode', { default: 'off', desc: 'Show Remaining Time / End Time' }],

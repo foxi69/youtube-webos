@@ -10,6 +10,7 @@ Playback speed on webOS: 0.25× to 2× with the pitch kept, from YouTube's own S
 
 ## Added
 
++ **Mono Audio** (Player, off by default): left and right mixed into one, on both speakers - for one ear, or a TV where only one speaker is heard. The video's sound is routed through Web Audio into a one-channel mix, and at a playback speed other than 1× the speed engine's sound is mixed the same way. Web Audio is touched only once the option is first turned on; turning it off plays the sound as it comes. A TV that gives Web Audio no sound at all is reported once ("turn it off and restart the app"). From andreescocard's fork (fork watch #41).
 + **Playback Speed Control** (Player, on by default): webOS ignores the video's playback rate, so the video decoder stays at 1×, the container timeline is rescaled and the audio is time-stretched (WebCodecs AudioDecoder + WSOLA), which keeps the pitch. YouTube's Settings > Speed menu is unlocked, and the button mapping gets **Playback Speed +**, **Playback Speed −** and **Playback Speed Reset (1x)**. Needs WebCodecs (Chromium 94+): the legacy webOS 3-6 package and likely webOS 22 do not get it. At 1× playback is not touched, and every launch starts at 1×.
   + A speed change keeps the position (YouTube's reload started up to 25 s early on webOS 25).
   + Above 1.25× the video plays at 1080p at most: the TV cannot decode 2160p fast enough (at 1.5× it dropped 85% of the frames). Back at 1×, Force Max Quality applies again.
