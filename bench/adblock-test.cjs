@@ -101,6 +101,56 @@ setTimeout(() => {
   t('browse: trackingParams blanked at root', b.trackingParams === '');
   t('browse: trackingParams blanked nested', inner[0]?.tileRenderer?.trackingParams === '');
 
+  // --- Subscriptions channel tabs: each tab is a small placeholder that a
+  // continuation fills later, matched by their trackingParams, which must
+  // survive. Everything else is still blanked ---
+  {
+    const placeholder = (n) => ({ tabRenderer: {
+      title: 'Channel ' + n,
+      content: { tvSurfaceContentRenderer: {
+        continuation: { reloadContinuationData: { continuation: 'cont-' + n, clickTrackingParams: 'ctp-' + n } },
+        trackingParams: 'tp-tab-' + n
+      } },
+      trackingParams: 'tp-tabrenderer-' + n
+    } });
+    const page = P(nativeStringify({
+      responseContext: { _pad: pad },
+      contents: { tvBrowseRenderer: { content: { tvSurfaceContentRenderer: {
+        content: { tvSecondaryNavRenderer: { sections: [{ tvSecondaryNavSectionRenderer: {
+          tabs: [placeholder(1), placeholder(2)]
+        } }] } },
+        trackingParams: 'tp-page'
+      } } } },
+      trackingParams: 'tp-root'
+    }));
+    const tabs = page.contents.tvBrowseRenderer.content.tvSurfaceContentRenderer.content
+      .tvSecondaryNavRenderer.sections[0].tvSecondaryNavSectionRenderer.tabs;
+    t('tab placeholders: own trackingParams kept',
+      tabs[0].tabRenderer.content.tvSurfaceContentRenderer.trackingParams === 'tp-tab-1' &&
+      tabs[1].tabRenderer.content.tvSurfaceContentRenderer.trackingParams === 'tp-tab-2');
+    t('tab placeholders: clickTrackingParams untouched',
+      tabs[0].tabRenderer.content.tvSurfaceContentRenderer.continuation.reloadContinuationData.clickTrackingParams === 'ctp-1');
+    t('tab placeholders: tabRenderer and root trackingParams blanked',
+      tabs[0].tabRenderer.trackingParams === '' && page.trackingParams === '');
+
+    const fill = P(nativeStringify({
+      responseContext: { _pad: pad },
+      continuationContents: { tvSurfaceContentContinuation: {
+        content: { sectionListRenderer: { contents: [{ shelfRenderer: { content: { horizontalListRenderer: { items: [
+          { tileRenderer: { style: 'TILE_STYLE_YTLR_DEFAULT', title: 'say "trackingParams" {', trackingParams: 'tp-tile' } }
+        ] } } } }] } },
+        trackingParams: 'tp-tab-2'
+      } },
+      trackingParams: 'tp-root'
+    }));
+    const cont = fill.continuationContents.tvSurfaceContentContinuation;
+    const tile = cont.content.sectionListRenderer.contents[0].shelfRenderer.content.horizontalListRenderer.items[0].tileRenderer;
+    t('tab continuation: own trackingParams kept, past its content', cont.trackingParams === 'tp-tab-2');
+    t('tab continuation: tile trackingParams blanked', tile.trackingParams === '');
+    t('tab continuation: a string holding the key and a brace is left alone', tile.title === 'say "trackingParams" {');
+    t('tab continuation: root trackingParams blanked', fill.trackingParams === '');
+  }
+
   // --- PLAYER: ads, endcards, attestation, QR overlay ---
   const player = {
     responseContext: { visitorData: 'x', _pad: pad },

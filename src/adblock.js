@@ -143,16 +143,76 @@ const TRACKING_PARAMS_KEY = '"trackingParams"';
 const TRACKING_PARAMS_RE = /"trackingParams"\s*:\s*"[^"\\]*"/g;
 const TRACKING_PARAMS_EMPTY = '"trackingParams":""';
 
+// Each Subscriptions channel tab arrives as a small tvSurfaceContentRenderer
+// placeholder (a reload continuation and its trackingParams), and the
+// tvSurfaceContentContinuation that later fills it carries the same
+// trackingParams: that is how the TV matches the answer to its tab. Blanked,
+// every tab shares '', so an answer arriving after the focus moved on lands in
+// the focused tab, which keeps the wrong channel's videos until a restart.
+// These two keep their own value; whatever is nested in them is blanked as
+// before. (anilkusaksiz's fix, NicholasBly/youtube-webos PR #196, fork watch
+// #51.)
+const KEEP_TRACKING_HINT = '"tvSurfaceContent';
+const KEEP_TRACKING_RE = /"tvSurfaceContent(Renderer|Continuation)"\s*:\s*\{/g;
+// A JSON string (escapes included) or a bracket, so the scan below counts
+// depth with native regex steps instead of a loop over every character.
+const JSON_TOKEN_RE = /"[^"\\]*(?:\\.[^"\\]*)*"|[[\]{}]/g;
+// A placeholder is a handful of tokens. The page's own tvSurfaceContentRenderer
+// holds the whole page and is no placeholder, so the scan gives up on it
+// after these instead of walking a home screen on every browse response.
+const PLACEHOLDER_TOKENS = 64;
+
+/**
+ * Where the "trackingParams" key of the object whose body starts at `from`
+ * sits, at that object's own level (not in what it holds), or -1: also when
+ * it is not found within `maxTokens` tokens.
+ */
+function ownTrackingParamsAt(text, from, maxTokens) {
+  JSON_TOKEN_RE.lastIndex = from;
+  let depth = 1;
+  let left = maxTokens;
+  let m;
+  while (left-- > 0 && (m = JSON_TOKEN_RE.exec(text)) !== null) {
+    const tok = m[0];
+    if (tok.length > 1) {
+      if (depth === 1 && tok === TRACKING_PARAMS_KEY) return m.index;
+    } else if (tok === '{' || tok === '[') {
+      depth++;
+    } else if (--depth === 0) {
+      return -1;
+    }
+  }
+  return -1;
+}
+
+/** The offsets of the trackingParams keys to keep, or null for none. */
+function keptTrackingParams(text) {
+  let keep = null;
+  let m;
+  KEEP_TRACKING_RE.lastIndex = 0;
+  while ((m = KEEP_TRACKING_RE.exec(text)) !== null) {
+    // The continuation fills one tab, so it is scanned whole.
+    const maxTokens = m[1] === 'Renderer' ? PLACEHOLDER_TOKENS : Infinity;
+    const at = ownTrackingParamsAt(text, KEEP_TRACKING_RE.lastIndex, maxTokens);
+    if (at !== -1) (keep || (keep = {}))[at] = true;
+  }
+  return keep;
+}
+
 /**
  * The JSON text with every string trackingParams blanked, at any depth: one
  * native pass over the text before the parse, where the walk of the parsed
  * tree stopped at depth 15 and cost more than the parse itself on a browse
  * response. The same string comes back when the key does not occur. (From
- * mirijanristic's fork.)
+ * mirijanristic's fork.) The Subscriptions tab keys above are kept.
  */
 function stripTrackingParams(text) {
   if (text.indexOf(TRACKING_PARAMS_KEY) === -1) return text;
-  return text.replace(TRACKING_PARAMS_RE, TRACKING_PARAMS_EMPTY);
+  const keep = text.indexOf(KEEP_TRACKING_HINT) === -1 ? null : keptTrackingParams(text);
+  if (!keep) return text.replace(TRACKING_PARAMS_RE, TRACKING_PARAMS_EMPTY);
+  return text.replace(TRACKING_PARAMS_RE, (match, offset) =>
+    keep[offset] ? match : TRACKING_PARAMS_EMPTY
+  );
 }
 
 const IGNORE_ON_SHORTS = new Set(['SEARCH', 'PLAYER', 'ACTION']);
