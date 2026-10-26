@@ -198,6 +198,7 @@ Return YouTube Dislike sends the id of every video you open to returnyoutubedisl
 | YouTube Logo (Default, Premium, Hidden) | Default |
 | Clock in UI (Off, Time, Date and Time) | Off |
 | Keep the Clock On During Playback | Off |
+| Show Watch Time With the Clock | Off |
 | OLED-Care Mode (True Black UI) | Off |
 | Disable Notifications | Off |
 | Load Rows Ahead | On |

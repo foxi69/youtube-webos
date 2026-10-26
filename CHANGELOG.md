@@ -16,6 +16,7 @@ Playback speed on webOS: 0.25× to 2× with the pitch kept, from YouTube's own S
   + Turning the option off goes back to 1× at once.
   + Yellow is not taken: it keeps YouTube's search unless a speed action is mapped to it.
 + **Show Video Quality Next to the Title** (Player, off by default): the quality the video plays in ("1080p60", "2160p60 HDR") as a small tag after the line under the title in the player. It follows the adaptive stream when it switches quality. From NicholasBly/youtube-webos#204 (fork watch #51).
++ **Show Watch Time With the Clock** (Interface, off by default, needs Clock in UI): after the time, how long videos have played since the app started ("14:05 · 1h 05m watched"). Only playback on the watch and Shorts pages counts, not pauses, buffering or previews. From NicholasBly/youtube-webos#203 (fork watch #51).
 
 ## Changed
 
