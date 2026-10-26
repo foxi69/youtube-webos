@@ -216,6 +216,8 @@ const configOptions = new Map([
   ['logoStyle', { default: 'default', desc: 'YouTube Logo' }],
   ['clockMode', { default: 'off', desc: 'Clock in UI' }],
   ['clockDuringPlayback', { default: false, desc: 'Keep the Clock On During Playback' }],
+  // How long videos have played since the app started, after the time (watch-time.js).
+  ['showWatchTime', { default: false, desc: 'Show Watch Time With the Clock' }],
   ['enableOledCareMode', { default: false, desc: 'OLED-Care Mode (True Black UI)' }],
   ['videoShelfOpacity', { default: 100, desc: 'Video shelf opacity' }],
   ['fixMultilineTitles', { default: true, desc: 'Fix Multiline Titles' }],
