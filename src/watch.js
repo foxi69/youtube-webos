@@ -1,5 +1,6 @@
 import { configRead, configAddChangeListener, configRemoveChangeListener } from './config';
 import { debounce } from './utils';
+import { watchTimeMs, formatWatchTime } from './watch-time.js';
 import './watch.css';
 
 // Intl is supported in Chrome 24+, safe for webOS 3. The date is the locale's
@@ -39,6 +40,8 @@ class Watch {
     this.applyOledMode(configRead('enableOledCareMode'));
     configAddChangeListener('enableOledCareMode', this.onOledChange);
     configAddChangeListener('clockDuringPlayback', this.updateVisibility);
+    this.refreshText = this.refreshText.bind(this);
+    configAddChangeListener('showWatchTime', this.refreshText);
 
     // Initial check
     this.updateVisibility();
@@ -65,7 +68,16 @@ class Watch {
   /** Time only, or the date with it; shown at once. */
   setMode(mode) {
     this._formatter = new Intl.DateTimeFormat(navigator.language, CLOCK_FORMATS[mode] || CLOCK_FORMATS.time);
-    if (this._watch) this._watch.textContent = this._formatter.format(new Date());
+    this.refreshText();
+  }
+
+  /** The time, and with Show Watch Time the playback of this session after it. */
+  refreshText() {
+    if (!this._watch) return;
+    let text = this._formatter.format(new Date());
+    if (configRead('showWatchTime')) text += ` \u00b7 ${formatWatchTime(watchTimeMs())} watched`;
+    // textContent is faster than innerText
+    this._watch.textContent = text;
   }
 
   startClock() {
@@ -73,9 +85,8 @@ class Watch {
 
     const setTime = () => {
       if (this._watch) {
-        // textContent is faster than innerText
-        this._watch.textContent = this._formatter.format(new Date());
-        
+        this.refreshText();
+
         // Safety check on the minute mark
         this.updateVisibility();
       }
@@ -161,6 +172,7 @@ class Watch {
 
     configRemoveChangeListener('enableOledCareMode', this.onOledChange);
     configRemoveChangeListener('clockDuringPlayback', this.updateVisibility);
+    configRemoveChangeListener('showWatchTime', this.refreshText);
     
     if (this.boundStateChange) {
         window.removeEventListener('yt-player-state-change', this.boundStateChange);
