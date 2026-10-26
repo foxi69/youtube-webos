@@ -1,7 +1,10 @@
 name: Update Homebrew Repository
 on:
   release:
-    types: [published]
+    # released: a full release is published, or a pre-release becomes one.
+    # Not published: that fires for a pre-release too, but not when it becomes
+    # a full release, so repo.json would stay on the previous version.
+    types: [released]
   workflow_dispatch:
 permissions:
   contents: write
