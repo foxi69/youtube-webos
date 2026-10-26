@@ -1,0 +1,15 @@
+/* Show Video Quality Next to the Title (quality-tag.js supplies the content).
+   No `content` here: without the rule the module writes, nothing renders. */
+ytlr-video-title-tray ytlr-video-metadata-line::after,
+ytlr-watch-metadata ytlr-video-metadata-line::after {
+  display: inline-block;
+  vertical-align: middle;
+  margin-left: 0.8em;
+  padding: 0 0.45em;
+  border: 0.08em solid rgba(255, 255, 255, 0.6);
+  border-radius: 0.3em;
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: nowrap;
+  opacity: 0.9;
+}

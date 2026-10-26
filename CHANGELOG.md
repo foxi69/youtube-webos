@@ -15,6 +15,7 @@ Playback speed on webOS: 0.25× to 2× with the pitch kept, from YouTube's own S
   + Above 1.25× the video plays at 1080p at most: the TV cannot decode 2160p fast enough (at 1.5× it dropped 85% of the frames). Back at 1×, Force Max Quality applies again.
   + Turning the option off goes back to 1× at once.
   + Yellow is not taken: it keeps YouTube's search unless a speed action is mapped to it.
++ **Show Video Quality Next to the Title** (Player, off by default): the quality the video plays in ("1080p60", "2160p60 HDR") as a small tag after the line under the title in the player. It follows the adaptive stream when it switches quality. From NicholasBly/youtube-webos#204 (fork watch #51).
 
 ## Changed
 
