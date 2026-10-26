@@ -1014,12 +1014,17 @@ function createOptionsPanel() {
   createConfigCheckbox('enableReturnYouTubeDislike')]));
   // The logo in the header also cycles the theme, but a remote cannot focus
   // it, so the setting needs a row of its own to be reachable on a TV.
-  // Keep the Clock On During Playback means nothing with the clock off.
+  // Keep the Clock On During Playback and Show Watch Time mean nothing with the clock off.
   const elClockDuringPlayback = createConfigCheckbox('clockDuringPlayback');
-  const updateClockRow = () => setState(elClockDuringPlayback, configRead('clockMode') !== 'off');
+  const elShowWatchTime = createConfigCheckbox('showWatchTime');
+  const updateClockRow = () => {
+    const clockOn = configRead('clockMode') !== 'off';
+    setState(elClockDuringPlayback, clockOn);
+    setState(elShowWatchTime, clockOn);
+  };
   configAddChangeListener('clockMode', updateClockRow);
   updateClockRow();
-  const interfaceGroup = [createAlignedCycleControl('uiTheme', uiThemes), createConfigCheckbox('enableAutoLogin'), createConfigCheckbox('autoSelectAccount'), createPerAccountControl(), createConfigCheckbox('upgradeThumbnails'), createThumbnailQualityControl(), createLogoControl(), createAlignedCycleControl('clockMode', clockModes), elClockDuringPlayback, createConfigCheckbox('enableOledCareMode'), createConfigCheckbox('disableNotifications'), createConfigCheckbox('loadRowsAhead'), createConfigCheckbox('keyboardSearch'), createAlignedCycleControl('searchUploadDate', searchUploadDateModes), createConfigCheckbox('pointerSettingsButton'), createConfigCheckbox('disableAnimations')];
+  const interfaceGroup = [createAlignedCycleControl('uiTheme', uiThemes), createConfigCheckbox('enableAutoLogin'), createConfigCheckbox('autoSelectAccount'), createPerAccountControl(), createConfigCheckbox('upgradeThumbnails'), createThumbnailQualityControl(), createLogoControl(), createAlignedCycleControl('clockMode', clockModes), elClockDuringPlayback, elShowWatchTime, createConfigCheckbox('enableOledCareMode'), createConfigCheckbox('disableNotifications'), createConfigCheckbox('loadRowsAhead'), createConfigCheckbox('keyboardSearch'), createAlignedCycleControl('searchUploadDate', searchUploadDateModes), createConfigCheckbox('pointerSettingsButton'), createConfigCheckbox('disableAnimations')];
   // The cast block only exists on webOS 25 (see userScript.js).
   if (isWebOS25()) interfaceGroup.push(createConfigCheckbox('blockWebosCast'));
   // --- Page 3: Interface ---
