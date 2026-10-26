@@ -36,6 +36,7 @@ run feed-features-test "$B"
 run emoji-loop-test "$B" 40
 run force-codec-test "$B"
 run screensaver-test "$B"
+run quality-tag-test "$B"
 run watch-time-test "$B"
 run sponsorblock-labels-test "$B"
 

@@ -301,7 +301,8 @@ function clearQualityToast() {
   }
 }
 
-function playingQualityLabel() {
+/** The quality the video plays in ("1080p60"), or null when it is not known. */
+export function playingQualityLabel() {
   try {
     const label = player?.getPlaybackQualityLabel?.();
     if (label) return label;
