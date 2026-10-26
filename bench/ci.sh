@@ -35,6 +35,7 @@ run per-account-test "$B"
 run feed-features-test "$B"
 run emoji-loop-test "$B" 40
 run force-codec-test "$B"
+run screensaver-test "$B"
 run search-filter-test "$B"
 run sponsorblock-labels-test "$B"
 
