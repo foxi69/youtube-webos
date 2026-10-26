@@ -15,6 +15,7 @@ Playback speed on webOS: 0.25× to 2× with the pitch kept, from YouTube's own S
   + Above 1.25× the video plays at 1080p at most: the TV cannot decode 2160p fast enough (at 1.5× it dropped 85% of the frames). Back at 1×, Force Max Quality applies again.
   + Turning the option off goes back to 1× at once.
   + Yellow is not taken: it keeps YouTube's search unless a speed action is mapped to it.
++ **Show Watch Time With the Clock** (Interface, off by default, needs Clock in UI): after the time, how long videos have played since the app started ("14:05 · 1h 05m watched"). Only playback on the watch and Shorts pages counts, not pauses, buffering or previews. From NicholasBly/youtube-webos#203 (fork watch #51).
 
 ## Changed
 
