@@ -24,10 +24,10 @@
     "test": "bash bench/ci.sh",
     "coverage": "c8 bash bench/ci.sh --coverage"
   },
-  "repository": "github:webosbrew/youtube-webos",
+  "repository": "github:foxi69/youtube-webos",
   "license": "GPL-3.0-only",
-  "bugs": "https://github.com/NicholasBly/youtube-webos/issues",
-  "homepage": "https://github.com/NicholasBly/youtube-webos#readme",
+  "bugs": "https://github.com/foxi69/youtube-webos/issues",
+  "homepage": "https://github.com/foxi69/youtube-webos#readme",
   "dependencies": {
     "@twemoji/api": "16.0.1",
     "tiny-sha256": "^1.0.2",

@@ -86,7 +86,7 @@ jobs:
               # Default values
               pkg_id = app_info.get('id')
               title = app_info.get('title')
-              description = app_info.get('description', title)
+              description = "YouTube AdFree for webOS 3 and newer, with SponsorBlock, Return YouTube Dislike and DeArrow."
               
               # Both .ipk files install as the same app (assets/appinfo.json), and
               # Homebrew Channel matches a repository entry to the installed app

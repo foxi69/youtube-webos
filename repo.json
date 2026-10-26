@@ -9,14 +9,14 @@
     {
       "id": "youtube.leanback.v4",
       "title": "YouTube",
-      "description": "YouTube",
+      "description": "YouTube AdFree for webOS 3 and newer, with SponsorBlock, Return YouTube Dislike and DeArrow.",
       "iconUri": "https://raw.githubusercontent.com/foxi69/youtube-webos/main/assets/icon.png",
       "manifest": {
         "id": "youtube.leanback.v4",
         "version": "0.8.8",
         "type": "web",
         "title": "YouTube",
-        "appDescription": "YouTube",
+        "appDescription": "YouTube AdFree for webOS 3 and newer, with SponsorBlock, Return YouTube Dislike and DeArrow.",
         "iconUri": "https://raw.githubusercontent.com/foxi69/youtube-webos/main/assets/icon.png",
         "sourceUrl": "https://github.com/foxi69/youtube-webos",
         "rootRequired": false,
