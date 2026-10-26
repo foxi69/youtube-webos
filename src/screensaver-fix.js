@@ -3,7 +3,9 @@
  * the entire screen, the screensaver can kick in.
  *
  * Also asks the TV itself, through its power service, not to start the
- * screensaver while a video plays (best effort; see registerScreenSaverRequest).
+ * screensaver while a video plays (best effort; see registerScreenSaverRequest),
+ * and unfreezes a video that a screensaver started during a pause left without
+ * its decoder (see onPlaying).
  */
 
 import { waitForChildAdd, sendKey, SELECTORS, REMOTE_KEYS, isWatchPage, isShortsPage, getVideo } from './utils';
@@ -283,6 +285,69 @@ window.addEventListener('ytaf-page-update', updateState);
 // A video-to-video navigation keeps the page type and may replace the <video>.
 window.addEventListener('hashchange', updateState);
 
+// --- Frozen picture after a video screensaver ---
+// A video screensaver (Aerial, for example) takes the hardware decoder from
+// the paused <video> without telling the page. On play the element fires
+// 'playing' and reports readyState 4, yet no frame decodes and currentTime
+// stands still until YouTube's own stall watchdog rebuilds the player about
+// 20s later. A seek in place makes the stale pipeline fail at once, and
+// YouTube rebuilds it right away (about 4s in all on a webOS 8 TV). (From
+// magicsk's fix, NicholasBly/youtube-webos PR #198, fork watch #51.)
+const STALL_CHECK_MS = 2000;
+// A screensaver only starts after a long pause, so first plays, seeks,
+// rebuffers and short pauses are left alone: a slow but healthy start must
+// not be seeked, nor use up the cooldown meant for a real stall.
+const MIN_PAUSE_MS = 30000;
+// One nudge per this long, so a nudge that did not help does not loop.
+const STALL_COOLDOWN_MS = 10000;
+let lastStallNudge = 0;
+
+// Each pause and play of a <video> starts a new generation; a check scheduled
+// for an older one is dropped, so it cannot seek after a later pause or play.
+function nextStallGeneration(video) {
+  video._ytafStallGen = (video._ytafStallGen || 0) + 1;
+  return video._ytafStallGen;
+}
+
+function onPause(evt) {
+  const video = evt.target;
+  if (!(video instanceof HTMLVideoElement)) return;
+  video._ytafPausedAt = Date.now();
+  nextStallGeneration(video);
+}
+
+function checkStall(video, generation, startTime) {
+  if (video._ytafStallGen !== generation || !video.isConnected) return;
+  // Real buffering lowers readyState and fires 'waiting'; this is "ready,
+  // playing, yet the clock never moved".
+  if (video.paused || video.seeking || video.readyState < 3) return;
+  if (video.currentTime !== startTime) return;
+  const wait = lastStallNudge + STALL_COOLDOWN_MS - Date.now();
+  if (wait > 0) {
+    // Another video was nudged a moment ago: look again once that is over.
+    setTimeout(() => checkStall(video, generation, startTime), wait);
+    return;
+  }
+  lastStallNudge = Date.now();
+  DEBUG && console.info('[ScreensaverFix] Playback frozen after a long pause, seeking in place at', startTime);
+  video.currentTime = startTime;
+}
+
+function onPlaying(evt) {
+  const video = evt.target;
+  if (!(video instanceof HTMLVideoElement)) return;
+  const pausedAt = video._ytafPausedAt;
+  video._ytafPausedAt = 0;
+  const generation = nextStallGeneration(video);
+  if (!pausedAt || Date.now() - pausedAt < MIN_PAUSE_MS) return;
+  const startTime = video.currentTime;
+  setTimeout(() => checkStall(video, generation, startTime), STALL_CHECK_MS);
+}
+
+// Media events do not bubble; capturing on document covers every <video>.
+document.addEventListener('pause', onPause, true);
+document.addEventListener('playing', onPlaying, true);
+
 // Initial Check
 if(document.body) updateState();
 else document.addEventListener('DOMContentLoaded', updateState);
@@ -291,6 +356,8 @@ window.addEventListener('beforeunload', () => {
   playerCtrlObs.disconnect();
   window.removeEventListener('ytaf-page-update', updateState);
   window.removeEventListener('hashchange', updateState);
+  document.removeEventListener('pause', onPause, true);
+  document.removeEventListener('playing', onPlaying, true);
   if (videoWait) videoWait.cancel();
   if (screenSaverSubscription) {
     try { screenSaverSubscription.cancel(); } catch { /* ignore */ }
