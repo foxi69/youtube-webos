@@ -161,6 +161,7 @@ keyboard (OK on the box) or a USB/Bluetooth one, then OK; select an entry to rem
 |---|---|
 | Force Max Quality | Off |
 | Show Video Quality on Start | Off |
+| Show Video Quality Next to the Title | Off |
 | Force Video Codec (Auto, AV1, VP9, AVC, HEVC, Avoid AV1) | Auto |
 | Auto-Translate Subtitles (pick a language) | Off |
 | Turn On Translated Subtitles Automatically | Off |

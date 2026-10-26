@@ -231,6 +231,7 @@ const configOptions = new Map([
   ['hideGuestSignInPrompts', { default: false, desc: 'Guest Mode: Hide Sign-in Buttons' }],
   ['forceHighResVideo', { default: false, desc: 'Force Max Quality' }],
   ['showQualityOnStart', { default: false, desc: 'Show Video Quality on Start' }],
+  ['showQualityInTitle', { default: false, desc: 'Show Video Quality Next to the Title' }],
   ['forceVideoCodec', { default: 'auto', desc: 'Force Video Codec' }],
   ['subtitleTranslateLang', { default: 'off', desc: 'Auto-Translate Subtitles' }],
   ['subtitleAutoEnable', { default: false, desc: 'Turn On Translated Subtitles Automatically' }],
