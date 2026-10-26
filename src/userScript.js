@@ -32,6 +32,7 @@ import './mute-previews.js';
 import './guide-fit.js';
 import './start-page.js';
 import './time-remaining.js';
+import './quality-tag.js';
 import './lang-settings-fix';
 
 import { initBufferLimit } from './hooks/buffer-limit.js';
