@@ -35,6 +35,7 @@ run per-account-test "$B"
 run feed-features-test "$B"
 run emoji-loop-test "$B" 40
 run force-codec-test "$B"
+run screensaver-test "$B"
 run sponsorblock-labels-test "$B"
 
 # Coverage stops here: c8 reads the bundle on disk when it reports, so that
