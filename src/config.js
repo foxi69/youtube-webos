@@ -26,6 +26,19 @@ export const uiThemes = {
   'classic-red': 'Red'
 };
 
+/**
+ * Search: Upload Date - only results uploaded in this window. A filter, not a
+ * sort: YouTube no longer sorts by upload date (see hooks/json-stringify.ts).
+ */
+export const searchUploadDateModes = {
+  any: 'Any Time',
+  hour: 'Last Hour',
+  today: 'Today',
+  week: 'This Week',
+  month: 'This Month',
+  year: 'This Year'
+};
+
 /** What the clock in the corner shows (NicholasBly/youtube-webos#126). */
 export const clockModes = {
   off: 'Off',
@@ -221,6 +234,7 @@ const configOptions = new Map([
   ['fixMultilineTitles', { default: true, desc: 'Fix Multiline Titles' }],
   ['loadRowsAhead', { default: true, desc: 'Load Rows Ahead' }],
   ['keyboardSearch', { default: true, desc: 'Type in Search with a Keyboard' }],
+  ['searchUploadDate', { default: 'any', desc: 'Search: Upload Date' }],
   ['removeBlackBorders', { default: false, desc: 'New Liquid Glass UI' }],
   ['forcePreviews', { default: 'disabled', desc: 'Previews With Sound' }],
   ['mutePreviews', { default: false, desc: 'Mute Video Previews' }],

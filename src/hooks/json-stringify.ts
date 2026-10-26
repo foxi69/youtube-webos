@@ -1,5 +1,6 @@
 /**
- * Forces `isInlinePlaybackNoAd` on outgoing InnerTube player requests.
+ * Forces `isInlinePlaybackNoAd` on outgoing InnerTube player requests, and
+ * adds the Search: Upload Date filter to search requests (withSearchFilter).
  *
  * JSON.stringify is a global hook, so YouTube calls it constantly - every
  * localStorage write, every request body, every internal log. The previous
@@ -21,6 +22,8 @@
  * The flag is set on a copy of the chain down to contentPlaybackContext, never
  * on YouTube's own objects - see withNoAdFlag().
  */
+import { configRead } from '../config';
+
 const originalStringify = JSON.stringify;
 const MAX_DEPTH = 6;
 // Bounds the fallback walk. A request body is a few hundred nodes; anything
@@ -112,12 +115,40 @@ function withFlagIfPlayerRequest(value: any): any {
   return withNoAdFlag(value, path);
 }
 
+// Search: Upload Date (searchUploadDateModes in config.js): the filter
+// YouTube's own search page sends for it, as a search request's `params`.
+// YouTube no longer honours its "sort by upload date" (CAI=): tried in
+// October 2026, the order stayed by relevance, while these filters held
+// (with Today every result was under a day old). From
+// NicholasBly/youtube-webos#204 (fork watch #51).
+const SEARCH_UPLOAD_PARAMS: Record<string, string> = {
+  hour: 'EgIIAQ==',
+  today: 'EgIIAg==',
+  week: 'EgIIAw==',
+  month: 'EgIIBA==',
+  year: 'EgIIBQ=='
+};
+
+/**
+ * `value`, or a copy of it with the upload date filter when it is a search
+ * request: an InnerTube body with a `query` and no `params` of its own, so a
+ * filter YouTube already sends (a channel's search, a chip) is left alone.
+ */
+function withSearchFilter(value: any): any {
+  if (typeof value.query !== 'string' || value.params || !value.context) return value;
+  const params = SEARCH_UPLOAD_PARAMS[configRead('searchUploadDate')];
+  if (!params) return value;
+  if (DEBUG) console.info('[JSON.stringify] Search upload date filter', params);
+  // A copy, as for the player flag: YouTube's own object is never written.
+  return Object.assign({}, value, { params });
+}
+
 // The try/catch sits alone here, not in stringify(): the engine of webOS 3
 // (V8 3.28) does not optimise a function that contains one, and stringify()
 // runs on every JSON.stringify the app makes. (From mirijanristic's fork.)
 function withFlagSafely(value: any): any {
   try {
-    return withFlagIfPlayerRequest(value);
+    return withSearchFilter(withFlagIfPlayerRequest(value));
   } catch (e) {
     // our logic must never break YouTube's serialization
     return value;

@@ -15,6 +15,7 @@ Playback speed on webOS: 0.25× to 2× with the pitch kept, from YouTube's own S
   + Above 1.25× the video plays at 1080p at most: the TV cannot decode 2160p fast enough (at 1.5× it dropped 85% of the frames). Back at 1×, Force Max Quality applies again.
   + Turning the option off goes back to 1× at once.
   + Yellow is not taken: it keeps YouTube's search unless a speed action is mapped to it.
++ **Search: Upload Date** (Interface, Any Time by default): searches only find videos uploaded in the last hour, today, this week, this month or this year. A filter, not a sort: YouTube no longer sorts search results by upload date. A filter YouTube already sends (a channel's own search) is left alone. From NicholasBly/youtube-webos#204 (fork watch #51).
 
 ## Changed
 
