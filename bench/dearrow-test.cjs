@@ -107,7 +107,7 @@ function boot(cfg, opts = {}) {
     set src(url) {
       images.push(url);
       this._src = url;
-      const ytimg = url.indexOf('i.ytimg.com') !== -1;
+      const ytimg = new URL(url).hostname === 'i.ytimg.com';
       const ok = ytimg || url.indexOf('time=12.5') !== -1 || (opts.randomReady && url.indexOf('time=') !== -1);
       this.naturalWidth = ytimg ? 480 : 1280;
       this.naturalHeight = ytimg ? 360 : 720;
