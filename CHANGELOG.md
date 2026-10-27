@@ -17,10 +17,20 @@ Playback speed on webOS: 0.25× to 2× with the pitch kept, from YouTube's own S
   + Yellow is not taken: it keeps YouTube's search unless a speed action is mapped to it.
 + **Show Video Quality Next to the Title** (Player, off by default): the quality the video plays in ("1080p60", "2160p60 HDR") as a small tag after the line under the title in the player. It follows the adaptive stream when it switches quality. From NicholasBly/youtube-webos#204 (fork watch #51).
 + **Show Watch Time With the Clock** (Interface, off by default, needs Clock in UI): after the time, how long videos have played since the app started ("14:05 · 1h 05m watched"). Only playback on the watch and Shorts pages counts, not pauses, buffering or previews. From NicholasBly/youtube-webos#203 (fork watch #51).
++ **Hide Recommended Videos Under the Player** (Filters, off by default, needs Ad Blocking): the rows of recommended videos under a playing video go, and no more of them are loaded. The row of the playlist the video plays from stays, and so does autoplay. Requested in NicholasBly/youtube-webos#207 (fork watch #58).
++ The settings heading shows the version: "YouTube Extended 0.8.9". From NicholasBly/youtube-webos 0.8.5 build 2 (fork watch #58).
 + **Search: Upload Date** (Interface, Any Time by default): searches only find videos uploaded in the last hour, today, this week, this month or this year. A filter, not a sort: YouTube no longer sorts search results by upload date. A filter YouTube already sends (a channel's own search) is left alone. From NicholasBly/youtube-webos#204 (fork watch #51).
 
 ## Changed
 
++ **DeArrow** (UI Tweaks, now a section of its own, still off by default) is the one from NicholasBly/youtube-webos#200 by @magicsk (fork watch #58), with the extension's own rules and title formatter:
+  + **Crowdsourced Titles** and **Crowdsourced Thumbnails** switch on and off separately. A thumbnail is drawn as a 16:9 copy as wide as Max Thumbnail Quality makes the tiles around it.
+  + **Without a Crowdsourced Thumbnail**: a Random Frame (the extension's default; YouTube's start frame stands in until DeArrow's server has rendered it), YouTube's Start, Middle or End Frame, the Original, or Blank.
+  + **Title Formatting** (webOS 22+ package): Title Case, Sentence case, lower case, First letter uppercase or Capitalize Words, for every title, crowdsourced or YouTube's own; Title Case by default on an English TV. **Remove Emojis and Fancy Text** goes with it.
+  + **Show the DeArrow Logo on Crowdsourced Titles/Thumbnails**: the logo next to "4K" on a tile whose title or thumbnail the community submitted.
+  + Tiles already on screen are rewritten when an answer comes, not only the ones YouTube draws after it, and turning DeArrow off puts YouTube's own titles and thumbnails back at once.
+  + Branding is still asked by hash prefix, as SponsorBlock is (upstream asks by video id), and one request serves every video of the page under the same prefix. A video's id goes to DeArrow only with a frame of it: the thumbnail server, and the random frame's time of a video nobody submitted anything for.
+  + A TV that had **DeArrow: Replace Clickbait Thumbnails** off keeps YouTube's thumbnails (Crowdsourced Thumbnails off).
 + **Show Remaining Time / End Time** (Player): the on/off switch is now a choice of Off, Remaining ("-41:58"), End Time ("ends 21:45") or Both ("-41:58 · ends 21:45"), so the end time can be shown alone, as Kodi does. Still only while the seek bar is on screen. A switch that was on becomes Both. From NicholasBly/youtube-webos#195.
 + The app no longer turns off the browser's cross-origin checks (`allowCrossDomain` in appinfo.json). Every outside service it uses (SponsorBlock, DeArrow, Return YouTube Dislike, the thumbnail check) allows it anyway. From gorrdy's fork.
 
@@ -33,6 +43,7 @@ Playback speed on webOS: 0.25× to 2× with the pitch kept, from YouTube's own S
 
 + CI actions are pinned to commits, and the checkout no longer keeps the token where nothing pushes. From gorrdy's fork.
 + After a release, the next push to main starts a draft of the next version by itself (0.8.8 → 0.8.9).
++ `bench/dearrow-test.cjs`: DeArrow on both packages (lookups, titles, thumbnails and their fallbacks, the badge, turning it off, the old switch, title formatting on webOS 22+ only); `bench/feed-features-test.cjs` covers Hide Recommended Videos Under the Player.
 
 ## [0.8.8] - 2026/10/20
 

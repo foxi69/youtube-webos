@@ -23,9 +23,12 @@ function abortError() {
  * timeout drops the connection too. Without one (webOS 3 and 4) the request
  * itself runs on, but its answer is never handed out after the deadline.
  *
+ * `opts.bodyOn` lists other statuses whose body is read as well (DeArrow's
+ * 404 still carries the video's random frame time); `ok` stays false for them.
+ *
  * @param {string} url
  * @param {number} timeoutMs
- * @param {{ signal?: AbortSignal }} [opts] caller's signal, to cancel early
+ * @param {{ signal?: AbortSignal, bodyOn?: number[] }} [opts] caller's signal, to cancel early
  */
 export function fetchJsonWithTimeout(url, timeoutMs, opts) {
     const outer = opts && opts.signal ? opts.signal : null;
@@ -52,9 +55,10 @@ export function fetchJsonWithTimeout(url, timeoutMs, opts) {
         }
     });
 
+    const bodyOn = opts && opts.bodyOn ? opts.bodyOn : null;
     const request = (controller ? fetch(url, { signal: controller.signal }) : fetch(url)).then(
-        response => (response.ok
-            ? response.json().then(data => ({ ok: true, status: response.status, data }))
+        response => (response.ok || (bodyOn && bodyOn.indexOf(response.status) !== -1)
+            ? response.json().then(data => ({ ok: response.ok, status: response.status, data }))
             : { ok: false, status: response.status, data: null })
     );
     // The losing side of the race must not surface as an unhandled rejection.

@@ -1,4 +1,4 @@
-import { logoStyles, timeRemainingModes, thumbnailQualityModes, videoCodecModes, uiThemes, clockModes, startPageModes, minVideoLengthModes, seekStepModes, searchUploadDateModes } from './config.js';
+import { logoStyles, timeRemainingModes, thumbnailQualityModes, videoCodecModes, uiThemes, clockModes, startPageModes, minVideoLengthModes, seekStepModes, searchUploadDateModes, dearrowTitleFormats, dearrowThumbnailFallbacks } from './config.js';
 import { configAddChangeListener, configRead, configWrite, configGetDesc, segmentTypes, configGetDefault, shortcutActions, sbModes, sbModesHighlight, forcePreviewModes, configGetProfileStatus } from './config.js';
 import './ui.css';
 import './auto-login.js';
@@ -18,6 +18,8 @@ import { getWebOSVersion, isWebOS25 } from './webos-utils.js';
 import { subtitleTranslateLanguages } from './subtitle-translate.js';
 import { showNotification as _showNotification, setNotificationOled, setNotificationTheme } from './notifications.js';
 import { blockChannel } from './long-press-menu.js';
+import { VERSION_LABEL } from './version.js';
+import { titleFormattingSupported } from './dearrow/index.js';
 
 // Re-export so existing `import { showNotification } from './ui'` sites keep working.
 export const showNotification = _showNotification;
@@ -872,7 +874,7 @@ function createOptionsPanel() {
   const createLogo = (src, cls) => createElement('img', { src, alt: 'Logo', class: `ytaf-logo ${cls}`, title: 'Click to switch theme', style: { display: 'none' }, events: { click: toggleTheme }});
   
   const elmHeading = createElement('h1', {},
-    createElement('span', { text: 'YouTube Extended' }),
+    createElement('span', { text: 'YouTube Extended ' + VERSION_LABEL }),
     createLogo(logoOrangeUrl, 'logo-orange'),
     createLogo(logoBlueUrl, 'logo-blue'),
     createLogo(logoRedUrl, 'logo-red'),
@@ -930,10 +932,11 @@ function createOptionsPanel() {
   const elRemoveLiveVideos = createConfigCheckbox('removeLiveVideos');
   const elRemoveTopLiveGames = createConfigCheckbox('removeTopLiveGames');
   const elRemoveMostRelevant = createConfigCheckbox('removeMostRelevant');
+  const elHideRecommended = createConfigCheckbox('hideRecommendedVideos');
   const elRemoveUpcoming = createConfigCheckbox('removeUpcomingVideos');
   const elRemoveMembersOnly = createConfigCheckbox('removeMembersOnly');
   let elGuestPrompts = null;
-  cosmeticGroup.push(elRemoveGlobalShorts, elRemoveLiveVideos, elRemoveTopLiveGames, elRemoveMostRelevant, elRemoveUpcoming, elRemoveMembersOnly);
+  cosmeticGroup.push(elRemoveGlobalShorts, elRemoveLiveVideos, elRemoveTopLiveGames, elRemoveMostRelevant, elRemoveUpcoming, elRemoveMembersOnly, elHideRecommended);
   if (isGuestMode()) { elGuestPrompts = createConfigCheckbox('hideGuestSignInPrompts'); cosmeticGroup.push(elGuestPrompts); }
 
   pageFilters.appendChild(createSection('Cosmetic Filtering', cosmeticGroup, 'ytaf-section-2col'));
@@ -947,7 +950,7 @@ function createOptionsPanel() {
   // Blocking, so it genuinely does nothing while Ad Blocking is off. Greying it
   // out is what tells the user that, instead of leaving a checkbox that looks
   // armed but is inert.
-  const adBlockDependents = [elTrackingBlock, elRemoveGlobalShorts, elRemoveLiveVideos, elRemoveTopLiveGames, elRemoveMostRelevant, elRemoveUpcoming, elRemoveMembersOnly, elGuestPrompts];
+  const adBlockDependents = [elTrackingBlock, elRemoveGlobalShorts, elRemoveLiveVideos, elRemoveTopLiveGames, elRemoveMostRelevant, elRemoveUpcoming, elRemoveMembersOnly, elHideRecommended, elGuestPrompts];
   const updateDependencyState = () => {
     const enabled = configRead('enableAdBlock');
     adBlockDependents.forEach(el => { setState(el, enabled); });
@@ -1094,17 +1097,54 @@ function createOptionsPanel() {
 
     // Where the app starts and what the tiles and their menus show. On this
     // page, which has room, as the Interface page is full.
-    // DeArrow's thumbnails come with its titles.
-    const elDeArrowThumbnails = createConfigCheckbox('enableDeArrowThumbnails');
-    const updateDeArrowRow = () => setState(elDeArrowThumbnails, configRead('enableDeArrow'));
-    configAddChangeListener('enableDeArrow', updateDeArrowRow);
-    updateDeArrowRow();
     pageUITweaks.appendChild(createSection('Browsing', [
       createAlignedCycleControl('startPage', startPageModes),
-      createConfigCheckbox('extendLongPressMenu'),
-      createConfigCheckbox('enableDeArrow'),
-      elDeArrowThumbnails
+      createConfigCheckbox('extendLongPressMenu')
     ]));
+
+    // DeArrow: the switch and the logo, then the title and thumbnail options,
+    // greyed out while it is off (and the thumbnail fallback while
+    // crowdsourced thumbnails are). Its own section here rather than a tab:
+    // a seventh tab does not fit the panel's width. Title formatting is in the
+    // webOS 22+ build only (dearrow/formatter.js).
+    const elDeArrowBadge = createConfigCheckbox('dearrowShowBadge');
+    const deArrowTitleRows = [createConfigCheckbox('dearrowCrowdTitles')];
+    if (titleFormattingSupported) {
+      deArrowTitleRows.push(
+        createAlignedCycleControl('dearrowTitleFormatting', dearrowTitleFormats),
+        createConfigCheckbox('dearrowCleanEmojis')
+      );
+    }
+    const elDeArrowFallback = createAlignedCycleControl('dearrowThumbnailFallback', dearrowThumbnailFallbacks);
+    const elDeArrowFallbackHelp = createElement('div', { text: 'Random Frame: a frame DeArrow picks from the video. Start, middle and end frames: YouTube\'s own', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px' } });
+    const deArrowThumbRows = [createConfigCheckbox('dearrowCrowdThumbnails'), elDeArrowFallback, elDeArrowFallbackHelp];
+    pageUITweaks.appendChild(createSection('DeArrow', [
+      createConfigCheckbox('enableDeArrow'),
+      elDeArrowBadge,
+      ...deArrowTitleRows,
+      ...deArrowThumbRows,
+      createElement('div', {}, createElement('small', { text: 'Crowdsourced titles and thumbnails, in place of clickbait - https://dearrow.ajay.app' }))
+    ]));
+    const updateDeArrowRows = () => {
+      const on = !!configRead('enableDeArrow');
+      const thumbsOn = !!configRead('dearrowCrowdThumbnails');
+      [elDeArrowBadge, ...deArrowTitleRows, ...deArrowThumbRows].forEach((row) => {
+        const fallbackRow = row === elDeArrowFallback || row === elDeArrowFallbackHelp;
+        const enabled = on && (!fallbackRow || thumbsOn);
+        if (row.classList.contains('shortcut-control-row')) {
+          // A cycle row: greyed out and out of the focus order, like the thumbnail strategy.
+          row.style.opacity = enabled ? '1' : '0.5';
+          row.tabIndex = enabled ? 0 : -1;
+        } else if (row.querySelector('input')) {
+          setState(row, enabled);
+        } else {
+          row.style.opacity = enabled ? '1' : '0.5';
+        }
+      });
+    };
+    configAddChangeListener('enableDeArrow', updateDeArrowRows);
+    configAddChangeListener('dearrowCrowdThumbnails', updateDeArrowRows);
+    updateDeArrowRows();
 
       }
   ];

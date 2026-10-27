@@ -2,6 +2,7 @@ import CopyPlugin from 'copy-webpack-plugin';
 import { TransformAsyncModulesPlugin } from 'transform-async-modules-webpack-plugin';
 import pkgJson from './package.json' with { type: 'json' };
 import TerserPlugin from 'terser-webpack-plugin';
+import webpack from 'webpack';
 import { createRequire } from 'module';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -38,6 +39,11 @@ const makeConfig = (env) => {
           ...(withPerfMon
             ? {}
             : { [path.resolve(__dirname, 'src/perf_mon.js')]: false }),
+          // DeArrow's title formatter: 48 KiB in the legacy build, where only
+          // webOS 5 and 6 could use it; that build formats no titles.
+          ...(isModern
+            ? {}
+            : { [path.resolve(__dirname, 'src/dearrow/formatter.js')]: path.resolve(__dirname, 'src/dearrow/formatter-absent.js') }),
           ...(isModern ? {
           // Strip global polyfills for modern build
           'core-js-pure': false,
@@ -156,6 +162,11 @@ const makeConfig = (env) => {
         // Catches the "ReferenceError: require is not defined" failure mode at
         // build time instead of on the TV. See the plugin for the full story.
         new AssertNoBareRequirePlugin(),
+        // The version the settings panel shows in its heading (src/version.js).
+        // A release build sets package.json's version before it builds.
+        new webpack.DefinePlugin({
+          __YTAF_VERSION__: JSON.stringify(pkgJson.version)
+        }),
         new CopyPlugin({
           patterns: [
             { context: 'assets', from: '**/*' },
