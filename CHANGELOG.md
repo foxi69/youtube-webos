@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [0.9.1] - Unreleased
 
+## Fixes
+
++ Playback speed works on videos with Dolby audio. A TV with surround is given AC-3 or E-AC-3 (Big Buck Bunny 4K60 is one), which the speed engine cannot decode, so the speed fell back to 1x with "Playback speed not available for this video". Off 1x the player is now offered only AAC and Opus audio when the video has them; at 1x the Dolby track comes back.
++ Show Video Quality Next to the Title: the tag sits on its own line, lined up with the channel line above it. On webOS 25 it wrapped there anyway, pushed in by its left margin.
+
 ## Build
 
 + A build from CI shows its commit in the settings heading ("YouTube Extended 0.9.1 (a1b2c3d)"), and its release notes end with the same "Build:" line. A refreshed pre-release keeps its version, so the commit is what tells one build of it from the next; a tester can quote it in a report.
@@ -26,7 +31,7 @@ Playback speed on webOS: 0.25× to 2× with the pitch kept, from YouTube's own S
 + **Remove AI Videos** and **Mark AI Videos** (Filters, both off by default): videos YouTube itself labels "AI" (altered or synthetic content). Mark draws an "AI" badge on their tiles; Remove (needs Ad Blocking) drops them from lists once they are known. The label is not in the TV's list data, so each tile on screen is looked up once on YouTube's web API (two at a time, 5 s timeout, a minute's pause after a 429); a confirmed video is remembered for 30 days (`ytaf-ai-videos`, up to 2000), so Remove takes effect the next time it would be listed. The two are mutually exclusive. From NicholasBly/youtube-webos#209 by simonovAlexey (fork watch #60).
 + **Hide Recommended Videos Under the Player** (Filters, off by default, needs Ad Blocking): the rows of recommended videos under a playing video go, and no more of them are loaded. The row of the playlist the video plays from stays, and so does autoplay. Requested in NicholasBly/youtube-webos#207 (fork watch #58).
 + The settings heading shows the version: "YouTube Extended 0.9.0". From NicholasBly/youtube-webos 0.8.5 build 2 (fork watch #58).
-+ **Search: Upload Date** (Interface, Any Time by default): searches only find videos uploaded in the last hour, today, this week, this month or this year. A filter, not a sort: YouTube no longer sorts search results by upload date. A filter YouTube already sends (a channel's own search) is left alone. From NicholasBly/youtube-webos#204 (fork watch #51).
++ **Search: Upload Date** (Interface, Any Time by default): searches send YouTube's own upload date filter (last hour, today, this week, this month or this year). YouTube applies it loosely: the results lean to that window, but an older video can still turn up. A filter, not a sort: YouTube no longer sorts search results by upload date. A filter YouTube already sends (a channel's own search) is left alone. From NicholasBly/youtube-webos#204 (fork watch #51).
 
 ## Changed
 
