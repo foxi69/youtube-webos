@@ -1,13 +1,13 @@
 /**
  * The features ported from MickLesk's fork in fork-watch #26: the feed
  * filters (watched, length, channels, title keywords), Prefer Original Audio,
- * the long-press menu entries and their actions, DeArrow, the panel rows and
- * list editors, the Left/Right seek step and the Start Page.
+ * the long-press menu entries and their actions, the panel rows and
+ * list editors, the Left/Right seek step and the Start Page; and Hide
+ * Recommended Videos Under the Player (fork watch #58).
  *
  * Usage: node bench/feed-features-test.cjs [dist/webOSUserScripts/userScript.js]
  */
 const fs = require('fs');
-const crypto = require('crypto');
 const { JSDOM, VirtualConsole } = require('jsdom');
 const { applyChrome38Downgrade, UA, setUserAgent, dispatchTrusted } = require('./chrome38-env.cjs');
 
@@ -247,62 +247,36 @@ const ids = (r) => itemsOf(r).map((i) => (i.tileRenderer || i.lockupViewModel).c
       itemsOf(r2)[0].tileRenderer.onLongPressCommand.showMenuCommand.menu.menuRenderer.items.length === 1);
   }
 
-  // ---- DeArrow ----
+  // ---- Hide Recommended Videos Under the Player (NicholasBly/youtube-webos#207) ----
   {
-    const urls = [];
-    const answers = {};
-    const fetch = (url) => {
-      urls.push(url);
-      const prefix = url.split('/').pop();
-      const body = answers[prefix];
-      return Promise.resolve(body ? { ok: true, status: 200, json: () => Promise.resolve(body) } : { ok: false, status: 404 });
+    const next = (playlistId) => {
+      const row = (title, items) => ({ shelfRenderer: { title: { runs: [{ text: title }] }, content: { horizontalListRenderer: { items } } } });
+      const inList = (id) => { const t = tile(id); t.tileRenderer.onSelectCommand.watchEndpoint.playlistId = 'PLqueue'; return t; };
+      return {
+        responseContext: { _pad: pad },
+        currentVideoEndpoint: { watchEndpoint: playlistId ? { videoId: 'playing0001', playlistId } : { videoId: 'playing0001' } },
+        contents: { singleColumnWatchNextResults: {
+          autoplay: { autoplay: { sets: [{ nextVideoRenderer: {} }] } },
+          pivot: { sectionListRenderer: {
+            contents: [row('Up next', [inList('queue000001'), inList('queue000002')]), row('Recommended', [tile('recommend01')]), row('From the channel', [lockup('channel0001')])],
+            continuations: [{ nextContinuationData: { continuation: 'more' } }]
+          } }
+        } }
+      };
     };
-    const prefixOf = (id) => crypto.createHash('sha256').update(id).digest('hex').slice(0, 4);
-    const better = 'abcdefghijk';
-    const keepsOriginal = 'zyxwvutsrqp';
-    answers[prefixOf(better)] = Object.assign(answers[prefixOf(better)] || {}, { [better]: {
-      titles: [{ title: '>The honest title', original: false, votes: 2, locked: false }, { title: 'Clickbait', original: true, votes: 0 }],
-      thumbnails: [{ timestamp: 42.5, original: false, votes: 1, locked: false }]
-    } });
-    answers[prefixOf(keepsOriginal)] = Object.assign(answers[prefixOf(keepsOriginal)] || {}, { [keepsOriginal]: {
-      titles: [{ title: 'Original wins', original: true, votes: 5, locked: false }, { title: 'Worse', original: false, votes: 0 }],
-      thumbnails: []
-    } });
-
-    const { parse } = boot({ enableDeArrow: true, enableDeArrowThumbnails: true }, { fetch });
-    const first = parse(browse([tile(better, { title: 'YOU WON\'T BELIEVE' }), lockup(keepsOriginal, { title: 'Original wins' })]));
-    t('DeArrow asks by hash prefix only', urls.length === 2 && urls.every((u) => /^https:\/\/sponsor\.ajay\.app\/api\/branding\/[0-9a-f]{4}$/.test(u)) &&
-      urls.indexOf('https://sponsor.ajay.app/api/branding/' + prefixOf(better)) !== -1, urls.join(' '));
-    await wait(30);
-    const [rewritten, untouched] = itemsOf(first);
-    t('DeArrow rewrites the tile once the answer is in',
-      rewritten.tileRenderer.metadata.tileMetadataRenderer.title.simpleText === 'The honest title',
-      JSON.stringify(rewritten.tileRenderer.metadata.tileMetadataRenderer.title));
-    t('DeArrow thumbnail is the submitted frame',
-      /dearrow-thumb\.ajay\.app\/api\/v1\/getThumbnail\?videoID=abcdefghijk&time=42\.5/.test(rewritten.tileRenderer.header.tileHeaderRenderer.thumbnail.thumbnails[0].url));
-    t('DeArrow keeps a title the community kept original',
-      untouched.lockupViewModel.metadata.lockupMetadataViewModel.title.content === 'Original wins');
-    const again = parse(browse([lockup(better, { title: 'YOU WON\'T BELIEVE' })]));
-    t('DeArrow: a known video is rewritten before YouTube sees it, without a request',
-      itemsOf(again)[0].lockupViewModel.metadata.lockupMetadataViewModel.title.content === 'The honest title' && urls.length === 2, urls.length);
-
-    const off = boot({ enableDeArrow: false }, { fetch: (u) => { urls.push(u); return Promise.reject(new Error('x')); } });
-    const before = urls.length;
-    off.parse(browse([tile('qwertyuiopa')]));
-    t('DeArrow off: no request', urls.length === before);
-
-    // An answer naming thousands of other videos must not evict the asked one.
-    const crowded = 'crowdedvid1';
-    const big = { [crowded]: { titles: [{ title: 'Calm title', original: false, votes: 1 }], thumbnails: [] } };
-    for (let i = 0; i < 2500; i++) big['f' + String(i).padStart(10, '0')] = { titles: [{ title: 'x', original: false, votes: 1 }], thumbnails: [] };
-    answers[prefixOf(crowded)] = big;
-    const busy = boot({ enableDeArrow: true }, { fetch });
-    busy.parse(browse([tile(crowded)]));
-    await wait(30);
-    const asked = urls.length;
-    const seen = busy.parse(browse([lockup(crowded)]));
-    t('DeArrow: a big answer does not evict the asked video',
-      itemsOf(seen)[0].lockupViewModel.metadata.lockupMetadataViewModel.title.content === 'Calm title' && urls.length === asked, urls.length - asked);
+    const on = boot({ hideRecommendedVideos: true }, { bodyClass: 'WEB_PAGE_TYPE_WATCH' });
+    const plain = on.parse(next(null)).contents.singleColumnWatchNextResults;
+    t('recommended rows under the player are hidden', !plain.pivot, JSON.stringify(plain.pivot));
+    t('autoplay stays', !!plain.autoplay);
+    const fromList = on.parse(next('PLqueue')).contents.singleColumnWatchNextResults;
+    const rows = fromList.pivot && fromList.pivot.sectionListRenderer.contents.map((r) => r.shelfRenderer.title.runs[0].text);
+    t('the row of the playlist the video plays from stays', JSON.stringify(rows) === '["Up next"]', JSON.stringify(rows));
+    t('and no more rows are loaded', fromList.pivot && !fromList.pivot.sectionListRenderer.continuations);
+    const off = boot({}, { bodyClass: 'WEB_PAGE_TYPE_WATCH' });
+    const kept = off.parse(next(null)).contents.singleColumnWatchNextResults.pivot.sectionListRenderer.contents.length;
+    t('off: the rows stay', kept === 3, kept);
+    const noAdBlock = boot({ hideRecommendedVideos: true, enableAdBlock: false }, { bodyClass: 'WEB_PAGE_TYPE_WATCH' });
+    t('it needs Ad Blocking, like the other filters', !!noAdBlock.parse(next(null)).contents.singleColumnWatchNextResults.pivot);
   }
 
   // ---- Settings panel ----
@@ -351,7 +325,8 @@ const ids = (r) => itemsOf(r).map((i) => (i.tileRenderer || i.lockupViewModel).c
       player.some((l) => l.indexOf('Left/Right Seek Step') !== -1), player.join('|'));
     const iface = labels('#ytaf-page-ui-tweaks');
     t('UI Tweaks tab: Start Page, long-press menu and DeArrow', iface.some((l) => l.indexOf('Start Page') !== -1) &&
-      iface.indexOf('More Options in the Long-Press Menu') !== -1 && iface.indexOf('DeArrow: Replace Clickbait Titles') !== -1, iface.join('|'));
+      iface.indexOf('More Options in the Long-Press Menu') !== -1 && iface.indexOf('DeArrow') !== -1, iface.join('|'));
+    t('Filters tab: Hide Recommended Videos Under the Player', labels('#ytaf-page-filters').indexOf('Hide Recommended Videos Under the Player') !== -1);
     t('no jsdomError (panel)', errors.length === 0, errors[0]);
   }
 

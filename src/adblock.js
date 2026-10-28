@@ -6,7 +6,7 @@ import { upgradeResponseThumbnails, thumbnailHookRequired } from './thumbnail-qu
 import { raiseRowsAhead } from './rows-ahead.js';
 import { itemTitle, itemChannel, itemDurationSeconds, itemWatchedPercent, keepsWatchedVideos } from './feed-filters.js';
 import { extendLongPressMenu } from './long-press-menu.js';
-import { applyDeArrow } from './dearrow.js';
+import { applyDeArrow } from './dearrow/index.js';
 
 const DEBUG = false;
 const EMOJI_DEBUG = false; 
@@ -71,6 +71,7 @@ const CONFIG_KEYS = {
   MEMBERS: 'removeMembersOnly',
   LIVE_GAMES: 'removeTopLiveGames',
   MOST_RELEVANT: 'removeMostRelevant',
+  RECOMMENDED: 'hideRecommendedVideos',
   GUEST_PROMPTS: 'hideGuestSignInPrompts',
   EMOJI_FIX: 'enableLegacyEmojiFix',
   ENDCARDS: 'hideEndcards',
@@ -85,8 +86,7 @@ const CONFIG_KEYS = {
   BLOCKED_KEYWORDS: 'blockedKeywords',
   ORIGINAL_AUDIO: 'forceOriginalAudio',
   LONG_PRESS: 'extendLongPressMenu',
-  DEARROW: 'enableDeArrow',
-  DEARROW_THUMBNAILS: 'enableDeArrowThumbnails'
+  DEARROW: 'enableDeArrow'
 };
 
 // A video counts as watched from this much of its red progress bar.
@@ -242,6 +242,7 @@ const cfgFlags = {
   badgeMask: 0,
   removeTopLiveGames: false,
   removeMostRelevant: false,
+  hideRecommended: false,
   hideGuestPrompts: false,
   enableLegacyEmojiFix: false,
   hideEndcards: false,
@@ -259,8 +260,8 @@ const cfgFlags = {
   // The per-tile rewrites of the items that stay (decorateItem).
   decorateItems: false,
   extendLongPress: false,
-  deArrow: false,
-  deArrowThumbnails: false
+  // DeArrow's titles and thumbnails (dearrow/), after the filters.
+  deArrow: false
 };
 
 // Set per response by filterResponse(): the pages that list videos because
@@ -302,6 +303,7 @@ function recomputeFilterFlags() {
     (cfgFlags.removeMembersOnly ? BADGE_MEMBERS : 0);
   cfgFlags.removeTopLiveGames = adBlock && !!cfgSnapshot[CONFIG_KEYS.LIVE_GAMES];
   cfgFlags.removeMostRelevant = adBlock && !!cfgSnapshot[CONFIG_KEYS.MOST_RELEVANT];
+  cfgFlags.hideRecommended = adBlock && !!cfgSnapshot[CONFIG_KEYS.RECOMMENDED];
   cfgFlags.hideGuestPrompts = adBlock && !!cfgSnapshot[CONFIG_KEYS.GUEST_PROMPTS];
   // Independent switches on the same hook.
   cfgFlags.enableLegacyEmojiFix = cfgEmojiFixEffective;
@@ -322,8 +324,7 @@ function recomputeFilterFlags() {
     cfgFlags.blockedChannels || cfgFlags.blockedKeywords);
   cfgFlags.extendLongPress = !!cfgSnapshot[CONFIG_KEYS.LONG_PRESS];
   cfgFlags.deArrow = !!cfgSnapshot[CONFIG_KEYS.DEARROW];
-  cfgFlags.deArrowThumbnails = cfgFlags.deArrow && !!cfgSnapshot[CONFIG_KEYS.DEARROW_THUMBNAILS];
-  cfgFlags.decorateItems = cfgFlags.extendLongPress || cfgFlags.deArrow;
+  cfgFlags.decorateItems = cfgFlags.extendLongPress;
 
   anyResponseFilterEnabled = !!(
     cfgFlags.enableAdBlock ||
@@ -334,6 +335,7 @@ function recomputeFilterFlags() {
     cfgFlags.removeMembersOnly ||
     cfgFlags.removeTopLiveGames ||
     cfgFlags.removeMostRelevant ||
+    cfgFlags.hideRecommended ||
     cfgFlags.hideGuestPrompts ||
     cfgFlags.enableLegacyEmojiFix ||
     cfgFlags.hideEndcards ||
@@ -341,7 +343,8 @@ function recomputeFilterFlags() {
     cfgFlags.removeYouThere ||
     cfgFlags.disableAutoCaptions ||
     cfgFlags.forceOriginalAudio ||
-    cfgFlags.decorateItems
+    cfgFlags.decorateItems ||
+    cfgFlags.deArrow
   );
   anyFilterEnabled = anyResponseFilterEnabled || cfgFlags.loadRowsAhead;
 
@@ -812,6 +815,9 @@ function filterResponse(data, text) {
   // were just removed are never rewritten, and it reuses the responseType
   // already resolved above instead of detecting the shape a second time.
   if (cfgFlags.upgradeThumbnails) upgradeResponseThumbnails(data, responseType);
+  // After the thumbnail upgrade, so a DeArrow thumbnail is the one that sticks;
+  // and after the filters, so only the tiles that stay are looked up.
+  if (cfgFlags.deArrow) applyDeArrow(data, responseType);
 
   // Emoji on frameworkUpdates as a small targeted walk at depth 20.
   if (flags.enableLegacyEmojiFix && data.frameworkUpdates) {
@@ -910,6 +916,7 @@ function applySchemaFilters(data, responseType, config) {
         keepOriginalAudio(data);
         keepOriginalAudio(data.playerResponse);
       }
+      if (config.hideRecommended && responseType === 'NEXT') hideRecommendedVideos(data, schema);
       // The videos beside and under the player go through the item filters
       // and rewrites too.
       if (config.hideGuestPrompts || config.feedFilters || config.decorateItems) {
@@ -1295,11 +1302,55 @@ function dropsByFeedFilters(item, config) {
   return !!(config.hideWatched && hideWatchedHere && itemWatchedPercent(item) >= WATCHED_PERCENT);
 }
 
-/** The rewrites of an item that stays: its long-press menu, DeArrow's title. */
+/** The rewrites of an item that stays: its long-press menu. */
 function decorateItem(item, config) {
   if (!item || typeof item !== 'object') return;
   if (config.extendLongPress) extendLongPressMenu(item);
-  if (config.deArrow) applyDeArrow(item, config.deArrowThumbnails);
+}
+
+/** The watch endpoint a tile or a lockup opens, or null. */
+function itemWatchEndpoint(item) {
+  if (!item || typeof item !== 'object') return null;
+  if (item.tileRenderer) return item.tileRenderer.onSelectCommand?.watchEndpoint || null;
+  if (item.lockupViewModel) {
+    return item.lockupViewModel.rendererContext?.commandContext?.onTap?.innertubeCommand?.watchEndpoint || null;
+  }
+  return null;
+}
+
+/** Whether a row under the player lists the playlist the video plays from. */
+function isPlaylistRow(entry, playlistId) {
+  const shelf = entry && entry.shelfRenderer;
+  const items = shelf?.content?.horizontalListRenderer?.items;
+  if (!Array.isArray(items)) return false;
+  for (let i = 0; i < items.length; i++) {
+    if (itemWatchEndpoint(items[i])?.playlistId === playlistId) return true;
+  }
+  return false;
+}
+
+/**
+ * Hide Recommended Videos Under the Player (NicholasBly/youtube-webos#207):
+ * the rows under a playing video go. The row of the playlist the video plays
+ * from stays, as does autoplay (its own part of the response). Rows are
+ * dropped, never emptied (an empty shelf is drawn as grey tiles forever), with
+ * the continuation that would load more of them; with no row left the whole
+ * section goes.
+ */
+function hideRecommendedVideos(data, schema) {
+  const results = getByPath(data, ['contents', 'singleColumnWatchNextResults']);
+  let list = results?.pivot?.sectionListRenderer;
+  if (!list && schema?.pivotPath) list = getByPath(data, schema.pivotPath.slice(0, -1));
+  if (!list || !Array.isArray(list.contents)) return;
+  const playlistId = data.currentVideoEndpoint?.watchEndpoint?.playlistId;
+  const kept = playlistId ? list.contents.filter((entry) => isPlaylistRow(entry, playlistId)) : [];
+  if (DEBUG) debugLog(`NEXT: Hid ${list.contents.length - kept.length} recommended row(s)`);
+  if (!kept.length && results && results.pivot) {
+    delete results.pivot;
+    return;
+  }
+  list.contents = kept;
+  delete list.continuations;
 }
 
 /** Whether a whole shelf goes: the Shorts shelf by type or title, the titled shelves. */
