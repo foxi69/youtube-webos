@@ -142,6 +142,7 @@ column. A setting marked *webOS 25* or *guest* only appears there.
 | Remove "Most Relevant" Shelf | Off |
 | Remove Upcoming Videos | Off |
 | Remove Members-Only Videos | Off |
+| Hide Recommended Videos Under the Player (the row of a playlist you play stays) | Off |
 | Guest Mode: Hide Sign-in Buttons (*guest*) | Off |
 | Hide Watched Videos (90%+; not in History, Library, playlists) | Off |
 | Hide Videos Shorter Than (1, 2, 3, 5, 10, 20 min) | Off |
@@ -263,12 +264,18 @@ The actions each key can take are listed under [Remote control](#-remote-control
 | Emoji + Characters Fix (webOS 3-4 only) | On |
 | Start Page (Home, Subscriptions, Library, History) | Home |
 | More Options in the Long-Press Menu | Off |
-| DeArrow: Replace Clickbait Titles | Off |
-| DeArrow: Replace Clickbait Thumbnails | Off |
+| DeArrow | Off |
+| Show the DeArrow Logo on Crowdsourced Titles/Thumbnails | On |
+| Crowdsourced Titles | On |
+| Title Formatting (Disabled, Title Case, Sentence case, lower case, First letter uppercase, Capitalize Words; webOS 22+ package) | Title Case on an English TV, else Disabled |
+| Remove Emojis and Fancy Text (webOS 22+ package) | On |
+| Crowdsourced Thumbnails | On |
+| Without a Crowdsourced Thumbnail (Random Frame, Start/Middle/End Frame, Original, Blank) | Random Frame |
 
 **Fit Page Beside Open Menu**: while the left menu is open, YouTube slides the page right and its right side leaves
-the screen; with this option the page shrinks to fit beside the menu instead. DeArrow asks dearrow.ajay.app by hash
-prefix, like SponsorBlock. The Start Page is not used on a launch into a video.
+the screen; with this option the page shrinks to fit beside the menu instead. DeArrow asks sponsor.ajay.app by hash
+prefix, like SponsorBlock; a thumbnail it shows (and the random frame's time) is asked for by the video's id. The
+Start Page is not used on a launch into a video.
 </details>
 
 ## 🆕 What this fork adds

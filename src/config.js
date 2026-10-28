@@ -175,6 +175,34 @@ export const videoCodecModes = {
   no_av1: 'Avoid AV1'
 };
 
+// DeArrow title-cases by default only when the browser is in English, as the extension does.
+const isEnglishUI = typeof navigator !== 'undefined' && /^en\b/i.test(navigator.language || '');
+
+/** DeArrow's title formatting, in the extension's order (dearrow/titles.js). */
+export const dearrowTitleFormats = {
+  disable: 'Disabled',
+  title_case: 'Title Case',
+  sentence_case: 'Sentence case',
+  lower_case: 'lower case',
+  first_letter_uppercase: 'First letter uppercase',
+  capitalize_words: 'Capitalize Words'
+};
+
+/**
+ * What DeArrow shows for a video nobody submitted a thumbnail for. 'random', the
+ * extension's default, is a frame the DeArrow thumbnail server renders on demand
+ * (YouTube's start frame stands in until it has); start, middle and end are
+ * YouTube's own auto-generated frames (hq1, hq2, hq3).
+ */
+export const dearrowThumbnailFallbacks = {
+  random: 'Random Frame',
+  start: 'Start Frame',
+  middle: 'Middle Frame',
+  end: 'End Frame',
+  original: 'Original',
+  blank: 'Blank'
+};
+
 const configOptions = new Map([
   ['uiTheme', { default: 'fox', desc: 'UI Theme' }],
   // Set once the Fox theme has been made the default for an existing install,
@@ -193,6 +221,8 @@ const configOptions = new Map([
   ['removeMembersOnly', { default: false, desc: 'Remove Members-Only Videos' }],
   ['removeTopLiveGames', { default: false, desc: 'Remove Top Live Games' }],
   ['removeMostRelevant', { default: false, desc: 'Remove "Most Relevant" Shelf' }],
+  // The rows under a playing video (NicholasBly/youtube-webos#207).
+  ['hideRecommendedVideos', { default: false, desc: 'Hide Recommended Videos Under the Player' }],
   // Feed filters (feed-filters.js). Like the filters above, they need Ad Blocking on.
   ['hideWatchedVideos', { default: false, desc: 'Hide Watched Videos' }],
   ['minVideoLength', { default: '0', desc: 'Hide Videos Shorter Than' }],
@@ -265,10 +295,18 @@ const configOptions = new Map([
   // "Not interested", "Don't recommend channel" and "Block channel" in the
   // long-press menu of a video (long-press-menu.js).
   ['extendLongPressMenu', { default: false, desc: 'More Options in the Long-Press Menu' }],
-  // Off until switched on: like Return YouTube Dislike, it asks a third party
-  // (sponsor.ajay.app) - by hash prefix, as SponsorBlock does.
-  ['enableDeArrow', { default: false, desc: 'DeArrow: Replace Clickbait Titles' }],
-  ['enableDeArrowThumbnails', { default: false, desc: 'DeArrow: Replace Clickbait Thumbnails' }]
+  // DeArrow (dearrow/): crowdsourced titles and thumbnails, from
+  // NicholasBly/youtube-webos#200. Off until switched on: like Return YouTube
+  // Dislike, it asks a third party (sponsor.ajay.app) - by hash prefix, as
+  // SponsorBlock does; a video's frames name it to dearrow-thumb.ajay.app.
+  ['enableDeArrow', { default: false, desc: 'DeArrow' }],
+  ['dearrowShowBadge', { default: true, desc: 'Show the DeArrow Logo on Crowdsourced Titles/Thumbnails' }],
+  ['dearrowCrowdTitles', { default: true, desc: 'Crowdsourced Titles' }],
+  // Every title shown, crowdsourced or YouTube's own (webOS 22+ build only).
+  ['dearrowTitleFormatting', { default: isEnglishUI ? 'title_case' : 'disable', desc: 'Title Formatting' }],
+  ['dearrowCleanEmojis', { default: true, desc: 'Remove Emojis and Fancy Text' }],
+  ['dearrowCrowdThumbnails', { default: true, desc: 'Crowdsourced Thumbnails' }],
+  ['dearrowThumbnailFallback', { default: 'random', desc: 'Without a Crowdsourced Thumbnail' }]
 ]);
 
 // Register shortcut keys 0-9
@@ -406,6 +444,10 @@ function pickAccountValues(source) {
   for (const key of Object.keys(source)) {
     if (!DEVICE_KEYS.has(key) && configOptions.has(key)) out[key] = source[key];
   }
+  // An account saved before DeArrow's thumbnail fallbacks (see below).
+  if ('enableDeArrowThumbnails' in source && !('dearrowCrowdThumbnails' in source)) {
+    out.dearrowCrowdThumbnails = !!source.enableDeArrowThumbnails;
+  }
   return out;
 }
 
@@ -420,6 +462,17 @@ const sharedConfig = loadStored(CONFIG_KEY) || {};
 let activeProfile = null;
 let profileSeeded = false;
 let localConfig = Object.assign({}, defaultConfig, sharedConfig);
+
+// DeArrow's thumbnails were one switch (enableDeArrowThumbnails, off by
+// default) before the fallbacks came; a TV that had them off keeps YouTube's.
+// Before an account's own settings are laid over (pickAccountValues does the
+// same for those).
+if ('enableDeArrowThumbnails' in sharedConfig) {
+  if (!('dearrowCrowdThumbnails' in sharedConfig)) {
+    localConfig.dearrowCrowdThumbnails = !!sharedConfig.enableDeArrowThumbnails;
+  }
+  delete localConfig.enableDeArrowThumbnails;
+}
 
 if (sharedConfig.perAccountSettings) {
   activeProfile = readAccountProfile();
