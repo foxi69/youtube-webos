@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [0.8.10] - Unreleased
+## [0.9.0] - Unreleased
 
 Playback speed on webOS: 0.25× to 2× with the pitch kept, from YouTube's own Speed menu or the button mapping. From NicholasBly/youtube-webos PR #194, a port of webosbrew/youtube-webos PR #484, with gorrdy's fixes (fork watch #32). Ships both packages: `_webOS22+.ipk` for webOS 22 and newer, and the legacy `.ipk` for webOS 3-6.
 
