@@ -20,7 +20,10 @@ name: Draft release
 #   - otherwise, when the highest published release is a pre-release, that
 #     pre-release: later pushes refresh it in place (its tag moves to the new
 #     commit, its packages and notes are replaced) and it stays a
-#     pre-release, so testers always have the current build;
+#     pre-release, so testers always have the current build. A pre-release
+#     published while "immutable releases" was on is locked for good (its tag
+#     and packages cannot change), so the next patch is published as the
+#     pre-release instead, and later pushes refresh that one;
 #   - otherwise the version of the open draft, so later pushes refresh it;
 #   - otherwise the highest published release plus one patch
 #     (0.8.8 -> 0.8.9), which starts a new draft.
@@ -57,16 +60,22 @@ jobs:
         run: |
           is_published() { [ "$(gh release view "v$1" --json isDraft --jq .isDraft 2>/dev/null)" = "false" ]; }
           version="$(node -p "require('./package.json').version")"
-          prerelease=false
+          # refresh: the published pre-release in place; prerelease: a new
+          # pre-release; draft: a draft.
+          mode=draft
           if is_published "$version"; then
             releases="$(gh api "repos/${{ github.repository }}/releases?per_page=100")"
             # Not releases/latest: it skips pre-releases.
-            highest="$(jq -r '[.[] | select(.draft | not)] | max_by(.tag_name | ltrimstr("v") | split(".") | map(tonumber)) | "\(.tag_name) \(.prerelease)"' <<< "$releases")"
-            read -r latest latest_pre <<< "$highest"
+            highest="$(jq -r '[.[] | select(.draft | not)] | max_by(.tag_name | ltrimstr("v") | split(".") | map(tonumber)) | "\(.tag_name) \(.prerelease) \(.immutable // false)"' <<< "$releases")"
+            read -r latest latest_pre latest_locked <<< "$highest"
             draft="$(jq -r '[.[] | select(.draft)][0].tag_name // empty' <<< "$releases")"
-            if [ "$latest_pre" = "true" ]; then
+            if [ "$latest_pre" = "true" ] && [ "$latest_locked" != "true" ]; then
               version="${latest#v}"
-              prerelease=true
+              mode=refresh
+            elif [ "$latest_pre" = "true" ]; then
+              IFS=. read -r major minor patch <<< "${latest#v}"
+              version="$major.$minor.$((patch + 1))"
+              mode=prerelease
             elif [ -n "$draft" ]; then
               version="${draft#v}"
             else
@@ -75,12 +84,12 @@ jobs:
             fi
           fi
           if gh release view "v$version" > /dev/null 2>&1; then exists=true; else exists=false; fi
-          echo "Version: $version (exists: $exists, published pre-release: $prerelease)" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "Version: $version (exists: $exists, mode: $mode)" | tee -a "$GITHUB_STEP_SUMMARY"
           {
             echo "version=$version"
             echo "tag=v$version"
             echo "exists=$exists"
-            echo "prerelease=$prerelease"
+            echo "mode=$mode"
           } >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -134,13 +143,24 @@ jobs:
           TAG: ${{ steps.version.outputs.tag }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          if [ "${{ steps.version.outputs.prerelease }}" = "true" ]; then
+          MODE="${{ steps.version.outputs.mode }}"
+          if [ "$MODE" = "refresh" ]; then
             # A published release has its tag already: --target would not
             # move it, so the tag is pointed at this commit first.
             gh api -X PATCH "repos/${{ github.repository }}/git/refs/tags/$TAG" -f sha="$GITHUB_SHA" -F force=true > /dev/null
             gh release edit "$TAG" --title "YouTube AdFree $VERSION" --notes-file notes.md
             gh release upload "$TAG" out/*.ipk --clobber
             echo "Pre-release $TAG refreshed: ${{ github.server_url }}/${{ github.repository }}/releases/tag/$TAG" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          elif [ "$MODE" = "prerelease" ]; then
+            if [ "${{ steps.version.outputs.exists }}" = "true" ]; then
+              # A draft of this version: its packages first, then it is published.
+              gh release upload "$TAG" out/*.ipk --clobber
+              gh release edit "$TAG" --draft=false --prerelease --target "$GITHUB_SHA" --title "YouTube AdFree $VERSION" --notes-file notes.md
+            else
+              gh release create "$TAG" out/*.ipk --prerelease --target "$GITHUB_SHA" --title "YouTube AdFree $VERSION" --notes-file notes.md
+            fi
+            echo "Pre-release $TAG published: ${{ github.server_url }}/${{ github.repository }}/releases/tag/$TAG" | tee -a "$GITHUB_STEP_SUMMARY"
             exit 0
           elif [ "${{ steps.version.outputs.exists }}" = "true" ]; then
             gh release edit "$TAG" --draft --target "$GITHUB_SHA" --title "YouTube AdFree $VERSION" --notes-file notes.md
