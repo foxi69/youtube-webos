@@ -1,5 +1,6 @@
 import { AudioEngine } from './speed/audio-engine.js';
 import { installMseHook, isSupportedSpeed, SUPPORTED_SPEEDS } from './speed/mse-hook.js';
+import { keepStretchableAudio } from './speed/containers.js';
 import { showNotification } from './notifications.js';
 import { configRead, configAddChangeListener } from './config.js';
 import { SELECTORS } from './utils.js';
@@ -55,6 +56,27 @@ export function installSpeedButtonPatch(win, isOn) {
     ) {
       enableSpeedButton(r);
     }
+    return r;
+  };
+  json.parse = patched;
+  return () => {
+    if (json.parse === patched) json.parse = original;
+  };
+}
+
+// The player response of a reload at a speed other than 1x (and of the next
+// video while it lasts) loses the audio the engine cannot stretch
+// (speed/containers.js). At 1x the offer is left as it is: AC-3 stays.
+export function installAudioOfferFilter(win, getSpeed) {
+  const json = win.JSON || JSON;
+  const original = json.parse;
+  const patched = function () {
+    const r = original.apply(this, arguments);
+    const streaming =
+      r &&
+      typeof r === 'object' &&
+      (r.streamingData || (r.playerResponse && r.playerResponse.streamingData));
+    if (streaming && getSpeed() !== 1) keepStretchableAudio(streaming);
     return r;
   };
   json.parse = patched;
@@ -399,6 +421,7 @@ export function installSpeedFeature(win, { notify, configRead: cfgRead, getPlaye
   const restoreMenu = enableNativeSpeedMenu(win, isOn);
   const restoreRateHook = hookRateAssignments(win, ctrl);
   const restoreButton = installSpeedButtonPatch(win, isOn);
+  const restoreAudioOffer = installAudioOfferFilter(win, ctrl.getSpeed);
   const bindTimer =
     typeof win.setInterval === 'function'
       ? win.setInterval(() => bindPlayerRate(getPlayer(), ctrl), 1000)
@@ -413,6 +436,7 @@ export function installSpeedFeature(win, { notify, configRead: cfgRead, getPlaye
       restoreMenu();
       restoreRateHook();
       restoreButton();
+      restoreAudioOffer();
       if (bindTimer !== null) win.clearInterval(bindTimer);
     }
   };
