@@ -4,7 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [0.9.0] - Unreleased
+## [0.9.1] - Unreleased
+
+## Build
+
++ A build from CI shows its commit in the settings heading ("YouTube Extended 0.9.1 (a1b2c3d)"), and its release notes end with the same "Build:" line. A refreshed pre-release keeps its version, so the commit is what tells one build of it from the next; a tester can quote it in a report.
+
+## [0.9.0] - 2026/10/28
 
 Playback speed on webOS: 0.25× to 2× with the pitch kept, from YouTube's own Speed menu or the button mapping. From NicholasBly/youtube-webos PR #194, a port of webosbrew/youtube-webos PR #484, with gorrdy's fixes (fork watch #32). Ships both packages: `_webOS22+.ipk` for webOS 22 and newer, and the legacy `.ipk` for webOS 3-6.
 
@@ -19,7 +25,7 @@ Playback speed on webOS: 0.25× to 2× with the pitch kept, from YouTube's own S
 + **Show Watch Time With the Clock** (Interface, off by default, needs Clock in UI): after the time, how long videos have played since the app started ("14:05 · 1h 05m watched"). Only playback on the watch and Shorts pages counts, not pauses, buffering or previews. From NicholasBly/youtube-webos#203 (fork watch #51).
 + **Remove AI Videos** and **Mark AI Videos** (Filters, both off by default): videos YouTube itself labels "AI" (altered or synthetic content). Mark draws an "AI" badge on their tiles; Remove (needs Ad Blocking) drops them from lists once they are known. The label is not in the TV's list data, so each tile on screen is looked up once on YouTube's web API (two at a time, 5 s timeout, a minute's pause after a 429); a confirmed video is remembered for 30 days (`ytaf-ai-videos`, up to 2000), so Remove takes effect the next time it would be listed. The two are mutually exclusive. From NicholasBly/youtube-webos#209 by simonovAlexey (fork watch #60).
 + **Hide Recommended Videos Under the Player** (Filters, off by default, needs Ad Blocking): the rows of recommended videos under a playing video go, and no more of them are loaded. The row of the playlist the video plays from stays, and so does autoplay. Requested in NicholasBly/youtube-webos#207 (fork watch #58).
-+ The settings heading shows the version: "YouTube Extended 0.8.9". From NicholasBly/youtube-webos 0.8.5 build 2 (fork watch #58).
++ The settings heading shows the version: "YouTube Extended 0.9.0". From NicholasBly/youtube-webos 0.8.5 build 2 (fork watch #58).
 + **Search: Upload Date** (Interface, Any Time by default): searches only find videos uploaded in the last hour, today, this week, this month or this year. A filter, not a sort: YouTube no longer sorts search results by upload date. A filter YouTube already sends (a channel's own search) is left alone. From NicholasBly/youtube-webos#204 (fork watch #51).
 
 ## Changed
@@ -39,6 +45,8 @@ Playback speed on webOS: 0.25× to 2× with the pitch kept, from YouTube's own S
 
 + Ad Blocking, Shorts and the feed filters now also apply to the first home screen after a fresh start. YouTube's page fetches it before the userScript is injected, so its ad tiles ("Sponsored") and Shorts stayed until the next page. Max Thumbnail Quality applies to it too. From aktiwers' fork (webosbrew/youtube-webos PR #488, fork watch #41).
 + Playback speed: the audio of a whole video was kept in memory; now only the last 60 s behind the playhead are.
++ Reduce Telemetry & Tracking: a channel tab on the Subscriptions page could show another channel's videos until a restart. The tab placeholders and the continuations that fill them keep their own `trackingParams` now, which the TV matches them by; everything else is still blanked. From NicholasBly/youtube-webos PR #196 by anilkusaksiz (fork watch #51).
++ After a video screensaver (Aerial, for example) started on a paused video, the picture stayed frozen for about 20 s when playback resumed. A video that resumes after a pause of 30 s or more and does not move within 2 s is seeked in place, so YouTube rebuilds the player at once. From NicholasBly/youtube-webos PR #198 by magicsk (fork watch #51).
 + Settings panel: a page longer than the panel (Interface, UI Tweaks) now scrolls with the remote. YouTube puts every element that scrolls back to its top, so the focus went below the panel's edge and the page stayed put.
 + Settings panel: wrapped labels, the Separate Settings status line and the notes on UI Tweaks line up with the labels above them; Video shelf opacity, UI Brightness and Previews With Sound line up with the checkbox rows.
 + Hide Recommended Videos Under the Player: the grey placeholder tiles YouTube kept under the player once the rows were gone are hidden (seen on a webOS 25 TV).
@@ -47,6 +55,8 @@ Playback speed on webOS: 0.25× to 2× with the pitch kept, from YouTube's own S
 
 + CI actions are pinned to commits, and the checkout no longer keeps the token where nothing pushes. From gorrdy's fork.
 + After a release, the next push to main starts a draft of the next version by itself (0.8.8 → 0.8.9).
++ A tested draft can be published as a pre-release: testers can download it while the Homebrew repo stays on the latest full release. Later pushes to main refresh that pre-release in place (its tag, packages and notes) instead of starting another draft. "Immutable releases" is off for the repository, as it locks a published pre-release for good.
++ The daily fork watch also lists issues opened on the upstream repositories since its last run.
 + `bench/ai-label-test.cjs` and `bench/ai-filter-test.cjs` (both packages) for Remove / Mark AI Videos; `bench/chrome38-env.cjs` also removes `Object.hasOwn`.
 + `bench/dearrow-test.cjs`: DeArrow on both packages (lookups, titles, thumbnails and their fallbacks, the badge, turning it off, the old switch, title formatting on webOS 22+ only); `bench/feed-features-test.cjs` covers Hide Recommended Videos Under the Player.
 

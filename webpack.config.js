@@ -163,9 +163,11 @@ const makeConfig = (env) => {
         // build time instead of on the TV. See the plugin for the full story.
         new AssertNoBareRequirePlugin(),
         // The version the settings panel shows in its heading (src/version.js).
-        // A release build sets package.json's version before it builds.
+        // A release build sets package.json's version before it builds, and
+        // YTAF_BUILD to its commit: a refreshed pre-release keeps its version,
+        // so the commit is what tells one build of it from the next.
         new webpack.DefinePlugin({
-          __YTAF_VERSION__: JSON.stringify(pkgJson.version)
+          __YTAF_VERSION__: JSON.stringify(pkgJson.version + (process.env.YTAF_BUILD ? ` (${process.env.YTAF_BUILD})` : ''))
         }),
         new CopyPlugin({
           patterns: [
