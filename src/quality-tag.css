@@ -2,9 +2,11 @@
    No `content` here: without the rule the module writes, nothing renders. */
 ytlr-video-title-tray ytlr-video-metadata-line::after,
 ytlr-watch-metadata ytlr-video-metadata-line::after {
-  display: inline-block;
-  vertical-align: middle;
-  margin-left: 0.8em;
+  /* On a line of its own, lined up with the channel line above it: that
+     line's text is a block (webOS 25), so an inline tag wrapped anyway and
+     its left margin pushed it in. A table shrinks to the label. */
+  display: table;
+  margin-top: 0.3em;
   padding: 0 0.45em;
   border: 0.08em solid rgba(255, 255, 255, 0.6);
   border-radius: 0.3em;

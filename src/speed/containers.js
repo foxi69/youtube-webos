@@ -842,3 +842,26 @@ export function demuxClusters(u8, { timecodeScale, trackNumber }) {
   );
   return { frames: validFrames, rest };
 }
+
+// The audio the engine can stretch: AAC (mp4a) and Opus, the two codecs the
+// init parsers above read.
+const STRETCHABLE_AUDIO_RE = /codecs="?(mp4a\.|opus)/i;
+
+function isAudioFormat(f) {
+  return !!f && typeof f.mimeType === 'string' && f.mimeType.indexOf('audio/') === 0;
+}
+
+/**
+ * Off 1x, the player's offer keeps only audio the engine can stretch, when it
+ * has any. A TV with surround is otherwise given AC-3 or E-AC-3 (or IAMF),
+ * which WebCodecs refuses, and the speed fell back to 1x ("not available for
+ * this video"). The video formats are left alone. Returns the number removed.
+ */
+export function keepStretchableAudio(streamingData) {
+  const list = streamingData && streamingData.adaptiveFormats;
+  if (!Array.isArray(list)) return 0;
+  const keep = list.filter((f) => !isAudioFormat(f) || STRETCHABLE_AUDIO_RE.test(f.mimeType));
+  if (keep.length === list.length || !keep.some(isAudioFormat)) return 0;
+  streamingData.adaptiveFormats = keep;
+  return list.length - keep.length;
+}
