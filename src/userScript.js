@@ -34,6 +34,7 @@ import './start-page.js';
 import './time-remaining.js';
 import './quality-tag.js';
 import './lang-settings-fix';
+import { initAiContentFilter } from './ai-content-filter.js';
 
 import { initBufferLimit } from './hooks/buffer-limit.js';
 import { getWebOSVersion } from './webos-utils.js';
@@ -71,4 +72,6 @@ document.addEventListener(
 if (isWebOS25() && simulatorMode === false) {
   console.info('[Main] Enabling webOS Google Cast Block');
   initBlockWebOSCast();
-}
+}
+
+initAiContentFilter();

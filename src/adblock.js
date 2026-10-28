@@ -7,6 +7,8 @@ import { raiseRowsAhead } from './rows-ahead.js';
 import { itemTitle, itemChannel, itemDurationSeconds, itemWatchedPercent, keepsWatchedVideos } from './feed-filters.js';
 import { extendLongPressMenu } from './long-press-menu.js';
 import { applyDeArrow } from './dearrow/index.js';
+import { extractAiVideoId } from './ai-video-id.js';
+import { isAiVideoStored } from './ai-video-store.js';
 
 const DEBUG = false;
 const EMOJI_DEBUG = false; 
@@ -69,6 +71,7 @@ const CONFIG_KEYS = {
   LIVE: 'removeLiveVideos',
   UPCOMING: 'removeUpcomingVideos',
   MEMBERS: 'removeMembersOnly',
+  AI: 'removeAiVideos',
   LIVE_GAMES: 'removeTopLiveGames',
   MOST_RELEVANT: 'removeMostRelevant',
   RECOMMENDED: 'hideRecommendedVideos',
@@ -240,6 +243,7 @@ const cfgFlags = {
   removeMembersOnly: false,
   // BADGE_* bits of the three above, so an item's badges are read once.
   badgeMask: 0,
+  removeAiVideos: false,
   removeTopLiveGames: false,
   removeMostRelevant: false,
   hideRecommended: false,
@@ -298,6 +302,7 @@ function recomputeFilterFlags() {
   cfgFlags.removeLiveVideos = adBlock && !!cfgSnapshot[CONFIG_KEYS.LIVE];
   cfgFlags.removeUpcomingVideos = adBlock && !!cfgSnapshot[CONFIG_KEYS.UPCOMING];
   cfgFlags.removeMembersOnly = adBlock && !!cfgSnapshot[CONFIG_KEYS.MEMBERS];
+  cfgFlags.removeAiVideos = adBlock && !!cfgSnapshot[CONFIG_KEYS.AI];
   cfgFlags.badgeMask = (cfgFlags.removeLiveVideos ? BADGE_LIVE : 0) |
     (cfgFlags.removeUpcomingVideos ? BADGE_UPCOMING : 0) |
     (cfgFlags.removeMembersOnly ? BADGE_MEMBERS : 0);
@@ -333,6 +338,7 @@ function recomputeFilterFlags() {
     cfgFlags.removeLiveVideos ||
     cfgFlags.removeUpcomingVideos ||
     cfgFlags.removeMembersOnly ||
+    cfgFlags.removeAiVideos ||
     cfgFlags.removeTopLiveGames ||
     cfgFlags.removeMostRelevant ||
     cfgFlags.hideRecommended ||
@@ -1271,6 +1277,8 @@ function shouldDropItem(item, config) {
   if (config.enableAdBlock && (hasAdRenderer(item) || isReelAd(item))) return true;
   if (config.hideGuestPrompts && isGuestPrompt(item)) return true;
   if (config.removeGlobalShorts && isShortsItem(item)) return true;
+  // Remove AI Videos: only videos ai-content-filter.js already found labelled "AI".
+  if (config.removeAiVideos && isAiVideoStored(extractAiVideoId(item))) return true;
   if (config.feedFilters && dropsByFeedFilters(item, config)) return true;
   return hasWantedBadge(item, config.badgeMask);
 }
