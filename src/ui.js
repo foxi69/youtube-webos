@@ -949,8 +949,13 @@ function createOptionsPanel() {
   const elHideRecommended = createConfigCheckbox('hideRecommendedVideos');
   const elRemoveUpcoming = createConfigCheckbox('removeUpcomingVideos');
   const elRemoveMembersOnly = createConfigCheckbox('removeMembersOnly');
+  const elRemoveAi = createConfigCheckbox('removeAiVideos');
+  const elMarkAi = createConfigCheckbox('markAiVideos');
+  elRemoveAi.querySelector('input').id = 'ytaf-remove-ai';
+  elMarkAi.querySelector('input').id = 'ytaf-mark-ai';
   let elGuestPrompts = null;
-  cosmeticGroup.push(elRemoveGlobalShorts, elRemoveLiveVideos, elRemoveTopLiveGames, elRemoveMostRelevant, elRemoveUpcoming, elRemoveMembersOnly, elHideRecommended);
+  // Remove AI Videos and Mark AI Videos side by side, in a row of their own.
+  cosmeticGroup.push(elRemoveGlobalShorts, elRemoveLiveVideos, elRemoveTopLiveGames, elRemoveMostRelevant, elRemoveUpcoming, elRemoveMembersOnly, elRemoveAi, elMarkAi, elHideRecommended);
   if (isGuestMode()) { elGuestPrompts = createConfigCheckbox('hideGuestSignInPrompts'); cosmeticGroup.push(elGuestPrompts); }
 
   pageFilters.appendChild(createSection('Cosmetic Filtering', cosmeticGroup, 'ytaf-section-2col'));
@@ -964,7 +969,7 @@ function createOptionsPanel() {
   // Blocking, so it genuinely does nothing while Ad Blocking is off. Greying it
   // out is what tells the user that, instead of leaving a checkbox that looks
   // armed but is inert.
-  const adBlockDependents = [elTrackingBlock, elRemoveGlobalShorts, elRemoveLiveVideos, elRemoveTopLiveGames, elRemoveMostRelevant, elRemoveUpcoming, elRemoveMembersOnly, elHideRecommended, elGuestPrompts];
+  const adBlockDependents = [elTrackingBlock, elRemoveGlobalShorts, elRemoveLiveVideos, elRemoveTopLiveGames, elRemoveMostRelevant, elRemoveUpcoming, elRemoveMembersOnly, elRemoveAi, elHideRecommended, elGuestPrompts];
   const updateDependencyState = () => {
     const enabled = configRead('enableAdBlock');
     adBlockDependents.forEach(el => { setState(el, enabled); });
@@ -977,6 +982,20 @@ function createOptionsPanel() {
   }
   configAddChangeListener('enableAdBlock', updateDependencyState);
   updateDependencyState();
+
+  // Removing known AI videos and marking them are mutually exclusive.
+  const updateAiExclusion = () => {
+    const removing = configRead('removeAiVideos') && configRead('enableAdBlock');
+    if (removing && configRead('markAiVideos')) configWrite('markAiVideos', false);
+    setState(elMarkAi, !removing);
+  };
+  elRemoveAi.querySelector('input').addEventListener('change', (evt) => {
+    if (evt.target.checked) configWrite('markAiVideos', false);
+    updateAiExclusion();
+  });
+  configAddChangeListener('removeAiVideos', updateAiExclusion);
+  configAddChangeListener('enableAdBlock', updateAiExclusion);
+  updateAiExclusion();
 
   // Feed filters. Ad Blocking's like the ones above: greyed out and out of the
   // focus order while it is off. Built in the first frame after the panel is

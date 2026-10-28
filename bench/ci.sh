@@ -34,6 +34,8 @@ run panel-test "$B"
 run per-account-test "$B"
 run feed-features-test "$B"
 run dearrow-test "$B" legacy
+run ai-label-test
+run ai-filter-test "$B" legacy
 run emoji-loop-test "$B" 40
 run force-codec-test "$B"
 run screensaver-test "$B"
@@ -48,6 +50,7 @@ if [ ${#env[@]} -eq 0 ]; then
   build --env modern
   run modern-smoke "$B"
   run dearrow-test "$B" modern
+  run ai-filter-test "$B" modern
 
   # perf_mon is a dev tool, not part of the app.
   build --env perf

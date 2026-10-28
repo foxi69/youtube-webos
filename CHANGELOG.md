@@ -17,6 +17,7 @@ Playback speed on webOS: 0.25× to 2× with the pitch kept, from YouTube's own S
   + Yellow is not taken: it keeps YouTube's search unless a speed action is mapped to it.
 + **Show Video Quality Next to the Title** (Player, off by default): the quality the video plays in ("1080p60", "2160p60 HDR") as a small tag after the line under the title in the player. It follows the adaptive stream when it switches quality. From NicholasBly/youtube-webos#204 (fork watch #51).
 + **Show Watch Time With the Clock** (Interface, off by default, needs Clock in UI): after the time, how long videos have played since the app started ("14:05 · 1h 05m watched"). Only playback on the watch and Shorts pages counts, not pauses, buffering or previews. From NicholasBly/youtube-webos#203 (fork watch #51).
++ **Remove AI Videos** and **Mark AI Videos** (Filters, both off by default): videos YouTube itself labels "AI" (altered or synthetic content). Mark draws an "AI" badge on their tiles; Remove (needs Ad Blocking) drops them from lists once they are known. The label is not in the TV's list data, so each tile on screen is looked up once on YouTube's web API (two at a time, 5 s timeout, a minute's pause after a 429); a confirmed video is remembered for 30 days (`ytaf-ai-videos`, up to 2000), so Remove takes effect the next time it would be listed. The two are mutually exclusive. From NicholasBly/youtube-webos#209 by simonovAlexey (fork watch #60).
 + **Hide Recommended Videos Under the Player** (Filters, off by default, needs Ad Blocking): the rows of recommended videos under a playing video go, and no more of them are loaded. The row of the playlist the video plays from stays, and so does autoplay. Requested in NicholasBly/youtube-webos#207 (fork watch #58).
 + The settings heading shows the version: "YouTube Extended 0.8.9". From NicholasBly/youtube-webos 0.8.5 build 2 (fork watch #58).
 + **Search: Upload Date** (Interface, Any Time by default): searches only find videos uploaded in the last hour, today, this week, this month or this year. A filter, not a sort: YouTube no longer sorts search results by upload date. A filter YouTube already sends (a channel's own search) is left alone. From NicholasBly/youtube-webos#204 (fork watch #51).
@@ -46,6 +47,7 @@ Playback speed on webOS: 0.25× to 2× with the pitch kept, from YouTube's own S
 
 + CI actions are pinned to commits, and the checkout no longer keeps the token where nothing pushes. From gorrdy's fork.
 + After a release, the next push to main starts a draft of the next version by itself (0.8.8 → 0.8.9).
++ `bench/ai-label-test.cjs` and `bench/ai-filter-test.cjs` (both packages) for Remove / Mark AI Videos; `bench/chrome38-env.cjs` also removes `Object.hasOwn`.
 + `bench/dearrow-test.cjs`: DeArrow on both packages (lookups, titles, thumbnails and their fallbacks, the badge, turning it off, the old switch, title formatting on webOS 22+ only); `bench/feed-features-test.cjs` covers Hide Recommended Videos Under the Player.
 
 ## [0.8.8] - 2026/10/20
