@@ -93,6 +93,8 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           npm ci
+          # The commit, in the settings panel heading (webpack.config.js).
+          export YTAF_BUILD="${GITHUB_SHA::7}"
           npm pkg set version="$VERSION"
           node tools/sync-version.cjs
           # Start clean before each build so no earlier package ends up

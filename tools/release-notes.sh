@@ -54,8 +54,12 @@ if [ ! -s "$changes" ]; then
   echo "_No CHANGELOG.md section for $version yet._" > "$changes"
 fi
 
-# Hidden once published; tells a tester which commit a draft was built from.
-[ -n "$commit" ] && echo "<!-- built from $commit -->"
-
 tr -d '\r' < .github/release-notes.md | sed "s/@VERSION@/$version/g" |
   awk -v f="$changes" '$0 == "@CHANGELOG@" { while ((getline l < f) > 0) print l; next } { print }'
+
+# A refreshed pre-release keeps its version: the commit tells its builds
+# apart, and the settings panel heading shows the same one.
+if [ -n "$commit" ]; then
+  echo
+  echo "**Build:** \`$commit\` (the settings panel heading shows it too: \"YouTube Extended $version ($commit)\")"
+fi
