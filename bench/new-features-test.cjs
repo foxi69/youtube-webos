@@ -35,7 +35,7 @@ function boot(cfg, extraHtml = '') {
   const NS = win.JSON.stringify;
   win.localStorage.setItem('ytaf-configuration', NS(Object.assign({
     enableAdBlock: true, enableTrackingBlock: false, removeGlobalShorts: false,
-    removeLiveVideos: false, removeTopLiveGames: false, removeMostRelevant: false,
+    removeLiveVideos: false, removeAiVideos: false, markAiVideos: false, removeTopLiveGames: false, removeMostRelevant: false,
     hideGuestSignInPrompts: false, hideEndcards: false, enableLegacyEmojiFix: false,
     enableSponsorBlock: false, enableReturnYouTubeDislike: false,
     upgradeThumbnails: false, enableAutoLogin: false, logoStyle: 'default'
@@ -199,12 +199,55 @@ const shelfItems = (r) => r.contents.tvBrowseRenderer.content.tvSurfaceContentRe
     const ui = win.document.querySelector('#ytaf-page-interface');
     t('[panel] Remove Live Videos row present',
       !!filters && /Remove Live Videos/.test(filters.textContent), filters && filters.textContent.slice(0, 80));
+    t('[panel] Remove AI Videos and Mark AI Videos rows present',
+      !!filters && /Remove AI Videos/.test(filters.textContent) && /Mark AI Videos/.test(filters.textContent));
     t('[panel] YouTube Logo is now a selector, not a checkbox',
       !!ui && /YouTube Logo/.test(ui.textContent) &&
       !/Hide YouTube Logo/.test(ui.textContent));
     const css = Array.from(win.document.querySelectorAll('style')).map((s) => s.textContent).join('\n');
     t('[panel] sectioned-page density rules shipped', /\.ytaf-page-sectioned label/.test(css));
     t('[panel] settings page can scroll rather than clip', /overflow-y:\s*auto/.test(css));
+  }
+
+  {
+    const h = boot({ enableAdBlock: false, removeAiVideos: true, markAiVideos: false });
+    await wait(300);
+    const e = new h.win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
+    Object.defineProperty(e, 'keyCode', { get: () => 404, configurable: true });
+    dispatchTrusted(h.win.document.body, e);
+    for (let i = 0; i < 20; i++) h.pump();
+    const remove = h.win.document.querySelector('#ytaf-remove-ai');
+    const mark = h.win.document.querySelector('#ytaf-mark-ai');
+    t('[panel] Remove AI Videos disabled when Ad Blocking is off', !!remove && remove.disabled);
+    t('[panel] Mark AI Videos remains available without Ad Blocking', !!mark && !mark.disabled);
+    h.win.close();
+  }
+  {
+    const h = boot({ enableAdBlock: true, removeAiVideos: false, markAiVideos: false });
+    await wait(300);
+    const e = new h.win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
+    Object.defineProperty(e, 'keyCode', { get: () => 404, configurable: true });
+    dispatchTrusted(h.win.document.body, e);
+    for (let i = 0; i < 20; i++) h.pump();
+    const remove = h.win.document.querySelector('#ytaf-remove-ai');
+    const mark = h.win.document.querySelector('#ytaf-mark-ai');
+    mark.click();
+    remove.click();
+    await wait(300);
+    t('[panel] selecting Remove clears and disables Mark', remove.checked && !mark.checked && mark.disabled);
+    const saved = JSON.parse(h.win.localStorage.getItem('ytaf-configuration'));
+    t('[panel] Remove choice persists and Mark is off', saved.removeAiVideos === true && saved.markAiVideos === false);
+    h.win.close();
+    const h2 = boot(saved);
+    await wait(300);
+    const e2 = new h2.win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
+    Object.defineProperty(e2, 'keyCode', { get: () => 404, configurable: true });
+    dispatchTrusted(h2.win.document.body, e2);
+    for (let i = 0; i < 20; i++) h2.pump();
+    const remove2 = h2.win.document.querySelector('#ytaf-remove-ai');
+    const mark2 = h2.win.document.querySelector('#ytaf-mark-ai');
+    t('[panel] persisted Remove remains selected and Mark disabled', remove2.checked && !mark2.checked && mark2.disabled);
+    h2.win.close();
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);
