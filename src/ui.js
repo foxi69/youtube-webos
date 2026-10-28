@@ -24,6 +24,15 @@ import { titleFormattingSupported } from './dearrow/index.js';
 // Re-export so existing `import { showNotification } from './ui'` sites keep working.
 export const showNotification = _showNotification;
 
+// YouTube puts every element that scrolls back to its top (a capture "scroll"
+// listener on window), which pinned the settings pages there: the remote moved
+// the focus below the panel's edge and the page never followed. Registered
+// before YouTube's, at load, so it never sees the panel's own scrolling.
+window.addEventListener('scroll', (evt) => {
+  const target = evt.target;
+  if (target instanceof Element && target.closest('.ytaf-ui-container')) evt.stopImmediatePropagation();
+}, true);
+
 let lastSafeFocus = null;
 let oledKeepAliveTimer = null;
 
@@ -420,7 +429,11 @@ function createCycleControl(configKey, labelText, modesArray, displayMap = null,
 function createAlignedCycleControl(configKey, displayMap) {
   const control = createCycleControl(configKey, configGetDesc(configKey),
     Object.keys(displayMap), displayMap);
+  return alignControlLabel(control, configGetDesc(configKey));
+}
 
+/** Lines a .shortcut-control-row's label up with the checkbox rows (see above). */
+function alignControlLabel(control, text) {
   const label = control.querySelector('.shortcut-label');
   if (label) {
     label.style.color = 'inherit'; 
@@ -440,7 +453,8 @@ function createAlignedCycleControl(configKey, displayMap) {
     
     label.textContent = '';
     label.appendChild(dummyBox);
-    label.appendChild(document.createTextNode('\u00A0' + configGetDesc(configKey)));
+    // A margin, not a leading space, so a wrapped second line lines up with the first.
+    label.appendChild(createElement('span', { text, style: { marginLeft: '0.25em' } }));
   }
 
   return control;
@@ -468,7 +482,7 @@ function createThumbnailQualityControl() {
 // the record's field names (never values) so the case can be reported.
 function createPerAccountControl() {
   const control = createConfigCheckbox('perAccountSettings');
-  const status = createElement('div', { class: 'ytaf-profile-status', style: { fontSize: '1.7vh', opacity: '0.75', paddingLeft: '3.2vh' } });
+  const status = createElement('div', { class: 'ytaf-profile-status', style: { fontSize: '1.7vh', opacity: '0.75', paddingLeft: '4.3vh' } });
   const update = () => {
     const { state, fields } = configGetProfileStatus();
     let text = '';
@@ -551,7 +565,7 @@ function createShortcutControl(keyIdentifier) {
 }
 
 function createPreviewControl(key) {
-  return createCycleControl(key, configGetDesc(key), Object.keys(forcePreviewModes), forcePreviewModes);
+  return createAlignedCycleControl(key, forcePreviewModes);
 }
 
 // A percentage stepped with Left/Right and clamped at both ends.
@@ -573,7 +587,7 @@ function createOpacityControl(key, step = 5, min = 0, max = 100) {
   
   configAddChangeListener(key, updateDisplay);
   updateDisplay();
-  return container;
+  return alignControlLabel(container, configGetDesc(key));
 }
 
 // The channel of the video being watched, as the player names it, or ''.
@@ -1077,14 +1091,14 @@ function createOptionsPanel() {
   
     const playerUITweaks = [
         createOpacityControl('videoShelfOpacity'),
-        createElement('div', { text: 'Adjusts opacity of black background underneath videos (Requires OLED-care mode)', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px' } }),
+        createElement('div', { text: 'Adjusts opacity of black background underneath videos (Requires OLED-care mode)', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
         createOpacityControl('uiBrightness', 10, 40, 100),
-        createElement('div', { text: 'Dims the YouTube menus and thumbnails; never the playing video or this panel', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px' } }),
+        createElement('div', { text: 'Dims the YouTube menus and thumbnails; never the playing video or this panel', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   	  createPreviewControl('forcePreviews'),
-  	  createElement('div', { text: 'Sets YouTube\'s own "previews with sound" setting on app load. No effect where YouTube shows no previews (webOS 25)', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px' } }),
+  	  createElement('div', { text: 'Sets YouTube\'s own "previews with sound" setting on app load. No effect where YouTube shows no previews (webOS 25)', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   	  createConfigCheckbox('mutePreviews'),
   	  createConfigCheckbox('fitPageBesideGuide'),
-  	  createElement('div', { text: 'Shrinks the page beside the open left menu, instead of pushing its right side off the screen', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px' } }),
+  	  createElement('div', { text: 'Shrinks the page beside the open left menu, instead of pushing its right side off the screen', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   	  createConfigCheckbox('fixMultilineTitles'),
   	  createConfigCheckbox('removeBlackBorders')
     ];
@@ -1116,7 +1130,7 @@ function createOptionsPanel() {
       );
     }
     const elDeArrowFallback = createAlignedCycleControl('dearrowThumbnailFallback', dearrowThumbnailFallbacks);
-    const elDeArrowFallbackHelp = createElement('div', { text: 'Random Frame: a frame DeArrow picks from the video. Start, middle and end frames: YouTube\'s own', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px' } });
+    const elDeArrowFallbackHelp = createElement('div', { text: 'Random Frame: a frame DeArrow picks from the video. Start, middle and end frames: YouTube\'s own', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } });
     const deArrowThumbRows = [createConfigCheckbox('dearrowCrowdThumbnails'), elDeArrowFallback, elDeArrowFallbackHelp];
     pageUITweaks.appendChild(createSection('DeArrow', [
       createConfigCheckbox('enableDeArrow'),
@@ -2184,6 +2198,10 @@ function initGlobalStyles() {
         /* Not display:none: YouTube still focuses it at start, and a hidden element
            cannot take focus, which would leave focus nowhere. */
         html.ytaf-hide-guest-nudge ytlr-feed-nudge-renderer { opacity: 0 !important; height: 0 !important; overflow: hidden !important; }
+
+        /* Hide Recommended Videos (adblock.js): with the rows gone the pivot
+           under the player keeps its grey skeleton tiles up for good. */
+        html.ytaf-hide-recommended ytlr-pivot ytlr-ghost-surface { display: none !important; }
     `;
     document.head.appendChild(style);
 
@@ -2191,7 +2209,8 @@ function initGlobalStyles() {
     const CLASS_KEYS = {
         'ytaf-fix-titles': 'fixMultilineTitles',
         'ytaf-remove-borders': 'removeBlackBorders',
-        'ytaf-no-animations': 'disableAnimations'
+        'ytaf-no-animations': 'disableAnimations',
+        'ytaf-hide-recommended': 'hideRecommendedVideos'
     };
     for (const [cls, key] of Object.entries(CLASS_KEYS)) {
         syncClass(cls, key);

@@ -38,6 +38,9 @@ Playback speed on webOS: 0.25× to 2× with the pitch kept, from YouTube's own S
 
 + Ad Blocking, Shorts and the feed filters now also apply to the first home screen after a fresh start. YouTube's page fetches it before the userScript is injected, so its ad tiles ("Sponsored") and Shorts stayed until the next page. Max Thumbnail Quality applies to it too. From aktiwers' fork (webosbrew/youtube-webos PR #488, fork watch #41).
 + Playback speed: the audio of a whole video was kept in memory; now only the last 60 s behind the playhead are.
++ Settings panel: a page longer than the panel (Interface, UI Tweaks) now scrolls with the remote. YouTube puts every element that scrolls back to its top, so the focus went below the panel's edge and the page stayed put.
++ Settings panel: wrapped labels, the Separate Settings status line and the notes on UI Tweaks line up with the labels above them; Video shelf opacity, UI Brightness and Previews With Sound line up with the checkbox rows.
++ Hide Recommended Videos Under the Player: the grey placeholder tiles YouTube kept under the player once the rows were gone are hidden (seen on a webOS 25 TV).
 
 ## Build
 
