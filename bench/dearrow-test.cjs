@@ -177,7 +177,9 @@ function render(win, item) {
   const el = win.document.createElement('ytlr-tile-renderer');
   el.setAttribute('data-id', tr.contentId);
   el.innerHTML = '<ytlr-thumbnail-details></ytlr-thumbnail-details>' +
-    '<ytlr-tile-metadata-renderer><div><yt-formatted-string></yt-formatted-string></div></ytlr-tile-metadata-renderer>';
+    '<ytlr-tile-metadata-renderer><div><yt-formatted-string></yt-formatted-string></div>' +
+    // The channel line and the views line, as on a webOS 25 TV.
+    '<ytlr-line>Channel</ytlr-line><ytlr-line>1 M views</ytlr-line></ytlr-tile-metadata-renderer>';
   el.querySelector('ytlr-thumbnail-details').style.backgroundImage = `url("${tileThumb(item)}")`;
   el.querySelector('yt-formatted-string').textContent = tileTitle(item);
   win.document.querySelector('ytlr-app').appendChild(el);
@@ -206,6 +208,10 @@ const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-d
       tileThumb(downvoted) === 'https://i.ytimg.com/vi/downvoted01/hqdefault.jpg', tileThumb(downvoted));
     await waitFor(() => shownTitle(el) === 'the iPhone review', 1500);
     t('the tile on screen gets the title too', shownTitle(el) === 'the iPhone review', shownTitle(el));
+    // Drawn before the answer, so without YouTube's badge: the logo goes in front of its last line.
+    const lines = el.querySelectorAll('ytlr-line');
+    t('a tile drawn before the answer shows the logo on its last line',
+      lines[1].hasAttribute('data-ytaf-dearrow-badge') && !lines[0].hasAttribute('data-ytaf-dearrow-badge'));
 
     // A known video: rewritten inside the parse, no request.
     const asked = fetched.length;

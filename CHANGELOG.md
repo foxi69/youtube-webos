@@ -10,6 +10,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 + Playback speed works on videos with Dolby audio. A TV with surround is given AC-3 or E-AC-3 (Big Buck Bunny 4K60 is one), which the speed engine cannot decode, so the speed fell back to 1x with "Playback speed not available for this video". Off 1x the player is now offered only AAC and Opus audio when the video has them; at 1x the Dolby track comes back.
 + Show Video Quality Next to the Title: the tag sits on its own line, lined up with the channel line above it. On webOS 25 it wrapped there anyway, pushed in by its left margin.
++ DeArrow: the logo shows on every tile with a crowdsourced title or thumbnail, also on one YouTube drew before DeArrow answered. Its title and thumbnail were rewritten in place, but the logo only came the next time YouTube drew the tile; now it is drawn in front of the tile's last line until then, looking the same.
+
+## Docs
+
++ The README's Filters table lists Remove AI Videos and Mark AI Videos. Remove AI Videos works on the home screen, browse tabs, search and the lists that continue them, from the second time a video is listed; like the other list filters it leaves playlist pages alone.
 
 ## Build
 
