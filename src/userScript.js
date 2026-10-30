@@ -37,7 +37,10 @@ import './lang-settings-fix';
 import { initAiContentFilter } from './ai-content-filter.js';
 
 import { initBufferLimit } from './hooks/buffer-limit.js';
-import { getWebOSVersion } from './webos-utils.js';
+import { getWebOSVersion, isLegacyWebOS } from './webos-utils.js';
+
+// Gates the tile-preview <video> fix in yt-fixes.css.
+if (isLegacyWebOS()) document.documentElement.classList.add('ytaf-legacy-webos');
 
 if (typeof initBufferLimit === 'function' && getWebOSVersion() <= 4) {
 	initBufferLimit();

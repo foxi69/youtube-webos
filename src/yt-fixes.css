@@ -51,8 +51,14 @@ ytlr-tile-renderer[style*='width: 12.75rem; height: 21.25rem;']
  * Dirty hack to fix offset <video> on shorts on older webOS versions.
  * This shouldn't work but it does 😵‍💫.
  * See webosbrew/youtube-webos/pull/235 for insanity.
+ *
+ * The tile previews have the same problem on webOS 3-6: sound but a black
+ * picture where the thumbnail was (#67, an OLED C9 on webOS 4.10). Every page
+ * but the watch and Shorts pages plays only previews in its <video>; the class
+ * is set in userScript.js on legacy webOS only.
  */
-.WEB_PAGE_TYPE_SHORTS video {
+.WEB_PAGE_TYPE_SHORTS video,
+html.ytaf-legacy-webos body:not(.WEB_PAGE_TYPE_WATCH):not(.WEB_PAGE_TYPE_SHORTS) video {
   border: black 1px solid;
   /* Smallest transparent image */
   border-image: url('data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7')
