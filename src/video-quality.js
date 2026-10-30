@@ -110,6 +110,16 @@ async function ensurePlaybackStarts() {
   }
 }
 
+// Whether the player has listed this video's levels: [] before the manifest
+// loads, or only 'auto'.
+function levelsListed() {
+  try {
+    return (player.getAvailableQualityLevels?.() || []).some((q) => q !== 'auto');
+  } catch {
+    return false;
+  }
+}
+
 // Max means the best level this video offers (the list is best first), not
 // any named level: a 1440p video playing in 720p still needs the upgrade.
 function isQualityAlreadyMax() {
@@ -207,8 +217,9 @@ function setQualityOnPlayer() {
       return { success: true, upgraded: false };
     }
     
-    DEBUG && console.log('[VideoQuality] Upgrading quality from:', player.getPlaybackQuality?.());
-    
+    const previousQuality = player.getPlaybackQuality?.();
+    DEBUG && console.log('[VideoQuality] Upgrading quality from:', previousQuality);
+
     player.setPlaybackQualityRange('highres', 'highres');
     player.setPlaybackQuality?.('highres');
     
@@ -217,9 +228,10 @@ function setQualityOnPlayer() {
     
     DEBUG && console.info('[VideoQuality] ✅ Quality upgraded to:', afterQuality, qualityLabel);
     
-    return { 
-      success: true, 
+    return {
+      success: true,
       upgraded: true,
+      previousQuality,
       newQuality: qualityLabel || afterQuality
     };
     
@@ -233,12 +245,14 @@ function notifyIfUpgraded(result) {
   if (result && result.upgraded) {
     setTimeout(() => {
       try {
-        const finalQuality = player.getPlaybackQualityLabel?.() || result.newQuality || 'high quality';
+        // The switch is asynchronous: only say so once the player moved.
+        if (isDestroyed || !player) return;
+        const quality = player.getPlaybackQuality?.();
+        if (!quality || quality === result.previousQuality) return;
+        const finalQuality = player.getPlaybackQualityLabel?.() || quality;
         showNotification(`Video quality upgraded to ${finalQuality}`);
         DEBUG && console.info('[VideoQuality] Notification shown:', finalQuality);
-      } catch {
-        showNotification('Video quality upgraded to high quality');
-      }
+      } catch { /* no toast rather than a wrong one */ }
     }, 500);
   }
 }
@@ -382,18 +396,20 @@ function handleStateChange(state) {
     }
     
     switch (actualState) {
-        // Identical handling: setQualityOnPlayer() already short-circuits when
-        // the quality is maxed (returning upgraded:false, making
-        // notifyIfUpgraded a no-op), so both cases collapse to one path.
+        // On any of these events until a request went through, not only the
+        // video's first: its levels may not be listed yet then.
         case STATE_UNSTARTED:
         case STATE_BUFFERING:
-            if (isNewVideo && player.getAvailableQualityLevels?.()?.length > 0) {
-                if (!isQualityAlreadyMax()) notifyIfUpgraded(setQualityOnPlayer());
-                qualitySetForVideo.add(videoId);
+            if (levelsListed()) {
+                const result = isQualityAlreadyMax() ? { success: true } : setQualityOnPlayer();
+                notifyIfUpgraded(result);
+                if (result.success) qualitySetForVideo.add(videoId);
             }
             break;
 
         case STATE_PLAYING:
+            // Nothing to compare with yet: pausing to upgrade would be for nothing.
+            if (!levelsListed()) break;
             if (!isQualityAlreadyMax()) {
                 interceptAndUpgradeQuality(videoId);
             } else {
