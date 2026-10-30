@@ -13,7 +13,7 @@
 import { configRead } from '../config.js';
 import { itemTitle, itemDurationSeconds } from '../feed-filters.js';
 import { TILES_PER_VIDEO, SCAN_MAX_DEPTH, SCAN_MAX_NODES, BADGE_MARK } from './constants.js';
-import { videos } from './state.js';
+import { videos, showsCrowdsourced } from './state.js';
 
 const VIDEO_ID_RE = /^[\w-]{11}$/;
 
@@ -218,11 +218,7 @@ function applyToTile(node, video) {
       rec.thumbnail[rec.listKey] = rec.thumbnails;
     }
   }
-  // Only for what the community submitted: with the Random frame fallback
-  // nearly every thumbnail changes, and a badge on every tile tells nothing.
-  const wantBadge =
-    !!((video.title && video.crowdTitle) || (video.thumb && video.crowdThumb)) &&
-    !!configRead('dearrowShowBadge');
+  const wantBadge = showsCrowdsourced(video) && !!configRead('dearrowShowBadge');
   if (wantBadge && !rec.badge) {
     const slot = badgeSlot(lineItemLists(node));
     if (slot) {

@@ -8,12 +8,38 @@ import { configRead } from '../config.js';
 import { VIDEO_ID_RE, BADGE_MARK, SELECTORS } from './constants.js';
 import logoUrl from './dearrow-logo.png';
 import './dearrow.css';
-import { videos } from './state.js';
+import { videos, showsCrowdsourced } from './state.js';
 import { thumbOwner } from './thumbs.js';
 
 // The URL inside a CSS background-image value.
 const BACKGROUND_URL_RE = /url\("?([^")]+)"?\)/;
 const BADGE_CLASS = 'ytaf-dearrow-badge';
+// The last line of a tile drawn before its answer came (dearrow.css).
+const LINE_ATTR = 'data-ytaf-dearrow-badge';
+let lineLogoStyle = null;
+
+/**
+ * The badge of a tile YouTube drew before DeArrow answered: the response gets
+ * its badge (tiles.js), but YouTube only shows it when it draws the tile again.
+ * Until then the tile's last line carries the logo as a ::before (an
+ * attribute, so nothing is added to markup YouTube patches), and never next
+ * to a badge YouTube did draw.
+ */
+function sweepLineLogo(tile, want) {
+  const meta = tile.querySelector(SELECTORS.TILE_METADATA);
+  if (!meta) return;
+  const lines = meta.querySelectorAll(SELECTORS.TILE_LINE);
+  const last = want && !meta.querySelector('.' + BADGE_CLASS) ? lines[lines.length - 1] : null;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i] === last) lines[i].setAttribute(LINE_ATTR, '');
+    else if (lines[i].hasAttribute(LINE_ATTR)) lines[i].removeAttribute(LINE_ATTR);
+  }
+  if (last && !lineLogoStyle) {
+    lineLogoStyle = document.createElement('style');
+    lineLogoStyle.textContent = `[${LINE_ATTR}]::before { background-image: url("${logoUrl}"); }`;
+    document.head.appendChild(lineLogoStyle);
+  }
+}
 
 /**
  * Replaces an element's text, editing its one text node where it has one: the
@@ -104,6 +130,7 @@ export function sweepTiles(restoreAll) {
     sweepBadges(tiles[i], hideBadges);
     const thumbEl = tiles[i].querySelector(SELECTORS.THUMBNAIL);
     const video = tileVideo(thumbEl);
+    sweepLineLogo(tiles[i], !hideBadges && !!video && showsCrowdsourced(video));
     if (!video) continue;
     sweepThumb(thumbEl, video, restoreAll ? null : video.thumb);
     const titleEl = tiles[i].querySelector(SELECTORS.TILE_TITLE);
