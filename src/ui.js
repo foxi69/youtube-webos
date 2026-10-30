@@ -487,7 +487,7 @@ function createPerAccountControl() {
     const { state, fields } = configGetProfileStatus();
     let text = '';
     if (state === 'account') text = 'Using this account\'s own settings';
-    else if (state === 'guest') text = 'Using the guest settings';
+    else if (state === 'guest') text = 'Guest: starts from the shared settings each time, changes are not kept';
     else if (state === 'unknown') {
       text = 'Account not recognised - shared settings in use' +
         (fields.length ? ' (fields: ' + fields.join(', ') + ')' : '');
