@@ -288,7 +288,8 @@ of the project; credits are in [CHANGELOG.md](CHANGELOG.md).
 **New**
 - Auto-Translate Subtitles to a language of your choice.
 - Auto Login: always ask who is watching.
-- Separate Settings for Each Account: each YouTube account on the TV keeps its own settings.
+- Separate Settings for Each Account: each YouTube account on the TV keeps its own settings; guest mode starts
+  from the shared settings every time and keeps nothing.
 - Bindable yellow button, Sleep Timer and Audio-Only Mode.
 - Magic Remote scroll-wheel seeking.
 - SponsorBlock picks up segments submitted while you watch: re-checked during playback.

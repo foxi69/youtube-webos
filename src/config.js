@@ -348,7 +348,9 @@ const changeListeners = new Map();
  * The account is read from the leanback client's own identity record. The
  * profile name is a hash of that record's id-like fields, so no account id is
  * stored; tokens and timestamps are skipped, they change while the account
- * stays the same. Guest mode gets a profile of its own.
+ * stays the same. Guest mode gets a profile of its own that is never stored:
+ * each guest session starts from the shared settings, like a new account, and
+ * what it changes lasts until it ends (the device settings are still kept).
  */
 const DEVICE_KEYS = new Set([
   'perAccountSettings',
@@ -440,6 +442,11 @@ function readAccountProfile() {
 }
 
 const profileStorageKey = (profile) => CONFIG_KEY + '::' + profile;
+// The guest's settings are not kept (see above).
+const GUEST_PROFILE = 'guest';
+const storesProfile = (profile) => !!profile && profile !== GUEST_PROFILE;
+// What builds before this one stored for the guest goes.
+try { window.localStorage.removeItem(profileStorageKey(GUEST_PROFILE)); } catch { /* no storage */ }
 
 function pickAccountValues(source) {
   const out = {};
@@ -478,7 +485,7 @@ if ('enableDeArrowThumbnails' in sharedConfig) {
 
 if (sharedConfig.perAccountSettings) {
   activeProfile = readAccountProfile();
-  if (activeProfile) {
+  if (storesProfile(activeProfile)) {
     const stored = loadStored(profileStorageKey(activeProfile));
     // A new account starts from the shared settings, not from the defaults.
     if (stored) Object.assign(localConfig, pickAccountValues(stored));
@@ -501,7 +508,9 @@ function writeNow() {
     if (activeProfile) {
       for (const key of DEVICE_KEYS) sharedConfig[key] = localConfig[key];
       window.localStorage[CONFIG_KEY] = JSON.stringify(sharedConfig);
-      window.localStorage[profileStorageKey(activeProfile)] = JSON.stringify(pickAccountValues(localConfig));
+      if (storesProfile(activeProfile)) {
+        window.localStorage[profileStorageKey(activeProfile)] = JSON.stringify(pickAccountValues(localConfig));
+      }
     } else {
       Object.assign(sharedConfig, localConfig);
       window.localStorage[CONFIG_KEY] = JSON.stringify(localConfig);
@@ -573,11 +582,12 @@ function switchProfile(profile) {
   activeProfile = profile;
 
   let incoming = null;
-  if (profile) incoming = loadStored(profileStorageKey(profile));
+  if (storesProfile(profile)) incoming = loadStored(profileStorageKey(profile));
   if (!incoming) {
-    // An account seen for the first time starts from the shared settings.
+    // An account seen for the first time (and every guest session) starts
+    // from the shared settings.
     incoming = pickAccountValues(Object.assign({}, defaultConfig, sharedConfig));
-    if (profile) scheduleWrite();
+    if (storesProfile(profile)) scheduleWrite();
   }
   incoming = pickAccountValues(Object.assign(pickAccountValues(defaultConfig), incoming));
 

@@ -170,16 +170,33 @@ const ACCOUNT_B = { identityType: 'SIGNED_IN', obfuscatedGaiaId: '2222', accessT
     t('unknown: no errors', errors.length === 0, errors.join(' | '));
   }
 
-  // ---- Guest mode gets its own profile; turning the option on keeps values ----
+  // ---- Guest mode: a profile of its own that is never stored ----
   {
     const { win } = boot({ perAccountSettings: false, enableReturnYouTubeDislike: true },
       { identityType: 'UNAUTHENTICATED_IDENTITY_TYPE_GUEST' });
     key(win, GREEN);
     toggle(win, checkbox(win, 'Separate Settings for Each Account'));
     await wait(300);
-    t('turn on: guest profile created', profileKeys(win).join() === CONFIG_KEY + '::guest', profileKeys(win).join());
-    t('turn on: current values carried into the profile', read(win, CONFIG_KEY + '::guest').enableReturnYouTubeDislike === true);
+    t('turn on as guest: no guest profile stored', profileKeys(win).length === 0, profileKeys(win).join());
+    t('turn on: the shared values stay', read(win, CONFIG_KEY).enableReturnYouTubeDislike === true);
     t('turn on: flag saved in the shared store', read(win, CONFIG_KEY).perAccountSettings === true);
+  }
+  {
+    // What an earlier build stored for the guest goes; the session starts from
+    // the shared settings and what it changes is not kept.
+    const { win, errors } = boot({ perAccountSettings: true, enableReturnYouTubeDislike: true },
+      { identityType: 'UNAUTHENTICATED_IDENTITY_TYPE_GUEST' },
+      { [CONFIG_KEY + '::guest']: { enableReturnYouTubeDislike: false } });
+    await wait(300);
+    t('guest: an old guest profile is removed', win.localStorage.getItem(CONFIG_KEY + '::guest') === null);
+    key(win, GREEN);
+    const ryd = checkbox(win, 'Return YouTube Dislike');
+    t('guest: starts from the shared settings', !!ryd && ryd.checked === true);
+    toggle(win, ryd);
+    await wait(300);
+    t('guest: a change is not stored', profileKeys(win).length === 0 && read(win, CONFIG_KEY).enableReturnYouTubeDislike === true,
+      profileKeys(win).join() + ' shared=' + read(win, CONFIG_KEY).enableReturnYouTubeDislike);
+    t('guest: no errors', errors.length === 0, errors.join(' | '));
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);
