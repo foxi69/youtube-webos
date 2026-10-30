@@ -204,6 +204,30 @@ setTimeout(async () => {
     t(`force max quality from ${start}: ${want ? 'upgrades' : 'leaves it'}`, set === want, `set=${set}`);
   }
 
+  // Levels not listed yet (only 'auto'): nothing is asked and the video is
+  // not paused. A request the player does not follow shows no toast.
+  for (const [levels, moves, name] of [[['auto'], true, 'levels not listed yet'], [['hd1440', 'hd720', 'auto'], false, 'the player does not switch']]) {
+    const { win, pump } = boot({ forceHighResVideo: true },
+      '<body class="WEB_PAGE_TYPE_WATCH"><div id="ytlr-player__player-container-player"></div></body>',
+      'https://www.youtube.com/tv#/watch?v=abc');
+    const p = win.document.getElementById('ytlr-player__player-container-player');
+    let q = 'hd720', set = 0, paused = 0;
+    Object.assign(p, {
+      setPlaybackQualityRange() { set++; if (moves) q = 'hd1440'; }, setPlaybackQuality() {},
+      getPlaybackQuality: () => q, getPlaybackQualityLabel: () => q,
+      getAvailableQualityLevels: () => levels,
+      getVideoData: () => ({ video_id: 'abc' }), getPlayerState: () => 1,
+      pauseVideo() { paused++; }, playVideo() {}, isInline: () => false, addEventListener() {}
+    });
+    win.dispatchEvent(new win.CustomEvent('yt-navigate-finish', { detail: { pageType: 'watch' } }));
+    await new Promise((r) => setTimeout(r, 300));
+    pump(); pump();
+    await new Promise((r) => setTimeout(r, 700));
+    const toast = /quality upgraded/i.test(win.document.body.textContent);
+    if (moves) t(`force max quality, ${name}: no request, no pause, no toast`, set === 0 && paused === 0 && !toast, `set=${set} paused=${paused} toast=${toast}`);
+    else t(`force max quality, ${name}: asked, but no "upgraded" toast`, set > 0 && !toast, `set=${set} toast=${toast}`);
+  }
+
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 }, 500);
