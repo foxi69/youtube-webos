@@ -65,6 +65,7 @@ export const SELECTORS = {
   TILE: 'ytlr-tile-renderer',
   TILE_METADATA: 'ytlr-tile-metadata-renderer',
   TILE_TITLE: 'ytlr-tile-metadata-renderer yt-formatted-string',
+  TILE_LINE: 'ytlr-line',
   THUMBNAIL: 'ytlr-thumbnail-details'
 };
 

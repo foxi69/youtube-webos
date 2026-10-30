@@ -18,6 +18,14 @@
  */
 export const videos = new Map();
 
+/**
+ * Whether a video shows something the community submitted: what the badge
+ * marks. Only that, not every change: with the Random frame fallback nearly
+ * every thumbnail changes, and a badge on every tile tells nothing.
+ */
+export const showsCrowdsourced = (video) =>
+  !!((video.title && video.crowdTitle) || (video.thumb && video.crowdThumb));
+
 // The generation: bumped by a settings change and by a wipe.
 let generation = 0;
 

@@ -8,3 +8,21 @@
   background-position: center !important;
   background-size: 1em 1em !important;
 }
+
+/* The same badge for a tile YouTube drew before DeArrow answered (sweep.js):
+   in front of its last line until YouTube draws the tile again with its own.
+   Sized like YouTube's badge pill (24px text: 32 x 33px, 6px corners and gap);
+   the logo URL comes in a rule sweep.js adds. */
+[data-ytaf-dearrow-badge]::before {
+  content: '';
+  display: inline-block;
+  vertical-align: top;
+  width: 1.333em;
+  height: 1.375em;
+  margin-right: 0.25em;
+  border-radius: 0.25em;
+  background-color: rgb(55, 55, 55);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 1em 1em;
+}

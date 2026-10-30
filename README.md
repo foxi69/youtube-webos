@@ -142,6 +142,8 @@ column. A setting marked *webOS 25* or *guest* only appears there.
 | Remove "Most Relevant" Shelf | Off |
 | Remove Upcoming Videos | Off |
 | Remove Members-Only Videos | Off |
+| Remove AI Videos (labelled "AI" by YouTube; from the second time a video is listed; not on playlist pages) | Off |
+| Mark AI Videos (an "AI" badge on their tiles; works without Ad Blocking) | Off |
 | Hide Recommended Videos Under the Player (the row of a playlist you play stays) | Off |
 | Guest Mode: Hide Sign-in Buttons (*guest*) | Off |
 | Hide Watched Videos (90%+; not in History, Library, playlists) | Off |
