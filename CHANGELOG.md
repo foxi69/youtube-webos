@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [0.9.1] - Unreleased
 
+## Changed
+
++ Separate Settings for Each Account: guest mode keeps nothing. Each guest session starts from the shared settings, as a new account does, and what is changed in it lasts until it ends (the TV's own settings, such as Auto Login, are still kept). Guest settings a previous version stored are removed.
+
 ## Fixes
 
 + Playback speed works on videos with Dolby audio. A TV with surround is given AC-3 or E-AC-3 (Big Buck Bunny 4K60 is one), which the speed engine cannot decode, so the speed fell back to 1x with "Playback speed not available for this video". Off 1x the player is now offered only AAC and Opus audio when the video has them; at 1x the Dolby track comes back.
