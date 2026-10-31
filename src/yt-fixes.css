@@ -52,15 +52,31 @@ ytlr-tile-renderer[style*='width: 12.75rem; height: 21.25rem;']
  * This shouldn't work but it does 😵‍💫.
  * See webosbrew/youtube-webos/pull/235 for insanity.
  *
- * The tile previews have the same problem on webOS 3-6: sound but a black
+ * The tile previews may have the same problem on webOS 3-6: sound but a black
  * picture where the thumbnail was (#67, an OLED C9 on webOS 4.10). Every page
- * but the watch and Shorts pages plays only previews in its <video>; the class
- * is set in userScript.js on legacy webOS only.
+ * but the watch and Shorts pages plays only previews in its <video>. The
+ * classes are set by preview-diagnostics.js on legacy webOS only, from the
+ * Preview Picture Fix setting.
  */
 .WEB_PAGE_TYPE_SHORTS video,
-html.ytaf-legacy-webos body:not(.WEB_PAGE_TYPE_WATCH):not(.WEB_PAGE_TYPE_SHORTS) video {
+html.ytaf-legacy-webos.ytaf-pfix-border body:not(.WEB_PAGE_TYPE_WATCH):not(.WEB_PAGE_TYPE_SHORTS) video {
   border: black 1px solid;
   /* Smallest transparent image */
   border-image: url('data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7')
     30%;
+}
+
+/*
+ * Preview Picture Fix "Flatten Layers" (#67): the playing preview <video> and
+ * its ancestors, marked by preview-diagnostics.js, lose everything that makes
+ * Chromium draw them offscreen first, where webOS's punched-through video
+ * shows as black.
+ */
+html.ytaf-pfix-flatten .ytaf-pfix-flat {
+  border-radius: 0 !important;
+  opacity: 1 !important;
+  -webkit-filter: none !important;
+  filter: none !important;
+  -webkit-mask-image: none !important;
+  mix-blend-mode: normal !important;
 }

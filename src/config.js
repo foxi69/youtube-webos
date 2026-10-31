@@ -126,6 +126,17 @@ export const forcePreviewModes = {
   force_off: 'Force Off'
 };
 
+/**
+ * Preview Picture Fix (webOS 3-6), for tile previews that play over a black
+ * picture (#67; preview-diagnostics.js).
+ */
+export const previewFixModes = {
+  border: 'Border Trick',
+  flatten: 'Flatten Layers',
+  both: 'Both',
+  off: 'Off'
+};
+
 /** The page the app opens on (start-page.js). */
 export const startPageModes = {
   home: 'Home',
@@ -255,6 +266,8 @@ const configOptions = new Map([
   ['seekStep', { default: '0', desc: 'Left/Right Seek Step (Controls Hidden)' }],
   // Remaining time and/or the wall-clock end time beside the duration.
   ['timeRemainingMode', { default: 'off', desc: 'Show Remaining Time / End Time' }],
+  // YouTube's "most replayed" curve above the seek bar (most-replayed.js).
+  ['showMostReplayed', { default: false, desc: 'Show Most Replayed Graph Above the Seek Bar' }],
   ['enableScrollSeek', { default: false, desc: 'Magic Remote: Scroll Wheel Seeks on Progress Bar' }],
   ['enableAutoLogin', { default: true, desc: 'Bypass Nag Screens' }],
   ['autoSelectAccount', { default: true, desc: 'Auto Login (off: always ask who is watching)' }],
@@ -272,6 +285,9 @@ const configOptions = new Map([
   ['removeBlackBorders', { default: false, desc: 'New Liquid Glass UI' }],
   ['forcePreviews', { default: 'disabled', desc: 'Previews With Sound' }],
   ['mutePreviews', { default: false, desc: 'Mute Video Previews' }],
+  // webOS 3-6 only (preview-diagnostics.js, #67).
+  ['previewFixMode', { default: 'border', desc: 'Preview Picture Fix (webOS 3-6)' }],
+  ['previewDiagnostics', { default: false, desc: 'Show Preview Diagnostics' }],
   ['fitPageBesideGuide', { default: false, desc: 'Fit Page Beside Open Menu' }],
   ['enableLegacyEmojiFix', { default: true, desc: 'Emoji + Characters Fix' }],
   ['hideGuestSignInPrompts', { default: false, desc: 'Guest Mode: Hide Sign-in Buttons' }],
