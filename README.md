@@ -8,6 +8,7 @@
   <img src="https://img.shields.io/badge/webOS-3%20%E2%86%92%2025%2B-a50034?style=for-the-badge" alt="webOS 3 to 25+">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-444?style=for-the-badge" alt="License: GPL-3.0"></a>
   <a href="https://github.com/foxi69/youtube-webos/stargazers"><img src="https://img.shields.io/github/stars/foxi69/youtube-webos?style=for-the-badge&color=f5c518" alt="Stars"></a>
+  <a href="https://ko-fi.com/foxi69"><img src="https://img.shields.io/badge/Ko--fi-support-ff5e5b?style=for-the-badge&logo=ko-fi&logoColor=white" alt="Support on Ko-fi"></a>
 </p>
 
 <p align="center">
@@ -21,7 +22,8 @@
   <a href="#-remote-control"><b>Remote</b></a> ·
   <a href="#%EF%B8%8F-settings"><b>Settings</b></a> ·
   <a href="#-what-this-fork-adds"><b>What's new</b></a> ·
-  <a href="#-building"><b>Build</b></a>
+  <a href="#-building"><b>Build</b></a> ·
+  <a href="#-support"><b>Support</b></a>
 </p>
 
 ---
@@ -503,6 +505,15 @@ repositories. When it finds new work, it opens an issue labelled `fork-watch` wi
 suggestions: nothing is merged. It leaves out commits NicholasBly already has, bot commits, private forks and
 copies uploaded as new repositories.
 </details>
+
+## ☕ Support
+
+If this app makes your TV nicer to use, you can buy me a coffee on
+[**Ko-fi**](https://ko-fi.com/foxi69). It is entirely optional: the app is and stays free.
+
+<p align="center">
+  <a href="https://ko-fi.com/foxi69"><img src="https://img.shields.io/badge/Support%20me%20on-Ko--fi-ff5e5b?style=for-the-badge&logo=ko-fi&logoColor=white" alt="Support me on Ko-fi"></a>
+</p>
 
 ## 🙏 Credits
 
