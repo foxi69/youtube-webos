@@ -173,6 +173,7 @@ keyboard (OK on the box) or a USB/Bluetooth one, then OK; select an entry to rem
 | Don't Turn On Subtitles by Themselves | Off |
 | Prefer Original Audio over Dubbed | Off |
 | Show Remaining Time / End Time (Remaining, End Time, Both) | Off |
+| Show Most Replayed Graph Above the Seek Bar | Off |
 | Hide Endcards | Off |
 | Magic Remote: Scroll Wheel Seeks on Progress Bar | Off |
 | Left/Right Seek Step (5, 10, 15, 30, 60 s) | YouTube's default |
@@ -262,6 +263,8 @@ The actions each key can take are listed under [Remote control](#-remote-control
 | UI Brightness (dims menus and thumbnails, never the video) | 100% |
 | Previews With Sound (Disabled, Force On, Force Off; sets YouTube's own setting) | Disabled |
 | Mute Video Previews | Off |
+| Preview Picture Fix (Border Trick, Flatten Layers, Both, Off; webOS 3-6 only) | Border Trick |
+| Show Preview Diagnostics (webOS 3-6 only) | Off |
 | Fit Page Beside Open Menu | Off |
 | Fix Multiline Titles | On |
 | New Liquid Glass UI | Off |

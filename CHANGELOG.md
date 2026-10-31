@@ -6,13 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [0.9.1] - Unreleased
 
+## Added
+
++ **Show Most Replayed Graph Above the Seek Bar** (Player, off by default): YouTube's "most replayed" curve, drawn just above the seek bar whenever the controls are on screen, so the popular parts of a video can be seen while seeking. The TV client is not sent the data, so it is asked from YouTube's web watch-page data, once per video (about 10 kB). Nothing is shown for a video YouTube has no graph for: new or little-watched videos and live streams. From NicholasBly/youtube-webos#211 (fork watch #73).
++ **Preview Picture Fix** and **Show Preview Diagnostics** (UI Tweaks, webOS 3-6 only), for tile previews that play over a black picture (#67). The fix has a new choice, **Flatten Layers**: while a preview plays, its <video> and the elements around it lose rounded corners, opacity, filters and masks, each of which makes the TV draw the video offscreen, where webOS's punched-through video stays black. **Border Trick** (the default) is the earlier fix, and **Both** and **Off** are there to try too. The diagnostics show a text box in the top-right corner with the preview video's size and state, what is drawn over it and the elements around it; a photo of it on an affected TV shows what to fix.
++ A **Support** section and a Ko-fi badge in the README, and a Sponsor button on the repository page.
+
 ## Changed
 
 + Separate Settings for Each Account: guest mode keeps nothing. Each guest session starts from the shared settings, as a new account does, and what is changed in it lasts until it ends (the TV's own settings, such as Auto Login, are still kept). Guest settings a previous version stored are removed.
 
 ## Fixes
 
-+ Tile previews on webOS 3-6 show their picture. With YouTube's own previews on, a focused tile played the sound over a black picture where the thumbnail was (an OLED C9 on webOS 4.10, #67). It is the webOS 4.x <video> problem the Shorts page was already worked around for (webosbrew/youtube-webos#235); the same fix now covers the previews, on the legacy package only.
++ Tile previews on webOS 3-6: the Shorts page's fix for the webOS 4.x <video> problem (webosbrew/youtube-webos#235) also covers the previews, on the legacy package only. With YouTube's own previews on, a focused tile played the sound over a black picture where the thumbnail was (an OLED C9 on webOS 4.10, #67). On that TV this alone did not help yet; see Preview Picture Fix above.
 + Playback speed works on videos with Dolby audio. A TV with surround is given AC-3 or E-AC-3 (Big Buck Bunny 4K60 is one), which the speed engine cannot decode, so the speed fell back to 1x with "Playback speed not available for this video". Off 1x the player is now offered only AAC and Opus audio when the video has them; at 1x the Dolby track comes back.
 + Show Video Quality Next to the Title: the tag sits on its own line, lined up with the channel line above it. On webOS 25 it wrapped there anyway, pushed in by its left margin.
 + DeArrow: the logo shows on every tile with a crowdsourced title or thumbnail, also on one YouTube drew before DeArrow answered. Its title and thumbnail were rewritten in place, but the logo only came the next time YouTube drew the tile; now it is drawn in front of the tile's last line until then, looking the same.

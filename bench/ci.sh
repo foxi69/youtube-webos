@@ -35,6 +35,7 @@ run per-account-test "$B"
 run feed-features-test "$B"
 run dearrow-test "$B" legacy
 run ai-label-test
+run most-replayed-test
 run speed-audio-offer-test
 run ai-filter-test "$B" legacy
 run emoji-loop-test "$B" 40
