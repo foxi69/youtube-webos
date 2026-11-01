@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="screenshots/banner.svg" alt="YouTube AdFree for LG webOS TVs" width="100%">
+  <img src="screenshots/banner.svg" alt="YouTube Foxtended for LG webOS TVs" width="100%">
 </p>
 
 <p align="center">

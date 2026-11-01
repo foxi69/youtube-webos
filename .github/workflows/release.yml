@@ -140,15 +140,15 @@ jobs:
             # A published release has its tag already: --target would not
             # move it, so the tag is pointed at this commit first.
             gh api -X PATCH "repos/${{ github.repository }}/git/refs/tags/$TAG" -f sha="$GITHUB_SHA" -F force=true > /dev/null
-            gh release edit "$TAG" --title "YouTube AdFree $VERSION" --notes-file notes.md
+            gh release edit "$TAG" --title "YouTube Foxtended $VERSION" --notes-file notes.md
             gh release upload "$TAG" out/*.ipk --clobber
             echo "Pre-release $TAG refreshed: ${{ github.server_url }}/${{ github.repository }}/releases/tag/$TAG" | tee -a "$GITHUB_STEP_SUMMARY"
             exit 0
           elif [ "${{ steps.version.outputs.exists }}" = "true" ]; then
-            gh release edit "$TAG" --draft --target "$GITHUB_SHA" --title "YouTube AdFree $VERSION" --notes-file notes.md
+            gh release edit "$TAG" --draft --target "$GITHUB_SHA" --title "YouTube Foxtended $VERSION" --notes-file notes.md
             gh release upload "$TAG" out/*.ipk --clobber
           else
-            gh release create "$TAG" out/*.ipk --draft --target "$GITHUB_SHA" --title "YouTube AdFree $VERSION" --notes-file notes.md
+            gh release create "$TAG" out/*.ipk --draft --target "$GITHUB_SHA" --title "YouTube Foxtended $VERSION" --notes-file notes.md
           fi
           echo "Draft release $TAG is ready: ${{ github.server_url }}/${{ github.repository }}/releases" | tee -a "$GITHUB_STEP_SUMMARY"
 
