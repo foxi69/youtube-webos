@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Fixes
 
++ Playback speed: a speed change soon after a video started could leave the picture waiting at 0 while the player buffered at its position, until the speed was changed back. The check after the reload now goes on after the video has played, and seeks to the position when that lasts 3 seconds. Seen on webOS 25, more often while the network was busy.
 + What's New and Update available: Up and Down scroll the release notes. YouTube put the box back to its top after every step, so only the start of the notes could be read.
 + DeArrow thumbnails: a live stream keeps YouTube's thumbnail instead of a grey placeholder, with the Random, Start, Middle or End frame fallback. YouTube has no such frames for a live stream and answers with a placeholder image, which was taken for the frame. In since 0.9.0.
 + Show Most Replayed Graph Above the Seek Bar: the time labels stay on top of the graph and readable.

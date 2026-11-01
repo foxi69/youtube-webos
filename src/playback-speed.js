@@ -1,6 +1,7 @@
 import { AudioEngine } from './speed/audio-engine.js';
 import { installMseHook, isSupportedSpeed, SUPPORTED_SPEEDS } from './speed/mse-hook.js';
 import { keepStretchableAudio } from './speed/containers.js';
+import { watchPosition } from './speed/position-watch.js';
 import { showNotification } from './notifications.js';
 import { configRead, configAddChangeListener } from './config.js';
 import { SELECTORS } from './utils.js';
@@ -190,6 +191,7 @@ export function createSpeedController({ win, getPlayer, notify, configRead }) {
   let activeSink = null;
   let pending = null;
   let lastReloadAt = 0;
+  let stopPositionWatch = null;
 
   function isSupported() {
     return typeof win.AudioDecoder !== 'undefined';
@@ -266,29 +268,11 @@ export function createSpeedController({ win, getPlayer, notify, configRead }) {
     }
   }
 
-  // On webOS 25, loadVideoById(id, at) starts up to ~25 s before `at`, even at
-  // 1x without the engine. Seek back once the reloaded video plays.
-  // Above CAP_ABOVE the 1080p cap is set again then too: the reload drops it, and
-  // with a 60 fps video the frames a 60 Hz screen cannot show count as dropped,
-  // so YouTube falls to 480p. 2160p cannot keep up at 1.5x (85% dropped).
   function restorePosition(player, at) {
-    let tries = 40;
-    const timer = win.setInterval(() => {
-      let state, now;
-      try {
-        state = player.getPlayerState();
-        now = player.getCurrentTime();
-      } catch {
-        state = null;
-      }
-      if (state === 1) {
-        if (Math.abs(now - at) > 2) player.seekTo(at, true);
-        if (currentSpeed > CAP_ABOVE) player.setPlaybackQualityRange('hd1080', 'hd1080');
-        win.clearInterval(timer);
-      } else if (--tries <= 0 || state === null) {
-        win.clearInterval(timer);
-      }
-    }, 250);
+    if (stopPositionWatch) stopPositionWatch();
+    stopPositionWatch = watchPosition(win, player, at, () => {
+      if (currentSpeed > CAP_ABOVE) player.setPlaybackQualityRange('hd1080', 'hd1080');
+    });
   }
 
   function setSpeed(speed, { immediate = false } = {}) {
