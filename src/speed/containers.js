@@ -865,3 +865,36 @@ export function keepStretchableAudio(streamingData) {
   streamingData.adaptiveFormats = keep;
   return list.length - keep.length;
 }
+
+/**
+ * YouTube's Speed menu lists only Normal for a video with surround audio: the
+ * client reads `isMultiChannelAudio` from the player's video data. The engine
+ * plays such a video in stereo off 1x (keepStretchableAudio), so that limit does
+ * not apply. The player sets the value on a plain object, which reaches this
+ * setter; its method of the same name on the format class is left as it is.
+ * Returns a function that undoes it.
+ */
+export function allowSpeedMenuOnSurround(win, isOn = () => true) {
+  const KEY = 'isMultiChannelAudio';
+  const proto = (win.Object || Object).prototype;
+  const previous = Object.getOwnPropertyDescriptor(proto, KEY);
+  Object.defineProperty(proto, KEY, {
+    configurable: true,
+    enumerable: false,
+    get() {
+      return undefined;
+    },
+    set(value) {
+      Object.defineProperty(this, KEY, {
+        value: typeof value === 'function' || !isOn() ? value : false,
+        writable: true,
+        configurable: true,
+        enumerable: true
+      });
+    }
+  });
+  return () => {
+    if (previous) Object.defineProperty(proto, KEY, previous);
+    else delete proto[KEY];
+  };
+}

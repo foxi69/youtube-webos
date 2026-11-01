@@ -33,7 +33,7 @@ const t = (name, ok) => {
   console.log(`${ok ? 'PASS' : 'FAIL'} ${name}`);
 };
 
-import(MODULE).then(({ keepStretchableAudio }) => {
+import(MODULE).then(({ keepStretchableAudio, allowSpeedMenuOnSurround }) => {
   {
     const sd = { adaptiveFormats: offer() };
     const removed = keepStretchableAudio(sd);
@@ -53,6 +53,23 @@ import(MODULE).then(({ keepStretchableAudio }) => {
     t('nothing to remove: the same list', keepStretchableAudio(sd) === 0 && sd.adaptiveFormats === before);
   }
   t('no streamingData / no list', keepStretchableAudio(null) === 0 && keepStretchableAudio({}) === 0);
+
+  {
+    let on = true;
+    const undo = allowSpeedMenuOnSurround({ Object }, () => on);
+    const data = {};
+    data.isMultiChannelAudio = true;
+    t('surround: the menu is not limited', data.isMultiChannelAudio === false);
+    class Format { }
+    Format.prototype.isMultiChannelAudio = function () { return true; };
+    t('the method on the format class stays', new Format().isMultiChannelAudio() === true);
+    on = false;
+    const off = {};
+    off.isMultiChannelAudio = true;
+    t('the option off: as YouTube set it', off.isMultiChannelAudio === true);
+    undo();
+    t('undone: nothing left behind', !('isMultiChannelAudio' in {}));
+  }
 
   console.log(`${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);
