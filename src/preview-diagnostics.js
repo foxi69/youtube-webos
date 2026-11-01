@@ -51,7 +51,7 @@ import { getWebOSVersion, isLegacyWebOS } from './webos-utils.js';
 
 const FLAT_CLASS = 'ytaf-pfix-flat';
 const CLEAR_CLASS = 'ytaf-pfix-cleared';
-const MAX_COVER = 6;
+const MAX_COVER = 30;
 const TICK_MS = 1000;
 const MAX_ANCESTORS = 12;
 
@@ -349,12 +349,28 @@ function flags(el) {
   const mask = cs.webkitMaskImage || cs.maskImage;
   if (mask && mask !== 'none') out.push('mask');
   if (cs.willChange && cs.willChange !== 'auto') out.push('wc:' + cs.willChange);
+  if (cs.boxShadow && cs.boxShadow !== 'none') out.push('shadow');
   if (cs.visibility !== 'visible') out.push(cs.visibility);
   if (cs.display === 'none') out.push('NONE');
   const bg = cs.backgroundColor;
   if (bg && bg !== 'transparent' && bg !== 'rgba(0, 0, 0, 0)') out.push('bg:' + bg.replace(/\s/g, ''));
   if (cs.backgroundImage && cs.backgroundImage !== 'none') out.push('bgimg');
   return out.join(' ');
+}
+
+/**
+ * Whether an element draws anything of its own over the video: a background
+ * colour or image, a shadow, or image content. Text aside, these are what can
+ * cover a punched-through video.
+ */
+function paints(el) {
+  const tag = el.tagName.toUpperCase();
+  if (tag === 'IMG' || tag === 'CANVAS' || tag === 'SVG') return true;
+  const cs = window.getComputedStyle(el);
+  const bg = cs.backgroundColor;
+  if (bg && bg !== 'transparent' && !/^rgba\(.*,\s*0\)$/.test(bg)) return true;
+  if (cs.backgroundImage && cs.backgroundImage !== 'none') return true;
+  return !!(cs.boxShadow && cs.boxShadow !== 'none');
 }
 
 function pageType() {
@@ -390,11 +406,20 @@ export function collectDiagnostics() {
 
   const cover = coverOf(video);
   if (cover) {
-    lines.push(`over the video at centre: ${cover.length ? cover.length + (cleared.length ? ' (cleared)' : '') : 'nothing'}`);
-    for (let i = 0; i < cover.length && i < MAX_COVER; i++) {
-      lines.push(`  ${describe(cover[i])} ${rect(cover[i])} ${flags(cover[i])}`);
+    // All of them, the ones that paint (marked *) first: only those can
+    // cover the video.
+    const painting = cover.filter(paints);
+    const shown = painting.concat(cover.filter((el) => painting.indexOf(el) === -1));
+    lines.push(
+      `over the video at centre: ${cover.length || 'nothing'}` +
+        (cover.length ? `, ${painting.length} painting (*)` : '') +
+        (cleared.length ? ', cleared' : '')
+    );
+    for (let i = 0; i < shown.length && i < MAX_COVER; i++) {
+      const mark = i < painting.length ? '* ' : '  ';
+      lines.push(`${mark}${describe(shown[i])} ${rect(shown[i])} ${flags(shown[i])}`);
     }
-    if (cover.length > MAX_COVER) lines.push(`  ...${cover.length - MAX_COVER} more`);
+    if (shown.length > MAX_COVER) lines.push(`  ...${shown.length - MAX_COVER} more`);
   } else {
     const r = video.getBoundingClientRect();
     const top = r.width > 0 ? document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) : null;
@@ -419,8 +444,8 @@ function showBox(text) {
     box = document.createElement('div');
     box.id = 'ytaf-preview-diag';
     box.style.cssText =
-      'position:fixed;top:8px;right:8px;max-width:55vw;padding:8px 10px;' +
-      'background:rgba(0,0,0,0.85);color:#fff;font:13px/1.35 monospace;white-space:pre-wrap;' +
+      'position:fixed;top:8px;right:8px;max-width:64vw;max-height:calc(100vh - 16px);overflow:hidden;' +
+      'padding:6px 8px;background:rgba(0,0,0,0.85);color:#fff;font:12px/1.3 monospace;white-space:pre-wrap;' +
       'word-break:break-all;z-index:2147483647;pointer-events:none;border:1px solid #ff7a1a;';
     document.body.appendChild(box);
   }
