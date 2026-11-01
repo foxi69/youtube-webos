@@ -31,7 +31,7 @@ export const showNotification = _showNotification;
 // before YouTube's, at load, so it never sees the panel's own scrolling.
 window.addEventListener('scroll', (evt) => {
   const target = evt.target;
-  if (target instanceof Element && target.closest('.ytaf-ui-container')) evt.stopImmediatePropagation();
+  if (target instanceof Element && target.closest('.ytaf-ui-container, .ytaf-dialog-backdrop')) evt.stopImmediatePropagation();
 }, true);
 
 let lastSafeFocus = null;
@@ -915,7 +915,7 @@ function createOptionsPanel() {
   const createLogo = (src, cls) => createElement('img', { src, alt: 'Logo', class: `ytaf-logo ${cls}`, title: 'Click to switch theme', style: { display: 'none' }, events: { click: toggleTheme }});
   
   const elmHeading = createElement('h1', {},
-    createElement('span', { text: 'YouTube Extended ' + VERSION_LABEL }),
+    createElement('span', { text: 'YouTube Foxtended ' + VERSION_LABEL }),
     createLogo(logoOrangeUrl, 'logo-orange'),
     createLogo(logoBlueUrl, 'logo-blue'),
     createLogo(logoRedUrl, 'logo-red'),
@@ -2482,7 +2482,7 @@ function createPointerButton() {
   const swallow = (evt) => { evt.preventDefault(); evt.stopPropagation(); };
   const btn = createElement('div', {
     id: 'ytaf-pointer-btn',
-    title: 'YouTube Extended settings',
+    title: 'YouTube Foxtended settings',
     events: {
       // preventDefault keeps focus where it is (no blur of the panel's row).
       mousedown: swallow,

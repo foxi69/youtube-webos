@@ -61,5 +61,5 @@ tr -d '\r' < .github/release-notes.md | sed "s/@VERSION@/$version/g" |
 # apart, and the settings panel heading shows the same one.
 if [ -n "$commit" ]; then
   echo
-  echo "**Build:** \`$commit\` (the settings panel heading shows it too: \"YouTube Extended $version ($commit)\")"
+  echo "**Build:** \`$commit\` (the settings panel heading shows it too: \"YouTube Foxtended $version ($commit)\")"
 fi

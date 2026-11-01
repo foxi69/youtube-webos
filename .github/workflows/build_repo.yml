@@ -17,6 +17,40 @@ jobs:
       - name: Checkout code
         # Keeps the checkout credentials: a later step pushes with git.
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # A draft and a pre-release show their commit in the settings heading and
+      # in the notes, to tell their builds apart. A full release does not:
+      # publishing does not rebuild, so its packages are built again here from
+      # the same commit, without the commit in the label, before repo.json
+      # takes their hashes.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: github.event_name == 'release'
+        with:
+          node-version: lts/*
+          cache: npm
+      - name: Rebuild the release packages without the commit
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          VERSION="${TAG#v}"
+          npm ci
+          npm pkg set version="$VERSION"
+          node tools/sync-version.cjs
+          rm -rf dist out legacy
+          npm run build:modern
+          npx ares-package -n dist -o out
+          mv "out/youtube.leanback.v4_${VERSION}_all.ipk" "out/youtube.leanback.v4_${VERSION}_all_webOS22+.ipk"
+          rm -rf dist
+          npm run build
+          npx ares-package -n dist -o legacy
+          mv "legacy/youtube.leanback.v4_${VERSION}_all.ipk" out/
+          gh release upload "$TAG" out/*.ipk --clobber
+          gh release view "$TAG" --json body --jq .body | sed '/^\*\*Build:\*\*/d' > notes.md
+          gh release edit "$TAG" --notes-file notes.md
+          # A later step switches to main: nothing of this build may stay.
+          rm notes.md
+          git checkout -- .
       - name: Set up Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:

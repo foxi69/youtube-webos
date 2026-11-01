@@ -87,7 +87,11 @@ export function buildCss(selector, graphUri, geo, height, hostStyle) {
     `${selector}::after{content:'';position:absolute;` +
     `left:${geo.left}px;top:${geo.top - height - GAP_PX}px;width:${geo.width}px;height:${height}px;` +
     `background:url("${graphUri}") no-repeat;background-size:100% 100%;` +
-    'pointer-events:none;z-index:1;}';
+    'pointer-events:none;z-index:1;}' +
+    // The graph takes the place of the time labels above the track: they move
+    // up by what it needs. Only the bar's own labels (the seek preview has its
+    // own "time-label"), and only while there is a graph.
+    `[idomkey="progress-bar"]>[idomkey="time-label"]{transform:translateY(-${height - 10}px);}`;
 }
 
 let lastSig = '';

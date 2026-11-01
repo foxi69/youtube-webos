@@ -23,7 +23,7 @@
  *   when it is installed. A TV without the Homebrew Channel (an install from
  *   a computer, in Developer Mode) cannot install from the app at all: the
  *   webOS installer takes no requests from an app. There the tab says to
- *   install the update from a computer, with a QR code of the release page.
+ *   install the update from a computer, with the release page's address.
  * - The windows take every key while they are open: Up and Down scroll the
  *   notes, Left and Right pick a button, OK presses it, Back closes.
  * - Support: the Ko-fi page and the project page, as text and as QR codes to
@@ -38,7 +38,6 @@ import { VERSION_LABEL } from './version.js';
 import { REMOTE_KEYS } from './utils.js';
 import qrKofiUrl from './icons/qr-kofi.svg';
 import qrGithubUrl from './icons/qr-github.svg';
-import qrReleaseUrl from './icons/qr-release.svg';
 
 /* global __YTAF_FLAVOR__, __YTAF_UPDATE_LISTING__ */
 const FLAVOR = typeof __YTAF_FLAVOR__ === 'string' ? __YTAF_FLAVOR__ : 'legacy';
@@ -157,7 +156,18 @@ function detectHomebrew(cb) {
     else if (/denied|permission|not allowed/i.test(res.errorText || '')) cb('unknown');
     else cb('no');
   });
-  if (!ok) cb('no');
+  // No bridge (webOS 25): the app cannot ask, and could not install anyway.
+  if (!ok) cb('blocked');
+}
+
+const canReachInstaller = (homebrew) => homebrew === 'yes' || homebrew === 'unknown';
+
+/** What to do where the app cannot install `latest` itself. */
+function computerInstallText(latest, homebrew) {
+  const fromComputer = `from a computer with webOS Dev Manager; the package is on the release page: ${RELEASE_URL}`;
+  if (homebrew === 'no') return `The Homebrew Channel is not installed on this TV, so the app cannot install ${latest} itself. Install it ${fromComputer}`;
+  if (homebrew === 'blocked') return `This TV does not let the app install updates. Update from the Homebrew Channel if you use it, or install ${latest} ${fromComputer}`;
+  return `Without the Homebrew Channel, install ${latest} ${fromComputer}`;
 }
 
 /** Opens `url` in the TV's web browser. */
@@ -530,24 +540,13 @@ function whenIdle(maxWaitMs, fn) {
   tick();
 }
 
-/** The computer-install note with the release page QR, for a TV without the Homebrew Channel. */
+/** The computer-install note with the release page's address, for a TV without the Homebrew Channel. */
 function computerNote(latest, homebrew) {
-  const note = el('div', 'ytaf-dialog-note');
-  note.appendChild(el('div', 'ytaf-dialog-note-text', homebrew === 'no'
-    ? `The Homebrew Channel is not installed on this TV, so the app cannot install ${latest} itself. Install it from a computer with webOS Dev Manager; the package is on the release page:`
-    : `Without the Homebrew Channel, install ${latest} from a computer with webOS Dev Manager; the package is on the release page:`));
-  const qr = el('div', 'ytaf-dialog-qr');
-  const img = el('img');
-  img.src = qrReleaseUrl;
-  img.alt = RELEASE_URL;
-  qr.appendChild(img);
-  qr.appendChild(el('div', 'ytaf-about-qr-url', RELEASE_URL));
-  note.appendChild(qr);
-  return note;
+  return el('div', 'ytaf-dialog-note', computerInstallText(latest, homebrew));
 }
 
 function openUpdateDialog(latest, ipk, homebrew) {
-  const canInstall = !!ipk && homebrew !== 'no';
+  const canInstall = !!ipk && canReachInstaller(homebrew);
   // Shown where the app cannot install, and where an install fails.
   const note = computerNote(latest, homebrew);
   if (homebrew === 'yes' && ipk) note.style.display = 'none';
@@ -617,24 +616,15 @@ export function buildAboutPage(page, h, checkbox, section) {
       }
     }
   });
-  // Without the Homebrew Channel: install from a computer, with the release
-  // page as a QR code (the TV's browser cannot install a package).
-  const computerText = h('div', { class: 'ytaf-about-line' });
-  const computerNote = h('div', { style: { display: 'none' } },
-    computerText,
-    h('div', { class: 'ytaf-about-qrs' },
-      h('div', { class: 'ytaf-about-qr' },
-        h('img', { src: qrReleaseUrl, alt: RELEASE_URL }),
-        h('div', { class: 'ytaf-about-qr-title', text: 'Release page' }),
-        h('div', { class: 'ytaf-about-qr-url', text: RELEASE_URL }))));
+  // Without the Homebrew Channel: install from a computer (the TV's browser
+  // cannot install a package).
+  const computerNote = h('div', { class: 'ytaf-about-line', style: { display: 'none' } });
   const render = (state) => {
     status.textContent = describeUpdateState(state);
     const newer = state.status === 'done' && isNewer(state.latest);
     installButton.textContent = `Download and Install ${state.latest || ''}`.trim();
-    installButton.style.display = newer && state.ipk && homebrew !== 'no' ? 'block' : 'none';
-    computerText.textContent = homebrew === 'no'
-      ? `The Homebrew Channel is not installed on this TV, so the app cannot install the update itself. Install ${state.latest} from a computer with webOS Dev Manager; the package is on the release page:`
-      : `Without the Homebrew Channel, install ${state.latest} from a computer with webOS Dev Manager; the package is on the release page:`;
+    installButton.style.display = newer && state.ipk && canReachInstaller(homebrew) ? 'block' : 'none';
+    computerNote.textContent = computerInstallText(state.latest, homebrew);
     computerNote.style.display = newer && (homebrew !== 'yes' || installFailed || !state.ipk) ? 'block' : 'none';
   };
   onUpdateState(render);
@@ -644,7 +634,7 @@ export function buildAboutPage(page, h, checkbox, section) {
   });
 
   page.appendChild(section('Version', [
-    h('div', { class: 'ytaf-about-line ytaf-about-version', text: 'YouTube Extended ' + VERSION_LABEL }),
+    h('div', { class: 'ytaf-about-line ytaf-about-version', text: 'YouTube Foxtended ' + VERSION_LABEL }),
     status,
     installButton,
     installStatus,
@@ -659,18 +649,25 @@ export function buildAboutPage(page, h, checkbox, section) {
     checkbox('showWhatsNew')
   ]));
 
-  const qr = (src, title, url) => h('div', { class: 'ytaf-about-qr' },
-    h('img', { src, alt: url }),
-    h('div', { class: 'ytaf-about-qr-title', text: title }),
-    h('div', { class: 'ytaf-about-qr-url', text: url }),
-    h('button', {
-      class: 'ytaf-list-btn',
-      text: 'Open in Browser',
-      tabIndex: 0,
-      events: { click: () => openInBrowser('https://' + url) }
-    }));
+  // Without the service bridge (webOS 25) the app cannot start the browser.
+  const canOpenBrowser = typeof window.PalmServiceBridge === 'function';
+  const qr = (src, title, url) => {
+    const box = h('div', { class: 'ytaf-about-qr' },
+      h('img', { src, alt: url }),
+      h('div', { class: 'ytaf-about-qr-title', text: title }),
+      h('div', { class: 'ytaf-about-qr-url', text: url }));
+    if (canOpenBrowser) {
+      box.appendChild(h('button', {
+        class: 'ytaf-list-btn',
+        text: 'Open in Browser',
+        tabIndex: 0,
+        events: { click: () => openInBrowser('https://' + url) }
+      }));
+    }
+    return box;
+  };
   page.appendChild(section('Support', [
-    h('div', { class: 'ytaf-about-line ytaf-about-center', text: 'The app is and stays free. If you would like to support it, scan a code with your phone or open it in the TV\'s browser.' }),
+    h('div', { class: 'ytaf-about-line ytaf-about-center', text: `The app is and stays free. If you would like to support it, scan a code with your phone${canOpenBrowser ? ' or open it in the TV\'s browser' : ''}.` }),
     h('div', { class: 'ytaf-about-qrs' },
       qr(qrKofiUrl, 'Support on Ko-fi', SUPPORT_URL),
       qr(qrGithubUrl, 'Project, changelog and issues', PROJECT_URL))

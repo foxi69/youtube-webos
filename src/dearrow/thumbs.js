@@ -73,7 +73,11 @@ function drawCopy(url, videoId, width, key) {
     img.onload = () => {
       const w = img.naturalWidth;
       const h = img.naturalHeight;
-      if (!w || !h) {
+      // YouTube answers a frame it does not have (hq1 to hq3 of a live stream
+      // or a new upload) with a 404 whose body is a grey 120 x 90 placeholder,
+      // which an <img> loads like any other picture.
+      const placeholder = w === 120 && h === 90 && url.indexOf('https://i.ytimg.com/') === 0;
+      if (!w || !h || placeholder) {
         done(null);
         return;
       }
