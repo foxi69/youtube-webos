@@ -51,7 +51,7 @@ const t = (name, ok, extra) => {
 };
 // One per tab, in tab order (SETTINGS_PAGES in src/ui.js).
 const PAGES = ['#ytaf-page-filters', '#ytaf-page-player', '#ytaf-page-interface',
-  '#ytaf-page-sponsor', '#ytaf-page-shortcuts', '#ytaf-page-ui-tweaks'];
+  '#ytaf-page-sponsor', '#ytaf-page-shortcuts', '#ytaf-page-ui-tweaks', '#ytaf-page-about'];
 const SPONSOR = 3;
 const SHORTCUTS = 4;
 

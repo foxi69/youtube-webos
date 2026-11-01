@@ -292,6 +292,9 @@ const configOptions = new Map([
   // webOS 3-6 only (preview-diagnostics.js, #67).
   ['previewFixMode', { default: 'border', desc: 'Preview Picture Fix (webOS 3-6)' }],
   ['previewDiagnostics', { default: false, desc: 'Show Preview Diagnostics' }],
+  // About tab (about.js).
+  ['checkForUpdates', { default: true, desc: 'Check for Updates' }],
+  ['showWhatsNew', { default: true, desc: "Show What's New After an Update" }],
   ['fitPageBesideGuide', { default: false, desc: 'Fit Page Beside Open Menu' }],
   ['enableLegacyEmojiFix', { default: true, desc: 'Emoji + Characters Fix' }],
   ['hideGuestSignInPrompts', { default: false, desc: 'Guest Mode: Hide Sign-in Buttons' }],

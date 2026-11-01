@@ -358,15 +358,17 @@
   border-bottom-color: #3f3f3f;
 }
 
+/* Seven tabs since the About tab: a little smaller and tighter than the six
+   had, so they all fit the panel's width. */
 .ytaf-tab-btn {
   flex: 1 1 auto;
-  margin: 0 0.3vh;
+  margin: 0 0.15vh;
   background: transparent;
   border: none;
   color: #5599aa;
-  font-size: 2.1vh;
+  font-size: 1.85vh;
   font-weight: 600;
-  padding: 1vh 1vh;
+  padding: 1vh 0.7vh;
   white-space: nowrap;
   border-radius: 0.75vh;
   cursor: pointer;
@@ -951,4 +953,256 @@
 .ytaf-ui-container.theme-fox .ytaf-list-btn:focus,
 .ytaf-ui-container.theme-fox .ytaf-text-input:focus {
   outline: 0.19vh solid #ff8c2a;
+}
+
+/* --- About tab (about.js) -------------------------------------------------
+   The changelog is one focusable box that Up and Down scroll (ui.js); the
+   support links are QR codes, as a TV cannot follow a link. */
+.ytaf-about-line {
+  font-size: 1.9vh;
+  margin: 0.4vh 0 0.6vh 0;
+}
+
+.ytaf-about-version {
+  font-weight: bold;
+}
+
+.ytaf-reader {
+  max-height: 42vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 1vh 1.2vh;
+  margin: 0.4vh 0 0.8vh 0;
+  background: rgba(0, 0, 0, 0.35);
+  border: 0.09vh solid rgba(0, 150, 200, 0.5);
+  border-radius: 0.6vh;
+  font-size: 1.8vh;
+  line-height: 1.4;
+  outline: none;
+}
+
+.ytaf-reader:focus {
+  outline: 0.19vh solid #00d4ff;
+}
+
+.ytaf-reader code {
+  font-family: monospace;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 0 0.3vh;
+}
+
+.ytaf-cl-entry {
+  margin-bottom: 1.6vh;
+}
+
+.ytaf-cl-version {
+  font-size: 2.3vh;
+  font-weight: bold;
+  color: #00d4ff;
+  border-bottom: 0.09vh solid rgba(0, 212, 255, 0.3);
+  margin-bottom: 0.5vh;
+}
+
+.ytaf-cl-date {
+  font-weight: normal;
+  font-size: 1.8vh;
+  color: #aaaaaa;
+}
+
+.ytaf-cl-tag {
+  margin-left: 1vh;
+  padding: 0.1vh 0.7vh;
+  border-radius: 0.5vh;
+  background: #00d4ff;
+  color: #000000;
+  font-size: 1.5vh;
+  font-weight: normal;
+}
+
+.ytaf-cl-heading {
+  font-weight: bold;
+  color: #dddddd;
+  margin: 0.8vh 0 0.3vh 0;
+}
+
+.ytaf-cl-item {
+  padding-left: 2vh;
+  text-indent: -1.4vh;
+  margin: 0.2vh 0;
+}
+
+.ytaf-cl-item:before {
+  content: '\2022\00a0\00a0';
+}
+
+.ytaf-cl-text {
+  margin: 0.3vh 0;
+}
+
+.ytaf-about-center {
+  text-align: center;
+}
+
+.ytaf-about-qrs {
+  display: flex;
+  justify-content: center;
+}
+
+.ytaf-about-qr {
+  text-align: center;
+  margin: 0.6vh 2vh;
+  font-size: 1.7vh;
+}
+
+.ytaf-about-qr img {
+  display: block;
+  width: 16vh;
+  height: 16vh;
+  margin: 0 auto 0.6vh auto;
+  padding: 0.6vh;
+  background: #ffffff;
+  border-radius: 0.6vh;
+}
+
+.ytaf-about-qr-url {
+  color: #aaaaaa;
+}
+.ytaf-about-qr .ytaf-list-btn {
+  margin: 0.6vh 0 0 0;
+}
+
+.ytaf-ui-container.theme-classic-red .ytaf-cl-version {
+  color: #ffffff;
+  border-bottom-color: #3f3f3f;
+}
+
+.ytaf-ui-container.theme-classic-red .ytaf-cl-tag {
+  background: #ff4e45;
+  color: #ffffff;
+}
+
+.ytaf-ui-container.theme-classic-red .ytaf-reader {
+  border-color: #666666;
+}
+
+/* --- Update available / What's New windows (about.js) ---------------------
+   Over everything, the panel included; the window takes every key while it
+   is open. No inset/gap: Chrome 38. */
+.ytaf-dialog-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2147483000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.ytaf-dialog {
+  width: 58vw;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  padding: 2.4vh 2.8vh;
+  background: #1c1c1e;
+  color: #ffffff;
+  border: 0.19vh solid #00d4ff;
+  border-radius: 1.6vh;
+  box-shadow: 0 1vh 4vh rgba(0, 0, 0, 0.6);
+  font-family: 'YouTube Noto', Roboto, Arial, sans-serif;
+}
+
+.ytaf-dialog-title {
+  font-size: 2.6vh;
+  font-weight: bold;
+  margin-bottom: 0.6vh;
+}
+
+.ytaf-dialog-subtitle {
+  font-size: 1.9vh;
+  color: #bbbbbb;
+  margin-bottom: 1.2vh;
+}
+
+.ytaf-dialog .ytaf-dialog-reader {
+  flex: 1 1 auto;
+  min-height: 12vh;
+  max-height: 50vh;
+}
+
+.ytaf-dialog-status {
+  font-size: 1.9vh;
+  margin: 0.8vh 0;
+}
+
+.ytaf-dialog-note {
+  display: flex;
+  align-items: center;
+  margin: 0.8vh 0;
+  font-size: 1.8vh;
+}
+
+.ytaf-dialog-note-text {
+  flex: 1 1 auto;
+  margin-right: 2vh;
+}
+
+.ytaf-dialog-qr {
+  text-align: center;
+  font-size: 1.5vh;
+}
+
+.ytaf-dialog-qr img {
+  display: block;
+  width: 13vh;
+  height: 13vh;
+  margin: 0 auto 0.4vh auto;
+  padding: 0.5vh;
+  background: #ffffff;
+  border-radius: 0.6vh;
+}
+
+.ytaf-dialog-buttons {
+  display: flex;
+  justify-content: center;
+  margin-top: 1.4vh;
+}
+
+.ytaf-dialog-btn {
+  min-width: 16vh;
+  margin: 0 1vh;
+  padding: 0.9vh 2.4vh;
+  font-size: 2vh;
+  font-family: inherit;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.12);
+  border: 0.19vh solid transparent;
+  border-radius: 0.8vh;
+  cursor: pointer;
+  outline: none;
+}
+
+.ytaf-dialog-btn.ytaf-dialog-focused {
+  color: #000000;
+  background: #00d4ff;
+}
+
+.ytaf-dialog.theme-fox {
+  border-color: #ff7a1a;
+}
+
+.ytaf-dialog.theme-fox .ytaf-dialog-btn.ytaf-dialog-focused {
+  background: #ff7a1a;
+}
+
+.ytaf-dialog.theme-classic-red {
+  border-color: #ff4e45;
+}
+
+.ytaf-dialog.theme-classic-red .ytaf-dialog-btn.ytaf-dialog-focused {
+  background: #ff4e45;
+  color: #ffffff;
 }
