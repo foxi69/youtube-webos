@@ -1,6 +1,6 @@
 import { AudioEngine } from './speed/audio-engine.js';
 import { installMseHook, isSupportedSpeed, SUPPORTED_SPEEDS } from './speed/mse-hook.js';
-import { keepStretchableAudio } from './speed/containers.js';
+import { keepStretchableAudio, allowSpeedMenuOnSurround } from './speed/containers.js';
 import { watchPosition } from './speed/position-watch.js';
 import { showNotification } from './notifications.js';
 import { configRead, configAddChangeListener } from './config.js';
@@ -182,8 +182,11 @@ export const SPEEDS = [1, 1.25, 1.5, 1.75, 2];
 export const RELOAD_DELAY_MS = 800;
 
 // Above this speed the video plays at 1080p at most: the TV cannot decode
-// 2160p fast enough (at 1.5x it dropped 85% of the frames and reached 1.43x).
-const CAP_ABOVE = 1.25;
+// 2160p fast enough (at 1.5x it dropped 85% of the frames and reached 1.43x; at
+// 1.25x YouTube fell to 480p and it reached 1.17x).
+const CAP_ABOVE = 1;
+// Below the cap: where YouTube falls by itself at speed.
+const BELOW_1080 = ['hd720', 'large', 'medium', 'small', 'tiny'];
 const ABOVE_1080 = ['highres', 'hd2880', 'hd2160', 'hd1440'];
 
 export function createSpeedController({ win, getPlayer, notify, configRead }) {
@@ -270,8 +273,16 @@ export function createSpeedController({ win, getPlayer, notify, configRead }) {
 
   function restorePosition(player, at) {
     if (stopPositionWatch) stopPositionWatch();
-    stopPositionWatch = watchPosition(win, player, at, () => {
+    const setCap = () => {
       if (currentSpeed > CAP_ABOVE) player.setPlaybackQualityRange('hd1080', 'hd1080');
+    };
+    stopPositionWatch = watchPosition(win, player, at, setCap, {
+      isLow() {
+        if (currentSpeed <= CAP_ABOVE) return false;
+        const levels = player.getAvailableQualityLevels ? player.getAvailableQualityLevels() : [];
+        return levels.indexOf('hd1080') !== -1 && BELOW_1080.indexOf(player.getPlaybackQuality()) !== -1;
+      },
+      setCap
     });
   }
 
@@ -403,6 +414,7 @@ export function installSpeedFeature(win, { notify, configRead: cfgRead, getPlaye
 
   const isOn = () => cfgRead('enablePlaybackSpeed') !== false;
   const restoreMenu = enableNativeSpeedMenu(win, isOn);
+  const restoreSurround = allowSpeedMenuOnSurround(win, isOn);
   const restoreRateHook = hookRateAssignments(win, ctrl);
   const restoreButton = installSpeedButtonPatch(win, isOn);
   const restoreAudioOffer = installAudioOfferFilter(win, ctrl.getSpeed);
@@ -418,6 +430,7 @@ export function installSpeedFeature(win, { notify, configRead: cfgRead, getPlaye
     uninstall() {
       mseHook.uninstall();
       restoreMenu();
+      restoreSurround();
       restoreRateHook();
       restoreButton();
       restoreAudioOffer();

@@ -5,6 +5,9 @@
 //   reload drops it, and with a 60 fps video the frames a 60 Hz screen cannot
 //   show count as dropped, so YouTube falls to 480p. 2160p cannot keep up at
 //   1.5x (85% dropped).
+// - YouTube can still fall to 480p after that: it counts those frames for a
+//   while. Setting the cap again brings the picture back at once, so that is done
+//   when it lasts, a few times at most (on a slow line it may be right to fall).
 // - Setting the cap can reload the video again, and a reload sometimes leaves
 //   the <video> waiting at 0 while the player buffers at its position, and
 //   stays so. So the check goes on after the video has played, and seeks to the
@@ -14,6 +17,8 @@ const TICK_MS = 250;
 const WATCH_TICKS = 100; // 25 s
 const STALL_TICKS = 12; // 3 s: the player gets a chance to seek on its own first.
 const MAX_SEEKS = 2;
+const LOW_TICKS = 8; // 2 s
+const MAX_CAPS = 3;
 const OFF_BY_S = 2;
 
 /**
@@ -21,13 +26,16 @@ const OFF_BY_S = 2;
  * @param {object} player YouTube's player
  * @param {number} at the position the reload should continue from, in seconds
  * @param {() => void} onPlaying runs once, when the video first plays
+ * @param {{isLow: () => boolean, setCap: () => void}} [quality] the speed's quality cap
  * @returns {() => void} stops the check
  */
-export function watchPosition(win, player, at, onPlaying) {
+export function watchPosition(win, player, at, onPlaying, quality) {
   let ticks = 0;
   let stalled = 0;
   let seeks = 0;
   let played = false;
+  let low = 0;
+  let caps = 0;
 
   const stop = () => win.clearInterval(timer);
   const timer = win.setInterval(() => {
@@ -47,6 +55,12 @@ export function watchPosition(win, player, at, onPlaying) {
         played = true;
         if (Math.abs(now - at) > OFF_BY_S) player.seekTo(at, true);
         onPlaying();
+      }
+      low = quality && quality.isLow() ? low + 1 : 0;
+      if (low >= LOW_TICKS && caps < MAX_CAPS) {
+        low = 0;
+        caps++;
+        quality.setCap();
       }
     } else {
       const video = win.document.querySelector('video');

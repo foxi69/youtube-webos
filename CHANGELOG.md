@@ -21,6 +21,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Fixes
 
++ Playback speed: 1.25× has the 1080p cap too. On a 2160p60 video YouTube fell to 480p there and it reached about 1.17×. A fall below the cap at any speed is put right when it lasts, a few times at most.
++ Playback speed: YouTube's Speed menu lists all the speeds on a video with surround audio too. YouTube limits it to Normal there, as it cannot speed that audio up; off 1x the speed engine plays the video in stereo, and at 1x the surround track comes back.
 + What's New: after an update it no longer gets lost when "Who's watching" stays up for over a minute. The version counts as seen only when the window opens, so it comes on the next start.
 + Playback speed: a speed change soon after a video started could leave the picture waiting at 0 while the player buffered at its position, until the speed was changed back. The check after the reload now goes on after the video has played, and seeks to the position when that lasts 3 seconds. Seen on webOS 25, more often while the network was busy.
 + What's New and Update available: Up and Down scroll the release notes. YouTube put the box back to its top after every step, so only the start of the notes could be read.
