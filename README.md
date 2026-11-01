@@ -80,7 +80,7 @@
 
 **2. Install it** in one of three ways:
 
-- 🍺 **[webOS Homebrew Channel](https://github.com/webosbrew/webos-homebrew-channel)** (recommended, updates come by themselves): add the repo link for your TV.
+- 🍺 **[webOS Homebrew Channel](https://github.com/webosbrew/webos-homebrew-channel)** (recommended): add the repo link for your TV. It then offers each new release: press **Update** on this app's entry.
 
   | TVs | Repo link |
   |---|---|
@@ -88,10 +88,12 @@
   | webOS 3-6 (or any TV) | `https://raw.githubusercontent.com/foxi69/youtube-webos/main/repo.json` |
 
   Add only one of them: both builds install as the same app, and Homebrew Channel offers the update from the link
-  you added. NicholasBly's repo link would replace this build with NicholasBly's.
+  you added. NicholasBly's repo link would replace this build with NicholasBly's. The entry "YouTube AdFree" of the default repository is an older build (0.5.3) under the same app id: its Update button would take you back to it.
 - 💻 **[Device Manager app](https://github.com/webosbrew/dev-manager-desktop)**: install the downloaded `.ipk`.
 - ⌨️ **[webOS TV CLI tools](https://webostv.developer.lge.com/develop/tools/cli-installation)**:
   `ares-install youtube...ipk` (see [Development TV setup](#development-tv-setup)).
+
+**Updating:** with the repo link added, press **Update** on this app's entry in the Homebrew Channel. The app's own **Update** button needs a TV that lets the app reach the Homebrew Channel, which webOS 25 does not. Without the Homebrew Channel, install the new `.ipk` the same way as the first one.
 
 ## 🎮 Remote control
 

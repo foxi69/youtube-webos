@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Changed
 
++ About and the README say how updates come: press **Update** on this app's entry in the Homebrew Channel, or install from a computer. They no longer say updates come by themselves: the Homebrew Channel offers them, it does not install them.
 + The settings heading says **YouTube Foxtended** instead of YouTube Extended.
 + Separate Settings for Each Account: guest mode keeps nothing. Each guest session starts from the shared settings, as a new account does, and what is changed in it lasts until it ends (the TV's own settings, such as Auto Login, are still kept). Guest settings a previous version stored are removed.
 

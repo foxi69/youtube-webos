@@ -635,6 +635,7 @@ export function buildAboutPage(page, h, checkbox, section) {
 
   page.appendChild(section('Version', [
     h('div', { class: 'ytaf-about-line ytaf-about-version', text: 'YouTube Foxtended ' + VERSION_LABEL }),
+    h('div', { class: 'ytaf-about-line', text: 'Updates: press Update in the Homebrew Channel with the repository of this fork added, or install from a computer with webOS Dev Manager.' }),
     status,
     installButton,
     installStatus,
