@@ -89,7 +89,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: youtube_adfree_ipk
+          name: youtube_foxtended_ipk
           path: out/youtube.leanback.v4_*_all.ipk
           if-no-files-found: error
           retention-days: 7
