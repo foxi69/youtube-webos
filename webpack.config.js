@@ -167,7 +167,12 @@ const makeConfig = (env) => {
         // YTAF_BUILD to its commit: a refreshed pre-release keeps its version,
         // so the commit is what tells one build of it from the next.
         new webpack.DefinePlugin({
-          __YTAF_VERSION__: JSON.stringify(pkgJson.version + (process.env.YTAF_BUILD ? ` (${process.env.YTAF_BUILD})` : ''))
+          __YTAF_VERSION__: JSON.stringify(pkgJson.version + (process.env.YTAF_BUILD ? ` (${process.env.YTAF_BUILD})` : '')),
+          // Which Homebrew Channel listing the update check reads (about.js).
+          __YTAF_FLAVOR__: JSON.stringify(isModern ? 'modern' : 'legacy'),
+          // A test build can read another listing (a folder with repo.json and
+          // repo-webos22.json); release builds leave it empty.
+          __YTAF_UPDATE_LISTING__: JSON.stringify(process.env.YTAF_UPDATE_LISTING || '')
         }),
         new CopyPlugin({
           patterns: [

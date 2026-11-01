@@ -19,6 +19,7 @@ import { subtitleTranslateLanguages } from './subtitle-translate.js';
 import { showNotification as _showNotification, setNotificationOled, setNotificationTheme } from './notifications.js';
 import { blockChannel } from './long-press-menu.js';
 import { VERSION_LABEL } from './version.js';
+import { buildAboutPage } from './about.js';
 import { titleFormattingSupported } from './dearrow/index.js';
 
 // Re-export so existing `import { showNotification } from './ui'` sites keep working.
@@ -80,9 +81,11 @@ const SETTINGS_PAGES = [
   { id: 'interface', name: 'Interface', focus: 'input, .shortcut-control-row' },
   { id: 'sponsor', name: 'SponsorBlock', focus: '.shortcut-control-row, input' },
   { id: 'shortcuts', name: 'Shortcuts', focus: '.shortcut-control-row' },
-  { id: 'ui-tweaks', name: 'UI Tweaks', focus: '.shortcut-control-row, input' }
+  { id: 'ui-tweaks', name: 'UI Tweaks', focus: '.shortcut-control-row, input' },
+  { id: 'about', name: 'About', focus: 'button, input' }
 ];
 const SPONSOR_PAGE = 3;
+const ABOUT_PAGE = 6;
 
 const cachedSelectors = {
     comments: null,
@@ -1185,6 +1188,11 @@ function createOptionsPanel() {
     configAddChangeListener('dearrowCrowdThumbnails', updateDeArrowRows);
     updateDeArrowRows();
 
+      },
+    function buildAbout() {
+  // --- Page 7: About (about.js) ---
+    const pageAbout = makePage(ABOUT_PAGE);
+    buildAboutPage(pageAbout, createElement, createConfigCheckbox, createSection);
       }
   ];
 
