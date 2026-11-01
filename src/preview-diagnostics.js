@@ -20,7 +20,19 @@ import { getWebOSVersion, isLegacyWebOS } from './webos-utils.js';
  *              black. This mode drops the transform and gives the player the
  *              same place as real left/top/width/height, and the <video> the
  *              tile's size, so nothing between them is scaled;
- *   - resize_border: both of these;
+ *   - resize_border: both of these. Resize also gives html5-video-container
+ *              the video's box, as it has on the Shorts page, where it is
+ *              absolutely placed; behind a preview it is 0px high;
+ *   - clear:   the elements stacked over the middle of the preview (the
+ *              tile, its thumbnail) lose their backgrounds and images while
+ *              it plays: anything opaque over the punched-through video
+ *              covers it. Resize Player did place the C9's video exactly
+ *              where the tile is, still black, while the Shorts player,
+ *              610x1082 and not full screen either, plays;
+ *   - fullscreen: a test, not a fix: the player is left at full screen
+ *              (YouTube's transform dropped, nothing resized) behind the
+ *              browse page. A picture through the tile then means the TV
+ *              draws the preview and only its small box goes wrong;
  *   - flatten: no rounded corners, opacity, filter or mask on the <video> and
  *              its ancestors while a preview plays. Each of those makes
  *              Chromium draw the video into an offscreen layer first, and on
@@ -38,6 +50,8 @@ import { getWebOSVersion, isLegacyWebOS } from './webos-utils.js';
  */
 
 const FLAT_CLASS = 'ytaf-pfix-flat';
+const CLEAR_CLASS = 'ytaf-pfix-cleared';
+const MAX_COVER = 6;
 const TICK_MS = 1000;
 const MAX_ANCESTORS = 12;
 
@@ -45,6 +59,7 @@ let legacy = false;
 let timer = null;
 let box = null;
 let flattened = [];
+let cleared = [];
 
 const isPreviewPage = () => !isWatchPage() && !isShortsPage();
 const isDiagPage = () => !isWatchPage();
@@ -64,8 +79,11 @@ function syncClasses() {
   const mode = legacy ? fixMode() : 'off';
   cl.toggle('ytaf-pfix-border', mode === 'border' || mode === 'both' || mode === 'resize_border');
   cl.toggle('ytaf-pfix-flatten', mode === 'flatten' || mode === 'both');
-  cl.toggle('ytaf-pfix-resize', mode === 'resize' || mode === 'resize_border');
+  cl.toggle('ytaf-pfix-resize', mode === 'resize' || mode === 'resize_border' || mode === 'fullscreen');
+  cl.toggle('ytaf-pfix-fullscreen', mode === 'fullscreen');
+  cl.toggle('ytaf-pfix-clear', mode === 'clear');
   if (!cl.contains('ytaf-pfix-flatten')) unflatten();
+  if (!cl.contains('ytaf-pfix-clear')) unclear();
 }
 
 function previewVideo() {
@@ -91,6 +109,56 @@ function flatten(video) {
     el.classList.add(FLAT_CLASS);
     flattened.push(el);
   }
+}
+
+// ---- clear ----------------------------------------------------------------
+
+/**
+ * Every element hit at (x, y), topmost first; pointer-events: none ones too,
+ * as an overlay that ignores the remote still paints. Null where the browser
+ * has no elementsFromPoint (Chrome 43; webOS 3 has 38).
+ */
+function stackAt(x, y) {
+  if (typeof document.elementsFromPoint !== 'function') return null;
+  const tmp = document.createElement('style');
+  tmp.textContent = '*{pointer-events:auto!important}#ytaf-preview-diag,#ytaf-pfix-probe{pointer-events:none!important}';
+  (document.head || document.documentElement).appendChild(tmp);
+  try {
+    return Array.prototype.slice.call(document.elementsFromPoint(x, y));
+  } finally {
+    tmp.parentNode.removeChild(tmp);
+  }
+}
+
+/** The elements drawn over the middle of the video, topmost first. */
+function coverOf(video) {
+  const r = video.getBoundingClientRect();
+  if (!(r.width > 0 && r.height > 0)) return [];
+  const stack = stackAt(r.left + r.width / 2, r.top + r.height / 2);
+  if (!stack) return null;
+  const out = [];
+  for (let i = 0; i < stack.length; i++) {
+    const el = stack[i];
+    if (el === video || el.contains(video)) break;
+    if (el.id === 'ytaf-preview-diag' || el.id === 'ytaf-pfix-probe') continue;
+    out.push(el);
+  }
+  return out;
+}
+
+function unclear() {
+  for (let i = 0; i < cleared.length; i++) cleared[i].classList.remove(CLEAR_CLASS);
+  cleared = [];
+}
+
+/** Clears what covers the playing preview; what stops covering it gets its looks back. */
+function clearOver(video) {
+  const cover = video && !video.paused ? coverOf(video) || [] : [];
+  for (let i = 0; i < cleared.length; i++) {
+    if (cover.indexOf(cleared[i]) === -1) cleared[i].classList.remove(CLEAR_CLASS);
+  }
+  for (let i = 0; i < cover.length; i++) cover[i].classList.add(CLEAR_CLASS);
+  cleared = cover;
 }
 
 // ---- resize ---------------------------------------------------------------
@@ -226,22 +294,25 @@ function updateResize() {
     clearResize('rotated transform');
     return;
   }
-  // The transformed box: origin + scale * (point - origin) + translate.
-  const left = r2(num(st.left) + t.ox * (1 - m[0]) + m[4]);
-  const top = r2(num(st.top) + t.oy * (1 - m[3]) + m[5]);
-  const width = r2(w * m[0]);
-  const height = r2(h * m[3]);
+  // The transformed box: origin + scale * (point - origin) + translate. The
+  // full screen test keeps the untransformed one.
+  const full = document.documentElement.classList.contains('ytaf-pfix-fullscreen');
+  const left = full ? num(st.left) : r2(num(st.left) + t.ox * (1 - m[0]) + m[4]);
+  const top = full ? num(st.top) : r2(num(st.top) + t.oy * (1 - m[3]) + m[5]);
+  const width = full ? w : r2(w * m[0]);
+  const height = full ? h : r2(h * m[3]);
   setResizeRule(
     RESIZE_SCOPE + '{' +
       (b.pos === 'static' ? 'position:relative!important;' : '') +
       '-webkit-transform:none!important;transform:none!important;' +
       '-webkit-transition:none!important;transition:none!important;' +
       `left:${left}px!important;top:${top}px!important;width:${width}px!important;height:${height}px!important}` +
-    RESIZE_SCOPE + ' video{' +
-      `left:0!important;top:0!important;width:${width}px!important;height:${height}px!important}`
+    RESIZE_SCOPE + ' video,' + RESIZE_SCOPE + ' .html5-video-container{' +
+      `left:0!important;top:0!important;width:${width}px!important;height:${height}px!important}` +
+    RESIZE_SCOPE + ' .html5-video-container{position:absolute!important}'
   );
   resizeKey = key;
-  resizeInfo = `${left},${top} ${width}x${height} (scale ${r2(m[0])}, origin ${r2(t.ox)},${r2(t.oy)}, base ${w}x${h})`;
+  resizeInfo = (full ? 'full screen test: ' : '') + `${left},${top} ${width}x${height} (scale ${r2(m[0])}, origin ${r2(t.ox)},${r2(t.oy)}, base ${w}x${h})`;
 }
 
 // ---- diagnostics ----------------------------------------------------------
@@ -249,7 +320,7 @@ function updateResize() {
 function describe(el) {
   let s = el.tagName.toLowerCase();
   if (el.id) s += '#' + el.id;
-  const cls = typeof el.className === 'string' ? el.className.trim().split(/\s+/).filter((c) => c && c !== FLAT_CLASS) : [];
+  const cls = typeof el.className === 'string' ? el.className.trim().split(/\s+/).filter((c) => c && c !== FLAT_CLASS && c !== CLEAR_CLASS) : [];
   if (cls.length) s += '.' + cls.slice(0, 2).join('.');
   const key = el.getAttribute && el.getAttribute('idomkey');
   if (key) s += '[' + key + ']';
@@ -317,13 +388,22 @@ export function collectDiagnostics() {
       ` · border ${cs.borderTopWidth}`
   );
 
-  const r = video.getBoundingClientRect();
-  const top = r.width > 0 ? document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) : null;
-  if (top) {
-    let chain = describe(top);
-    if (top.parentElement) chain += ' < ' + describe(top.parentElement);
-    lines.push(`on top at centre: ${top === video ? 'the video' : chain}`);
-    if (top !== video && !video.contains(top)) lines.push(`  ${rect(top)} ${flags(top)}`);
+  const cover = coverOf(video);
+  if (cover) {
+    lines.push(`over the video at centre: ${cover.length ? cover.length + (cleared.length ? ' (cleared)' : '') : 'nothing'}`);
+    for (let i = 0; i < cover.length && i < MAX_COVER; i++) {
+      lines.push(`  ${describe(cover[i])} ${rect(cover[i])} ${flags(cover[i])}`);
+    }
+    if (cover.length > MAX_COVER) lines.push(`  ...${cover.length - MAX_COVER} more`);
+  } else {
+    const r = video.getBoundingClientRect();
+    const top = r.width > 0 ? document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) : null;
+    if (top) {
+      let chain = describe(top);
+      if (top.parentElement) chain += ' < ' + describe(top.parentElement);
+      lines.push(`on top at centre: ${top === video ? 'the video' : chain}`);
+      if (top !== video && !video.contains(top)) lines.push(`  ${rect(top)} ${flags(top)}`);
+    }
   }
 
   let el = video.parentElement;
@@ -358,10 +438,13 @@ function tick() {
   updateResize();
   if (!isDiagPage()) {
     unflatten();
+    unclear();
     hideBox();
     return;
   }
   const video = isPreviewPage() ? previewVideo() : null;
+  if (!isPreviewPage()) unclear();
+  else if (document.documentElement.classList.contains('ytaf-pfix-clear')) clearOver(video);
   if (!isPreviewPage()) {
     unflatten();
   } else if (document.documentElement.classList.contains('ytaf-pfix-flatten')) {
@@ -387,7 +470,8 @@ function sync() {
   updateResize();
   const cl = document.documentElement.classList;
   const on = legacy && isDiagPage() &&
-    (cl.contains('ytaf-pfix-flatten') || cl.contains('ytaf-pfix-resize') || !!configRead('previewDiagnostics'));
+    (cl.contains('ytaf-pfix-flatten') || cl.contains('ytaf-pfix-resize') || cl.contains('ytaf-pfix-clear') ||
+      !!configRead('previewDiagnostics'));
   if (on && !timer) {
     timer = setInterval(tick, TICK_MS);
     tick();
@@ -395,6 +479,7 @@ function sync() {
     clearInterval(timer);
     timer = null;
     unflatten();
+    unclear();
     hideBox();
   } else if (!on) {
     hideBox();
