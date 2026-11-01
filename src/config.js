@@ -126,20 +126,6 @@ export const forcePreviewModes = {
   force_off: 'Force Off'
 };
 
-/**
- * Preview Picture Fix (webOS 3-6), for tile previews that play over a black
- * picture (#67; preview-diagnostics.js).
- */
-export const previewFixModes = {
-  border: 'Border Trick',
-  resize: 'Resize Player',
-  resize_border: 'Resize + Border',
-  clear: 'Clear Over Preview',
-  fullscreen: 'Full Screen Test',
-  flatten: 'Flatten Layers',
-  both: 'Both',
-  off: 'Off'
-};
 
 /** The page the app opens on (start-page.js). */
 export const startPageModes = {
@@ -289,9 +275,8 @@ const configOptions = new Map([
   ['removeBlackBorders', { default: false, desc: 'New Liquid Glass UI' }],
   ['forcePreviews', { default: 'disabled', desc: 'Previews With Sound' }],
   ['mutePreviews', { default: false, desc: 'Mute Video Previews' }],
-  // webOS 3-6 only (preview-diagnostics.js, #67).
-  ['previewFixMode', { default: 'border', desc: 'Preview Picture Fix (webOS 3-6)' }],
-  ['previewDiagnostics', { default: false, desc: 'Show Preview Diagnostics' }],
+  // webOS 3-6 only (preview-fix.js, #67).
+  ['fixBlackPreviews', { default: true, desc: 'Fix Black Tile Previews' }],
   // About tab (about.js).
   ['checkForUpdates', { default: true, desc: 'Check for Updates' }],
   ['showWhatsNew', { default: true, desc: "Show What's New After an Update" }],

@@ -38,12 +38,10 @@ import './lang-settings-fix';
 import { initAiContentFilter } from './ai-content-filter.js';
 
 import { initBufferLimit } from './hooks/buffer-limit.js';
-import { getWebOSVersion, isLegacyWebOS } from './webos-utils.js';
-import { initPreviewFix } from './preview-diagnostics.js';
+import { getWebOSVersion } from './webos-utils.js';
+import { initPreviewFix } from './preview-fix.js';
 import { initAbout } from './about.js';
 
-// Gates the tile-preview <video> fixes in yt-fixes.css (#67).
-if (isLegacyWebOS()) document.documentElement.classList.add('ytaf-legacy-webos');
 initPreviewFix();
 initAbout();
 
