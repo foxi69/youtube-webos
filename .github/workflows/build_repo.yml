@@ -122,8 +122,10 @@ jobs:
               
               # Default values
               pkg_id = app_info.get('id')
-              title = app_info.get('title')
-              description = "YouTube AdFree for webOS 3 and newer, with SponsorBlock, Return YouTube Dislike and DeArrow."
+              # The name in the Homebrew Channel's list; the TV's own menu keeps
+              # the title in assets/appinfo.json.
+              title = "YouTube Foxtended"
+              description = "Ad-free YouTube for webOS 3 and newer, with SponsorBlock, Return YouTube Dislike and DeArrow."
               
               # Both .ipk files install as the same app (assets/appinfo.json), and
               # Homebrew Channel matches a repository entry to the installed app
@@ -132,7 +134,7 @@ jobs:
               # 22+ package as its update, never the legacy one.
               if is_modern:
                   title = f"{title} (webOS 22+)"
-                  description = "YouTube AdFree for webOS 22 and newer. Lighter optimized build supporting newer hardware."
+                  description = "Ad-free YouTube for webOS 22 and newer, with SponsorBlock, Return YouTube Dislike and DeArrow. The lighter build for newer TVs."
 
               manifest = {
                   "id": pkg_id,
@@ -155,6 +157,8 @@ jobs:
                   "id": pkg_id,
                   "title": title,
                   "description": description,
+                  # What the Homebrew Channel shows on the entry's page.
+                  "shortDescription": description,
                   "iconUri": f"https://raw.githubusercontent.com/{repo_name}/main/{ICON_PATH_IN_REPO}",
                   "manifest": manifest
               }
