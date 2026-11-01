@@ -10,18 +10,31 @@ import { getWebOSVersion, isLegacyWebOS } from './webos-utils.js';
  *
  * Preview Picture Fix (webOS 3-6), `previewFixMode`:
  *   - border:  the Shorts border trick on the preview <video> (0.9.1's fix);
+ *   - resize:  the preview does not play in the tile: YouTube scales its one
+ *              full-screen player (ytlr-player#player-container, 1920x1080)
+ *              down onto the tile with a CSS transform, e.g.
+ *              matrix(0.375, 0, 0, 0.375, 156, 243) for a 720x405 tile at
+ *              156,243 (the C9's diagnostics on #67). The TV places its
+ *              hardware video plane from the layout box, it seems, not the
+ *              transformed one, so the hole punched for it at the tile stays
+ *              black. This mode drops the transform and gives the player the
+ *              same place as real left/top/width/height, and the <video> the
+ *              tile's size, so nothing between them is scaled;
+ *   - resize_border: both of these;
  *   - flatten: no rounded corners, opacity, filter or mask on the <video> and
  *              its ancestors while a preview plays. Each of those makes
  *              Chromium draw the video into an offscreen layer first, and on
  *              webOS the video is a hole punched through the page down to a
  *              hardware plane: drawn offscreen, the hole stays black;
- *   - both, off.
+ *   - both (border and flatten), off.
  *
  * Show Preview Diagnostics, `previewDiagnostics`: a text box in the top-right
  * corner with what the preview <video> and its ancestors look like, refreshed
  * every second while a preview plays, for a photo to attach to the issue.
  *
- * Both act on legacy webOS only, and never on the watch or Shorts page.
+ * Both act on legacy webOS only, and never on the watch page. The fixes leave
+ * the Shorts page alone too; the diagnostics show there as well, to compare
+ * the Shorts player, which plays, with a preview, which does not.
  */
 
 const FLAT_CLASS = 'ytaf-pfix-flat';
@@ -34,6 +47,10 @@ let box = null;
 let flattened = [];
 
 const isPreviewPage = () => !isWatchPage() && !isShortsPage();
+const isDiagPage = () => !isWatchPage();
+
+const PLAYER_SELECTOR = 'ytlr-player#player-container';
+const RESIZE_SCOPE = 'html.ytaf-pfix-resize body:not(.WEB_PAGE_TYPE_WATCH):not(.WEB_PAGE_TYPE_SHORTS) ' + PLAYER_SELECTOR;
 
 function fixMode() {
   const mode = configRead('previewFixMode');
@@ -45,13 +62,14 @@ function fixMode() {
 function syncClasses() {
   const cl = document.documentElement.classList;
   const mode = legacy ? fixMode() : 'off';
-  cl.toggle('ytaf-pfix-border', mode === 'border' || mode === 'both');
+  cl.toggle('ytaf-pfix-border', mode === 'border' || mode === 'both' || mode === 'resize_border');
   cl.toggle('ytaf-pfix-flatten', mode === 'flatten' || mode === 'both');
+  cl.toggle('ytaf-pfix-resize', mode === 'resize' || mode === 'resize_border');
   if (!cl.contains('ytaf-pfix-flatten')) unflatten();
 }
 
 function previewVideo() {
-  if (!isPreviewPage()) return null;
+  if (!isDiagPage()) return null;
   const videos = document.querySelectorAll('video');
   for (let i = 0; i < videos.length; i++) {
     const v = videos[i];
@@ -73,6 +91,157 @@ function flatten(video) {
     el.classList.add(FLAT_CLASS);
     flattened.push(el);
   }
+}
+
+// ---- resize ---------------------------------------------------------------
+
+let resizeStyle = null;
+let resizeKey = '';
+/** The player's own layout box and transform origin, measured unresized. */
+let resizeBase = null;
+let resizeInfo = 'off';
+let observer = null;
+let observed = null;
+let probe = null;
+
+const num = (v) => {
+  const n = parseFloat(v);
+  return isFinite(n) ? n : 0;
+};
+const r2 = (n) => Math.round(n * 100) / 100;
+
+function setResizeRule(css) {
+  if (!resizeStyle || !resizeStyle.parentNode) {
+    if (!css) return;
+    resizeStyle = document.createElement('style');
+    resizeStyle.id = 'ytaf-pfix-resize-style';
+    (document.head || document.documentElement).appendChild(resizeStyle);
+  }
+  if (resizeStyle.textContent !== css) resizeStyle.textContent = css;
+}
+
+function clearResize(info) {
+  setResizeRule('');
+  resizeKey = '';
+  resizeBase = null;
+  resizeInfo = info;
+}
+
+function observePlayer(player) {
+  if (observed === player) return;
+  if (!observer) {
+    if (typeof MutationObserver !== 'function') return;
+    observer = new MutationObserver(updateResize);
+  }
+  observer.disconnect();
+  observed = player;
+  if (player) observer.observe(player, { attributes: true, attributeFilter: ['style'] });
+}
+
+/**
+ * A transform as [a, b, c, d, e, f] and its origin in px, resolved the way the
+ * player resolves them (percentages against a w x h box): the browser does
+ * the parsing, on a hidden probe element, as the player's own computed
+ * transform is ours.
+ */
+function resolveTransform(transform, origin, w, h) {
+  if (!document.body) return null;
+  if (!probe || !probe.parentNode) {
+    probe = document.createElement('div');
+    probe.id = 'ytaf-pfix-probe';
+    probe.style.cssText = 'position:absolute;left:0;top:0;visibility:hidden;pointer-events:none;';
+    document.body.appendChild(probe);
+  }
+  const ps = probe.style;
+  ps.width = w + 'px';
+  ps.height = h + 'px';
+  ps.transform = transform;
+  ps.transformOrigin = origin;
+  if (ps.transform === '' && 'webkitTransform' in ps) {
+    ps.webkitTransform = transform;
+    ps.webkitTransformOrigin = origin;
+  }
+  const cs = window.getComputedStyle(probe);
+  const o = (cs.transformOrigin || cs.webkitTransformOrigin || '0px 0px').split(' ');
+  const value = cs.transform || cs.webkitTransform || 'none';
+  let m = [1, 0, 0, 1, 0, 0];
+  if (value !== 'none') {
+    const parts = value.match(/^matrix(3d)?\(([^)]*)\)$/);
+    if (!parts) return null;
+    const v = parts[2].split(',').map(parseFloat);
+    m = parts[1] ? [v[0], v[1], v[4], v[5], v[12], v[13]] : v;
+  }
+  return { m, ox: num(o[0]), oy: num(o[1]) };
+}
+
+/**
+ * Mirrors YouTube's transform on the preview player as left/top/width/height
+ * in a stylesheet (YouTube rewrites the player's style attribute), whenever
+ * YouTube moves the player: on each change of its style attribute.
+ */
+function updateResize() {
+  const active = legacy && document.documentElement.classList.contains('ytaf-pfix-resize') && isPreviewPage();
+  if (!active) {
+    observePlayer(null);
+    if (resizeKey || resizeBase || resizeInfo !== 'off') clearResize('off');
+    return;
+  }
+  const player = document.querySelector(PLAYER_SELECTOR);
+  if (player !== observed) clearResize('new player');
+  observePlayer(player);
+  if (!player) {
+    clearResize('no ' + PLAYER_SELECTOR);
+    return;
+  }
+  const st = player.style;
+  const transform = st.transform || st.webkitTransform || '';
+  const key = [transform, st.left, st.top, st.width, st.height, st.transformOrigin, window.innerWidth, window.innerHeight].join('|');
+  if (key === resizeKey && resizeStyle && resizeStyle.parentNode) return;
+  if (!transform) {
+    // Nothing of YouTube's to undo, or nothing this can read once undone.
+    clearResize('player has no inline transform');
+    return;
+  }
+  if (!resizeBase) {
+    // The rule is empty here, so this is YouTube's own layout.
+    const cs = window.getComputedStyle(player);
+    const origin = (cs.transformOrigin || cs.webkitTransformOrigin || '0px 0px').split(' ');
+    resizeBase = { w: player.offsetWidth, h: player.offsetHeight, ox: num(origin[0]), oy: num(origin[1]), pos: cs.position };
+    if (!resizeBase.w || !resizeBase.h) {
+      clearResize('player has no size');
+      return;
+    }
+  }
+  const b = resizeBase;
+  const w = /px$/.test(st.width) ? num(st.width) : b.w;
+  const h = /px$/.test(st.height) ? num(st.height) : b.h;
+  // YouTube's own origin: inline if it sets one there, else the one measured.
+  const t = resolveTransform(transform, st.transformOrigin || b.ox + 'px ' + b.oy + 'px', w, h);
+  const m = t && t.m;
+  if (!m || m.some((x) => !isFinite(x))) {
+    clearResize('unreadable transform');
+    return;
+  }
+  if (Math.abs(m[1]) > 1e-6 || Math.abs(m[2]) > 1e-6) {
+    clearResize('rotated transform');
+    return;
+  }
+  // The transformed box: origin + scale * (point - origin) + translate.
+  const left = r2(num(st.left) + t.ox * (1 - m[0]) + m[4]);
+  const top = r2(num(st.top) + t.oy * (1 - m[3]) + m[5]);
+  const width = r2(w * m[0]);
+  const height = r2(h * m[3]);
+  setResizeRule(
+    RESIZE_SCOPE + '{' +
+      (b.pos === 'static' ? 'position:relative!important;' : '') +
+      '-webkit-transform:none!important;transform:none!important;' +
+      '-webkit-transition:none!important;transition:none!important;' +
+      `left:${left}px!important;top:${top}px!important;width:${width}px!important;height:${height}px!important}` +
+    RESIZE_SCOPE + ' video{' +
+      `left:0!important;top:0!important;width:${width}px!important;height:${height}px!important}`
+  );
+  resizeKey = key;
+  resizeInfo = `${left},${top} ${width}x${height} (scale ${r2(m[0])}, origin ${r2(t.ox)},${r2(t.oy)}, base ${w}x${h})`;
 }
 
 // ---- diagnostics ----------------------------------------------------------
@@ -129,6 +298,10 @@ export function collectDiagnostics() {
     `YTAF preview diag · webOS ${getWebOSVersion()} · Chrome ${chrome} · fix: ${fixMode()}`,
     `page ${pageType()} · ${window.innerWidth}x${window.innerHeight} dpr ${window.devicePixelRatio} · videos ${document.querySelectorAll('video').length}`
   ];
+  const player = document.querySelector(PLAYER_SELECTOR);
+  const inlineTf = player ? player.style.transform || player.style.webkitTransform || '-' : 'no player';
+  lines.push(`player inline tf: ${inlineTf.length > 60 ? inlineTf.slice(0, 59) + '~' : inlineTf}`);
+  if (document.documentElement.classList.contains('ytaf-pfix-resize')) lines.push(`resize: ${resizeInfo}`);
   const video = previewVideo();
   if (!video) {
     lines.push('no preview <video> yet: focus a tile and wait for its preview');
@@ -182,13 +355,16 @@ function hideBox() {
 // ---- loop -----------------------------------------------------------------
 
 function tick() {
-  if (!isPreviewPage()) {
+  updateResize();
+  if (!isDiagPage()) {
     unflatten();
     hideBox();
     return;
   }
-  const video = previewVideo();
-  if (document.documentElement.classList.contains('ytaf-pfix-flatten')) {
+  const video = isPreviewPage() ? previewVideo() : null;
+  if (!isPreviewPage()) {
+    unflatten();
+  } else if (document.documentElement.classList.contains('ytaf-pfix-flatten')) {
     if (video && !video.paused) {
       if (!flattened.length || flattened[0] !== video || !video.classList.contains(FLAT_CLASS)) flatten(video);
     } else {
@@ -208,8 +384,10 @@ function tick() {
 
 function sync() {
   syncClasses();
-  const on = legacy && isPreviewPage() &&
-    (document.documentElement.classList.contains('ytaf-pfix-flatten') || !!configRead('previewDiagnostics'));
+  updateResize();
+  const cl = document.documentElement.classList;
+  const on = legacy && isDiagPage() &&
+    (cl.contains('ytaf-pfix-flatten') || cl.contains('ytaf-pfix-resize') || !!configRead('previewDiagnostics'));
   if (on && !timer) {
     timer = setInterval(tick, TICK_MS);
     tick();

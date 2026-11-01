@@ -132,6 +132,8 @@ export const forcePreviewModes = {
  */
 export const previewFixModes = {
   border: 'Border Trick',
+  resize: 'Resize Player',
+  resize_border: 'Resize + Border',
   flatten: 'Flatten Layers',
   both: 'Both',
   off: 'Off'
