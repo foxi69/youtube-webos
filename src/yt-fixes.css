@@ -80,3 +80,19 @@ html.ytaf-pfix-flatten .ytaf-pfix-flat {
   -webkit-mask-image: none !important;
   mix-blend-mode: normal !important;
 }
+
+/*
+ * Preview Picture Fix "Clear Over Preview" (#67): what preview-diagnostics.js
+ * finds stacked over the middle of the playing preview loses its background
+ * and images, so nothing opaque is drawn over the punched-through video.
+ */
+html.ytaf-pfix-clear .ytaf-pfix-cleared {
+  background-color: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+html.ytaf-pfix-clear img.ytaf-pfix-cleared,
+html.ytaf-pfix-clear canvas.ytaf-pfix-cleared {
+  opacity: 0 !important;
+}

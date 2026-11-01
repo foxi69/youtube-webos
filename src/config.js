@@ -134,6 +134,8 @@ export const previewFixModes = {
   border: 'Border Trick',
   resize: 'Resize Player',
   resize_border: 'Resize + Border',
+  clear: 'Clear Over Preview',
+  fullscreen: 'Full Screen Test',
   flatten: 'Flatten Layers',
   both: 'Both',
   off: 'Off'
