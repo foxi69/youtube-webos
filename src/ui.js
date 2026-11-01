@@ -1120,7 +1120,7 @@ function createOptionsPanel() {
   	  ...(isLegacyWebOS() ? [
   	    createAlignedCycleControl('previewFixMode', previewFixModes),
   	    createConfigCheckbox('previewDiagnostics'),
-  	    createElement('div', { text: 'For previews with sound over a black picture: try each fix. Diagnostics shows a text box at the top right while a preview plays; a photo of it helps (issue #67)', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } })
+  	    createElement('div', { text: 'For previews with sound over a black picture: try each fix, Resize Player first. Diagnostics shows a text box at the top right while a preview plays; a photo of it helps (issue #67)', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } })
   	  ] : []),
   	  createConfigCheckbox('fitPageBesideGuide'),
   	  createElement('div', { text: 'Shrinks the page beside the open left menu, instead of pushing its right side off the screen', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
@@ -2537,4 +2537,4 @@ syncTrackingBlock();
     setTimeout(check, 500);
   };
   setTimeout(check, 1000);
-})();
+})();
