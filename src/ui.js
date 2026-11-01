@@ -1,4 +1,4 @@
-import { logoStyles, timeRemainingModes, thumbnailQualityModes, videoCodecModes, uiThemes, clockModes, startPageModes, minVideoLengthModes, seekStepModes, searchUploadDateModes, dearrowTitleFormats, dearrowThumbnailFallbacks, previewFixModes } from './config.js';
+import { logoStyles, timeRemainingModes, thumbnailQualityModes, videoCodecModes, uiThemes, clockModes, startPageModes, minVideoLengthModes, seekStepModes, searchUploadDateModes, dearrowTitleFormats, dearrowThumbnailFallbacks } from './config.js';
 import { configAddChangeListener, configRead, configWrite, configGetDesc, segmentTypes, configGetDefault, shortcutActions, sbModes, sbModesHighlight, forcePreviewModes, configGetProfileStatus } from './config.js';
 import './ui.css';
 import './auto-login.js';
@@ -1145,9 +1145,8 @@ function createOptionsPanel() {
   	  createElement('div', { text: 'Sets YouTube\'s own "previews with sound" setting on app load. No effect where YouTube shows no previews (webOS 25)', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   	  createConfigCheckbox('mutePreviews'),
   	  ...(isLegacyWebOS() ? [
-  	    createAlignedCycleControl('previewFixMode', previewFixModes),
-  	    createConfigCheckbox('previewDiagnostics'),
-  	    createElement('div', { text: 'For previews with sound over a black picture: try each fix, Clear Over Preview first. Diagnostics shows a text box at the top right while a preview plays; a photo of it helps (issue #67)', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } })
+  	    createConfigCheckbox('fixBlackPreviews'),
+  	    createElement('div', { text: 'Shows the picture of a tile preview that plays its sound over a black tile (webOS 3-6)', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } })
   	  ] : []),
   	  createConfigCheckbox('fitPageBesideGuide'),
   	  createElement('div', { text: 'Shrinks the page beside the open left menu, instead of pushing its right side off the screen', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
