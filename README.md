@@ -93,7 +93,7 @@
 - ⌨️ **[webOS TV CLI tools](https://webostv.developer.lge.com/develop/tools/cli-installation)**:
   `ares-install youtube...ipk` (see [Development TV setup](#development-tv-setup)).
 
-**Updating:** with the repo link added, press **Update** on this app's entry in the Homebrew Channel. The app's own **Update** button needs a TV that lets the app reach the Homebrew Channel, which webOS 25 does not. Without the Homebrew Channel, install the new `.ipk` the same way as the first one.
+**Updating:** with the repo link added, press **Update** on this app's entry in the Homebrew Channel. The app's own **Update** button needs a TV that lets the app reach the Homebrew Channel, which webOS 25 does not. On a pre-release, the Homebrew Channel's **Update** would take you back to the older full release. Without the Homebrew Channel, install the new `.ipk` the same way as the first one.
 
 ## 🎮 Remote control
 
