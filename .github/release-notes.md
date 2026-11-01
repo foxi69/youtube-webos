@@ -21,7 +21,7 @@
 | 📺 | [youtube.leanback.v4_@VERSION@_all.ipk](https://github.com/foxi69/youtube-webos/releases/download/v@VERSION@/youtube.leanback.v4_@VERSION@_all.ipk) | **webOS 3-6** (2016-2021 TVs). Also runs on newer TVs. |
 
 > [!TIP]
-> Installed through Homebrew Channel with this fork's repository? The update comes to you by itself.
+> Installed through Homebrew Channel with this fork's repository? Press **Update** on this app's entry there.
 
 ## ✨ What's new in @VERSION@
 
@@ -32,7 +32,7 @@
 > [!IMPORTANT]
 > Uninstall the official YouTube app first.
 
-- 🍺 **[Homebrew Channel](https://github.com/webosbrew/webos-homebrew-channel)** (updates come by themselves): add one repository.
+- 🍺 **[Homebrew Channel](https://github.com/webosbrew/webos-homebrew-channel)**: add one repository, then press **Update** on this app's entry for each new release.
 
   | TVs | Repository |
   |---|---|
