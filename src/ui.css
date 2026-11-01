@@ -1139,30 +1139,8 @@
 }
 
 .ytaf-dialog-note {
-  display: flex;
-  align-items: center;
   margin: 0.8vh 0;
   font-size: 1.8vh;
-}
-
-.ytaf-dialog-note-text {
-  flex: 1 1 auto;
-  margin-right: 2vh;
-}
-
-.ytaf-dialog-qr {
-  text-align: center;
-  font-size: 1.5vh;
-}
-
-.ytaf-dialog-qr img {
-  display: block;
-  width: 13vh;
-  height: 13vh;
-  margin: 0 auto 0.4vh auto;
-  padding: 0.5vh;
-  background: #ffffff;
-  border-radius: 0.6vh;
 }
 
 .ytaf-dialog-buttons {

@@ -109,8 +109,10 @@ function boot(cfg, opts = {}) {
       this._src = url;
       const ytimg = new URL(url).hostname === 'i.ytimg.com';
       const ok = ytimg || url.indexOf('time=12.5') !== -1 || (opts.randomReady && url.indexOf('time=') !== -1);
-      this.naturalWidth = ytimg ? 480 : 1280;
-      this.naturalHeight = ytimg ? 360 : 720;
+      // The grey placeholder YouTube answers for a frame a live stream does not have.
+      const placeholder = url.indexOf('/vi/livestream1/hq') !== -1;
+      this.naturalWidth = placeholder ? 120 : ytimg ? 480 : 1280;
+      this.naturalHeight = placeholder ? 90 : ytimg ? 360 : 720;
       setTimeout(() => (ok ? this.onload && this.onload() : this.onerror && this.onerror()), 0);
     }
     get src() { return this._src; }
@@ -276,7 +278,7 @@ const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-d
       .find((x) => x.textContent.indexOf('Without a Crowdsourced Thumbnail') !== -1);
     t('the DeArrow rows are greyed out while it is off', fallbackRow && fallbackRow.tabIndex === -1);
     const heading = win.document.querySelector('.ytaf-ui-container h1 span').textContent;
-    t('the panel heading shows the version', /^YouTube Extended \d+\.\d+\.\d+$/.test(heading), heading);
+    t('the panel heading shows the version', /^YouTube Foxtended \d+\.\d+\.\d+$/.test(heading), heading);
   }
 
   // ---- The random frame, by id for a video with no submission ----
@@ -289,6 +291,16 @@ const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-d
     t('the random frame is asked for at randomTime x length', images.some((u) => u.indexOf('videoID=nosubmit001&time=30&generateNow=true') !== -1), images.join(' '));
     const thumb = decodeURIComponent(tileThumb(itemsOf(r)[0]));
     t('the start frame stands in while it renders', thumb.indexOf('i.ytimg.com/vi/nosubmit001/hq1.jpg') !== -1, thumb);
+  }
+
+  // ---- A frame YouTube does not have (a live stream) keeps YouTube's thumbnail ----
+  {
+    const { images, parse } = boot({ dearrowThumbnailFallback: 'start' });
+    const r = parse(browse([tile('livestream1', 'A live stream')]));
+    await waitFor(() => images.some((u) => u.indexOf('/vi/livestream1/hq1.jpg') !== -1), 2000);
+    await new Promise((f) => setTimeout(f, 200));
+    t('the grey placeholder of a missing frame is not used',
+      tileThumb(itemsOf(r)[0]) === 'https://i.ytimg.com/vi/livestream1/hqdefault.jpg', tileThumb(itemsOf(r)[0]));
   }
 
   // ---- Blank fallback; crowd thumbnails off keeps YouTube's ----

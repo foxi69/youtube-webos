@@ -1,4 +1,4 @@
-// The version the settings panel shows in its heading ("YouTube Extended
+// The version the settings panel shows in its heading ("YouTube Foxtended
 // 0.9.1 (a1b2c3d)"). webpack's DefinePlugin writes it at build time from
 // package.json, which the release workflow sets to the version it builds,
 // and the commit the workflow builds (YTAF_BUILD; none in a local build); a
