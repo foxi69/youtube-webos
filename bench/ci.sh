@@ -38,6 +38,7 @@ run ai-label-test
 run most-replayed-test
 run speed-audio-offer-test
 run speed-restore-test
+run whats-new-test "$B"
 run ai-filter-test "$B" legacy
 run emoji-loop-test "$B" 40
 run force-codec-test "$B"

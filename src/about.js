@@ -691,19 +691,29 @@ function whatsNewAfterUpdate() {
     // Versions before this one stored no seen version: settings of their own
     // mean an update from one of them, not a first install.
     existingUser = !!window.localStorage.getItem('ytaf-configuration');
-    window.localStorage.setItem(SEEN_KEY, INSTALLED);
   } catch { return; }
+  const remember = () => {
+    try { window.localStorage.setItem(SEEN_KEY, INSTALLED); } catch { /* shown again next time */ }
+  };
   const updated = seen ? compareVersions(INSTALLED, seen) > 0 : existingUser;
-  if (!updated || !configRead('showWhatsNew')) return;
+  if (!updated || !configRead('showWhatsNew')) {
+    remember();
+    return;
+  }
   // The installed version's notes only.
   const since = (e) => e.version === INSTALLED;
-  setTimeout(() => whenIdle(WHATS_NEW_WAIT_MS, () => openDialog({
-    title: `What's new in ${INSTALLED}`,
-    subtitle: seen ? `Updated from ${seen}` : '',
-    notes: loadChangelog().then((entries) => entries.filter(since)),
-    emptyText: `No release notes for ${INSTALLED}.`,
-    buttons: [{ text: 'OK' }]
-  })), 3000);
+  // Seen only once it opens: a long stay on "Who's watching" outlasts the wait,
+  // and the window then comes on the next start.
+  setTimeout(() => whenIdle(WHATS_NEW_WAIT_MS, () => {
+    remember();
+    openDialog({
+      title: `What's new in ${INSTALLED}`,
+      subtitle: seen ? `Updated from ${seen}` : '',
+      notes: loadChangelog().then((entries) => entries.filter(since)),
+      emptyText: `No release notes for ${INSTALLED}.`,
+      buttons: [{ text: 'OK' }]
+    });
+  }), 3000);
 }
 
 export function initAbout() {
