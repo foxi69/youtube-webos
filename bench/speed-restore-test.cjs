@@ -135,6 +135,26 @@ import(MODULE).then(({ watchPosition }) => {
     t('and nothing seeks after it', s.player.seeks.length === 0, s.player.seeks.join());
   }
   {
+    // YouTube falls below the cap while it plays: the cap again, not for ever.
+    const s = setup({ state: 1, t: AT, vt: AT });
+    let isLow = false;
+    let caps = 0;
+    watchPosition(s.win, s.player, AT, () => {}, { isLow: () => isLow, setCap: () => { caps++; } });
+    s.run(3000);
+    t('at the cap: nothing to do', caps === 0, caps);
+    isLow = true;
+    s.run(1500);
+    t('a short dip is left alone', caps === 0, caps);
+    s.run(1000);
+    t('it lasts: the cap is set again', caps === 1, caps);
+    isLow = false;
+    s.run(5000);
+    t('back up: no more', caps === 1, caps);
+    isLow = true;
+    s.run(15000);
+    t('a few times at most', caps === 3, caps);
+  }
+  {
     const s = setup({ state: 3, t: AT, vt: 0 });
     s.player.getCurrentTime = () => { throw new Error('player gone'); };
     watchPosition(s.win, s.player, AT, () => {});
