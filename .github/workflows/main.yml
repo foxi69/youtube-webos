@@ -7,7 +7,8 @@ on:
     branches: [main]
 
 # Checkout and the artifact upload are all this needs; the artifact upload
-# uses the Actions runtime token, not GITHUB_TOKEN.
+# uses the Actions runtime token, not GITHUB_TOKEN. The build job adds
+# actions: write for its artifact cleanup.
 permissions:
   contents: read
 
@@ -15,7 +16,37 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    # actions: write for the artifact cleanup below.
+    permissions:
+      contents: read
+      actions: write
+
     steps:
+      # The artifact storage is finite: adding up the sizes of the artifacts
+      # that have not expired, newest first, it deletes the ones above the
+      # budget (the oldest). GitHub recounts the storage used every 6-12
+      # hours, so the budget leaves room under the quota for a few runs' new
+      # artifacts. A pull request from a fork gets a read-only token, so it is
+      # skipped there. The same step as in foxi69/MultiUploader's build.
+      - name: Delete the oldest artifacts above the budget
+        if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ARTIFACT_BUDGET_MB: 400
+        run: |
+          budget=$((ARTIFACT_BUDGET_MB * 1024 * 1024))
+          total=0
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/artifacts?per_page=100" \
+            --jq '.artifacts[] | select(.expired | not) | [.created_at, .id, .size_in_bytes, .name] | @tsv' \
+            | sort -r \
+            | while IFS=$'\t' read -r created id size name; do
+                total=$((total + size))
+                if [ "$total" -gt "$budget" ]; then
+                  echo "Deleting $name ($id, $created, $size bytes)"
+                  gh api -X DELETE "repos/${GITHUB_REPOSITORY}/actions/artifacts/$id" || echo "Could not delete $id (already gone?)"
+                fi
+              done
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -45,6 +76,7 @@ jobs:
           name: coverage-report
           path: coverage/
           if-no-files-found: error
+          retention-days: 7
 
       # The tests leave other builds in dist/: start clean. The package goes
       # to out/, where the upload finds it.
@@ -60,3 +92,4 @@ jobs:
           name: youtube_adfree_ipk
           path: out/youtube.leanback.v4_*_all.ipk
           if-no-files-found: error
+          retention-days: 7

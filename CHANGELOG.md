@@ -32,6 +32,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Build
 
++ CI keeps its artifacts (the test build's .ipk and the coverage report) for 7 days instead of 90, and each run deletes the oldest artifacts once all of them together pass 400 MB, as in MultiUploader's build.
 + A build from CI shows its commit in the settings heading ("YouTube Extended 0.9.1 (a1b2c3d)"), and its release notes end with the same "Build:" line. A refreshed pre-release keeps its version, so the commit is what tells one build of it from the next; a tester can quote it in a report.
 
 ## [0.9.0] - 2026/10/28
