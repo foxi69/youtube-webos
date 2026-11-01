@@ -785,8 +785,32 @@ function createOptionsPanel() {
     if (row.bottom + margin > bottom) page.scrollTop += row.bottom + margin - bottom;
     else if (row.top - margin < top) page.scrollTop -= top - row.top + margin;
   };
+  // Up and Down inside a page stay among the page's own controls, and Up
+  // reaches the tabs only from the top one. By position on screen alone, a
+  // control scrolled up behind the tabs lies farther up than the tabs, so Up
+  // went to the tabs and the top of a long page (UI Tweaks) never scrolled
+  // back into view; Down from the tabs, measured from a scrolled page, landed
+  // in its middle instead of on its first control.
   const moveFocus = (dir) => {
-    const target = nearestInDirection(document.activeElement, dir, panelFocusables());
+    const from = document.activeElement;
+    const page = pages[activePage];
+    const vertical = dir === 'up' || dir === 'down';
+    if (vertical && page) {
+      const controls = pageFocusables(page).filter((c) => c.getClientRects().length > 0);
+      let target = null;
+      if (tabBtns.indexOf(from) !== -1) {
+        if (dir === 'down') target = controls[0] || null;
+      } else if (page.contains(from)) {
+        target = nearestInDirection(from, dir, controls);
+        if (!target && dir === 'up') target = tabBtns[activePage];
+      }
+      if (target) {
+        focusInView(target);
+        return;
+      }
+      if (page.contains(from) || tabBtns.indexOf(from) !== -1) return;
+    }
+    const target = nearestInDirection(from, dir, panelFocusables());
     if (target) focusInView(target);
   };
 

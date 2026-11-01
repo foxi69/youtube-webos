@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Fixes
 
++ Settings panel: Up and Down stay among the open page's own controls and reach the tabs only from the top one, and Down from the tabs goes to the first control. On a long page (UI Tweaks) Up jumped from a lower row to the tabs once the top rows had scrolled up behind them, so the top of the page could not be scrolled back into view with the remote; Down from the tabs landed in the middle of a scrolled page.
 + Tile previews on webOS 3-6: the Shorts page's fix for the webOS 4.x <video> problem (webosbrew/youtube-webos#235) also covers the previews, on the legacy package only. With YouTube's own previews on, a focused tile played the sound over a black picture where the thumbnail was (an OLED C9 on webOS 4.10, #67). On that TV this alone did not help yet; see Preview Picture Fix above.
 + Playback speed works on videos with Dolby audio. A TV with surround is given AC-3 or E-AC-3 (Big Buck Bunny 4K60 is one), which the speed engine cannot decode, so the speed fell back to 1x with "Playback speed not available for this video". Off 1x the player is now offered only AAC and Opus audio when the video has them; at 1x the Dolby track comes back.
 + Show Video Quality Next to the Title: the tag sits on its own line, lined up with the channel line above it. On webOS 25 it wrapped there anyway, pushed in by its left margin.
