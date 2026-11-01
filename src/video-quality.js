@@ -203,6 +203,66 @@ function clearLocalStorageQuality() {
   cachedQualityExpiration = 0;
 }
 
+// --- webOS 25: playback position after the quality switch ---
+// Changing the quality range makes YouTube reload the <video>. On webOS 25 the
+// reloaded element sometimes does not seek back to the playback position: the
+// player keeps buffering around the position while the element waits at 0, so
+// the video never starts. It happens when playback resumes from a non-zero
+// position (a video opened from its home screen preview, or resumed from the
+// watch history). If the element is still out of step once it has loaded, it
+// is seeked back to the player's position, once. From Bouliw's fork,
+// webosbrew/youtube-webos#493 (fork watch #76).
+const RESTORE_WATCH_MS = 15000;
+const RESTORE_TICK_MS = 500;
+let restoreTimer = null;
+
+function stopPositionRestore() {
+  if (restoreTimer) {
+    clearInterval(restoreTimer);
+    restoreTimer = null;
+  }
+}
+
+function restorePositionAfterReload() {
+  stopPositionRestore();
+  if (!IS_WEBOS_25 || !player || typeof player.getCurrentTime !== 'function') return;
+
+  const watched = player;
+  let videoId = null;
+  try { videoId = watched.getVideoData?.()?.video_id || null; } catch { /* ignore */ }
+  const start = Date.now();
+  let stalledChecks = 0;
+
+  restoreTimer = setInterval(() => {
+    try {
+      if (isDestroyed || player !== watched || Date.now() - start > RESTORE_WATCH_MS ||
+          watched.getVideoData?.()?.video_id !== videoId) {
+        stopPositionRestore();
+        return;
+      }
+      const video = getVideo();
+      if (!video) return;
+      const position = watched.getCurrentTime();
+      const stalled = !video.seeking &&
+        video.readyState >= 1 && // HAVE_METADATA
+        video.readyState < 3 && // HAVE_FUTURE_DATA
+        position > 1 &&
+        Math.abs(video.currentTime - position) > 1;
+      if (!stalled) {
+        stalledChecks = 0;
+        return;
+      }
+      // The player gets a chance to seek on its own first.
+      if (++stalledChecks < 2) return;
+      stopPositionRestore();
+      DEBUG && console.warn(`[VideoQuality] Restoring playback position (${video.currentTime} -> ${position})`);
+      video.currentTime = position;
+    } catch {
+      stopPositionRestore();
+    }
+  }, RESTORE_TICK_MS);
+}
+
 function setQualityOnPlayer() {
   if (!player || !isForceEnabled() || isDestroyed) {
     return { success: false, upgraded: false };
@@ -222,6 +282,7 @@ function setQualityOnPlayer() {
 
     player.setPlaybackQualityRange('highres', 'highres');
     player.setPlaybackQuality?.('highres');
+    restorePositionAfterReload();
     
     const afterQuality = player.getPlaybackQuality?.();
     const qualityLabel = player.getPlaybackQualityLabel?.();
@@ -455,6 +516,7 @@ export function destroyVideoQuality() {
   DEBUG && console.info('[VideoQuality] Destroying');
   
   isDestroyed = true;
+  stopPositionRestore();
   
   if (initTimer) {
     clearTimeout(initTimer);
