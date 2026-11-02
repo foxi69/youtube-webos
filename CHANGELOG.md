@@ -4,7 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [0.9.1] - Unreleased
+## [0.9.1] - 2026/11/02
+
+The app is now called **YouTube Foxtended**. An About tab with an update check and What's New after an update, YouTube's "most replayed" graph above the seek bar, the Speed menu on surround videos, and fixes from testing on webOS 25. Ships both packages: `_webOS22+.ipk` for webOS 22 and newer, and the legacy `.ipk` for webOS 3-6.
 
 ## Added
 
@@ -39,10 +41,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Docs
 
++ The banner, the social preview, the panel screenshots in the README and the release titles use the name YouTube Foxtended.
 + The README's Filters table lists Remove AI Videos and Mark AI Videos. Remove AI Videos works on the home screen, browse tabs, search and the lists that continue them, from the second time a video is listed; like the other list filters it leaves playlist pages alone.
 
 ## Build
 
++ Pull requests get an automatic review that only comments (`.coderabbit.yaml`): it does not edit the description, label or commit.
 + CI keeps its artifacts (the test build's .ipk and the coverage report) for 7 days instead of 90, and each run deletes the oldest artifacts once all of them together pass 400 MB, as in MultiUploader's build.
 + A draft or pre-release build shows its commit in the settings heading ("YouTube Foxtended 0.9.1 (a1b2c3d)"), and its release notes end with the same "Build:" line. Publishing a full release builds its packages again from the same commit without it, and takes the line out of the notes. A refreshed pre-release keeps its version, so the commit is what tells one build of it from the next; a tester can quote it in a report.
 
