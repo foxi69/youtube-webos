@@ -8,21 +8,22 @@
   "packages": [
     {
       "id": "youtube.leanback.v4",
-      "title": "YouTube (webOS 22+)",
-      "description": "YouTube AdFree for webOS 22 and newer. Lighter optimized build supporting newer hardware.",
+      "title": "YouTube Foxtended (webOS 22+)",
+      "description": "Ad-free YouTube for webOS 22 and newer, with SponsorBlock, Return YouTube Dislike and DeArrow. The lighter build for newer TVs.",
+      "shortDescription": "Ad-free YouTube for webOS 22 and newer, with SponsorBlock, Return YouTube Dislike and DeArrow. The lighter build for newer TVs.",
       "iconUri": "https://raw.githubusercontent.com/foxi69/youtube-webos/main/assets/icon.png",
       "manifest": {
         "id": "youtube.leanback.v4",
-        "version": "0.9.0",
+        "version": "0.9.1",
         "type": "web",
-        "title": "YouTube (webOS 22+)",
-        "appDescription": "YouTube AdFree for webOS 22 and newer. Lighter optimized build supporting newer hardware.",
+        "title": "YouTube Foxtended (webOS 22+)",
+        "appDescription": "Ad-free YouTube for webOS 22 and newer, with SponsorBlock, Return YouTube Dislike and DeArrow. The lighter build for newer TVs.",
         "iconUri": "https://raw.githubusercontent.com/foxi69/youtube-webos/main/assets/icon.png",
         "sourceUrl": "https://github.com/foxi69/youtube-webos",
         "rootRequired": false,
-        "ipkUrl": "https://github.com/foxi69/youtube-webos/releases/download/v0.9.0/youtube.leanback.v4_0.9.0_all_webOS22%2B.ipk",
+        "ipkUrl": "https://github.com/foxi69/youtube-webos/releases/download/v0.9.1/youtube.leanback.v4_0.9.1_all_webOS22%2B.ipk",
         "ipkHash": {
-          "sha256": "e3f6ad9ea76c76ef28addfb579d87c1241c8987549f589f6b9bf50039b75e7a5"
+          "sha256": "a7d9e5611989ff166f6964e4208ff794ac6cae35259a9220c2780e84560aa10a"
         }
       }
     }

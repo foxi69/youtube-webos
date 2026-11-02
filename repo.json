@@ -8,21 +8,22 @@
   "packages": [
     {
       "id": "youtube.leanback.v4",
-      "title": "YouTube",
-      "description": "YouTube AdFree for webOS 3 and newer, with SponsorBlock, Return YouTube Dislike and DeArrow.",
+      "title": "YouTube Foxtended",
+      "description": "Ad-free YouTube for webOS 3 and newer, with SponsorBlock, Return YouTube Dislike and DeArrow.",
+      "shortDescription": "Ad-free YouTube for webOS 3 and newer, with SponsorBlock, Return YouTube Dislike and DeArrow.",
       "iconUri": "https://raw.githubusercontent.com/foxi69/youtube-webos/main/assets/icon.png",
       "manifest": {
         "id": "youtube.leanback.v4",
-        "version": "0.9.0",
+        "version": "0.9.1",
         "type": "web",
-        "title": "YouTube",
-        "appDescription": "YouTube AdFree for webOS 3 and newer, with SponsorBlock, Return YouTube Dislike and DeArrow.",
+        "title": "YouTube Foxtended",
+        "appDescription": "Ad-free YouTube for webOS 3 and newer, with SponsorBlock, Return YouTube Dislike and DeArrow.",
         "iconUri": "https://raw.githubusercontent.com/foxi69/youtube-webos/main/assets/icon.png",
         "sourceUrl": "https://github.com/foxi69/youtube-webos",
         "rootRequired": false,
-        "ipkUrl": "https://github.com/foxi69/youtube-webos/releases/download/v0.9.0/youtube.leanback.v4_0.9.0_all.ipk",
+        "ipkUrl": "https://github.com/foxi69/youtube-webos/releases/download/v0.9.1/youtube.leanback.v4_0.9.1_all.ipk",
         "ipkHash": {
-          "sha256": "b070c1b7d181d73185698d536f220e983ed0554ea2b998e84884ddd3adda1805"
+          "sha256": "f9486c8269473c60fba2ca3fd33fa8332c591110fc8ff03bb65bf78717b5d638"
         }
       }
     }
