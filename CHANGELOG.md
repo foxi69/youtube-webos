@@ -46,7 +46,7 @@ The app is now called **YouTube Foxtended**. An About tab with an update check a
 
 ## Build
 
-+ The old cone icon (`assets/icon.svg`) is no longer in the packages: nothing used it, and the app and the Homebrew Channel show `icon.png`. An unused SponsorBlock icon (`src/icons/PlayerInfoIconSponsorBlocker.svg`) is removed too.
++ The old cone icon (`assets/icon.svg`) is no longer in the packages: nothing used it, and the app and the Homebrew Channel show `icon.png`. An unused SponsorBlock icon (`src/icons/PlayerInfoIconSponsorBlocker.svg`) is removed too. So are the old local test runner `bench/run-all.sh` (CI runs `bench/ci.sh`) and the two Windows build scripts for the performance monitor.
 + Pull requests that are not drafts get an automatic review that only comments (`.coderabbit.yaml`): it does not edit the description, label or commit.
 + CI keeps its artifacts (the test build's .ipk and the coverage report) for 7 days instead of 90, and each run deletes the oldest artifacts once all of them together pass 400 MB, as in MultiUploader's build.
 + A draft or pre-release build shows its commit in the settings heading ("YouTube Foxtended 0.9.1 (a1b2c3d)"), and its release notes end with the same "Build:" line. Publishing a full release builds its packages again from the same commit without it, and takes the line out of the notes. A refreshed pre-release keeps its version, so the commit is what tells one build of it from the next; a tester can quote it in a report.
