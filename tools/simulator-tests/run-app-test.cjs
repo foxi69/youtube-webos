@@ -14,7 +14,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawn, execSync } = require('child_process');
-const { sleep, youtubePage, client, settingLabels } = require('./cdp.cjs');
+const { sleep, youtubePage, client, js, settingLabels } = require('./cdp.cjs');
 
 const [exe, appArg = 'dist'] = process.argv.slice(2);
 if (!exe) {
@@ -108,7 +108,7 @@ const check = (name, ok, detail) => {
     timeRemainingMode: 'both', showQualityInTitle: true, showQualityOnStart: true,
     showWatchTime: true, clockMode: 'time', hideEndcards: true, enableTrackingBlock: true, markAiVideos: true
   });
-  const presetCode = `try{Object.keys(localStorage).forEach(function(k){if(/^ytaf-configuration/.test(k))localStorage.removeItem(k)});localStorage.setItem('ytaf-configuration',JSON.stringify(${JSON.stringify(preset)}))}catch(e){}`;
+  const presetCode = `try{Object.keys(localStorage).forEach(function(k){if(/^ytaf-configuration/.test(k))localStorage.removeItem(k)});localStorage.setItem('ytaf-configuration',JSON.stringify(${js(preset)}))}catch(e){}`;
   // Every request, to see which services the features reach.
   const requests = [];
   c.on((msg) => {
@@ -138,7 +138,7 @@ const check = (name, ok, detail) => {
   };
   const tvLike = process.env.TV_LIKE !== '0' && simYear && TV[simYear];
   const fixUa = tvLike
-    ? `try{Object.defineProperty(navigator,'userAgent',{get:function(){return ${JSON.stringify(tvLike.ua)}},configurable:true})}catch(e){}`
+    ? `try{Object.defineProperty(navigator,'userAgent',{get:function(){return ${js(tvLike.ua)}},configurable:true})}catch(e){}`
     : simYear
       ? `try{var UA=navigator.userAgent;if(!/webOS\\.TV-\\d{4}/.test(UA))Object.defineProperty(navigator,'userAgent',{get:function(){return UA+' webOS.TV-${simYear}'},configurable:true})}catch(e){}`
       : '';
@@ -342,14 +342,14 @@ const check = (name, ok, detail) => {
     check('the panel opens for the effect tests', !!fxPanel);
     if (fxPanel) {
       const fxSrc = fs.readFileSync(path.join(__dirname, 'effects-page.js'), 'utf8');
-      await evaluate(`window.__ytafDescs=${JSON.stringify(descs)};${fxSrc};true`);
+      await evaluate(`window.__ytafDescs=${js(descs)};${fxSrc};true`);
       const nCases = await evaluate('window.__ytafFx.cases.length');
       const fxResults = [];
       for (let i = 0; i < nCases; i++) {
         const meta = await evaluate(`(function(){var c=__ytafFx.cases[${i}];return {name:c.name,key:c.key,on:c.on,off:c.off,needs:c.needs}})()`);
         const keys = [meta.key].concat(Object.keys(meta.needs));
-        const orig = await evaluate(`(function(){var o={};${JSON.stringify(keys)}.forEach(function(k){o[k]=__ytafFx.get(k)});return o})()`);
-        const setv = async (k, v) => { const r = await evaluate(`__ytafFx.set(${JSON.stringify(k)}, ${JSON.stringify(v)}).then(function(x){return JSON.stringify(x)})`); return typeof r === 'string' ? JSON.parse(r) : r; };
+        const orig = await evaluate(`(function(){var o={};${js(keys)}.forEach(function(k){o[k]=__ytafFx.get(k)});return o})()`);
+        const setv = async (k, v) => { const r = await evaluate(`__ytafFx.set(${js(k)}, ${js(v)}).then(function(x){return JSON.stringify(x)})`); return typeof r === 'string' ? JSON.parse(r) : r; };
         for (const k of Object.keys(meta.needs)) await setv(k, meta.needs[k]);
         const sOff = await setv(meta.key, meta.off);
         const rOff = await evaluate(`(function(){var c=__ytafFx.cases[${i}];var r=c.run();return {r:r,ok:!!c.expectOff(r)}})()`);
@@ -384,15 +384,15 @@ const check = (name, ok, detail) => {
         if (!nTexts) break;
         const keys = [rc.key].concat(Object.keys(rc.needs));
         const orig = {};
-        for (const k of keys) orig[k] = await evaluate(`__ytafFx.get(${JSON.stringify(k)})`);
-        const setv = async (k, v) => evaluate(`__ytafFx.set(${JSON.stringify(k)}, ${JSON.stringify(v)}).then(function(x){return JSON.stringify(x)})`);
+        for (const k of keys) orig[k] = await evaluate(`__ytafFx.get(${js(k)})`);
+        const setv = async (k, v) => evaluate(`__ytafFx.set(${js(k)}, ${js(v)}).then(function(x){return JSON.stringify(x)})`);
         for (const k of Object.keys(rc.needs)) await setv(k, rc.needs[k]);
         await setv(rc.key, rc.off);
         const s0 = await evaluate('__ytafFx.replay()');
         let on = rc.on;
         let pick = null;
-        if (on === '@channel') { pick = await evaluate(`__ytafFx.top(${JSON.stringify(s0.channels)})`); on = pick ? [pick] : []; }
-        if (on === '@word') { pick = await evaluate(`__ytafFx.top(${JSON.stringify(s0.words)})`); on = pick ? [pick] : []; }
+        if (on === '@channel') { pick = await evaluate(`__ytafFx.top(${js(s0.channels)})`); on = pick ? [pick] : []; }
+        if (on === '@word') { pick = await evaluate(`__ytafFx.top(${js(s0.words)})`); on = pick ? [pick] : []; }
         await setv(rc.key, on);
         const s1 = await evaluate('__ytafFx.replay()');
         for (const k of keys) await setv(k, orig[k] === undefined ? (k === rc.key ? rc.off : rc.needs[k]) : orig[k]);
@@ -413,16 +413,16 @@ const check = (name, ok, detail) => {
       const visibleFx = [];
       for (const k of descKeys) {
         if (skip.includes(k) || caseKeys.includes(k)) continue;
-        const type = await evaluate(`__ytafFx.find(${JSON.stringify(k)})`);
+        const type = await evaluate(`__ytafFx.find(${js(k)})`);
         if (type !== 'bool' && type !== 'cycle') { visibleFx.push({ key: k, type, note: 'no bool/cycle control' }); continue; }
-        const v0 = await evaluate(`JSON.stringify(__ytafFx.get(${JSON.stringify(k)}))`);
+        const v0 = await evaluate(`JSON.stringify(__ytafFx.get(${js(k)}))`);
         const f0 = await evaluate('JSON.stringify(__ytafFx.fp())');
         const exBefore = exceptions.length;
-        await evaluate(`__ytafFx.step(${JSON.stringify(k)})`);
+        await evaluate(`__ytafFx.step(${js(k)})`);
         await sleep(900);
-        const v1 = await evaluate(`JSON.stringify(__ytafFx.get(${JSON.stringify(k)}))`);
+        const v1 = await evaluate(`JSON.stringify(__ytafFx.get(${js(k)}))`);
         const f1 = await evaluate('JSON.stringify(__ytafFx.fp())');
-        await evaluate(`__ytafFx.set(${JSON.stringify(k)}, ${v0 === undefined ? 'undefined' : v0})`);
+        await evaluate(`__ytafFx.set(${js(k)}, ${v0 === undefined ? 'undefined' : js(JSON.parse(v0))})`);
         await sleep(600);
         const f2 = await evaluate('JSON.stringify(__ytafFx.fp())');
         const a = JSON.parse(f0); const b = JSON.parse(f1); const c2 = JSON.parse(f2);
@@ -448,7 +448,7 @@ const check = (name, ok, detail) => {
       const ovResults = [];
       const panelSet = async (k, v) => {
         if (!(await evaluate(panelOpen))) { await key(404, 'Green'); await waitFor(panelOpen, 10000); }
-        const r = await evaluate(`__ytafFx.set(${JSON.stringify(k)}, ${JSON.stringify(v)}).then(function(x){return JSON.stringify(x)})`);
+        const r = await evaluate(`__ytafFx.set(${js(k)}, ${js(v)}).then(function(x){return JSON.stringify(x)})`);
         return typeof r === 'string' ? JSON.parse(r) : r;
       };
       // Closed for sure before the next key: on a slowed-down CPU the panel can
@@ -477,7 +477,7 @@ const check = (name, ok, detail) => {
       for (const oc of overlayCases) {
         const keys = [oc.key].concat(Object.keys(oc.needs || {}));
         const orig = {};
-        for (const k of keys) orig[k] = await evaluate(`__ytafFx.get(${JSON.stringify(k)})`);
+        for (const k of keys) orig[k] = await evaluate(`__ytafFx.get(${js(k)})`);
         for (const k of Object.keys(oc.needs || {})) await panelSet(k, oc.needs[k]);
         await panelSet(oc.key, oc.off);
         await closePanel();

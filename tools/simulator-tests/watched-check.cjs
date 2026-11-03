@@ -9,7 +9,7 @@
 //   node watched-check.cjs [port]
 const fs = require('fs');
 const path = require('path');
-const { sleep, youtubePage, client, settingLabels } = require('./cdp.cjs');
+const { sleep, youtubePage, client, js, settingLabels } = require('./cdp.cjs');
 const port = process.argv[2] || 9229;
 
 (async () => {
@@ -17,7 +17,7 @@ const port = process.argv[2] || 9229;
   if (!t) throw new Error('no YouTube page on port ' + port);
   const c = client(t.webSocketDebuggerUrl);
   const ev = c.evaluate;
-  await ev(`window.__ytafDescs=${JSON.stringify(settingLabels())};${fs.readFileSync(path.join(__dirname, 'effects-page.js'), 'utf8')};window.__ytafReal.texts=[];true`);
+  await ev(`window.__ytafDescs=${js(settingLabels())};${fs.readFileSync(path.join(__dirname, 'effects-page.js'), 'utf8')};window.__ytafReal.texts=[];true`);
 
   console.log('opening the History...');
   await ev('location.hash=\'#/browse?c=FEhistory\';true');
@@ -26,7 +26,7 @@ const port = process.argv[2] || 9229;
 
   await c.key(404, 'Green');
   await sleep(3000);
-  const set = (k, v) => ev(`__ytafFx.set(${JSON.stringify(k)}, ${JSON.stringify(v)}).then(function(r){return JSON.stringify(r)})`);
+  const set = (k, v) => ev(`__ytafFx.set(${js(k)}, ${js(v)}).then(function(r){return JSON.stringify(r)})`);
   const compare = async (name) => {
     await set('hideWatchedVideos', false);
     const off = await ev('__ytafFx.replay()');

@@ -67,6 +67,10 @@ function client(wsUrl) {
 // account screens take, where real CDP keys and pointer clicks do not get through.
 const PAGE_KEY = 'function k(code,name){[\'keydown\',\'keyup\'].forEach(function(t){var e=new KeyboardEvent(t,{bubbles:true,cancelable:true,key:name,code:name});Object.defineProperty(e,\'keyCode\',{get:function(){return code}});Object.defineProperty(e,\'which\',{get:function(){return code}});document.body.dispatchEvent(e)})}';
 
+// A value as a JavaScript literal, to put into the code sent to the page:
+// JSON with the characters that could end a script or a line escaped.
+const js = (v) => JSON.stringify(v).replace(/[<>/\u2028\u2029]/g, (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
+
 // The settings panel's labels (config.js), key -> label: effects-page.js
 // finds each setting's control by them.
 function settingLabels() {
@@ -76,7 +80,7 @@ function settingLabels() {
   return out;
 }
 
-module.exports = { sleep, targets, youtubePage, client, PAGE_KEY, settingLabels };
+module.exports = { sleep, targets, youtubePage, client, PAGE_KEY, js, settingLabels };
 
 if (require.main === module) {
   const [port, cmd, ...rest] = process.argv.slice(2);
