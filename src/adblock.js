@@ -924,8 +924,12 @@ function applySchemaFilters(data, responseType, config) {
       }
       if (config.hideRecommended && responseType === 'NEXT') hideRecommendedVideos(data, schema);
       // The videos beside and under the player go through the item filters
-      // and rewrites too.
-      if (config.hideGuestPrompts || config.feedFilters || config.decorateItems) {
+      // and rewrites too: every filter shouldDropItem() applies, each on its
+      // own (Remove AI Videos, Remove Shorts and the Live / Upcoming /
+      // Members-only badges were missing, so they did nothing there unless a
+      // feed filter was on as well).
+      if (config.hideGuestPrompts || config.feedFilters || config.decorateItems ||
+          config.removeAiVideos || config.removeGlobalShorts || config.badgeMask) {
          let pivotContents = getByPath(data, schema?.pivotPath);
          if (!pivotContents) {
             pivotContents = findObjects(data, ['pivot'], 8).pivot?.sectionListRenderer?.contents;
