@@ -27,21 +27,32 @@ const port = process.argv[2] || 9229;
   await c.key(404, 'Green');
   await sleep(3000);
   const set = (k, v) => ev(`__ytafFx.set(${js(k)}, ${js(v)}).then(function(r){return JSON.stringify(r)})`);
-  const compare = async (name) => {
+  // a) the History keeps its watched videos: the count stays; b) as the home
+  // feed the filter takes them out: the count drops. Exit 1 when one does
+  // not, or when there are no watched videos to tell.
+  const compare = async (name, keepsWatched) => {
     await set('hideWatchedVideos', false);
     const off = await ev('__ytafFx.replay()');
     await set('hideWatchedVideos', true);
     const on = await ev('__ytafFx.replay()');
     console.log(`${name}: watched videos ${off.watched} -> ${on.watched} (videos ${off.items} -> ${on.items})`);
     console.log('   left:', JSON.stringify(((on.samples || {}).watched || []).slice(0, 6)));
+    if (typeof off.watched !== 'number' || typeof on.watched !== 'number' || off.watched === 0) {
+      console.log('   INCONCLUSIVE: no watched videos in the responses (an account with a watch history?)');
+      process.exitCode = 1;
+      return;
+    }
+    const pass = keepsWatched ? on.watched === off.watched : on.watched < off.watched;
+    console.log(pass ? '   PASS' : '   FAIL: ' + (keepsWatched ? 'the History lost watched videos' : 'the filter did not take the watched videos out'));
+    if (!pass) process.exitCode = 1;
   };
   // The two settings as they were, afterwards, also when a step fails.
   const before = { enableAdBlock: await ev('__ytafFx.get("enableAdBlock")'), hideWatchedVideos: await ev('__ytafFx.get("hideWatchedVideos")') };
   try {
     await set('enableAdBlock', true);
-    await compare('a) History as sent');
+    await compare('a) History as sent', true);
     await ev('(function(){var R=window.__ytafReal;R.texts=R.texts.map(function(t){return t.split(\'FEhistory\').join(\'FEwhat_to_watch\')});return 1})()');
-    await compare('b) the same, as the home feed');
+    await compare('b) the same, as the home feed', false);
   } finally {
     for (const k of Object.keys(before)) if (typeof before[k] === 'boolean') await set(k, before[k]);
     c.close();

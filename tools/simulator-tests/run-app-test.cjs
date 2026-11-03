@@ -384,7 +384,8 @@ const check = (name, ok, detail) => {
       ];
       const realResults = [];
       const nTexts = await evaluate('(window.__ytafReal&&window.__ytafReal.texts.length)||0');
-      log(`real YouTube responses kept for the replay: ${nTexts}`);
+      // None kept would leave the real-data checks out without a word.
+      check('real data: YouTube responses kept for the replay', nTexts > 0, `${nTexts} kept`);
       for (const rc of realCases) {
         if (!nTexts) break;
         const keys = [rc.key].concat(Object.keys(rc.needs));

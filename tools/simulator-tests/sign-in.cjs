@@ -19,12 +19,22 @@ const port = process.argv[2] || 9229;
   }
   await c.evaluate('location.hash=\'#/watch?v=aqz-KE-bpKQ\';1');
   await sleep(8000);
-  const focused = await c.evaluate('(function(){var f=document.querySelectorAll(\'.zylon-focus\');var d=f[f.length-1];return d?(d.innerText||\'\').trim():\'\'})()');
-  // "Add account" is focused first on a profile without accounts. Its label
+  const focusedText = async () => String(await c.evaluate('(function(){var f=document.querySelectorAll(\'.zylon-focus\');var d=f[f.length-1];return d?(d.innerText||\'\').trim():\'\'})()'));
+  const isAdd = (s) => /hozzáadása|add account/i.test(s);
+  // "Add account" is focused first on a profile without accounts; with
+  // accounts, it comes after them: Right along the row, then Down. Its label
   // is matched in English and Hungarian; in another UI language, press OK on
   // it yourself (node cdp.cjs <port> key Enter) and run this again.
   if (/ACCOUNT_SELECTOR/.test(await page())) {
-    if (/hozzáadása|add account/i.test(focused)) {
+    let focused = await focusedText();
+    for (const [code, name, times] of [[39, 'ArrowRight', 8], [40, 'ArrowDown', 4]]) {
+      for (let i = 0; i < times && !isAdd(focused); i++) {
+        await c.evaluate(`(function(){${PAGE_KEY}k(${code},'${name}');return 1})()`);
+        await sleep(600);
+        focused = await focusedText();
+      }
+    }
+    if (isAdd(focused)) {
       await ok();
       await sleep(5000);
     } else {
