@@ -16,6 +16,7 @@
  *
  * Built into one HTML file by build.cjs. Written for Chromium 38 (webOS 3).
  */
+/* global window, document, MediaSource */
 import '../../src/polyfills.js';
 import { WsolaStretcher } from '../../src/speed/wsola.js';
 
@@ -143,7 +144,7 @@ function decodeCtx(rate, channels) {
     if (!offline[key]) {
       try {
         offline[key] = new OAC(channels, rate, rate);
-      } catch (e) {
+      } catch {
         offline[key] = null;
       }
     }
@@ -671,7 +672,7 @@ function stop() {
   if (!playing) return;
   try {
     (playing.stop || playing.noteOff).call(playing, 0);
-  } catch (e) {
+  } catch {
     // already ended
   }
   playing = null;
