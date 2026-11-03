@@ -419,6 +419,9 @@ npm run build:modern && npm run package      # webOS 22+ build (lighter)
 Both commands create `dist/youtube.leanback.v4_<version>_all.ipk`. Rename the webOS 22+ one to
 `..._all_webOS22+.ipk` if you keep both. On Windows, `build-local.cmd` and `build-local modern.cmd` do all of it.
 
+`npm test` runs the checks in `bench/`. To try a build on each webOS version in LG's webOS TV Simulators, see
+[tools/simulator-tests](tools/simulator-tests/README.md).
+
 <details>
 <summary id="development-tv-setup"><b>Development TV setup</b></summary>
 
