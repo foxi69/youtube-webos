@@ -33,6 +33,7 @@ run module-behaviour-test "$B"
 run panel-test "$B"
 run per-account-test "$B"
 run feed-features-test "$B"
+run pivot-filters-test "$B"
 run dearrow-test "$B" legacy
 run ai-label-test
 run most-replayed-test
