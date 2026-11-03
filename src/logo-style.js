@@ -10,15 +10,19 @@
  * absolute `left` that is calculated from that width, so swapping the image
  * alone leaves it misaligned. Both values are set together.
  *
- * Applied at startup and again on each page change, for a few seconds each
- * time: picking an account repaints the header with YouTube's own wordmark.
- * No observer is left running afterwards.
+ * Every style is a static stylesheet rule gated by a class on <html>, as
+ * Hidden always was (its rule is in initGlobalStyles() in ui.js). YouTube
+ * repaints the header with its own wordmark - after "Who's watching", and
+ * when the app comes back from the background or after a long idle - and an
+ * !important rule wins over the inline style it writes, so the chosen
+ * wordmark survives every repaint without a poll or an observer. Writing the
+ * element's own style did not: it was lost on a repaint that came with no
+ * page change (NicholasBly/youtube-webos#214, fork watch #96).
  */
 import { configRead, configAddChangeListener } from './config.js';
 
-const LOGO_SELECTOR = 'ytlr-logo-entity';
-const IMAGE_SELECTOR = 'ytlr-thumbnail-details';
 const HIDDEN_CLASS = 'ytaf-hide-logo';
+const STYLE_ID = 'ytaf-logo-style';
 
 const LOGO_VARIANTS = {
   default: {
@@ -33,60 +37,36 @@ const LOGO_VARIANTS = {
   }
 };
 
-const MAX_WAIT_MS = 15000;
-const POLL_MS = 500;
+const variantClass = (name) => `ytaf-logo-${name}`;
 
-let pollTimer = null;
-
-function applyToElement(logo, style) {
-  // 'hidden' is handled by a CSS class on <html> so it survives re-renders
-  // without us touching the element at all.
-  document.documentElement.classList.toggle(HIDDEN_CLASS, style === 'hidden');
-  if (style === 'hidden') return true;
-
-  const variant = LOGO_VARIANTS[style] || LOGO_VARIANTS.default;
-  const image = logo.querySelector(IMAGE_SELECTOR);
-  if (!image) return false;
-
-  // Only write when something actually differs: this can be re-entered from a
-  // settings change while the panel is open.
-  const nextUrl = `url("${variant.url}")`;
-  if (image.style.backgroundImage !== nextUrl) image.style.backgroundImage = nextUrl;
-  if (logo.style.left !== variant.left) logo.style.left = variant.left;
-  if (logo.style.width !== variant.width) logo.style.width = variant.width;
-  return true;
+function logoCss() {
+  return Object.keys(LOGO_VARIANTS).map((name) => {
+    const v = LOGO_VARIANTS[name];
+    const scope = `html.${variantClass(name)} ytlr-logo-entity`;
+    return `${scope} { left: ${v.left} !important; width: ${v.width} !important; }\n` +
+      `${scope} ytlr-thumbnail-details { background-image: url("${v.url}") !important; }`;
+  }).join('\n');
 }
 
-/** Apply the configured style now, if the header exists yet. */
+function injectStyles() {
+  if (document.getElementById(STYLE_ID)) return;
+  const style = document.createElement('style');
+  style.id = STYLE_ID;
+  style.textContent = logoCss();
+  (document.head || document.documentElement).appendChild(style);
+}
+
+/** Apply the configured style: one class on <html>, read by the stylesheet. */
 export function applyLogoStyle() {
   const style = configRead('logoStyle');
-  document.documentElement.classList.toggle(HIDDEN_CLASS, style === 'hidden');
-  if (style === 'hidden') return true;
-
-  const logo = document.querySelector(LOGO_SELECTOR);
-  if (!logo) return false;
-  return applyToElement(logo, style);
-}
-
-// Keeps applying for a while instead of stopping at the first success: after
-// "Who's watching" YouTube repaints the header with its own wordmark. A short
-// poll rather than a MutationObserver left on the document for the session.
-function applyFor(ms) {
-  const deadline = Date.now() + ms;
-  if (pollTimer) clearInterval(pollTimer);
-  applyLogoStyle();
-  pollTimer = setInterval(() => {
-    applyLogoStyle();
-    if (Date.now() > deadline) {
-      clearInterval(pollTimer);
-      pollTimer = null;
-    }
-  }, POLL_MS);
+  const root = document.documentElement.classList;
+  root.toggle(HIDDEN_CLASS, style === 'hidden');
+  const variant = style === 'hidden' ? null : (LOGO_VARIANTS[style] ? style : 'default');
+  for (const name of Object.keys(LOGO_VARIANTS)) root.toggle(variantClass(name), name === variant);
 }
 
 export function initLogoStyle() {
-  applyFor(MAX_WAIT_MS);
+  injectStyles();
+  applyLogoStyle();
   configAddChangeListener('logoStyle', () => applyLogoStyle());
-  // A page change covers picking an account, which repaints the header.
-  window.addEventListener('ytaf-page-update', () => applyFor(5000));
 }

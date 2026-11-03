@@ -17,7 +17,7 @@ export const segmentTypes = {
  * YouTube ships two wordmarks and swaps between them based on the account's
  * Premium status. Both are the same asset family, so switching is a matter of
  * pointing at the other file and matching its intrinsic width - see
- * applyLogoStyle() in ui.js.
+ * logo-style.js.
  */
 /** Settings panel themes, in the order the Theme control and the logo cycle them. */
 export const uiThemes = {

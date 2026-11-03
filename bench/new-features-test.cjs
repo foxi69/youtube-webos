@@ -79,37 +79,68 @@ const shelfItems = (r) => r.contents.tvBrowseRenderer.content.tvSurfaceContentRe
 
 (async () => {
   // ---------- 1. Logo selector ----------
-  for (const [style, expectUrl, expectLeft, expectWidth] of [
-    ['default', DEFAULT_URL, '66.375rem', '10.125rem'],
-    ['premium', PREMIUM_URL, '65.75rem', '10.75rem']
-  ]) {
-    const { win } = boot({ logoStyle: style }, LOGO_HTML);
-    await wait(400);
+  // The wordmark comes from a stylesheet rule gated by a class on <html>, so
+  // what counts is the computed style: it must beat the inline style YouTube
+  // writes, also on a header YouTube paints again later.
+  const shown = (win) => {
     const logo = win.document.querySelector('ytlr-logo-entity');
     const img = logo.querySelector('ytlr-thumbnail-details');
-    t(`[logo:${style}] correct wordmark`, img.style.backgroundImage.indexOf(expectUrl) !== -1,
-      img.style.backgroundImage);
-    t(`[logo:${style}] left repositioned`, logo.style.left === expectLeft, logo.style.left);
-    t(`[logo:${style}] width matches the asset`, logo.style.width === expectWidth, logo.style.width);
+    const ls = win.getComputedStyle(logo);
+    return { url: win.getComputedStyle(img).backgroundImage, left: ls.left, width: ls.width };
+  };
+  // jsdom computes rem at 16px: 66.375rem = 1062px, 10.125rem = 162px,
+  // 65.75rem = 1052px, 10.75rem = 172px.
+  for (const [style, expectUrl, expectLeft, expectWidth] of [
+    ['default', DEFAULT_URL, '1062px', '162px'],
+    ['premium', PREMIUM_URL, '1052px', '172px']
+  ]) {
+    // The fixture is YouTube's default wordmark; for Premium, start from the
+    // other one so the rule has something to beat.
+    const html = style === 'default' ? LOGO_HTML.split(DEFAULT_URL).join(PREMIUM_URL)
+      .replace('left: 66.375rem; width: 10.125rem;', 'left: 65.75rem; width: 10.75rem;') : LOGO_HTML;
+    const { win } = boot({ logoStyle: style }, html);
+    await wait(50);
+    const s = shown(win);
+    t(`[logo:${style}] correct wordmark`, s.url.indexOf(expectUrl) !== -1, s.url);
+    t(`[logo:${style}] left repositioned`, s.left === expectLeft, s.left);
+    t(`[logo:${style}] width matches the asset`, s.width === expectWidth, s.width);
     t(`[logo:${style}] not hidden`,
       !win.document.documentElement.classList.contains('ytaf-hide-logo'));
+    t(`[logo:${style}] YouTube's element is not written`,
+      win.document.querySelector('ytlr-thumbnail-details').style.backgroundImage.indexOf(expectUrl) === -1);
   }
   {
     const { win } = boot({ logoStyle: 'hidden' }, LOGO_HTML);
-    await wait(400);
-    t('[logo:hidden] hide class applied',
-      win.document.documentElement.classList.contains('ytaf-hide-logo'));
+    await wait(50);
+    const cl = win.document.documentElement.classList;
+    t('[logo:hidden] hide class applied', cl.contains('ytaf-hide-logo'));
+    t('[logo:hidden] no wordmark class', !cl.contains('ytaf-logo-default') && !cl.contains('ytaf-logo-premium'));
   }
   {
-    // Header not painted yet at startup: must still apply once it appears.
+    // Header not painted yet at startup, and painted again later with
+    // YouTube's own wordmark long after any page change (app resumed, idle):
+    // nothing has to run again for the rule to hold.
     const { win } = boot({ logoStyle: 'premium' }, '');
-    await wait(300);
+    await wait(50);
     const app = win.document.querySelector('ytlr-app');
     app.innerHTML = LOGO_HTML;
-    await wait(900);
-    const img = win.document.querySelector('ytlr-thumbnail-details');
-    t('[logo] applied to a header that appears late',
-      img.style.backgroundImage.indexOf(PREMIUM_URL) !== -1, img.style.backgroundImage);
+    t('[logo] applied to a header that appears late', shown(win).url.indexOf(PREMIUM_URL) !== -1, shown(win).url);
+    await wait(20);
+    app.innerHTML = '';
+    win.document.dispatchEvent(new win.Event('visibilitychange'));
+    app.innerHTML = LOGO_HTML;
+    const s = shown(win);
+    t('[logo] holds on a header repainted without a page change',
+      s.url.indexOf(PREMIUM_URL) !== -1 && s.left === '1052px' && s.width === '172px', JSON.stringify(s));
+  }
+  {
+    // One wordmark class on <html>, and one stylesheet.
+    const { win } = boot({ logoStyle: 'premium' }, LOGO_HTML);
+    await wait(50);
+    const cl = win.document.documentElement.classList;
+    t('[logo] one wordmark class at a time',
+      cl.contains('ytaf-logo-premium') && !cl.contains('ytaf-logo-default'));
+    t('[logo] stylesheet injected once', win.document.querySelectorAll('#ytaf-logo-style').length === 1);
   }
 
   // ---------- 2. Live filter ----------

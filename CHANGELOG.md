@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+## Fixes
+
++ YouTube Logo: the Premium (or Default) wordmark stays when the app comes back from the background or after a long idle. YouTube then drew the header again with its own wordmark, and it stayed until the next page change. The wordmark is now set by a stylesheet rule, as Hidden always was, which wins over YouTube's own each time it draws the header; nothing polls for it any more. From NicholasBly/youtube-webos#214 (fork watch #96).
+
 ## [0.9.1] - 2026/11/02
 
 The app is now called **YouTube Foxtended**. An About tab with an update check and What's New after an update, YouTube's "most replayed" graph above the seek bar, the Speed menu on surround videos, and fixes from testing on webOS 25. Ships both packages: `_webOS22+.ipk` for webOS 22 and newer, and the legacy `.ipk` for webOS 3-6.
