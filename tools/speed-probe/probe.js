@@ -104,6 +104,7 @@ window.onerror = (msg, src, line) => {
   r('ERROR', `${msg} (line ${line})`, 'bad');
   summary.err = String(msg).slice(0, 40);
   showSummary();
+  report('SCRIPT-ERROR');
 };
 
 const now = () => (window.performance && performance.now ? performance.now() : Date.now());
@@ -707,6 +708,34 @@ function setupButtons() {
   buttons[0].focus();
 }
 
+/**
+ * For unattended runs (the webOS TV Simulator): when the page sets
+ * window.PROBE_REPORT to a URL, the results are posted there as text when the
+ * run ends. A plain-text POST needs no CORS preflight from a file:// page.
+ */
+function report(state) {
+  const url = window.PROBE_REPORT;
+  if (!url) return;
+  const lines = [`${state} | ${$('summary').textContent}`];
+  const rows = resultsEl.querySelectorAll('tr');
+  for (let i = 0; i < rows.length; i++) lines.push(rows[i].textContent ? rowText(rows[i]) : '');
+  try {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url, true);
+    xhr.setRequestHeader('Content-Type', 'text/plain');
+    xhr.send(lines.join('\n'));
+  } catch {
+    // nothing to report to
+  }
+}
+
+function rowText(tr) {
+  const cells = tr.children;
+  const out = [];
+  for (let i = 0; i < cells.length; i++) out.push(cells[i].textContent);
+  return out.join(' | ');
+}
+
 function run() {
   setupButtons();
   showSummary();
@@ -718,11 +747,13 @@ function run() {
       setStatus('Done. A photo of the orange box is enough (the table has the details). Then try the buttons.');
       $('done').style.display = 'block';
       showSummary();
+      report('DONE');
     })
     .catch((e) => {
       row('Probe')('ERROR', String((e && e.message) || e), 'bad');
       setStatus('Stopped on an error. Take a photo of the screen.');
       showSummary();
+      report('ERROR');
     });
 }
 
@@ -730,6 +761,7 @@ if (!AC) {
   setStatus('This browser has no Web Audio: playback speed cannot work here.');
   summary.ac = 0;
   showSummary();
+  report('NO-AUDIO');
 } else {
   run();
 }
