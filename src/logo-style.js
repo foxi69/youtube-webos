@@ -61,7 +61,9 @@ export function applyLogoStyle() {
   const style = configRead('logoStyle');
   const root = document.documentElement.classList;
   root.toggle(HIDDEN_CLASS, style === 'hidden');
-  const variant = style === 'hidden' ? null : (LOGO_VARIANTS[style] ? style : 'default');
+  // Own keys only: an inherited name (toString) is not a wordmark.
+  const known = Object.prototype.hasOwnProperty.call(LOGO_VARIANTS, style);
+  const variant = style === 'hidden' ? null : (known ? style : 'default');
   for (const name of Object.keys(LOGO_VARIANTS)) root.toggle(variantClass(name), name === variant);
 }
 

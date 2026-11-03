@@ -115,6 +115,16 @@ const shelfItems = (r) => r.contents.tvBrowseRenderer.content.tvSurfaceContentRe
     const cl = win.document.documentElement.classList;
     t('[logo:hidden] hide class applied', cl.contains('ytaf-hide-logo'));
     t('[logo:hidden] no wordmark class', !cl.contains('ytaf-logo-default') && !cl.contains('ytaf-logo-premium'));
+    t('[logo:hidden] logo rendered hidden',
+      win.getComputedStyle(win.document.querySelector('ytlr-logo-entity')).visibility === 'hidden');
+  }
+  {
+    // A stored value that is not a wordmark falls back to Default, also one
+    // that names an inherited property.
+    const { win } = boot({ logoStyle: 'toString' }, LOGO_HTML);
+    await wait(50);
+    t('[logo] unknown value shows the Default wordmark', shown(win).url.indexOf(DEFAULT_URL) !== -1 &&
+      win.document.documentElement.classList.contains('ytaf-logo-default'), shown(win).url);
   }
   {
     // Header not painted yet at startup, and painted again later with
