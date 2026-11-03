@@ -56,6 +56,19 @@ function liveLockup(id) {
 function short(id) {
   return { reelItemRenderer: { videoId: id, navigationEndpoint: { reelWatchEndpoint: { videoId: id } } } };
 }
+// A premiere waiting to start: the time status says UPCOMING.
+function upcomingTile(id) {
+  const t = tile(id);
+  t.tileRenderer.header.tileHeaderRenderer.thumbnailOverlays = [{ thumbnailOverlayTimeStatusRenderer: { style: 'UPCOMING' } }];
+  return t;
+}
+// A members-only video: the badge in the lockup's metadata row.
+function membersLockup(id) {
+  return { lockupViewModel: { contentId: id, contentType: 'LOCKUP_CONTENT_TYPE_VIDEO',
+    metadata: { lockupMetadataViewModel: { metadata: { contentMetadataViewModel: { metadataRows: [
+      { badges: [{ badgeViewModel: { badgeStyle: 'BADGE_STYLE_TYPE_MEMBERS_ONLY' } }] }] } } } },
+    rendererContext: { commandContext: { onTap: { innertubeCommand: { watchEndpoint: { videoId: id } } } } } } };
+}
 
 // A watch-next response: a row of videos beside the player.
 function next() {
@@ -64,7 +77,8 @@ function next() {
     currentVideoEndpoint: { watchEndpoint: { videoId: 'current0001' } },
     contents: { singleColumnWatchNextResults: { pivot: { sectionListRenderer: { contents: [
       { shelfRenderer: { title: { runs: [{ text: 'Up next' }] }, content: { horizontalListRenderer: { items: [
-        tile('plainvideo1'), tile('aivideo0001'), short('shortvideo1'), liveLockup('livevideo01'), tile('plainvideo2')
+        tile('plainvideo1'), tile('aivideo0001'), short('shortvideo1'), liveLockup('livevideo01'),
+        upcomingTile('upcoming001'), membersLockup('members0001'), tile('plainvideo2')
       ] } } } }
     ] } } } }
   };
@@ -79,26 +93,32 @@ const t = (name, ok, extra) => {
   else { fail++; console.log('FAIL ' + name + (extra ? '\n     ' + extra : '')); }
 };
 
+const ALL = ['plainvideo1', 'aivideo0001', 'shortvideo1', 'livevideo01', 'upcoming001', 'members0001', 'plainvideo2'];
 const cases = [
   ['Remove AI Videos alone drops the learned AI video beside the player', { removeAiVideos: true }, 'aivideo0001'],
   ['Remove Shorts alone drops the Short beside the player', { removeGlobalShorts: true }, 'shortvideo1'],
-  ['Remove Live Videos alone drops the live video beside the player', { removeLiveVideos: true }, 'livevideo01']
+  ['Remove Live Videos alone drops the live video beside the player', { removeLiveVideos: true }, 'livevideo01'],
+  ['Remove Upcoming Videos alone drops the premiere beside the player', { removeUpcomingVideos: true }, 'upcoming001'],
+  ['Remove Members-Only Videos alone drops the members-only video beside the player', { removeMembersOnly: true }, 'members0001']
 ];
+// Exactly its own video goes: every other one, special or plain, stays.
 for (const [name, cfg, gone] of cases) {
   const { parse, errors } = boot(cfg, ['aivideo0001']);
   const ids = idsBeside(parse(next()));
-  t(name, ids.indexOf(gone) === -1 && ids.indexOf('plainvideo1') !== -1 && ids.indexOf('plainvideo2') !== -1, ids.join(','));
+  const expected = ALL.filter((id) => id !== gone);
+  t(name, JSON.stringify(ids) === JSON.stringify(expected), ids.join(','));
   t(name + ': no page errors', errors.length === 0, errors.join(' | '));
 }
 {
   const { parse } = boot({}, ['aivideo0001']);
   const ids = idsBeside(parse(next()));
-  t('with these filters off every video beside the player stays', ids.length === 5, ids.join(','));
+  t('with these filters off every video beside the player stays', JSON.stringify(ids) === JSON.stringify(ALL), ids.join(','));
 }
 {
-  const { parse } = boot({ enableAdBlock: false, removeAiVideos: true, removeGlobalShorts: true, removeLiveVideos: true }, ['aivideo0001']);
+  const { parse } = boot({ enableAdBlock: false, removeAiVideos: true, removeGlobalShorts: true, removeLiveVideos: true,
+    removeUpcomingVideos: true, removeMembersOnly: true }, ['aivideo0001']);
   const ids = idsBeside(parse(next()));
-  t('with Ad Blocking off they do nothing, as elsewhere', ids.length === 5, ids.join(','));
+  t('with Ad Blocking off they do nothing, as elsewhere', JSON.stringify(ids) === JSON.stringify(ALL), ids.join(','));
 }
 
 console.log(`${pass} passed, ${fail} failed`);
