@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Speed Probe</title>
+<style>
+  html, body { margin: 0; background: #111; color: #eee; font: 20px/1.35 sans-serif; }
+  body { padding: 16px 28px; }
+  h1 { font-size: 30px; margin: 0 0 4px; color: #ff9a3c; }
+  p { margin: 4px 0; color: #bbb; }
+  #summary { margin: 10px 0; padding: 10px 14px; background: #222; border: 2px solid #ff9a3c;
+    font: bold 22px/1.4 monospace; word-wrap: break-word; }
+  #status { margin: 6px 0 10px; color: #ffd27a; min-height: 1.4em; }
+  .buttons { margin: 8px 0; }
+  button { font-size: 20px; padding: 8px 16px; margin: 0 8px 8px 0; background: #333; color: #eee;
+    border: 3px solid #555; border-radius: 8px; }
+  button:focus { border-color: #ff9a3c; background: #4a3420; outline: none; }
+  table { border-collapse: collapse; width: 100%; }
+  th { text-align: left; padding: 10px 6px 4px; color: #ff9a3c; font-size: 21px; }
+  td { padding: 3px 6px; border-top: 1px solid #2a2a2a; vertical-align: top; }
+  td:first-child { width: 28%; }
+  td:nth-child(2) { width: 9%; font-weight: bold; }
+  td:nth-child(3) { color: #bbb; font-size: 18px; word-break: break-all; }
+  .ok { color: #6fdc8c; }
+  .bad { color: #ff6b6b; }
+  #done { display: none; }
+</style>
+</head>
+<body>
+<h1>YouTube Foxtended: playback speed test</h1>
+<p>Checks whether playback speed could work on this TV (issue #97). It only reads and plays sound; it changes nothing on the TV.</p>
+<div id="summary"></div>
+<div id="status">Running…</div>
+<div class="buttons">
+  <button data-act="opus:1">Opus 1x</button>
+  <button data-act="opus:1.25">Opus 1.25x</button>
+  <button data-act="opus:1.5">Opus 1.5x</button>
+  <button data-act="aac:1.5">AAC 1.5x</button>
+  <button data-act="stop">Stop</button>
+</div>
+<p id="done">Listen to each button: is the voice clear, with no clicks, crackles or gaps? Then report what you heard together with the photo.</p>
+<table id="results"></table>
+<script type="application/json" id="samples">/*SAMPLES*/</script>
+<script>/*PROBE*/</script>
+</body>
+</html>
