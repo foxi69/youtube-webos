@@ -35,10 +35,15 @@ const port = process.argv[2] || 9229;
     console.log(`${name}: watched videos ${off.watched} -> ${on.watched} (videos ${off.items} -> ${on.items})`);
     console.log('   left:', JSON.stringify(((on.samples || {}).watched || []).slice(0, 6)));
   };
-  await set('enableAdBlock', true);
-  await compare('a) History as sent');
-  await ev('(function(){var R=window.__ytafReal;R.texts=R.texts.map(function(t){return t.split(\'FEhistory\').join(\'FEwhat_to_watch\')});return 1})()');
-  await compare('b) the same, as the home feed');
-  await set('hideWatchedVideos', false);
-  c.close();
+  // The two settings as they were, afterwards, also when a step fails.
+  const before = { enableAdBlock: await ev('__ytafFx.get("enableAdBlock")'), hideWatchedVideos: await ev('__ytafFx.get("hideWatchedVideos")') };
+  try {
+    await set('enableAdBlock', true);
+    await compare('a) History as sent');
+    await ev('(function(){var R=window.__ytafReal;R.texts=R.texts.map(function(t){return t.split(\'FEhistory\').join(\'FEwhat_to_watch\')});return 1})()');
+    await compare('b) the same, as the home feed');
+  } finally {
+    for (const k of Object.keys(before)) if (typeof before[k] === 'boolean') await set(k, before[k]);
+    c.close();
+  }
 })().catch((e) => { console.error(e); process.exit(1); });

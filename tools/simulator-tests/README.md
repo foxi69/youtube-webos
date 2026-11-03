@@ -35,7 +35,8 @@ built-in `WebSocket`).
    1. Start the simulator: `STOP_AFTER_WATCH=1 node tools/simulator-tests/run-app-test.cjs <simulator .exe> dist`.
    2. Run `node tools/simulator-tests/sign-in.cjs`. It goes to the sign-in
       screen and prints its text with the code. The QR code in the window
-      does the same thing.
+      does the same thing. It finds "Add account" in an English or Hungarian
+      UI; in another language it says what to press.
    3. Enter the code at <https://yt.be/activate>.
    4. Pick the account in the simulator. The tests then take the first
       account tile on "Who's watching".
@@ -50,7 +51,8 @@ npm run build          && cp -r dist dist-legacy   # legacy build (webOS 3 and n
 npm run build:modern   && cp -r dist dist-modern   # webOS 22+ build
 ```
 
-All versions, both builds, with every check:
+All versions, both builds, with every check. The webOS 22+ build is skipped on
+webOS 6.0: it keeps `?.` and `??`, which Chromium 79 cannot run.
 
 ```sh
 LOGO=premium FEATURES=1 EFFECTS=1 node tools/simulator-tests/run-all.cjs --sdk D:/webOS_TV_SDK dist-legacy dist-modern

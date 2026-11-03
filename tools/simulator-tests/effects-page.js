@@ -87,14 +87,13 @@
     } else if (c.type === 'list') {
       let want = value || [];
       // Remove what is not wanted: each entry is a button that removes itself.
+      // Read from the editor, which redraws at once (the stored list only
+      // follows 200 ms later).
       for (let n = 0; n < 50; n++) {
-        let cur = get(key) || [];
-        let extra = cur.filter(function (x) { return want.indexOf(x) === -1; })[0];
-        if (extra === undefined) break;
         let btns = c.el.querySelectorAll('.ytaf-list-entries .ytaf-list-btn');
         let hit = null;
         // Each entry is a button reading "✕ <value>" (ui.js list editor).
-        for (let b = 0; b < btns.length; b++) if (textOf(btns[b]).replace(/^✕\s*/, '') === extra) hit = btns[b];
+        for (let b = 0; b < btns.length && !hit; b++) if (want.indexOf(textOf(btns[b]).replace(/^✕\s*/, '')) === -1) hit = btns[b];
         if (!hit) break;
         hit.click();
         c = find(key);

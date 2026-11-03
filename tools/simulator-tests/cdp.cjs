@@ -7,7 +7,8 @@
 //   node cdp.cjs <port> key <Key> [keyCode]       a real key press (Enter, ArrowUp, Back 461, Green 404)
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const targets = async (port) => (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
+// A stalled endpoint fails after 2 s, so the callers' retry loops go on.
+const targets = async (port) => (await fetch(`http://127.0.0.1:${port}/json/list`, { signal: AbortSignal.timeout(2000) })).json();
 
 // The YouTube page: on webOS 22+ (site isolation) the app's start page makes a
 // new target when it goes to YouTube, so look for the YouTube URL.
@@ -38,7 +39,15 @@ function client(wsUrl) {
     } else if (msg.method) for (const h of handlers) h(msg);
   };
   const ready = new Promise((r, j) => { ws.onopen = r; ws.onerror = j; });
+  // A closed socket (the page or the simulator gone) fails what is pending
+  // and what comes after at once, and tells the handlers ({ method: 'closed' }).
+  ws.onclose = () => {
+    for (const done of waiting.values()) done({ error: { message: 'socket closed' } });
+    waiting.clear();
+    for (const h of handlers) h({ method: 'closed' });
+  };
   const send = (method, params = {}, timeout = 20000) => ready.then(() => new Promise((resolve) => {
+    if (ws.readyState !== WebSocket.OPEN) return resolve({ error: { message: 'socket closed ' + method } });
     const n = ++id;
     const timer = setTimeout(() => { waiting.delete(n); resolve({ error: { message: 'timeout ' + method } }); }, timeout);
     waiting.set(n, (msg) => { clearTimeout(timer); resolve(msg); });

@@ -22,7 +22,13 @@ const simDir = path.join(sdk, 'Simulator');
 const sims = fs.readdirSync(simDir);
 const killSims = () => {
   try { execSync('taskkill /F /T /FI "IMAGENAME eq webOS_TV_*"', { stdio: 'ignore' }); } catch { /* none running */ }
+  // A moment for the DevTools port to close: run-app-test.cjs stops on a busy port.
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 3000);
 };
+// The webOS 22+ build keeps ?. and ??, which webOS 6.0's Chromium 79 cannot
+// parse: that pair is not supported, so it is not run.
+const usesOptionalChaining = (app) =>
+  /[\w)\]]\?\.[A-Z_$]/i.test(fs.readFileSync(path.join(app, 'webOSUserScripts', 'userScript.js'), 'utf8'));
 
 const summary = [];
 for (const v of versions) {
@@ -33,6 +39,10 @@ for (const v of versions) {
   }
   const exe = path.join(simDir, dir, dir + '.exe');
   for (const app of apps) {
+    if (v === '6.0' && usesOptionalChaining(app)) {
+      summary.push([v, path.basename(app), 'skipped: a webOS 22+ build']);
+      continue;
+    }
     const label = `webos${v}-${path.basename(app)}`;
     const env = Object.assign({}, process.env, { LABEL: label });
     if (v === '6.0' && env.TV_LIKE === undefined) env.TV_LIKE = '0';
@@ -50,7 +60,7 @@ for (const v of versions) {
       try { checks = JSON.parse(fs.readFileSync(path.join(out, `${label}-results.json`), 'utf8')).results; } catch { /* none written */ }
       const fails = checks.filter((x) => !x.ok).map((x) => x.name);
       result = (checks.length ? `${checks.length - fails.length}/${checks.length} passed` : `exit ${r.status}`) +
-        (fails.length ? ' | FAIL: ' + fails.join('; ') : '') + (i > 1 ? ` (attempt ${i})` : '');
+        (r.status === 4 ? ' (timed out, incomplete)' : '') + (fails.length ? ' | FAIL: ' + fails.join('; ') : '') + (i > 1 ? ` (attempt ${i})` : '');
       break;
     }
     summary.push([v, path.basename(app), result]);

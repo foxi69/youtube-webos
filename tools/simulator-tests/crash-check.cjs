@@ -6,7 +6,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawn, execSync } = require('child_process');
-const { sleep, youtubePage, client } = require('./cdp.cjs');
+const { sleep, targets, youtubePage, client } = require('./cdp.cjs');
 
 const [exe, appArg, mode, secs = '120'] = process.argv.slice(2);
 const port = process.env.PORT || 9229;
@@ -15,22 +15,33 @@ const t0 = Date.now();
 const at = () => ((Date.now() - t0) / 1000).toFixed(1) + 's';
 
 (async () => {
+  if ((await targets(port).catch(() => [])).length) {
+    console.log(`port ${port} is in use: close the simulator on it, or set PORT`);
+    process.exit(2);
+  }
   const sim = spawn(exe, [appDir, '{}', `--remote-debugging-port=${port}`], { stdio: 'ignore' });
+  let result = 'ALIVE';
+  sim.on('exit', () => { if (result === 'ALIVE') result = 'SIMULATOR EXITED at ' + at(); });
   const t = await youtubePage(port, 60000);
   if (!t) { console.log('the app did not start'); process.exit(2); }
   const c = client(t.webSocketDebuggerUrl);
-  let result = 'ALIVE';
   c.on((msg) => {
     if (msg.method === 'Inspector.targetCrashed') result = 'CRASHED at ' + at();
-    if (msg.method === 'Inspector.detached' && result === 'ALIVE') result = 'CLOSED at ' + at();
+    if ((msg.method === 'Inspector.detached' || msg.method === 'closed') && result === 'ALIVE') result = 'CLOSED at ' + at();
   });
   if (mode === 'with') {
     // As run-app-test.cjs puts it in: at DOMContentLoaded, once.
     const bundle = fs.readFileSync(path.join(appDir, 'webOSUserScripts', 'userScript.js'), 'utf8');
     const wrapped = `(function(){if(window.__ytafInjected||!/youtube\\.com$/.test(location.host))return;window.__ytafInjected=1;function go(){\n${bundle}\n}` +
       'if(document.readyState!==\'loading\'){go();return;}document.addEventListener(\'DOMContentLoaded\',go);})();';
-    await c.send('Page.addScriptToEvaluateOnNewDocument', { source: wrapped });
-    await c.evaluate(wrapped + ';1');
+    const reg = await c.send('Page.addScriptToEvaluateOnNewDocument', { source: wrapped });
+    const ran = await c.evaluate(wrapped + ';1');
+    const failed = (reg.error && reg.error.message) || (ran && ran.__error);
+    if (failed) {
+      console.log('our code could not be put into the page: ' + failed);
+      try { execSync(`taskkill /PID ${sim.pid} /T /F`, { stdio: 'ignore' }); } catch { /* gone */ }
+      process.exit(2);
+    }
   }
   await c.send('Runtime.runIfWaitingForDebugger');
   const end = Date.now() + +secs * 1000;

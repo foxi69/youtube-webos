@@ -14,7 +14,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawn, execSync } = require('child_process');
-const { sleep, youtubePage, client, js, settingLabels } = require('./cdp.cjs');
+const { sleep, targets, youtubePage, client, js, settingLabels } = require('./cdp.cjs');
 
 const [exe, appArg = 'dist'] = process.argv.slice(2);
 if (!exe) {
@@ -44,7 +44,11 @@ const check = (name, ok, detail) => {
 (async () => {
   // The app folder is the simulator's first argument. No throttling when the
   // window is covered or in the background: the tests run while you do other
-  // things.
+  // things. A simulator still on the port would give its page to this run.
+  if ((await targets(port).catch(() => [])).length) {
+    console.error(`port ${port} is in use: close the simulator on it, or set PORT`);
+    process.exit(2);
+  }
   const sim = spawn(exe, [appDir, '{}', `--remote-debugging-port=${port}`, '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows', '--disable-background-timer-throttling'], { stdio: 'ignore' });
   const t = await youtubePage(port, 60000);
   if (!t) throw new Error('the app did not start in the simulator');
@@ -298,7 +302,8 @@ const check = (name, ok, detail) => {
   if (process.env.STOP_AFTER_WATCH === '1') {
     log('stopping here: the simulator stays open on the video (port ' + port + ')');
     c.close();
-    process.exit(0);
+    fs.writeFileSync(path.join(outDir, `${label}-results.json`), JSON.stringify({ results, exceptions, consoleErrors }, null, 2));
+    process.exit(results.some((r) => !r.ok) ? 1 : 0);
   }
 
   // 5. The features on the watch page.
@@ -442,7 +447,7 @@ const check = (name, ok, detail) => {
         { key: 'timeRemainingMode', off: 'off', on: 'both', part: 'timeRemaining', name: 'Show Remaining Time / End Time' },
         { key: 'showMostReplayed', off: false, on: true, part: 'mostReplayed', name: 'Most Replayed graph' },
         { key: 'clockMode', off: 'off', on: 'time', part: 'clocks', name: 'Clock in UI' },
-        { key: 'showWatchTime', off: false, on: true, part: 'clocks', name: 'Watch Time With the Clock', needs: { clockMode: 'time' } },
+        { key: 'showWatchTime', off: false, on: true, part: 'clocks', name: 'Watch Time With the Clock', needs: { clockMode: 'time' }, offShows: true },
         { key: 'showQualityInTitle', off: false, on: true, part: 'qualityTag', name: 'Video Quality Next to the Title' }
       ];
       const ovResults = [];
@@ -488,7 +493,9 @@ const check = (name, ok, detail) => {
         for (const k of keys) if (orig[k] !== undefined) await panelSet(k, orig[k]);
         await closePanel();
         const a = sOff && sOff[oc.part]; const b = sOn && sOn[oc.part];
-        const ok = JSON.stringify(a) !== JSON.stringify(b) && !!b;
+        // Nothing shows when off, except the clock under Watch Time, which
+        // then shows without the watch time.
+        const ok = !!b && (oc.offShows ? JSON.stringify(a) !== JSON.stringify(b) : !a);
         ovResults.push({ name: oc.name, key: oc.key, off: a, on: b, ok });
         check(`overlay: ${oc.name} shows when on, not when off`, ok, `off=${JSON.stringify(a).slice(0, 90)} on=${JSON.stringify(b).slice(0, 90)} | controls up: off ${sOff && sOff.controls} on ${sOn && sOn.controls} | setting: off ${JSON.stringify(sOff && sOff.cfg[oc.key])} on ${JSON.stringify(sOn && sOn.cfg[oc.key])}`);
       }

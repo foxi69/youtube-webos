@@ -51,5 +51,5 @@ async function state() {
   }
   await sleep(3000);
   s = await state();
-  log(s && s.logo === 'PREMIUM' ? 'PASS' : 'FAIL', 'after switching apps and back:', JSON.stringify(s));
+  log(s && s.page === 'WEB_PAGE_TYPE_BROWSE' && !s.hidden && s.logo === 'PREMIUM' ? 'PASS' : 'FAIL', 'after switching apps and back:', JSON.stringify(s));
 })().catch((e) => { console.error(e); process.exit(1); });
