@@ -237,13 +237,13 @@ setTimeout(async () => {
   {
     const { win } = boot('WEB_PAGE_TYPE_BROWSE',
       '<ytlr-logo-entity><ytlr-thumbnail-details></ytlr-thumbnail-details></ytlr-logo-entity>');
-    const img = win.document.querySelector('ytlr-thumbnail-details');
-    await new Promise((r) => setTimeout(r, 600));
-    t('premium logo applied at startup', /premium/.test(img.style.backgroundImage), img.style.backgroundImage);
-    img.style.backgroundImage = 'url("https://www.gstatic.com/youtube/img/branding/livingroom/youtube/wordmark/x.png")';
-    win.dispatchEvent(new win.CustomEvent('ytaf-page-update', { detail: {} }));
-    await new Promise((r) => setTimeout(r, 600));
-    t('premium logo re-applied after a repaint', /premium/.test(img.style.backgroundImage), img.style.backgroundImage);
+    const img = () => win.document.querySelector('ytlr-thumbnail-details');
+    const bg = () => win.getComputedStyle(img()).backgroundImage;
+    await new Promise((r) => setTimeout(r, 50));
+    t('premium logo applied at startup', /premium/.test(bg()), bg());
+    // YouTube repaints the header with its own wordmark, with no page change.
+    img().style.backgroundImage = 'url("https://www.gstatic.com/youtube/img/branding/livingroom/youtube/wordmark/x.png")';
+    t('premium logo holds after a repaint', /premium/.test(bg()), bg());
   }
 
   // ---- Case 7: keyboard Enter submits the search when YouTube types natively (webOS 25) ----
