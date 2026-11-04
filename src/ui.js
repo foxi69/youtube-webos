@@ -1908,6 +1908,10 @@ function handleShortcutAction(action) {
       cycleSleepTimer();
       return;
   }
+  if (action === 'queue_clear') {
+      clearQueue();
+      return;
+  }
   if (action === 'refresh_page') {
       if (isWatchPage() || isShortsPage()) {
           showNotification('Cannot refresh on player pages');
@@ -1946,10 +1950,6 @@ function handleShortcutAction(action) {
 
     case 'queue_next':
         playNextInQueue();
-        break;
-
-    case 'queue_clear':
-        clearQueue();
         break;
 
     case 'speed_up':

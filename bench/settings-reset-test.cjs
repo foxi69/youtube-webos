@@ -11,9 +11,11 @@ const { applyChrome38Downgrade, UA, setUserAgent, dispatchTrusted } = require('.
 const bundlePath = process.argv[2] || 'dist/webOSUserScripts/userScript.js';
 const GREEN = 404;
 const LABEL = 'Reset All Settings';
+const PROFILE_PREFIX = 'ytaf-configuration::';
+const IDENTITY = JSON.stringify({ data: { identityType: 'SIGNED_IN', obfuscatedGaiaId: '1111', accessToken: 'tok' } });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-function boot(cfg) {
+function boot(cfg, storage = {}) {
   const errors = [];
   const vc = new VirtualConsole();
   vc.on('jsdomError', (e) => errors.push(e.message));
@@ -26,6 +28,7 @@ function boot(cfg) {
   win.requestAnimationFrame = () => 0;
   win.cancelAnimationFrame = () => {};
   win.localStorage.setItem('ytaf-configuration', win.JSON.stringify(cfg));
+  for (const [k, v] of Object.entries(storage)) win.localStorage.setItem(k, v);
   applyChrome38Downgrade(win);
   win.fetch = () => Promise.reject(new Error('offline'));
   win.eval(fs.readFileSync(bundlePath, 'utf8'));
@@ -82,10 +85,31 @@ setTimeout(async () => {
     t('no page errors', errors.length === 0, errors.join(' | '));
   }
   {
-    const { button, stored } = boot({ perAccountSettings: true, enableAdBlock: false });
+    const { button, stored } = boot(CHANGED);
+    button.click();
+    await sleep(6300);
+    t('the first press runs out', button.textContent === LABEL, button.textContent);
+    button.click();
+    await sleep(300);
+    t('a press after that counts as the first', /press again/i.test(button.textContent) && stored().enableAdBlock === false,
+      button.textContent + ' ' + stored().enableAdBlock);
+  }
+  {
+    const other = PROFILE_PREFIX + 'other-account';
+    const otherValues = JSON.stringify({ enableAdBlock: false, blockedChannels: ['Theirs'] });
+    const { win, button, stored } = boot({ perAccountSettings: true, enableAdBlock: false, blockedChannels: ['Mine'] },
+      { 'yt.leanback.default::last-identity-used': IDENTITY, [other]: otherValues });
+    await sleep(300);
+    const keys = Object.keys(win.localStorage).filter((k) => k.startsWith(PROFILE_PREFIX) && k !== other);
+    t('the account has its own settings', keys.length === 1, keys.join());
+    t('they start changed', JSON.parse(win.localStorage.getItem(keys[0])).enableAdBlock === false);
     button.click();
     button.click();
     await sleep(300);
+    const own = JSON.parse(win.localStorage.getItem(keys[0]));
+    t('this account\'s settings are back at their defaults', own.enableAdBlock === true && own.blockedChannels.length === 0,
+      JSON.stringify(own).slice(0, 120));
+    t('another account\'s settings are left alone', win.localStorage.getItem(other) === otherValues, win.localStorage.getItem(other));
     t('separate settings for each account stays on', stored().perAccountSettings === true, String(stored().perAccountSettings));
   }
   console.log(`${pass} passed, ${fail} failed`);

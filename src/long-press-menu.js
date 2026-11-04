@@ -110,7 +110,9 @@ function feedbackItems(panel) {
 }
 
 function queueItem(info) {
-  return serviceItem('Add to queue', actionEndpoint('addToQueue', { videoId: info.videoId, title: info.title }));
+  // The ID Play opens: a tile's contentId need not be it.
+  const videoId = info.watchEndpoint.videoId || info.videoId;
+  return serviceItem('Add to queue', actionEndpoint('addToQueue', { videoId, title: info.title }));
 }
 
 function blockChannelItem(info) {

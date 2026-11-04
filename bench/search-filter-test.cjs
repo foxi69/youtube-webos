@@ -12,7 +12,7 @@ const { applyChrome38Downgrade, UA, setUserAgent } = require('./chrome38-env.cjs
 
 const bundlePath = process.argv[2] || 'dist/webOSUserScripts/userScript.js';
 
-function boot(searchUploadDate) {
+function boot(searchUploadDate, enableAdBlock = true) {
   const errors = [];
   const vc = new VirtualConsole();
   vc.on('jsdomError', (e) => errors.push(e.message));
@@ -23,7 +23,7 @@ function boot(searchUploadDate) {
   win.launchParams = '{}';
   win.XMLHttpRequest = class { open(){} send(){} setRequestHeader(){} getResponseHeader(){return null;} addEventListener(){} };
   win.localStorage.setItem('ytaf-configuration', win.JSON.stringify({
-    enableAdBlock: true, enableLegacyEmojiFix: false, enableSponsorBlock: false,
+    enableAdBlock, enableLegacyEmojiFix: false, enableSponsorBlock: false,
     enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false,
     searchUploadDate
   }));
@@ -38,6 +38,11 @@ const t = (name, ok, extra) => {
   else { fail++; console.log('FAIL ' + name + (extra ? '\n     ' + extra : '')); }
 };
 const context = { client: { clientName: 'TVHTML5', clientVersion: '7.20250101.00.00' } };
+
+{
+  const { send } = boot('week', false);
+  t('Ad Blocking off: the search still gets the week filter', send({ context, query: 'nasa' }).params === 'EgIIAw==');
+}
 
 {
   const { send, errors } = boot('week');

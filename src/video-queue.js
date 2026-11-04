@@ -37,7 +37,10 @@ function playNext() {
   // that YouTube takes right after a video ends.
   ResolveCommandRegistry.getInstance()
     .then((registry) => registry.dispatchCommand({ watchEndpoint: { videoId: next.videoId } }))
-    .catch((err) => console.warn('[Queue] Could not play the next video:', err));
+    .catch((err) => {
+      console.warn('[Queue] Could not play the next video:', err);
+      showNotification(`Could not play: ${next.title}`);
+    });
   return true;
 }
 

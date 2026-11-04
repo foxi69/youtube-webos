@@ -252,10 +252,11 @@ const ids = (r) => itemsOf(r).map((i) => (i.tileRenderer || i.lockupViewModel).c
   {
     const played = [];
     const yttv = () => ({ resolver: Object.assign(function Resolver() {}, { instance: { resolveCommand: (cmd) => {
+      if (cmd.watchEndpoint?.videoId === 'failing0001') throw new Error('refused');
       if (cmd.watchEndpoint) played.push(cmd.watchEndpoint.videoId);
       return 'original';
     } } }) });
-    const { win, parse } = boot({ extendLongPressMenu: true },
+    const { win, parse } = boot({ extendLongPressMenu: true, shortcut_key_1: 'queue_clear' },
       { yttv, url: 'https://www.youtube.com/tv#/watch?v=current0001', bodyClass: 'WEB_PAGE_TYPE_WATCH' });
     await wait(50);
     const menu = () => ({ showMenuCommand: { menu: { menuRenderer: { items: [] } } } });
@@ -286,6 +287,35 @@ const ids = (r) => itemsOf(r).map((i) => (i.tileRenderer || i.lockupViewModel).c
     state(0);
     await wait(50);
     t('queue: a preview ending on the home screen starts nothing', played.length === 2, played.join());
+
+    const page = async (hash, bodyClass) => {
+      win.location.hash = hash;
+      win.document.body.className = bodyClass;
+      await wait(50);
+    };
+    await page('#/', 'WEB_PAGE_TYPE_BROWSE');
+    key(win, 49);
+    await page('#/watch?v=current0001', 'WEB_PAGE_TYPE_WATCH');
+    state(1);
+    state(0);
+    await wait(50);
+    t('queue: Clear Queue works away from a video', played.length === 2, played.join());
+
+    const queueEntry = (item) => itemsOf(parse(browse([item])))[0].tileRenderer.onLongPressCommand.showMenuCommand.menu.menuRenderer.items[0].menuServiceItemRenderer.serviceEndpoint;
+    const other = tile('tilecontent', { title: 'Other', longPress: menu() });
+    other.tileRenderer.onSelectCommand.watchEndpoint.videoId = 'playable001';
+    resolve(queueEntry(other));
+    state(1);
+    state(0);
+    await wait(50);
+    t('queue: plays the video that Play opens', played[2] === 'playable001', played.join());
+
+    resolve(queueEntry(tile('failing0001', { title: 'Broken', longPress: menu() })));
+    state(1);
+    state(0);
+    await wait(50);
+    const toasts = win.document.querySelector('.ytaf-notification-container').textContent;
+    t('queue: a video that will not play is reported', /Could not play: Broken/.test(toasts), toasts);
   }
 
   // ---- Hide Recommended Videos Under the Player (NicholasBly/youtube-webos#207) ----
