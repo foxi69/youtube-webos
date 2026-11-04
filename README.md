@@ -373,6 +373,19 @@ of the project; credits are in [CHANGELOG.md](CHANGELOG.md).
   open menu, Fox, Blue and Red panel themes, YouTube logo style, emoji fix for webOS 3-4.
 </details>
 
+## 🧭 Web app, not Cobalt
+
+The official YouTube app runs on Cobalt, Google's small engine for TVs. YouTube Foxtended is the web
+version: it loads `youtube.com/tv` in the TV's own web engine and adds its features with JavaScript. That
+is what lets one app filter YouTube's responses and add its own panel on webOS 3 to 25+.
+
+**Playback speed.** On real TVs, webOS ignores the video's playback rate in the web engine, so the app does
+the work itself: it rescales the timeline and time-stretches the audio. This needs WebCodecs (Chromium 94+),
+so it works on webOS 23 and newer. Cobalt builds are reported to change speed natively, with mixed stability
+on older TVs; this fork has not tested that. For webOS 3-6 and 22, a test of an older browser feature is
+running ([#97](https://github.com/foxi69/youtube-webos/issues/97)). Whether those TVs can keep up is not known
+yet.
+
 ## 🌳 Where this fork comes from
 
 ```
