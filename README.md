@@ -302,6 +302,7 @@ Start Page is not used on a launch into a video.
 <details>
 <summary><b>ℹ️ About</b>: version, updates, reset, support</summary>
 <br>
+<p align="center"><img src="screenshots/tab-7-about.png" alt="About tab" width="480"></p>
 
 | Setting | Default |
 |---|---|
@@ -534,7 +535,7 @@ Releases are drafted automatically and published only after a test on the TV:
 hand wins. Otherwise later pushes refresh the highest published release if it is a pre-release, or else the open
 draft; with neither, a new draft starts one patch above the highest published release (0.8.8 -> 0.8.9). The build
 writes the version into `package.json` and `appinfo.json` on the runner only, and nothing is committed. Drafts of
-other versions are deleted.
+other versions are deleted. The version flags in `screenshots/fork-trail.svg` are updated by hand for each release.
 
 ### Staying up to date with upstream
 
