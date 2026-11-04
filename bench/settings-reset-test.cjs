@@ -97,7 +97,7 @@ setTimeout(async () => {
   {
     const other = PROFILE_PREFIX + 'other-account';
     const otherValues = JSON.stringify({ enableAdBlock: false, blockedChannels: ['Theirs'] });
-    const { win, button, stored } = boot({ perAccountSettings: true, enableAdBlock: false, blockedChannels: ['Mine'] },
+    const { win, button, stored } = boot({ perAccountSettings: true, enableAdBlock: false, blockedChannels: ['Mine'], enableAutoLogin: false },
       { 'yt.leanback.default::last-identity-used': IDENTITY, [other]: otherValues });
     await sleep(300);
     const keys = Object.keys(win.localStorage).filter((k) => k.startsWith(PROFILE_PREFIX) && k !== other);
@@ -110,6 +110,7 @@ setTimeout(async () => {
     t('this account\'s settings are back at their defaults', own.enableAdBlock === true && own.blockedChannels.length === 0,
       JSON.stringify(own).slice(0, 120));
     t('another account\'s settings are left alone', win.localStorage.getItem(other) === otherValues, win.localStorage.getItem(other));
+    t('a setting the whole TV shares is back at its default', stored().enableAutoLogin === true, String(stored().enableAutoLogin));
     t('separate settings for each account stays on', stored().perAccountSettings === true, String(stored().perAccountSettings));
   }
   console.log(`${pass} passed, ${fail} failed`);

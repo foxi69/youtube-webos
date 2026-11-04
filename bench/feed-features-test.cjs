@@ -341,6 +341,9 @@ const ids = (r) => itemsOf(r).map((i) => (i.tileRenderer || i.lockupViewModel).c
     refuse();
     await wait(2300);
     t('queue: a refusal after the video plays moves nothing', count('spare000001') === 0, played.join());
+    state(0);
+    await wait(50);
+    t('queue: the video behind a late refusal still plays, once', count('spare000001') === 1, played.join());
   }
 
   // ---- Hide Recommended Videos Under the Player (NicholasBly/youtube-webos#207) ----
