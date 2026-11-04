@@ -97,6 +97,10 @@
 
 ## 🎮 Remote control
 
+<p align="center">
+  <img src="screenshots/remote.svg" alt="A remote control pressing the red, green, yellow and blue buttons, and the TV showing what each one does" width="100%">
+</p>
+
 | Button | Default | Notes |
 |---|---|---|
 | 🟩 Green | Open/close the settings | If no button is set to *Open/Close Settings*, Green is forced back to it. |
@@ -131,6 +135,10 @@ to YouTube. A USB or Bluetooth keyboard can type in the search page (see *Type i
 Open the panel with 🟩 **Green**, or with the 🦊 button the Magic Remote pointer shows. It has seven tabs; pick a
 theme with **UI Theme** on the Interface tab, or click the fox in the panel header. Defaults are in the right-hand
 column. A setting marked *webOS 25* appears on webOS 25 and newer, and one marked *guest* only in guest mode.
+
+<p align="center">
+  <img src="screenshots/settings-tour.svg" alt="The settings panel going through its seven tabs: Filters, Player, Interface, SponsorBlock, Shortcuts, UI Tweaks and About" width="100%">
+</p>
 
 <details>
 <summary><b>🚫 Filters</b>: ad blocking and what the feeds show</summary>
@@ -307,6 +315,10 @@ Ko-fi and project pages as QR codes.
 </details>
 
 ## 🆕 What this fork adds
+
+<p align="center">
+  <img src="screenshots/fork-trail.svg" alt="Fox paw prints walking from version 0.9.0 to 0.9.1 to 0.9.2" width="100%">
+</p>
 
 Compared to upstream NicholasBly 0.8.4. Taken from webosbrew, NicholasBly's open pull requests and the other forks
 of the project; credits are in [CHANGELOG.md](CHANGELOG.md).
@@ -569,5 +581,9 @@ If this app makes your TV nicer to use, you can buy me a coffee on
 - [NicholasBly](https://github.com/NicholasBly/youtube-webos), the rewrite this fork builds on.
 - The authors of the forks whose fixes and features are ported here, credited per change in
   [CHANGELOG.md](CHANGELOG.md).
+
+<p align="center">
+  <img src="screenshots/sleeping-fox.svg" alt="The fox curled up, asleep. The app is and stays free." width="100%">
+</p>
 
 <p align="center"><sub>Made with 🦊 for LG TVs · <a href="LICENSE">GPL-3.0</a></sub></p>
