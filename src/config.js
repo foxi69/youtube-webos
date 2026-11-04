@@ -102,7 +102,9 @@ export const shortcutActions = {
   config_menu: 'Open/Close Settings',
   speed_up: 'Playback Speed +',
   speed_down: 'Playback Speed -',
-  speed_reset: 'Playback Speed Reset (1x)'
+  speed_reset: 'Playback Speed Reset (1x)',
+  queue_next: 'Play Next in Queue',
+  queue_clear: 'Clear Queue'
 };
 
 

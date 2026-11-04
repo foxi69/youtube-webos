@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## Added
+
++ **Video queue**: with More Options in the Long-Press Menu on, holding OK on a video offers "Add to queue". Queued videos play one after another when the current one ends, and the queue lasts until the app closes. The shortcut actions Play Next in Queue and Clear Queue can go on any key.
+
 ## Fixes
 
 + Remove AI Videos, Remove Shorts and Remove Live / Upcoming / Members-Only Videos also apply to the videos beside and under the player. They did so only when one of the feed filters (Hide Watched Videos, Hide Videos Shorter Than, Blocked Channels, Hide Videos Whose Title Contains) was on as well, so a video found to be AI stayed in the row beside the player. Found while testing in the webOS TV Simulators.
