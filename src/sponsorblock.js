@@ -1914,12 +1914,33 @@ class SponsorBlockHandler {
 if (typeof window !== 'undefined') {
     if (window.__ytaf_sb_init) {
         window.removeEventListener('hashchange', window.__ytaf_sb_init);
+        configRemoveChangeListener('enableSponsorBlock', window.__ytaf_sb_init);
     }
 
     window.sponsorblock = null;
     let initTimeout = null;
 
+    const videoIdFromHash = () => {
+        try {
+            const hash = window.location.hash;
+            if (!hash.startsWith('#')) return null;
+            const parts = hash.split('?');
+            if (parts.length < 2) return null;
+            if (typeof URLSearchParams !== 'undefined') return new URLSearchParams(parts[1]).get('v');
+            const match = parts[1].match(/(?:[?&]|^)v=([^&]+)/);
+            return match ? match[1] : null;
+        } catch {
+            return null;
+        }
+    };
+
     const initSB = () => {
+        // A hash change within the same video keeps the handler: its segments
+        // and what Skip Segments Once remembers stay.
+        const current = window.sponsorblock;
+        if (current && !current.isDestroyed && configGetAll().enableSponsorBlock &&
+            current.videoID === videoIdFromHash()) return;
+
         if (window.sponsorblock) {
             window.sponsorblock.destroy();
             window.sponsorblock = null;
@@ -1927,23 +1948,7 @@ if (typeof window !== 'undefined') {
         if (initTimeout) clearTimeout(initTimeout);
 
         const run = () => {
-            let videoID = null;
-            try {
-                const hash = window.location.hash;
-                if (hash.startsWith('#')) {
-                    const parts = hash.split('?');
-                    if (parts.length > 1) {
-                        if (typeof URLSearchParams !== 'undefined') {
-                            const params = new URLSearchParams(parts[1]);
-                            videoID = params.get('v');
-                        } else {
-                            const match = parts[1].match(/(?:[?&]|^)v=([^&]+)/);
-                            if (match) videoID = match[1];
-                        }
-                    }
-                }
-            } catch { /* ignore */ }
-
+            const videoID = videoIdFromHash();
             const config = configGetAll();
             if (videoID && config.enableSponsorBlock) {
                 window.sponsorblock = new SponsorBlockHandler(videoID);
@@ -1957,6 +1962,8 @@ if (typeof window !== 'undefined') {
 
     window.__ytaf_sb_init = initSB;
     window.addEventListener('hashchange', initSB);
+    // The switch applies at once, not from the next video.
+    configAddChangeListener('enableSponsorBlock', initSB);
 
     if (document.readyState !== 'loading') {
         setTimeout(initSB, 500);

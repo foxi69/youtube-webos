@@ -81,22 +81,14 @@ class Watch {
   }
 
   startClock() {
-    const nextSeg = (60 - new Date().getSeconds()) * 1000;
-
-    const setTime = () => {
-      if (this._watch) {
-        this.refreshText();
-
-        // Safety check on the minute mark
-        this.updateVisibility();
-      }
-    };
-
-    setTime();
-    setTimeout(() => {
-      setTime();
-      this._timer = setInterval(setTime, 60000);
-    }, nextSeg);
+    // Re-armed to each minute: a TV coming back from standby does not catch up
+    // on timers, so a plain interval would stay off the minute.
+    clearTimeout(this._timer);
+    if (!this._watch) return;
+    this.refreshText();
+    // Safety check on the minute mark
+    this.updateVisibility();
+    this._timer = setTimeout(() => this.startClock(), (60 - new Date().getSeconds()) * 1000);
   }
 
   updateVisibility() {
@@ -156,11 +148,12 @@ class Watch {
     // focusout invocation was always coalesced away. Halves the clock's share
     // of the per-keypress focus traffic.
     addListener('focusin', this.debouncedUpdate);
+    addListener('visibilitychange', () => { if (!document.hidden) this.startClock(); });
   }
 
   destroy() {
     if (this._timer) {
-      clearInterval(this._timer);
+      clearTimeout(this._timer);
       this._timer = null;
     }
     

@@ -149,12 +149,25 @@ let usefulRank = usefulRankFor(qualityMode);
 // 404 (or a tiny grey placeholder), which a HEAD reads and an image loads.
 const UNKNOWN = 'unknown';
 
-// Anchored so it cannot match mid-string, and `\w+` on the basename so
-// A/B-test variants (hqdefault_custom_2) are captured and then rejected by the
-// RANK lookup rather than being rewritten to a name that has no custom-variant
-// equivalent.
+// Anchored so it cannot match mid-string, and `\w+` on the basename so a name
+// the ladder does not know is captured and then left alone (rankOf), and a
+// thumbnail test variant (hqdefault_custom_2) is captured and ranked low.
 const THUMB_URL_RE = /^https?:\/\/i\.ytimg\.com\/vi(?:_webp)?\/([\w-]+)\/(\w+)\.(?:jpg|jpeg|webp|png)/;
 const THUMB_IN_CSS_RE = /i\.ytimg\.com\/vi(?:_webp)?\/([\w-]+)\//;
+
+// A thumbnail test variant ("Test & Compare": hqdefault_custom_1 to _3) only
+// exists at the small signed size the response names (320x180): unsigned, and
+// at any larger rung, it is a 404. Ranked below the floor, so the video's own
+// rung replaces it.
+const TEST_VARIANT_RE = /^([a-z\d]+)_custom_\d+$/;
+
+/** The rank of a thumbnail basename; undefined for a name the ladder cannot map. */
+function rankOf(name) {
+  const rank = RANK[name];
+  if (rank !== undefined) return rank;
+  const variant = TEST_VARIANT_RE.exec(name);
+  return variant && RANK[variant[1]] !== undefined ? RANK.mqdefault : undefined;
+}
 
 const DOM_SELECTOR = 'ytlr-thumbnail-details, ytlr-surface-page, thumbnail image';
 
@@ -364,9 +377,9 @@ function upgradeEntry(entry, proven) {
   if (!match) return null;
 
   const videoId = match[1];
-  const currentRank = RANK[match[2]];
-  // Unknown basename: an A/B custom variant, a storyboard, something new. There
-  // is no safe mapping to a different name, so leave it exactly as sent.
+  const currentRank = rankOf(match[2]);
+  // Unknown basename: a Shorts crop, a storyboard, something new. There is no
+  // safe mapping to a different name, so leave it exactly as sent.
   if (currentRank === undefined) return null;
 
   const verified = qualityCache.get(videoId);
@@ -455,7 +468,7 @@ function upgradeContainer(container) {
     const entry = list[i];
     if (!entry || typeof entry.url !== 'string') continue;
     const m = THUMB_URL_RE.exec(entry.url);
-    const r = m ? RANK[m[2]] : undefined;
+    const r = m ? rankOf(m[2]) : undefined;
     if (r !== undefined && r > proven) proven = r;
   }
 

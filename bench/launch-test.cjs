@@ -17,11 +17,12 @@ const cases = [
    ['inApp=true', 'vs=9', 'va=play', 'launch=voice', 'vq=lofi+beats']],
   [{ contentTarget: { intent: 'SearchContent', intentParam: 'cats' } },
    ['va=search', 'launch=voice', 'launch=search', 'vq=cats']],
+  [{ contentTarget: { intent: 'PlayContent' } }, ['launch=voice'], 'vq='],
   [{ contentTarget: 'theme=k' }, ['theme=k']]
 ];
 
 let fail = 0;
-for (const [params, expects] of cases) {
+for (const [params, expects, forbidden] of cases) {
   const dom = new JSDOM('<!doctype html><html><body></body></html>', {
     url: 'https://example.com/', runScripts: 'outside-only'
   });
@@ -55,6 +56,7 @@ for (const [params, expects] of cases) {
   const href = w.eval('__getHref()');
 
   const missing = expects.filter((e) => !href || href.indexOf(e) === -1);
+  if (forbidden && href && href.indexOf(forbidden) !== -1) missing.push('no ' + forbidden);
   const noTheme = params.contentTarget === 'theme=k'
     ? href.indexOf('env_forceFullAnimation') !== -1 : false;
   if (missing.length || noTheme) {

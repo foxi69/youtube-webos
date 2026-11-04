@@ -10,7 +10,11 @@ const TARGET_ACTIONS = [
 ];
 
 const BYPASS_BODY_CLASS = 'ytaf-bypassing-login';
-let hasBypassed = false;
+// The selector is bypassed on its own only this long after the start, or after
+// a relaunch; later, opening it is the viewer's choice.
+const BYPASS_WINDOW_MS = 15000;
+// Until when that is: closed by the bypass itself, so it happens once.
+let bypassUntil = Date.now() + BYPASS_WINDOW_MS;
 let pageObserverAttached = false;
 
 const WHOS_WATCHING_SHIFT_MS = 7 * 24 * 60 * 60 * 1000;
@@ -214,16 +218,16 @@ export function attemptActiveBypass(force = false) {
     // Note: launch-param gating was removed deliberately — we check for the
     // account selector page on normal loads too, not just parameterised ones.
     if (!isSelector && !force) return;
-    if (hasBypassed && !force) return;
+    if (!force && Date.now() > bypassUntil) return;
 	
     console.info('[Auto Login] Active Bypass: Selector Detected! Executing sequence...');
-    hasBypassed = true;
+    bypassUntil = 0;
     injectBypassCSS();
 
     setTimeout(() => {
         // The option may have been turned off during the delay; stop and unhide the selector
         if (!shouldAutoSelectAccount()) {
-            hasBypassed = false;
+            bypassUntil = Date.now() + BYPASS_WINDOW_MS;
             if (document.body) document.body.classList.remove(BYPASS_BODY_CLASS);
             return;
         }
@@ -237,8 +241,9 @@ export function attemptActiveBypass(force = false) {
     }, 500);
 }
 
+/** A relaunch: the window opens again, from now. */
 export function resetActiveBypass() {
-    hasBypassed = false;
+    bypassUntil = Date.now() + BYPASS_WINDOW_MS;
     // Identity may have changed between launches (sign-in/out); drop the cached guest flag.
     invalidateGuestModeCache();
 }
@@ -259,13 +264,6 @@ export function initAutoLogin() {
     if (configRead('autoSelectAccount')) disableWhosWatching();
     disablePromoUpsell();
     setupActiveBypassListener();
-    
-    setTimeout(() => {
-        if (!hasBypassed) {
-            console.info('[Auto Login] Startup window closed');
-            hasBypassed = true;
-        }
-    }, 15000);
   }
 }
 

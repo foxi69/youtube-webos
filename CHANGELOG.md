@@ -6,8 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## Added
+
++ **Reset All Settings** (About tab): a second press within a few seconds puts every setting back to its default. With Separate Settings for Each Account on, it resets this account's settings and the ones the whole TV shares; the other accounts keep theirs.
++ **Video queue**: with More Options in the Long-Press Menu on, holding OK on a video offers "Add to queue". Queued videos play one after another when the current one ends, and the queue lasts until the app closes. A video YouTube refuses to play is reported and the next one starts. The shortcut actions Play Next in Queue and Clear Queue can go on any key.
+
 ## Fixes
 
++ SponsorBlock: the switch applies at once, and a hash change within the same video keeps the handler, so its segments and Skip Segments Once's memory stay. From mirijanristic's fork, as are the fixes below.
++ Opening the settings during the OLED blackout ends the blackout; the panel used to open unseen beneath it.
++ Auto Login: after coming back to the app, the account selector is skipped only for 15 seconds. It used to stay on, so opening the profile picker later pressed OK by itself.
++ Thumbnails: a video in a thumbnail test ("Test & Compare") gets its own sharp thumbnail instead of the small 320x180 one.
++ Skip to Next / Previous Chapter says "No chapters found" on a bar without chapter markers, and a second press while chapters load is ignored.
++ The clock is right again as soon as the TV comes back from standby, and stays on the minute.
++ With Ad Blocking off, player requests no longer carry the no-ad flag.
++ A voice launch without a query no longer searches for "undefined".
 + Remove AI Videos, Remove Shorts and Remove Live / Upcoming / Members-Only Videos also apply to the videos beside and under the player. They did so only when one of the feed filters (Hide Watched Videos, Hide Videos Shorter Than, Blocked Channels, Hide Videos Whose Title Contains) was on as well, so a video found to be AI stayed in the row beside the player. Found while testing in the webOS TV Simulators.
 + YouTube Logo: the Premium (or Default) wordmark stays when the app comes back from the background or after a long idle. YouTube then drew the header again with its own wordmark, and it stayed until the next page change. The wordmark is now set by a stylesheet rule, as Hidden always was, which wins over YouTube's own each time it draws the header; nothing polls for it any more. From NicholasBly/youtube-webos#214 (fork watch #96).
 

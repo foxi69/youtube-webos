@@ -102,7 +102,9 @@ export const shortcutActions = {
   config_menu: 'Open/Close Settings',
   speed_up: 'Playback Speed +',
   speed_down: 'Playback Speed -',
-  speed_reset: 'Playback Speed Reset (1x)'
+  speed_reset: 'Playback Speed Reset (1x)',
+  queue_next: 'Play Next in Queue',
+  queue_clear: 'Clear Queue'
 };
 
 
@@ -564,6 +566,22 @@ export function configWrite(key, value) {
   localConfig[key] = value;
   scheduleWrite();
   notifyChange(key, value, oldValue);
+}
+
+// Left alone by a reset: where the settings are kept (a reset must not merge
+// or drop the accounts' profiles), and a flag that is not a setting.
+const RESET_KEEPS = new Set(['perAccountSettings', 'foxThemeApplied']);
+
+/**
+ * Every setting back to its default, told to its listeners as if changed in
+ * the panel. With separate settings for each account: this account's, and the
+ * device settings (DEVICE_KEYS), which all of them share.
+ */
+export function configResetAll() {
+  for (const [key, option] of configOptions) {
+    if (RESET_KEEPS.has(key)) continue;
+    configWrite(key, Array.isArray(option.default) ? option.default.slice() : option.default);
+  }
 }
 
 function notifyChange(key, newValue, oldValue) {

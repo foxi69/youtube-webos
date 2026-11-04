@@ -207,13 +207,14 @@ const ids = (r) => itemsOf(r).map((i) => (i.tileRenderer || i.lockupViewModel).c
 
     const menuItems = tileItem.tileRenderer.onLongPressCommand.showMenuCommand.menu.menuRenderer.items;
     blockItem = menuItems[menuItems.length - 1];
-    t('long press: a menu gets "Block channel"', menuItems.length === 2 &&
+    t('long press: a menu gets "Add to queue" and "Block channel"', menuItems.length === 3 &&
+      menuItems[1].menuServiceItemRenderer.text.runs[0].text === 'Add to queue' &&
       blockItem.menuServiceItemRenderer.text.runs[0].text === 'Block channel: Chan', JSON.stringify(menuItems[1]));
     const built = lockItem.lockupViewModel.rendererContext.commandContext.onLongPress.innertubeCommand;
     const builtTexts = built && built.showMenuCommand ? built.showMenuCommand.menu.menuRenderer.items.map((i) =>
       (i.menuServiceItemRenderer || i.menuNavigationItemRenderer).text.runs[0].text) : [];
     t('long press: the feedback panel becomes a menu with the feedback entries',
-      builtTexts.join('|') === "Play|Save to Watch later|Save to playlist|Not interested|Don't recommend channel|Block channel: Other",
+      builtTexts.join('|') === "Play|Save to Watch later|Save to playlist|Add to queue|Not interested|Don't recommend channel|Block channel: Other",
       builtTexts.join('|'));
     t('long press: Shorts tiles are left alone',
       shortItem.tileRenderer.onLongPressCommand.showMenuCommand.menu.menuRenderer.items.length === 1);
@@ -225,15 +226,15 @@ const ids = (r) => itemsOf(r).map((i) => (i.tileRenderer || i.lockupViewModel).c
     t('long press: YouTube\'s own playlist edits pass through',
       resolve({ playlistEditEndpoint: { playlistId: 'WL', actions: [] } }) === 'original' && resolved.length === 1);
     // webOS 25 wraps the entry's endpoint after a CLOSE_POPUP signal.
-    const blockOther = built.showMenuCommand.menu.menuRenderer.items[5].menuServiceItemRenderer.serviceEndpoint;
+    const blockOther = built.showMenuCommand.menu.menuRenderer.items[6].menuServiceItemRenderer.serviceEndpoint;
     const wrapped = resolve({ commandExecutorCommand: { commands: [{ signalAction: { signal: 'CLOSE_POPUP' } }, blockOther] } });
     await wait(300);
     t('long press: a wrapped action runs, and the signal beside it still reaches YouTube',
       wrapped === true && JSON.stringify(config().blockedChannels) === '["Chan","Other"]' &&
       resolved.length === 2 && resolved[1].signalAction?.signal === 'CLOSE_POPUP', JSON.stringify(config().blockedChannels));
 
-    const notInterested = built.showMenuCommand.menu.menuRenderer.items[3].menuServiceItemRenderer.serviceEndpoint;
-    const noChannel = built.showMenuCommand.menu.menuRenderer.items[4].menuServiceItemRenderer.serviceEndpoint;
+    const notInterested = built.showMenuCommand.menu.menuRenderer.items[4].menuServiceItemRenderer.serviceEndpoint;
+    const noChannel = built.showMenuCommand.menu.menuRenderer.items[5].menuServiceItemRenderer.serviceEndpoint;
     resolve(notInterested);
     resolve(noChannel);
     await wait(20);
@@ -245,6 +246,104 @@ const ids = (r) => itemsOf(r).map((i) => (i.tileRenderer || i.lockupViewModel).c
     const r2 = off.parse(browse([tile('tilemenu___', { channel: 'Chan', longPress: menu })]));
     t('long press off: the menu is left alone',
       itemsOf(r2)[0].tileRenderer.onLongPressCommand.showMenuCommand.menu.menuRenderer.items.length === 1);
+  }
+
+  // ---- Video queue ----
+  {
+    const played = [];
+    const yttv = () => ({ resolver: Object.assign(function Resolver() {}, { instance: { resolveCommand: (cmd) => {
+      if (cmd.watchEndpoint?.videoId === 'failing0001') throw new Error('refused');
+      if (cmd.watchEndpoint) played.push(cmd.watchEndpoint.videoId);
+      return 'original';
+    } } }) });
+    const { win, parse } = boot({ extendLongPressMenu: true, shortcut_key_1: 'queue_clear' },
+      { yttv, url: 'https://www.youtube.com/tv#/watch?v=current0001', bodyClass: 'WEB_PAGE_TYPE_WATCH' });
+    await wait(50);
+    const menu = () => ({ showMenuCommand: { menu: { menuRenderer: { items: [] } } } });
+    const r = parse(browse([tile('queued00001', { title: 'First', longPress: menu() }), tile('queued00002', { title: 'Second', longPress: menu() })]));
+    const entries = itemsOf(r).map((i) => i.tileRenderer.onLongPressCommand.showMenuCommand.menu.menuRenderer.items[0].menuServiceItemRenderer.serviceEndpoint);
+    const resolve = win._yttv.resolver.instance.resolveCommand;
+    const state = (n, videoId) => win.dispatchEvent(new win.CustomEvent('yt-player-state-change', { detail: { state: n, videoId } }));
+    t('queue: the entry does not reach YouTube', resolve(entries[0]) === true && resolve(entries[1]) === true);
+    resolve(entries[0]);
+    state(1);
+    state(0);
+    await wait(50);
+    t('queue: the first video plays when the current one ends', played.join() === 'queued00001', played.join());
+    state(0);
+    await wait(50);
+    t('queue: one end moves on once', played.join() === 'queued00001', played.join());
+    state(1);
+    state(0);
+    await wait(50);
+    t('queue: the next one plays after that, and a video added twice only once', played.join() === 'queued00001,queued00002', played.join());
+    state(1);
+    state(0);
+    await wait(50);
+    t('queue: an empty queue leaves the end to YouTube', played.length === 2, played.join());
+    resolve(entries[0]);
+    win.location.hash = '#/';
+    state(1);
+    state(0);
+    await wait(50);
+    t('queue: a preview ending on the home screen starts nothing', played.length === 2, played.join());
+
+    const page = async (hash, bodyClass) => {
+      win.location.hash = hash;
+      win.document.body.className = bodyClass;
+      await wait(50);
+    };
+    await page('#/', 'WEB_PAGE_TYPE_BROWSE');
+    key(win, 49);
+    await page('#/watch?v=current0001', 'WEB_PAGE_TYPE_WATCH');
+    state(1);
+    state(0);
+    await wait(50);
+    t('queue: Clear Queue works away from a video', played.length === 2, played.join());
+
+    const queueEntry = (item) => itemsOf(parse(browse([item])))[0].tileRenderer.onLongPressCommand.showMenuCommand.menu.menuRenderer.items[0].menuServiceItemRenderer.serviceEndpoint;
+    const other = tile('tilecontent', { title: 'Other', longPress: menu() });
+    other.tileRenderer.onSelectCommand.watchEndpoint.videoId = 'playable001';
+    resolve(queueEntry(other));
+    state(1);
+    state(0);
+    await wait(50);
+    t('queue: plays the video that Play opens', played[2] === 'playable001', played.join());
+
+    resolve(queueEntry(tile('failing0001', { title: 'Broken', longPress: menu() })));
+    state(1);
+    state(0);
+    await wait(50);
+    const toasts = win.document.querySelector('.ytaf-notification-container').textContent;
+    t('queue: a video that will not play is reported', /Could not play: Broken/.test(toasts), toasts);
+
+    // YouTube answers for a video it refuses in bursts, about half a second apart.
+    const refuse = () => parse({ responseContext: { _pad: pad }, playabilityStatus: { status: 'ERROR', reason: 'Gone' } });
+    const count = (id) => played.filter((v) => v === id).length;
+    resolve(queueEntry(tile('missing0001', { title: 'Missing', longPress: menu() })));
+    resolve(queueEntry(tile('afterit0001', { title: 'After', longPress: menu() })));
+    resolve(queueEntry(tile('spare000001', { title: 'Spare', longPress: menu() })));
+    state(1);
+    state(0);
+    await wait(50);
+    await page('#/watch?v=missing0001', 'WEB_PAGE_TYPE_WATCH');
+    refuse();
+    refuse();
+    await wait(500);
+    refuse();
+    await wait(2300);
+    const refused = win.document.querySelector('.ytaf-notification-container').textContent;
+    t('queue: a video YouTube refuses is reported', /Could not play: Missing/.test(refused), refused);
+    t('queue: the video behind it plays, once', count('afterit0001') === 1 && count('spare000001') === 0, played.join());
+
+    await page('#/watch?v=afterit0001', 'WEB_PAGE_TYPE_WATCH');
+    state(1, 'afterit0001');
+    refuse();
+    await wait(2300);
+    t('queue: a refusal after the video plays moves nothing', count('spare000001') === 0, played.join());
+    state(0);
+    await wait(50);
+    t('queue: the video behind a late refusal still plays, once', count('spare000001') === 1, played.join());
   }
 
   // ---- Hide Recommended Videos Under the Player (NicholasBly/youtube-webos#207) ----

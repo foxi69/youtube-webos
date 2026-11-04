@@ -6,6 +6,7 @@ import { upgradeResponseThumbnails, thumbnailHookRequired } from './thumbnail-qu
 import { raiseRowsAhead } from './rows-ahead.js';
 import { itemTitle, itemChannel, itemDurationSeconds, itemWatchedPercent, keepsWatchedVideos } from './feed-filters.js';
 import { extendLongPressMenu } from './long-press-menu.js';
+import { noteQueuePlayability } from './video-queue.js';
 import { applyDeArrow } from './dearrow/index.js';
 import { extractAiVideoId } from './ai-video-id.js';
 import { isAiVideoStored } from './ai-video-store.js';
@@ -774,6 +775,7 @@ export function filterParsedResponse(data) {
 }
 
 function filterResponse(data, text) {
+  if (data.playabilityStatus) noteQueuePlayability(data.playabilityStatus.status);
   const responseType = detectResponseType(data);
   // Before the Shorts guard below: a browse response parsed while a Short
   // plays still wants its rows ahead.

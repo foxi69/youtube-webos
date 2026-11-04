@@ -1,16 +1,17 @@
 /**
- * More entries in the menu a long press on a video tile opens: "Not
- * interested", "Don't recommend channel" and "Block channel". Where YouTube
+ * More entries in the menu a long press on a video tile opens: "Add to queue",
+ * "Not interested", "Don't recommend channel" and "Block channel". Where YouTube
  * opens its feedback panel instead of a menu, a menu with the usual entries
  * (Play, Watch later, Save to playlist) and these is put in its place.
  *
  * From MickLesk's fork, which adapted it from TizenTube
  * (https://github.com/reisxd/TizenTube, mods/features/adblock.js and
- * mods/utils/innerTubeCalls.js). The queue entry of that fork is left out.
+ * mods/utils/innerTubeCalls.js).
  */
 import { configRead, configWrite } from './config.js';
 import { showNotification } from './notifications.js';
 import { ResolveCommandRegistry } from './app_api/index';
+import { addToQueue } from './video-queue.js';
 
 // Marks our own menu entries, so a tile seen twice does not get them twice,
 // and our commands, so the resolveCommand hook knows them from YouTube's.
@@ -108,6 +109,12 @@ function feedbackItems(panel) {
   ];
 }
 
+function queueItem(info) {
+  // The ID Play opens: a tile's contentId need not be it.
+  const videoId = info.watchEndpoint.videoId || info.videoId;
+  return serviceItem('Add to queue', actionEndpoint('addToQueue', { videoId, title: info.title }));
+}
+
 function blockChannelItem(info) {
   if (!info.channel) return null;
   return serviceItem('Block channel: ' + info.channel, actionEndpoint('blockChannel', { name: info.channel }));
@@ -157,6 +164,7 @@ export function extendLongPressMenu(item) {
     for (let i = 0; i < items.length; i++) {
       if (items[i] && items[i].menuServiceItemRenderer && items[i].menuServiceItemRenderer[MARKER]) return;
     }
+    items.push(queueItem(info));
     const block = blockChannelItem(info);
     if (block) items.push(block);
     return;
@@ -164,7 +172,7 @@ export function extendLongPressMenu(item) {
 
   const panel = feedbackPanel(command);
   if (!panel || !info.title) return;
-  const extra = feedbackItems(panel);
+  const extra = [queueItem(info)].concat(feedbackItems(panel));
   const block = blockChannelItem(info);
   if (block) extra.push(block);
   const menu = buildMenu(info, extra);
@@ -245,6 +253,8 @@ function runAction(custom) {
   const params = custom.params || {};
   if (custom.action === 'blockChannel') {
     blockChannel(params.name);
+  } else if (custom.action === 'addToQueue') {
+    addToQueue(String(params.videoId), String(params.title));
   } else if (custom.action === 'feedback') {
     const panel = { panelId: String(params.panelId), params: String(params.params) };
     sendFeedback(panel, Number(params.index) || 0).catch((err) => {
