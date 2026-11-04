@@ -38,7 +38,7 @@
     </td>
     <td width="33%" valign="top">
       <h3>⏭️ SponsorBlock</h3>
-      Every segment type, with its own colour on the seek bar. Auto, manual or seek-bar-only per category, and new segments are picked up while you watch.
+      Every skip category, with its own colour on the seek bar. Auto, manual or seek-bar-only per category, and new segments are picked up while you watch.
     </td>
     <td width="33%" valign="top">
       <h3>🎮 Your remote, your rules</h3>
@@ -47,8 +47,8 @@
   </tr>
   <tr>
     <td valign="top">
-      <h3>🌍 Any subtitle language</h3>
-      Auto-translated subtitles in about 30 languages, Hungarian included, where the TV app normally offers 16. Original audio in place of dubbed tracks.
+      <h3>🌍 Your subtitle language</h3>
+      Auto-translated subtitles in about 30 languages, Hungarian included, where the TV app normally offers about 16. Original audio in place of dubbed tracks.
     </td>
     <td valign="top">
       <h3>🖤 OLED care</h3>
@@ -104,7 +104,7 @@
 | 🟨 Yellow | *None* (YouTube's own search) | Can be set to any action, see below. While it is *None*, YouTube's search binding keeps working. |
 | 🟦 Blue | SponsorBlock manual skip / jump to highlight | |
 | 5 | Skip to next chapter | |
-| 0-4, 6-9 | *None* | Can be set to any action during playback. |
+| 0-4, 6-9 | *None* | Can be set to any action. |
 | Back | Closes the settings panel | Otherwise YouTube's normal Back. Holding it to close the panel does not also go back a page. |
 | Left / Right | YouTube's own | With *Left/Right Seek Step* set, they seek by that step while the player controls are hidden. |
 | Hold OK on a video | YouTube's menu | With *More Options in the Long-Press Menu* on, it also offers "Add to queue", "Block channel", "Not interested" and "Don't recommend channel". |
@@ -130,7 +130,7 @@ to YouTube. A USB or Bluetooth keyboard can type in the search page (see *Type i
 
 Open the panel with 🟩 **Green**, or with the 🦊 button the Magic Remote pointer shows. It has seven tabs; pick a
 theme with **UI Theme** on the Interface tab, or click the fox in the panel header. Defaults are in the right-hand
-column. A setting marked *webOS 25* or *guest* only appears there.
+column. A setting marked *webOS 25* appears on webOS 25 and newer, and one marked *guest* only in guest mode.
 
 <details>
 <summary><b>🚫 Filters</b>: ad blocking and what the feeds show</summary>
@@ -156,7 +156,7 @@ column. A setting marked *webOS 25* or *guest* only appears there.
 | Blocked Channels | Empty |
 | Hide Videos Whose Title Contains | Empty |
 
-All filters except Ad Blocking need Ad Blocking on. The two lists are edited with a text box: type with the TV's
+All filters except Ad Blocking and Mark AI Videos need Ad Blocking on. The two lists are edited with a text box: type with the TV's
 keyboard (OK on the box) or a USB/Bluetooth one, then OK; select an entry to remove it.
 </details>
 
@@ -301,7 +301,7 @@ Start Page is not used on a launch into a video.
 | Show What's New After an Update | On |
 
 The tab shows the version and has a **Check for Updates Now** button. **Reset All Settings** needs a second press
-within a few seconds, and puts every setting back to its default. With Separate Settings for Each Account on, it
+within a few seconds, and puts every setting back to its default, apart from Separate Settings for Each Account itself. With that on, it
 resets this account's settings and the ones the whole TV shares; the other accounts keep theirs. **Support** has the
 Ko-fi and project pages as QR codes.
 </details>
@@ -315,7 +315,7 @@ of the project; credits are in [CHANGELOG.md](CHANGELOG.md).
 - Auto-Translate Subtitles to a language of your choice.
 - Auto Login: always ask who is watching.
 - Separate Settings for Each Account: each YouTube account on the TV keeps its own settings; guest mode starts
-  from the shared settings every time and keeps nothing.
+  from the shared settings every time and keeps only the settings the whole TV shares.
 - Bindable yellow button, Sleep Timer and Audio-Only Mode.
 - Magic Remote scroll-wheel seeking.
 - SponsorBlock picks up segments submitted while you watch: re-checked during playback.
@@ -350,7 +350,7 @@ of the project; credits are in [CHANGELOG.md](CHANGELOG.md).
 - Force Max Quality no longer expires after a year, and resets when switched off.
 - 2026+ TVs are no longer detected as a simulator.
 - Fixes for the legacy build (webOS 3-6).
-- *0.8.6:* about 40 more, most of them from mirijanristic's fork:
+- *0.8.6:* about 30 more, most of them from mirijanristic's fork:
   - SponsorBlock: overlapping and nested segments, a stalled server blocking the fallback, segments cut short
     by an early video length, the start-of-video chain, a late player, progress-bar watchers;
   - Ad Blocking: continuations and action lists beside the main content, bare search results, expanded
@@ -387,7 +387,7 @@ of the project; credits are in [CHANGELOG.md](CHANGELOG.md).
 - Optional filters: Shorts, live, upcoming, members-only and AI videos, "Most Relevant" shelf, Top Live Games,
   recommendations under the player, guest sign-in prompts, watched videos, videos shorter than a set length,
   blocked channels and title keywords. Search: Upload Date.
-- [SponsorBlock](https://sponsor.ajay.app/): every segment type, including Hook, Filler and muted segments, plus
+- [SponsorBlock](https://sponsor.ajay.app/): every skip category, including Hook, Filler and muted segments, plus
   Highlight; a colour for every segment and a desktop-style segment list; auto, manual and seek-bar-only modes per
   category, and Skip Segments Once; full-video label and time with skips removed; new segments picked up during
   playback.
@@ -477,7 +477,7 @@ These instructions use the [webOS CLI tools](https://github.com/webos-tools/cli)
   is relative to `~/.ssh`.
 
 ```sh
-ares-setup-device -a webos -i "username=prisoner" -i "privatekey=webos_rsa" -i "passphrase=PASSPHRASE" -i "host=TV_IP" -i "port=9922"
+ares-setup-device -a webos -i "username=prisoner" -i "privatekey=webos_rsa" -i "passphrase=PASSPHRASE" -i "host=TV_IP" -i "port=9922" -i "default=true"
 ```
 
 **With Homebrew Channel / root:**
@@ -489,7 +489,7 @@ ares-setup-device -a webos -i "username=prisoner" -i "privatekey=webos_rsa" -i "
 - Configure the device with `ares-setup-device`; the `privatekey` path is relative to `~/.ssh`.
 
 ```sh
-ares-setup-device -a webos -i "username=root" -i "privatekey=id_rsa" -i "passphrase=SSH_KEY_PASSPHRASE" -i "host=TV_IP" -i "port=22"
+ares-setup-device -a webos -i "username=root" -i "privatekey=id_rsa" -i "passphrase=SSH_KEY_PASSPHRASE" -i "host=TV_IP" -i "port=22" -i "default=true"
 ```
 
 **Deploying and launching:**
@@ -546,9 +546,9 @@ requests*.
 
 ### New work on other forks
 
-The [Fork watch](.github/workflows/fork-watch.yml) workflow runs every day. It checks the whole fork tree of
-FriedChickenButt, webosbrew and NicholasBly (forks of forks included) and the pull requests on those three
-repositories. When it finds new work, it opens an issue labelled `fork-watch` with links to it. These are only
+The [Fork watch](.github/workflows/fork-watch.yml) workflow runs every day. It checks the fork tree of
+FriedChickenButt, webosbrew and NicholasBly (forks of forks included, six levels deep), and the pull requests and
+new issues on those three repositories. When it finds new work, it opens an issue labelled `fork-watch` with links to it. These are only
 suggestions: nothing is merged. It leaves out commits NicholasBly already has, bot commits, private forks and
 copies uploaded as new repositories.
 </details>
