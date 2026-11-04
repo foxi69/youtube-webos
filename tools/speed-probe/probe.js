@@ -20,7 +20,7 @@
 import '../../src/polyfills.js';
 import { WsolaStretcher } from '../../src/speed/wsola.js';
 
-const VERSION = 'SP1';
+const VERSION = 'SP2';
 
 // ---- typed array methods Chromium 38 lacks (45+), used by wsola.js ----------
 const typedNative = {
@@ -442,7 +442,12 @@ function testEnvironment() {
     chrome >= 120 ? '25' : chrome >= 108 ? '24' : chrome >= 94 ? '23' : chrome >= 87 ? '22' :
     chrome >= 79 ? '6' : chrome >= 68 ? '5' : chrome >= 53 ? '4' : chrome >= 38 ? '3' : '?';
   summary.c = chrome;
-  row('Browser engine')(`Chromium ${chrome || '?'}`, `likely webOS ${webos}`, 'ok');
+  // The TV's Web Browser can have a newer engine than its apps (a webOS 4.10
+  // TV: Chromium 79 in the browser), so only the app build (build-ipk.cjs)
+  // says what the speed engine would run on.
+  const inApp = !!window.PROBE_APP;
+  summary.in = inApp ? 'app' : 'web';
+  row('Browser engine')(`Chromium ${chrome || '?'}`, inApp ? `app engine, likely webOS ${webos}` : 'web page: the apps on this TV can have another engine', 'ok');
   row('User agent')('', ua);
   const has = (name, ok, note) => {
     row(name)(ok ? 'yes' : 'no', note || '');
@@ -524,7 +529,7 @@ function reportChunked(set, res, ref, rate, range, key) {
   set(verdict, `after seams ${db(seamMax)}, elsewhere ${db(restMax)}, extra step at seam ${jump.toFixed(2)}x, ` +
     `offset ${offset}, ${res.chunks} chunks, ${Math.round(res.ms / secs)} ms per second of audio` +
     `${res.resampled ? ', resampled' : ''}`, verdict === 'OK' ? 'ok' : 'bad');
-  summary[key] = `${verdict}${Math.round(20 * Math.log(Math.max(seamMax, 1e-9)) / Math.LN10)}/${jump.toFixed(2)}`;
+  summary[key] = `${verdict}${Math.round(20 * Math.log(Math.max(seamMax, 1e-9)) / Math.LN10)}/${jump.toFixed(2)}@${Math.round(res.ms / secs)}ms`;
   return seamMax;
 }
 

@@ -60,7 +60,7 @@ function makeApp(reportUrl) {
   }, null, 2));
   fs.copyFileSync(path.join(ROOT, 'assets/icon.png'), path.join(dir, 'icon.png'));
   const html = fs.readFileSync(PAGE, 'utf8').replace('<script', () =>
-    `<script>window.PROBE_REPORT = ${JSON.stringify(reportUrl)};</script>\n<script`);
+    `<script>window.PROBE_APP = true; window.PROBE_REPORT = ${JSON.stringify(reportUrl)};</script>\n<script`);
   fs.writeFileSync(path.join(dir, 'index.html'), html);
   return dir;
 }
