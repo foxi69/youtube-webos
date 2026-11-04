@@ -80,7 +80,8 @@ export function handleLaunch(params) {
     if (voiceContentIntent) search.set('va', voiceContentIntent);
     search.append('launch', 'voice');
     if (voiceContentIntent === 'search') search.append('launch', 'search');
-    search.set('vq', intentParam);
+    // The query; a voice launch without one carries no vq, not "undefined".
+    if (intentParam != null) search.set('vq', intentParam);
   }
 
   if (ytURL.searchParams.get('theme') === 'k') {

@@ -35,6 +35,7 @@ run per-account-test "$B"
 run feed-features-test "$B"
 run pivot-filters-test "$B"
 run settings-reset-test "$B"
+run upstream-fixes-test "$B"
 run dearrow-test "$B" legacy
 run ai-label-test
 run most-replayed-test

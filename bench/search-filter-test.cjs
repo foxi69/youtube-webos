@@ -23,7 +23,7 @@ function boot(searchUploadDate) {
   win.launchParams = '{}';
   win.XMLHttpRequest = class { open(){} send(){} setRequestHeader(){} getResponseHeader(){return null;} addEventListener(){} };
   win.localStorage.setItem('ytaf-configuration', win.JSON.stringify({
-    enableAdBlock: false, enableLegacyEmojiFix: false, enableSponsorBlock: false,
+    enableAdBlock: true, enableLegacyEmojiFix: false, enableSponsorBlock: false,
     enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false,
     searchUploadDate
   }));

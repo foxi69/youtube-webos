@@ -1256,6 +1256,16 @@ function createOptionsPanel() {
 // Lazy Load: optionsPanel is not created here.
 // document.body.appendChild(optionsPanel); removed
 
+/** Ends the OLED blackout, if it is on. */
+function endOledBlackout() {
+  const overlay = document.getElementById('oled-black-overlay');
+  if (!overlay) return false;
+  overlay.remove();
+  document.documentElement.classList.remove('ytaf-oled-blackout');
+  if (oledKeepAliveTimer) { clearInterval(oledKeepAliveTimer); oledKeepAliveTimer = null; }
+  return true;
+}
+
 function showOptionsPanel(visible) {
   if (panelInitBlock) {
       console.log('[UI] Options panel toggle blocked due to initialization lock.');
@@ -1264,7 +1274,9 @@ function showOptionsPanel(visible) {
   if (visible === undefined || visible === null) visible = true;
   
   if (visible && !optionsPanelVisible) {
-    
+    // The blackout sits above the panel, which would open unseen.
+    endOledBlackout();
+
     // Lazy Initialization
     if (!optionsPanel) {
         console.log('[UI] Initializing Options Panel (Lazy Load)...');
@@ -1342,6 +1354,8 @@ window.ytaf_showOptionsPanel = showOptionsPanel;
 
 async function skipChapter(direction = 'next') {
   if(isShortsPage()) return;
+  // A press during the wait below would find no chapters yet.
+  if (skipChapter.loading) return;
   const video = getVideo();
   if (!video || !video.duration) return;
 
@@ -1370,7 +1384,9 @@ async function skipChapter(direction = 'next') {
     wasForcedNow = true;
     showNotification('Loading chapters...');
     sendKey(REMOTE_KEYS.ENTER);
+    skipChapter.loading = true;
     await new Promise(resolve => setTimeout(resolve, 500));
+    skipChapter.loading = false;
     chapterEls = getChapterEls();
   }
 
@@ -1395,7 +1411,12 @@ async function skipChapter(direction = 'next') {
       }
   }
 
-  if (totalWidth === 0) return;
+  // A bar without chapter markers.
+  if (totalWidth === 0) {
+    showNotification('No chapters found');
+    if (wasForcedNow) setTimeout(() => simulateBack(), 250);
+    return;
+  }
 
   let targetTime = -1;
   let currentChapterStart = 0;
@@ -1862,11 +1883,7 @@ function handleShortcutAction(action) {
   }
   
   if (action === 'oled_toggle') {
-      let overlay = document.getElementById('oled-black-overlay');
-      if (overlay) {
-          overlay.remove();
-          document.documentElement.classList.remove('ytaf-oled-blackout');
-          if (oledKeepAliveTimer) { clearInterval(oledKeepAliveTimer); oledKeepAliveTimer = null; }
+      if (endOledBlackout()) {
           showNotification('OLED Mode Deactivated');
       } else {
           if (optionsPanelVisible) showOptionsPanel(false);
@@ -1874,7 +1891,7 @@ function handleShortcutAction(action) {
           // feature's own included - are not painted behind the blackout, and
           // above the settings panel (1000). The clock (1199) is hidden by the
           // class instead, so it does not burn in on a black screen.
-          overlay = createElement('div', { id: 'oled-black-overlay', style: { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: '#000', zIndex: 1100 }});
+          const overlay = createElement('div', { id: 'oled-black-overlay', style: { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: '#000', zIndex: 1100 }});
           document.body.appendChild(overlay);
           document.documentElement.classList.add('ytaf-oled-blackout');
           
