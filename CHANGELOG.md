@@ -9,7 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## Added
 
 + **Reset All Settings** (About tab): a second press within a few seconds puts every setting back to its default. With Separate Settings for Each Account on, it resets this account's settings and the ones the whole TV shares; the other accounts keep theirs.
-+ **Video queue**: with More Options in the Long-Press Menu on, holding OK on a video offers "Add to queue". Queued videos play one after another when the current one ends, and the queue lasts until the app closes. The shortcut actions Play Next in Queue and Clear Queue can go on any key.
++ **Video queue**: with More Options in the Long-Press Menu on, holding OK on a video offers "Add to queue". Queued videos play one after another when the current one ends, and the queue lasts until the app closes. A video YouTube refuses to play is reported and the next one starts. The shortcut actions Play Next in Queue and Clear Queue can go on any key.
 
 ## Fixes
 

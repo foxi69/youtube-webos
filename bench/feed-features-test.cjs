@@ -263,7 +263,7 @@ const ids = (r) => itemsOf(r).map((i) => (i.tileRenderer || i.lockupViewModel).c
     const r = parse(browse([tile('queued00001', { title: 'First', longPress: menu() }), tile('queued00002', { title: 'Second', longPress: menu() })]));
     const entries = itemsOf(r).map((i) => i.tileRenderer.onLongPressCommand.showMenuCommand.menu.menuRenderer.items[0].menuServiceItemRenderer.serviceEndpoint);
     const resolve = win._yttv.resolver.instance.resolveCommand;
-    const state = (n) => win.dispatchEvent(new win.CustomEvent('yt-player-state-change', { detail: { state: n } }));
+    const state = (n, videoId) => win.dispatchEvent(new win.CustomEvent('yt-player-state-change', { detail: { state: n, videoId } }));
     t('queue: the entry does not reach YouTube', resolve(entries[0]) === true && resolve(entries[1]) === true);
     resolve(entries[0]);
     state(1);
@@ -316,6 +316,31 @@ const ids = (r) => itemsOf(r).map((i) => (i.tileRenderer || i.lockupViewModel).c
     await wait(50);
     const toasts = win.document.querySelector('.ytaf-notification-container').textContent;
     t('queue: a video that will not play is reported', /Could not play: Broken/.test(toasts), toasts);
+
+    // YouTube answers for a video it refuses in bursts, about half a second apart.
+    const refuse = () => parse({ responseContext: { _pad: pad }, playabilityStatus: { status: 'ERROR', reason: 'Gone' } });
+    const count = (id) => played.filter((v) => v === id).length;
+    resolve(queueEntry(tile('missing0001', { title: 'Missing', longPress: menu() })));
+    resolve(queueEntry(tile('afterit0001', { title: 'After', longPress: menu() })));
+    resolve(queueEntry(tile('spare000001', { title: 'Spare', longPress: menu() })));
+    state(1);
+    state(0);
+    await wait(50);
+    await page('#/watch?v=missing0001', 'WEB_PAGE_TYPE_WATCH');
+    refuse();
+    refuse();
+    await wait(500);
+    refuse();
+    await wait(2300);
+    const refused = win.document.querySelector('.ytaf-notification-container').textContent;
+    t('queue: a video YouTube refuses is reported', /Could not play: Missing/.test(refused), refused);
+    t('queue: the video behind it plays, once', count('afterit0001') === 1 && count('spare000001') === 0, played.join());
+
+    await page('#/watch?v=afterit0001', 'WEB_PAGE_TYPE_WATCH');
+    state(1, 'afterit0001');
+    refuse();
+    await wait(2300);
+    t('queue: a refusal after the video plays moves nothing', count('spare000001') === 0, played.join());
   }
 
   // ---- Hide Recommended Videos Under the Player (NicholasBly/youtube-webos#207) ----
