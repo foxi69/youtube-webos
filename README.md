@@ -367,6 +367,15 @@ of the project; credits are in [CHANGELOG.md](CHANGELOG.md).
   - Shorts left in search results, the History page left unfiltered, DeArrow titles that never showed,
     the Highlight jump undone on a partly watched video;
   - opening the running app again no longer reloads it and jumps to Home.
+- *0.9.0:* the first home screen after a fresh start is filtered too; a channel tab on Subscriptions no longer
+  shows another channel's videos with Reduce Telemetry & Tracking on; no frozen picture after a video screensaver;
+  long settings pages scroll with the remote; playback speed keeps only the last 60 s of audio in memory.
+- *0.9.1:* tile previews show their picture on webOS 3-6; playback speed on Dolby and surround videos, and at 1.25×
+  on 2160p60; Force Max Quality on a video resumed part-way on webOS 25; DeArrow on live streams and its logo on
+  every tile that needs it; Up and Down in the settings panel and in What's New.
+- *0.9.2:* SponsorBlock's switch applies at once; Auto Login no longer presses OK in the profile picker later on;
+  the settings open over the OLED blackout; the clock after standby; thumbnail tests; chapter skip on a bar without
+  chapters; AI, Shorts and live filters beside the player; the Premium logo stays after a resume.
 </details>
 
 <details>
