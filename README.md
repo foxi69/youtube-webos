@@ -107,7 +107,7 @@
 | 0-4, 6-9 | *None* | Can be set to any action during playback. |
 | Back | Closes the settings panel | Otherwise YouTube's normal Back. Holding it to close the panel does not also go back a page. |
 | Left / Right | YouTube's own | With *Left/Right Seek Step* set, they seek by that step while the player controls are hidden. |
-| Hold OK on a video | YouTube's menu | With *More Options in the Long-Press Menu* on, it also offers "Block channel", "Not interested" and "Don't recommend channel". |
+| Hold OK on a video | YouTube's menu | With *More Options in the Long-Press Menu* on, it also offers "Add to queue", "Block channel", "Not interested" and "Don't recommend channel". |
 | Magic Remote wheel | Scrolls | With *Scroll Wheel Seeks* on, each notch on the focused progress bar seeks 10 s. |
 | Magic Remote pointer | Shows a 🦊 button | Moving the pointer shows a fox button in the top-right corner that opens and closes the settings, for remotes without colour buttons. |
 
@@ -120,7 +120,7 @@ Every coloured button and number key can be set to any of these actions on the *
 - **Screen:** Toggle OLED Black Overlay, **Toggle Audio-Only Mode** (hides the picture and keeps the sound; ends
   when you leave the video), **Sleep Timer** (each press steps 15/30/60/90/120 min, then off; pauses the video
   when it runs out)
-- **App:** Open/Close Settings, Refresh Page
+- **App:** Open/Close Settings, Refresh Page, Play Next in Queue, Clear Queue
 
 Holding a key that runs a seek keeps seeking; holding any other bound key runs it once and is not passed on
 to YouTube. A USB or Bluetooth keyboard can type in the search page (see *Type in Search with a Keyboard*).

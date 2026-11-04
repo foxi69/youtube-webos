@@ -20,6 +20,7 @@ import { showNotification as _showNotification, setNotificationOled, setNotifica
 import { blockChannel } from './long-press-menu.js';
 import { VERSION_LABEL } from './version.js';
 import { buildAboutPage } from './about.js';
+import { clearQueue, playNextInQueue } from './video-queue.js';
 import { titleFormattingSupported } from './dearrow/index.js';
 
 // Re-export so existing `import { showNotification } from './ui'` sites keep working.
@@ -180,7 +181,9 @@ const ACTION_SCOPES = {
     jump_to_live: 'VIDEO',
     speed_up: 'VIDEO',
     speed_down: 'VIDEO',
-    speed_reset: 'VIDEO'
+    speed_reset: 'VIDEO',
+    queue_next: 'VIDEO',
+    queue_clear: 'GLOBAL'
 };
 
 function updateShortcutCache(key) {
@@ -1922,6 +1925,14 @@ function handleShortcutAction(action) {
         break;
     case 'jump_to_live':
         jumpToLiveLogic(video);
+        break;
+
+    case 'queue_next':
+        playNextInQueue();
+        break;
+
+    case 'queue_clear':
+        clearQueue();
         break;
 
     case 'speed_up':
