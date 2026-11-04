@@ -1,5 +1,6 @@
 /**
- * Forces `isInlinePlaybackNoAd` on outgoing InnerTube player requests, and
+ * Forces `isInlinePlaybackNoAd` on outgoing InnerTube player requests while
+ * Ad Blocking is on, and
  * adds the Search: Upload Date filter to search requests (withSearchFilter).
  *
  * JSON.stringify is a global hook, so YouTube calls it constantly - every
@@ -22,9 +23,14 @@
  * The flag is set on a copy of the chain down to contentPlaybackContext, never
  * on YouTube's own objects - see withNoAdFlag().
  */
-import { configRead } from '../config';
+import { configRead, configAddChangeListener } from '../config';
 
 const originalStringify = JSON.stringify;
+// Read once and kept current: this runs on every JSON.stringify YouTube makes.
+let adBlockOn = !!configRead('enableAdBlock');
+configAddChangeListener('enableAdBlock', (evt: { detail: { newValue: unknown } }) => {
+  adBlockOn = !!evt.detail.newValue;
+});
 const MAX_DEPTH = 6;
 // Bounds the fallback walk. A request body is a few hundred nodes; anything
 // far past that is not the object we are looking for.
@@ -148,7 +154,7 @@ function withSearchFilter(value: any): any {
 // runs on every JSON.stringify the app makes. (From mirijanristic's fork.)
 function withFlagSafely(value: any): any {
   try {
-    return withSearchFilter(withFlagIfPlayerRequest(value));
+    return withSearchFilter(adBlockOn ? withFlagIfPlayerRequest(value) : value);
   } catch (e) {
     // our logic must never break YouTube's serialization
     return value;
