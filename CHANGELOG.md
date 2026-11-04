@@ -24,6 +24,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 + Remove AI Videos, Remove Shorts and Remove Live / Upcoming / Members-Only Videos also apply to the videos beside and under the player. They did so only when one of the feed filters (Hide Watched Videos, Hide Videos Shorter Than, Blocked Channels, Hide Videos Whose Title Contains) was on as well, so a video found to be AI stayed in the row beside the player. Found while testing in the webOS TV Simulators.
 + YouTube Logo: the Premium (or Default) wordmark stays when the app comes back from the background or after a long idle. YouTube then drew the header again with its own wordmark, and it stayed until the next page change. The wordmark is now set by a stylesheet rule, as Hidden always was, which wins over YouTube's own each time it draws the header; nothing polls for it any more. From NicholasBly/youtube-webos#214 (fork watch #96).
 
+## Docs
+
++ The README is up to date: the About tab and Playback Speed Control are in the settings, the speed actions in the remote's list, and 0.9.0 to 0.9.2 in what this fork adds. Preview Picture Fix and Show Preview Diagnostics, which no longer exist, gave way to Fix Black Tile Previews, and the release steps say how a draft gets its version.
+
 ## [0.9.1] - 2026/11/02
 
 The app is now called **YouTube Foxtended**. An About tab with an update check and What's New after an update, YouTube's "most replayed" graph above the seek bar, the Speed menu on surround videos, and fixes from testing on webOS 25. Ships both packages: `_webOS22+.ipk` for webOS 22 and newer, and the legacy `.ipk` for webOS 3-6.

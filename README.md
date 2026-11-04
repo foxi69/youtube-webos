@@ -42,7 +42,7 @@
     </td>
     <td width="33%" valign="top">
       <h3>🎮 Your remote, your rules</h3>
-      All four colour buttons and 0-9 can run any action: Sleep Timer, Audio-Only, Jump to Live, chapters, subtitles and more. Magic Remote wheel seeks.
+      All four colour buttons and 0-9 can run any action: playback speed, Sleep Timer, Audio-Only, Jump to Live, chapters, subtitles and more. Magic Remote wheel seeks.
     </td>
   </tr>
   <tr>
@@ -114,7 +114,8 @@
 Every coloured button and number key can be set to any of these actions on the **Shortcuts** tab:
 
 - **Playback:** Play/Pause, Fast Forward (Burst), Rewind (Burst), Skip to Next / Previous Chapter,
-  **Jump to Live** (back to the live edge of a live stream)
+  **Jump to Live** (back to the live edge of a live stream), Playback Speed +, Playback Speed -, Playback Speed
+  Reset (1x)
 - **SponsorBlock:** Manual Skip / Jump to Highlight, Skip to Last SponsorBlock Segment
 - **Panels:** Toggle Subtitles, Toggle Comments, Toggle Description, Save / Watch Later
 - **Screen:** Toggle OLED Black Overlay, **Toggle Audio-Only Mode** (hides the picture and keeps the sound; ends
@@ -127,7 +128,7 @@ to YouTube. A USB or Bluetooth keyboard can type in the search page (see *Type i
 
 ## ⚙️ Settings
 
-Open the panel with 🟩 **Green**, or with the 🦊 button the Magic Remote pointer shows. It has six tabs; pick a
+Open the panel with 🟩 **Green**, or with the 🦊 button the Magic Remote pointer shows. It has seven tabs; pick a
 theme with **UI Theme** on the Interface tab, or click the fox in the panel header. Defaults are in the right-hand
 column. A setting marked *webOS 25* or *guest* only appears there.
 
@@ -170,6 +171,7 @@ keyboard (OK on the box) or a USB/Bluetooth one, then OK; select an entry to rem
 | Show Video Quality on Start | Off |
 | Show Video Quality Next to the Title | Off |
 | Force Video Codec (Auto, AV1, VP9, AVC, HEVC, Avoid AV1) | Auto |
+| Playback Speed Control (webOS 23 and newer) | On |
 | Auto-Translate Subtitles (pick a language) | Off |
 | Turn On Translated Subtitles Automatically | Off |
 | Don't Turn On Subtitles by Themselves | Off |
@@ -186,6 +188,9 @@ Portuguese, Dutch, Polish, Czech, Slovak, Romanian, Croatian, Serbian, Slovenian
 Ukrainian, Russian, Swedish, Danish, Finnish, Norwegian, Arabic, Hindi, Indonesian, Vietnamese, Thai, Japanese,
 Korean and Chinese. The chosen language is pinned to the top of the subtitle menu; if the video has no subtitle in
 it, a "*Language* (auto-translated)" track is added, translated by YouTube's own servers.
+
+**Playback Speed Control** unlocks YouTube's Speed menu: 0.25× to 2× with the pitch kept. Every launch starts at
+1×, and off 1× a video with surround audio plays in stereo.
 
 Return YouTube Dislike sends the id of every video you open to returnyoutubedislikeapi.com.
 </details>
@@ -265,8 +270,7 @@ The actions each key can take are listed under [Remote control](#-remote-control
 | UI Brightness (dims menus and thumbnails, never the video) | 100% |
 | Previews With Sound (Disabled, Force On, Force Off; sets YouTube's own setting) | Disabled |
 | Mute Video Previews | Off |
-| Preview Picture Fix (Border Trick, Flatten Layers, Both, Off; webOS 3-6 only) | Border Trick |
-| Show Preview Diagnostics (webOS 3-6 only) | Off |
+| Fix Black Tile Previews (webOS 3-6 only) | On |
 | Fit Page Beside Open Menu | Off |
 | Fix Multiline Titles | On |
 | New Liquid Glass UI | Off |
@@ -285,6 +289,21 @@ The actions each key can take are listed under [Remote control](#-remote-control
 the screen; with this option the page shrinks to fit beside the menu instead. DeArrow asks sponsor.ajay.app by hash
 prefix, like SponsorBlock; a thumbnail it shows (and the random frame's time) is asked for by the video's id. The
 Start Page is not used on a launch into a video.
+</details>
+
+<details>
+<summary><b>ℹ️ About</b>: version, updates, reset, support</summary>
+<br>
+
+| Setting | Default |
+|---|---|
+| Check for Updates | On |
+| Show What's New After an Update | On |
+
+The tab shows the version and has a **Check for Updates Now** button. **Reset All Settings** needs a second press
+within a few seconds, and puts every setting back to its default. With Separate Settings for Each Account on, it
+resets this account's settings and the ones the whole TV shares; the other accounts keep theirs. **Support** has the
+Ko-fi and project pages as QR codes.
 </details>
 
 ## 🆕 What this fork adds
@@ -311,6 +330,12 @@ of the project; credits are in [CHANGELOG.md](CHANGELOG.md).
   videos, blocked channels, title keywords), "Block channel" / "Not interested" / "Don't recommend channel" in the
   long-press menu, Start Page, a Left/Right seek step and DeArrow; from Dazzyelv's fork, Fit Page Beside Open Menu.
   The app waits for the network at launch instead of stopping on YouTube's error page.
+- *0.9.0:* Playback Speed Control, Show Video Quality Next to the Title, Show Watch Time With the Clock, Remove AI
+  Videos and Mark AI Videos, Hide Recommended Videos Under the Player, Search: Upload Date.
+- *0.9.1:* the name YouTube Foxtended, the About tab with an update check and What's New, Show Most Replayed Graph
+  Above the Seek Bar.
+- *0.9.2:* Reset All Settings, and a video queue from the long-press menu: queued videos play one after another,
+  and it lasts until the app closes.
 
 <details>
 <summary><b>Fixed</b></summary>
@@ -350,8 +375,9 @@ of the project; credits are in [CHANGELOG.md](CHANGELOG.md).
 - Support for webOS 3, 4, 5, 6, 22, 23, 24, 25 and newer (2016 and newer LG TVs; webOS 1 and 2 are not supported).
 - Ad blocking with a schema-based filter engine: cleaner Home, Search and Shorts. It also hides QR-code and
   shop overlays and the "Includes paid promotion" banner during playback.
-- Optional filters: Shorts, live videos, "Most Relevant" shelf, Top Live Games, guest sign-in prompts, watched
-  videos, videos shorter than a set length, blocked channels and title keywords.
+- Optional filters: Shorts, live, upcoming, members-only and AI videos, "Most Relevant" shelf, Top Live Games,
+  recommendations under the player, guest sign-in prompts, watched videos, videos shorter than a set length,
+  blocked channels and title keywords. Search: Upload Date.
 - [SponsorBlock](https://sponsor.ajay.app/): every segment type, including Hook, Filler and muted segments, plus
   Highlight; a colour for every segment and a desktop-style segment list; auto, manual and seek-bar-only modes per
   category, and Skip Segments Once; full-video label and time with skips removed; new segments picked up during
@@ -359,16 +385,19 @@ of the project; credits are in [CHANGELOG.md](CHANGELOG.md).
 - Return YouTube Dislike in the description panel (off by default).
 - [DeArrow](https://dearrow.ajay.app/) community titles and thumbnails in place of clickbait (off by default).
 - Force Max Quality, Force Video Codec and Max Thumbnail Quality.
+- Playback speed from 0.25× to 2× with the pitch kept (webOS 23 and newer).
 - Auto-Translate Subtitles, and the original audio in place of dubbed tracks.
 - Bypass Nag Screens: account picker, Premium and other upsell screens, and "Are you still watching?".
   Optionally, always ask who is watching.
 - Programmable remote: 0-9 and all four colour buttons, Magic Remote wheel seeking, a Left/Right seek step,
   more entries in the long-press menu of a video.
+- Video queue: "Add to queue" in the long-press menu, with Play Next in Queue and Clear Queue shortcuts.
 - Start Page: open on Subscriptions, the Library or the History.
+- About tab: update check, What's New after an update and Reset All Settings.
 - OLED care: black overlay on Red with keep-alive, OLED-Care Mode (true-black UI), Audio-Only Mode, Sleep Timer.
 - Smart clock (time, or date and time) that hides in fullscreen and when the description panel is open, or
   stays on during playback.
-- Remaining time and end time beside the video's duration.
+- Remaining time and end time beside the video's duration, and YouTube's "most replayed" graph above the seek bar.
 - UI fixes: full description panel navigation, multiline titles, video shelf opacity, the page fitted beside the
   open menu, Fox, Blue and Red panel themes, YouTube logo style, emoji fix for webOS 3-4.
 </details>
@@ -471,19 +500,20 @@ npm run launch -- -p '{"contentTarget":"v=F8PGWLvn1mQ"}'   # start straight into
 Releases are drafted automatically and published only after a test on the TV:
 
 1. Every push to `main` runs [Draft release](.github/workflows/release.yml). It builds both `.ipk` files and puts
-   them in a **draft** release `v<version>` (version from `package.json`), with
-   [`.github/release-notes.md`](.github/release-notes.md) and that version's CHANGELOG section as release notes.
-   Drafts are visible only to the repository's owner and collaborators.
+   them in a **draft** release `v<version>`, with [`.github/release-notes.md`](.github/release-notes.md) and the
+   CHANGELOG as release notes. Drafts are visible only to the repository's owner and collaborators.
 2. Download the `.ipk` from the draft on the [Releases](https://github.com/foxi69/youtube-webos/releases) page and
    install it on the TV.
-3. If it works, open the draft and press **Publish release**. That creates the tag and runs
+3. If it works, open the draft and press **Publish release**. A full release creates the tag and runs
    [Update Homebrew Repository](.github/workflows/build_repo.yml), which points `repo.json` (legacy) and
-   `repo-webos22.json` (webOS 22+) at the new release, so Homebrew Channel offers the update.
+   `repo-webos22.json` (webOS 22+) at the new release, so Homebrew Channel offers the update. Tick **Set as a
+   pre-release** first to let testers download it while the Homebrew repository stays on the latest full release.
 
-More pushes with the same version refresh the same draft; drafts of other versions are deleted.
-
-**Version rule:** the version in `package.json` is raised only after the previous version has been tested and
-published. Until then every change goes into the current version and its draft.
+**Version rule:** the draft takes the version in `package.json` while that is not published yet, so raising it by
+hand wins. Otherwise later pushes refresh the highest published release if it is a pre-release, or else the open
+draft; with neither, a new draft starts one patch above the highest published release (0.8.8 -> 0.8.9). The build
+writes the version into `package.json` and `appinfo.json` on the runner only, and nothing is committed. Drafts of
+other versions are deleted.
 
 ### Staying up to date with upstream
 
