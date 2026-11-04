@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## Added
+
++ **Reset All Settings** (About tab): a second press within a few seconds puts every setting back to its default. With Separate Settings for Each Account on, it resets this account's settings and the ones the whole TV shares; the other accounts keep theirs.
+
 ## Fixes
 
 + Remove AI Videos, Remove Shorts and Remove Live / Upcoming / Members-Only Videos also apply to the videos beside and under the player. They did so only when one of the feed filters (Hide Watched Videos, Hide Videos Shorter Than, Blocked Channels, Hide Videos Whose Title Contains) was on as well, so a video found to be AI stayed in the row beside the player. Found while testing in the webOS TV Simulators.

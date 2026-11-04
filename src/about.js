@@ -32,7 +32,7 @@
  * The webOS calls (install, launch) go through PalmServiceBridge and are best
  * effort: a firmware that has no bridge or refuses the call gets a toast.
  */
-import { configRead, configAddChangeListener } from './config.js';
+import { configRead, configAddChangeListener, configResetAll } from './config.js';
 import { showNotification } from './notifications.js';
 import { VERSION_LABEL } from './version.js';
 import { REMOTE_KEYS } from './utils.js';
@@ -589,6 +589,38 @@ function openUpdateDialog(latest, ipk, homebrew) {
  * Fills the About page. `h` is ui.js's createElement, `checkbox` its
  * createConfigCheckbox and `section` its createSection.
  */
+const RESET_LABEL = 'Reset All Settings';
+const RESET_CONFIRM_MS = 6000;
+
+/** A second press within a few seconds resets: one OK too many must not do it. */
+function resetButton(h) {
+  let timer = null;
+  const disarm = () => {
+    clearTimeout(timer);
+    timer = null;
+    button.textContent = RESET_LABEL;
+  };
+  const button = h('button', {
+    class: 'ytaf-list-btn ytaf-list-action',
+    text: RESET_LABEL,
+    tabIndex: 0,
+    events: {
+      blur: disarm,
+      click: () => {
+        if (timer === null) {
+          button.textContent = 'Press Again to Reset All Settings';
+          timer = setTimeout(disarm, RESET_CONFIRM_MS);
+          return;
+        }
+        disarm();
+        configResetAll();
+        showNotification('All settings are back to their defaults');
+      }
+    }
+  });
+  return button;
+}
+
 export function buildAboutPage(page, h, checkbox, section) {
   const status = h('div', { class: 'ytaf-about-line' });
   const installStatus = h('div', { class: 'ytaf-about-line', style: { display: 'none' } });
@@ -649,6 +681,8 @@ export function buildAboutPage(page, h, checkbox, section) {
     checkbox('checkForUpdates'),
     checkbox('showWhatsNew')
   ]));
+
+  page.appendChild(section('Settings', [resetButton(h)]));
 
   // Without the service bridge (webOS 25) the app cannot start the browser.
   const canOpenBrowser = typeof window.PalmServiceBridge === 'function';

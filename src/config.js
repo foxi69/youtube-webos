@@ -566,6 +566,22 @@ export function configWrite(key, value) {
   notifyChange(key, value, oldValue);
 }
 
+// Left alone by a reset: where the settings are kept (a reset must not merge
+// or drop the accounts' profiles), and a flag that is not a setting.
+const RESET_KEEPS = new Set(['perAccountSettings', 'foxThemeApplied']);
+
+/**
+ * Every setting back to its default, told to its listeners as if changed in
+ * the panel. With separate settings for each account: this account's, and the
+ * device settings (DEVICE_KEYS), which all of them share.
+ */
+export function configResetAll() {
+  for (const [key, option] of configOptions) {
+    if (RESET_KEEPS.has(key)) continue;
+    configWrite(key, Array.isArray(option.default) ? option.default.slice() : option.default);
+  }
+}
+
 function notifyChange(key, newValue, oldValue) {
   const listeners = changeListeners.get(key);
   if (listeners) {
