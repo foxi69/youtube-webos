@@ -65,11 +65,18 @@ const port = process.argv[2] || 9229;
     await ev('(function(){var R=window.__ytafReal;R.texts=R.texts.map(function(t){return t.split(\'FEhistory\').join(\'FEwhat_to_watch\')});return 1})()');
     await compare('b) the same, as the home feed', false);
   } finally {
-    // Best effort: each one tried, a failure only reported.
+    // Each one tried; one that does not go back fails the run.
     for (const k of Object.keys(before)) {
-      if (typeof before[k] !== 'boolean') continue;
+      if (typeof before[k] !== 'boolean') {
+        console.log(`could not put ${k} back: its value was not read (${JSON.stringify(before[k])})`);
+        process.exitCode = 1;
+        continue;
+      }
       const r = await set(k, before[k]).catch((e) => ({ ok: false, why: String(e) }));
-      if (!r.ok) console.log(`could not put ${k} back to ${before[k]}: ${r.why || 'it did not change'}`);
+      if (!r.ok) {
+        console.log(`could not put ${k} back to ${before[k]}: ${r.why || 'it did not change'}`);
+        process.exitCode = 1;
+      }
     }
     c.close();
   }
