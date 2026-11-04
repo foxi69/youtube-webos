@@ -14,7 +14,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawn, execSync } = require('child_process');
-const { sleep, targets, youtubePage, client, js, settingLabels } = require('./cdp.cjs');
+const { sleep, portInUse, youtubePage, client, js, settingLabels } = require('./cdp.cjs');
 
 const [exe, appArg = 'dist'] = process.argv.slice(2);
 if (!exe) {
@@ -45,7 +45,7 @@ const check = (name, ok, detail) => {
   // The app folder is the simulator's first argument. No throttling when the
   // window is covered or in the background: the tests run while you do other
   // things. A simulator still on the port would give its page to this run.
-  if ((await targets(port).catch(() => [])).length) {
+  if (await portInUse(port)) {
     console.error(`port ${port} is in use: close the simulator on it, or set PORT`);
     process.exit(2);
   }
@@ -496,7 +496,9 @@ const check = (name, ok, detail) => {
         const a = sOff && sOff[oc.part]; const b = sOn && sOn[oc.part];
         // Nothing shows when off, except the clock under Watch Time, which
         // then shows without the watch time.
-        const ok = !!b && (oc.offShows ? JSON.stringify(a) !== JSON.stringify(b) : !a);
+        // The clock's minute can change between the two looks: Watch Time
+        // passes on its own text ("... watched", watch.js), not on any change.
+        const ok = !!b && (oc.offShows ? !!a && /\bwatched\b/.test(b) && !/\bwatched\b/.test(a) : !a);
         ovResults.push({ name: oc.name, key: oc.key, off: a, on: b, ok });
         check(`overlay: ${oc.name} shows when on, not when off`, ok, `off=${JSON.stringify(a).slice(0, 90)} on=${JSON.stringify(b).slice(0, 90)} | controls up: off ${sOff && sOff.controls} on ${sOn && sOn.controls} | setting: off ${JSON.stringify(sOff && sOff.cfg[oc.key])} on ${JSON.stringify(sOn && sOn.cfg[oc.key])}`);
       }

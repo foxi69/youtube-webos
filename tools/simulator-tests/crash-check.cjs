@@ -6,7 +6,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawn, execSync } = require('child_process');
-const { sleep, targets, youtubePage, client } = require('./cdp.cjs');
+const { sleep, portInUse, youtubePage, client } = require('./cdp.cjs');
 
 const [exe, appArg, mode, secs = '120'] = process.argv.slice(2);
 const port = process.env.PORT || 9229;
@@ -15,7 +15,7 @@ const t0 = Date.now();
 const at = () => ((Date.now() - t0) / 1000).toFixed(1) + 's';
 
 (async () => {
-  if ((await targets(port).catch(() => [])).length) {
+  if (await portInUse(port)) {
     console.log(`port ${port} is in use: close the simulator on it, or set PORT`);
     process.exit(2);
   }
@@ -23,7 +23,12 @@ const at = () => ((Date.now() - t0) / 1000).toFixed(1) + 's';
   let result = 'ALIVE';
   sim.on('exit', () => { if (result === 'ALIVE') result = 'SIMULATOR EXITED at ' + at(); });
   const t = await youtubePage(port, 60000);
-  if (!t) { console.log('the app did not start'); process.exit(2); }
+  const stopSim = () => { try { execSync(`taskkill /PID ${sim.pid} /T /F`, { stdio: 'ignore' }); } catch { /* gone */ } };
+  if (!t) {
+    console.log('the app did not start');
+    stopSim();
+    process.exit(2);
+  }
   const c = client(t.webSocketDebuggerUrl);
   c.on((msg) => {
     if (msg.method === 'Inspector.targetCrashed') result = 'CRASHED at ' + at();
@@ -32,14 +37,14 @@ const at = () => ((Date.now() - t0) / 1000).toFixed(1) + 's';
   if (mode === 'with') {
     // As run-app-test.cjs puts it in: at DOMContentLoaded, once.
     const bundle = fs.readFileSync(path.join(appDir, 'webOSUserScripts', 'userScript.js'), 'utf8');
-    const wrapped = `(function(){if(window.__ytafInjected||!/youtube\\.com$/.test(location.host))return;window.__ytafInjected=1;function go(){\n${bundle}\n}` +
+    const wrapped = `(function(){if(window.__ytafInjected||!/youtube\\.com$/.test(location.host))return;window.__ytafInjected=1;function go(){\n${bundle}\n;window.__ytafRan=1}` +
       'if(document.readyState!==\'loading\'){go();return;}document.addEventListener(\'DOMContentLoaded\',go);})();';
     const reg = await c.send('Page.addScriptToEvaluateOnNewDocument', { source: wrapped });
     const ran = await c.evaluate(wrapped + ';1');
     const failed = (reg.error && reg.error.message) || (ran && ran.__error);
     if (failed) {
       console.log('our code could not be put into the page: ' + failed);
-      try { execSync(`taskkill /PID ${sim.pid} /T /F`, { stdio: 'ignore' }); } catch { /* gone */ }
+      stopSim();
       process.exit(2);
     }
   }
@@ -47,7 +52,9 @@ const at = () => ((Date.now() - t0) / 1000).toFixed(1) + 's';
   const end = Date.now() + +secs * 1000;
   // eslint-disable-next-line no-unmodified-loop-condition -- the event handler above sets it
   while (Date.now() < end && result === 'ALIVE') await sleep(250);
+  // ALIVE with our code only counts when the bundle ran to its end.
+  if (mode === 'with' && result === 'ALIVE' && (await c.evaluate('window.__ytafRan')) !== 1) result = 'OUR CODE DID NOT FINISH';
   console.log(`${mode} our code: ${result}`);
-  try { execSync(`taskkill /PID ${sim.pid} /T /F`, { stdio: 'ignore' }); } catch { /* gone */ }
+  stopSim();
   process.exit(0);
 })();

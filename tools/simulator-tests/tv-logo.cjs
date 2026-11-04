@@ -38,7 +38,12 @@ async function state() {
   c.close();
   await sleep(1500);
   s = await state();
-  log(s && s.logo === 'PREMIUM' && s.left === base.left ? 'PASS' : 'FAIL', 'after YouTube repaints the header:', JSON.stringify(s));
+  // Each check: PASS or FAIL, and exit 1 when one fails.
+  const verdict = (ok, what) => {
+    log(ok ? 'PASS' : 'FAIL', what, JSON.stringify(s));
+    if (!ok) process.exitCode = 1;
+  };
+  verdict(s && s.logo === 'PREMIUM' && s.left === base.left, 'after YouTube repaints the header:');
 
   log('switching to another app...');
   execSync(`ares-launch -d ${device} ${otherApp}`, { stdio: 'ignore' });
@@ -51,5 +56,5 @@ async function state() {
   }
   await sleep(3000);
   s = await state();
-  log(s && s.page === 'WEB_PAGE_TYPE_BROWSE' && !s.hidden && s.logo === 'PREMIUM' ? 'PASS' : 'FAIL', 'after switching apps and back:', JSON.stringify(s));
+  verdict(s && s.page === 'WEB_PAGE_TYPE_BROWSE' && !s.hidden && s.logo === 'PREMIUM', 'after switching apps and back:');
 })().catch((e) => { console.error(e); process.exit(1); });

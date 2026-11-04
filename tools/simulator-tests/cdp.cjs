@@ -10,6 +10,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // A stalled endpoint fails after 2 s, so the callers' retry loops go on.
 const targets = async (port) => (await fetch(`http://127.0.0.1:${port}/json/list`, { signal: AbortSignal.timeout(2000) })).json();
 
+// Before starting a simulator: is something still on the port (an earlier
+// simulator, whose page the run would test)? Only a refused connection means
+// free; an answer, an empty list or a timeout means in use.
+const portInUse = (port) => targets(port).then(() => true, (e) => !(e && e.cause && e.cause.code === 'ECONNREFUSED'));
+
 // The YouTube page: on webOS 22+ (site isolation) the app's start page makes a
 // new target when it goes to YouTube, so look for the YouTube URL.
 async function youtubePage(port, waitMs = 0) {
@@ -89,7 +94,7 @@ function settingLabels() {
   return out;
 }
 
-module.exports = { sleep, targets, youtubePage, client, PAGE_KEY, js, settingLabels };
+module.exports = { sleep, targets, portInUse, youtubePage, client, PAGE_KEY, js, settingLabels };
 
 if (require.main === module) {
   const [port, cmd, ...rest] = process.argv.slice(2);

@@ -15,7 +15,9 @@ and about 6 minutes per version. Run them by hand when a change could behave
 differently on older webOS versions.
 
 Windows only, as written (`.exe` simulators, `taskkill`). Node 22+ (its
-built-in `WebSocket`).
+built-in `WebSocket`). The commands below are for Git Bash or another POSIX
+shell: `LOGO=premium node ...` sets the variable for that one command. In
+PowerShell, set it first (`$env:LOGO = 'premium'`), then run `node ...`.
 
 ## Setup, once
 
