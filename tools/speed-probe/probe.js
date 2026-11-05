@@ -11,6 +11,8 @@
  *   3. the method itself: raw Opus packets wrapped in Ogg, and raw AAC frames
  *      wrapped in ADTS, decoded one second at a time, with and without
  *      pre-roll, and compared with the whole-file decode at the seams;
+ *   3b. for AAC, where each piece's output starts and how long it is against
+ *      the frames it was fed, and the pieces joined with the rule that gives;
  *   4. how fast src/speed/wsola.js stretches the audio on this TV;
  *   5. a listening test at 1x, 1.25x and 1.5x.
  *
@@ -20,7 +22,7 @@
 import '../../src/polyfills.js';
 import { WsolaStretcher } from '../../src/speed/wsola.js';
 
-const VERSION = 'SP2';
+const VERSION = 'SP3';
 
 // ---- typed array methods Chromium 38 lacks (45+), used by wsola.js ----------
 const typedNative = {
@@ -429,6 +431,187 @@ function chunkedDecode({ units, unitSamples, rate, channels, preroll, mux, first
   });
 }
 
+// ---- where a decoded piece starts (SP3) ---------------------------------------
+/**
+ * Offset of `out` against `ref` at `outAt`, searched around `refGuess`: the
+ * `off` for which out[outAt + i] best matches ref[refGuess + off + i], and how
+ * well (the error against the signal's own energy there, in dB; a real match
+ * is far below 0 dB).
+ */
+function alignAt(out, ref, outAt, refGuess, range) {
+  const win = 2048;
+  let best = 0;
+  let bestErr = Infinity;
+  let energy = 0;
+  for (let i = 0; i < win; i += 2) energy += out[outAt + i] * out[outAt + i];
+  for (let off = -range; off <= range; off++) {
+    const base = refGuess + off;
+    if (base < 0 || base + win > ref.length) continue;
+    let err = 0;
+    for (let i = 0; i < win; i += 2) {
+      const d = out[outAt + i] - ref[base + i];
+      err += d * d;
+      if (err >= bestErr) break;
+    }
+    if (err < bestErr) {
+      bestErr = err;
+      best = off;
+    }
+  }
+  const match = bestErr === Infinity ? Infinity : 10 * Math.log(Math.max(bestErr, 1e-12) / Math.max(energy, 1e-12)) / Math.LN10;
+  return { off: best, match };
+}
+
+/**
+ * AAC frames [a, b) decoded one piece at a time, each with `pre` frames before
+ * it and `post` frames after it. For each piece: where its first output sample
+ * sits in the whole-file decode (`lead`, in samples, against from * 1024), and
+ * how many samples it gave against the frames it was fed (`extra`).
+ */
+function decodeAacPieces(frames, aac, ref, pre, post) {
+  const { ctx } = decodeCtx(aac.rate, aac.channels);
+  const pieces = [];
+  for (let a = 0; a < frames.length;) {
+    const b = Math.min(frames.length, a + Math.ceil(aac.rate / 1024));
+    pieces.push({ a, b, from: Math.max(0, a - pre), to: Math.min(frames.length, b + post) });
+    a = b;
+  }
+  let ms = 0;
+  let chain = Promise.resolve();
+  pieces.forEach((p) => {
+    chain = chain.then(() =>
+      decode(ctx, muxAdts(frames.slice(p.from, p.to), aac.aot, aac.srIndex, aac.channels)).then(({ audio, ms: t }) => {
+        ms += t;
+        p.data = channelsOf(audio);
+        p.extra = audio.length - (p.to - p.from) * 1024;
+        // Matched in the middle of the piece, clear of both ends.
+        const outAt = Math.max(0, (audio.length >> 1) - 1024);
+        const al = alignAt(p.data[0], ref[0], outAt, p.from * 1024 + outAt, 2200);
+        p.lead = al.off;
+        p.match = al.match;
+      })
+    );
+  });
+  return chain.then(() => ({ pieces, ms }));
+}
+
+/**
+ * The pieces joined with one fixed rule, as the speed engine would have to:
+ * from each piece, drop its pre-roll plus `x` samples, then keep exactly its
+ * own frames' worth. `x` is the same for every piece but the first (which
+ * starts the file, as the whole-file decode does).
+ */
+function stitchPieces(pieces, channels, x) {
+  const outs = [];
+  for (let c = 0; c < channels; c++) outs.push([]);
+  const seams = [];
+  let total = 0;
+  let short = 0;
+  pieces.forEach((p, k) => {
+    const need = (p.b - p.a) * 1024;
+    const drop = k === 0 ? 0 : (p.a - p.from) * 1024 + x;
+    const len = p.data[0].length;
+    const last = k === pieces.length - 1;
+    const keep = last ? Math.max(0, Math.min(need, len - drop)) : need;
+    if (drop < 0 || (!last && drop + need > len)) short++;
+    if (total > 0) seams.push(total);
+    for (let c = 0; c < channels; c++) {
+      const src = p.data[Math.min(c, p.data.length - 1)];
+      const part = new Float32Array(keep);
+      const s0 = Math.max(0, drop);
+      part.set(src.subarray(s0, Math.min(len, drop + keep)), s0 - drop);
+      outs[c].push(part);
+    }
+    total += keep;
+  });
+  const pcm = outs.map((list) => {
+    const all = new Float32Array(total);
+    let at = 0;
+    for (let i = 0; i < list.length; i++) {
+      all.set(list[i], at);
+      at += list[i].length;
+    }
+    return all;
+  });
+  return { pcm, seams, short };
+}
+
+function median(list) {
+  const s = list.slice().sort((p, q) => p - q);
+  return s.length ? s[s.length >> 1] : 0;
+}
+
+function spread(list) {
+  if (!list.length) return '-';
+  const lo = Math.min.apply(null, list);
+  const hi = Math.max.apply(null, list);
+  return lo === hi ? `${lo}` : `${lo}..${hi}`;
+}
+
+/**
+ * On Chromium 53 (a webOS 4.10 TV, SP2) the AAC pieces did not line up even
+ * with pre-roll, while on Chromium 79 they did. This measures why: where each
+ * piece's output starts and how long it is, then joins the pieces with the
+ * rule that follows from it and checks the seams again.
+ */
+function testAacPieces() {
+  section('3b. AAC pieces on this decoder: where they start, how long they are');
+  const aac = SAMPLES.aac;
+  const frames = splitPackets(b64(aac.data), aac.sizes);
+  const ref = reference.aac;
+  if (!ref) {
+    row('AAC pieces')('SKIP', 'no whole-file AAC decode to compare with', 'bad');
+    return Promise.resolve();
+  }
+  const whole = ref[0].length - frames.length * 1024;
+  row('Whole file')(`${whole >= 0 ? '+' : ''}${whole}`, `${ref[0].length} samples from ${frames.length} frames (${frames.length * 1024}); ` +
+    'negative: the decoder holds back or trims samples', whole === 0 ? 'ok' : '');
+  summary.wl = whole;
+  const runs = [
+    { label: 'Pre-roll 1, post-roll 1', key: 'fx1', pre: 1, post: 1 },
+    { label: 'Pre-roll 2, post-roll 2', key: 'fx2', pre: 2, post: 2 },
+    { label: 'Pre-roll 4, post-roll 4', key: 'fx4', pre: 4, post: 4 }
+  ];
+  let chain = Promise.resolve();
+  runs.forEach((run) => {
+    chain = chain.then(() => wait(50)).then(() => {
+      const set = row(run.label);
+      setStatus(`Measuring AAC pieces (${run.label.toLowerCase()})…`);
+      return decodeAacPieces(frames, aac, ref, run.pre, run.post)
+        .then(({ pieces, ms }) => {
+          const c = pieces[0].lead;
+          const rest = pieces.slice(1);
+          // x: how far each piece's own frames start past its pre-roll.
+          const xs = rest.map((p) => c - p.lead);
+          const x = median(xs);
+          const { pcm, seams, short } = stitchPieces(pieces, aac.channels, x);
+          const offset = align(pcm[0], ref[0], pcm[0].length >> 1, 2200);
+          const { seamMax, restMax, jump } = compare(pcm[0], ref[0], seams, offset);
+          const secs = pcm[0].length / aac.rate;
+          const verdict = seamMax < 0.01 && jump < 1 ? 'OK' : seamMax < 0.05 && jump < 4 ? 'WEAK' : 'CLICKS';
+          const worstMatch = Math.max.apply(null, pieces.map((p) => p.match));
+          set(verdict,
+            `first piece: starts at ${c}, ${pieces[0].extra >= 0 ? '+' : ''}${pieces[0].extra} samples; ` +
+            `the others: start ${spread(rest.map((p) => p.lead))}, length ${spread(rest.map((p) => p.extra))} against their frames; ` +
+            `rule: drop pre-roll ${x >= 0 ? '+' : ''}${x} samples${short ? `, ${short} pieces too short` : ''}; ` +
+            `joined: after seams ${db(seamMax)}, elsewhere ${db(restMax)}, extra step at seam ${jump.toFixed(2)}x, offset ${offset}; ` +
+            `worst match ${worstMatch.toFixed(0)} dB, ${Math.round(ms / secs)} ms per second of audio`,
+            verdict === 'OK' ? 'ok' : 'bad');
+          summary[run.key] = `${verdict}${Math.round(20 * Math.log(Math.max(seamMax, 1e-9)) / Math.LN10)}/${jump.toFixed(2)}` +
+            `,x${x}${xs.length && Math.min.apply(null, xs) !== Math.max.apply(null, xs) ? '~' : ''},n${median(rest.map((p) => p.extra))}` +
+            `${short ? `,s${short}` : ''}`;
+          if (!listen.aac || seamMax < listen.aac.err) listen.aac = { pcm, rate: aac.rate, err: seamMax };
+        })
+        .catch((e) => {
+          set('FAIL', String(e.message || e), 'bad');
+          summary[run.key] = 'F';
+        })
+        .then(showSummary);
+    });
+  });
+  return chain;
+}
+
 // ---- tests -----------------------------------------------------------------
 const reference = {};
 const listen = {};
@@ -747,6 +930,7 @@ function run() {
   testEnvironment()
     .then(testWholeFiles)
     .then(testChunked)
+    .then(testAacPieces)
     .then(testWsola)
     .then(() => {
       setStatus('Done. A photo of the orange box is enough (the table has the details). Then try the buttons.');

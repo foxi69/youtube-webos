@@ -19,7 +19,7 @@ const ROOT = path.resolve(__dirname, '../..');
 const OUT = path.join(ROOT, 'dist/speed-probe');
 const APP = path.join(OUT, 'app');
 // webOS takes numbers only here, so "beta" goes into the title and the file name.
-const VERSION = '0.9.1';
+const VERSION = '0.9.2';
 
 fs.rmSync(APP, { recursive: true, force: true });
 fs.mkdirSync(APP, { recursive: true });
