@@ -400,7 +400,7 @@ of the project; credits are in [CHANGELOG.md](CHANGELOG.md).
 - Support for webOS 3, 4, 5, 6, 22, 23, 24, 25 and newer (2016 and newer LG TVs). webOS 1 and 2 are not supported; [SiberianMishka/youtube-webos-legacy](https://github.com/SiberianMishka/youtube-webos-legacy) is a build for them.
 - Ad blocking with a schema-based filter engine: cleaner Home, Search and Shorts. It also hides QR-code and
   shop overlays and the "Includes paid promotion" banner during playback.
-- Optional filters: Shorts, live, upcoming, members-only and AI videos, "Most Relevant" shelf, Top Live Games,
+- Optional filters: Shorts, live, upcoming, members-only and AI videos, Mixes, "Most Relevant" shelf, Top Live Games,
   recommendations under the player, guest sign-in prompts, watched videos, videos shorter than a set length,
   blocked channels and title keywords. Search: Upload Date.
 - [SponsorBlock](https://sponsor.ajay.app/): every skip category, including Hook, Filler and muted segments, plus

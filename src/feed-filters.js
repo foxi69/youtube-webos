@@ -142,6 +142,48 @@ export function itemWatchedPercent(item) {
 }
 
 /**
+ * Whether a playlist id is a Mix: YouTube's generated mixes and radios start
+ * with "RD" (RD<video id>, RDMM "My Mix", RDEM, RDAMVM...). RDCLAK ones are
+ * YouTube Music's albums and charts, which are generated too but are not
+ * mixes, so they stay.
+ */
+function isMixId(id) {
+  return typeof id === 'string' && id.indexOf('RD') === 0 && id.indexOf('RDCLAK') !== 0;
+}
+
+/** The playlist a browse endpoint opens (VL<playlist id>), or null. */
+function browsePlaylistId(endpoint) {
+  const id = endpoint && endpoint.browseId;
+  return typeof id === 'string' && id.indexOf('VL') === 0 ? id.slice(2) : null;
+}
+
+/**
+ * Whether an item is a Mix: a tile or a lockup of the MIX type, or of the
+ * playlist type with a Mix id, or one of the older radio renderers. A video
+ * that merely plays inside a Mix (its watch endpoint names the Mix as its
+ * playlist) is a video and stays. (Idea from MickLesk's fork.)
+ */
+export function isMixItem(item) {
+  const tile = item.tileRenderer;
+  if (tile) {
+    const type = typeof tile.contentType === 'string' ? tile.contentType : '';
+    if (type.slice(-4) === '_MIX') return true;
+    const command = tile.onSelectCommand || {};
+    if (command.watchPlaylistEndpoint) return isMixId(command.watchPlaylistEndpoint.playlistId);
+    if (type === 'TILE_CONTENT_TYPE_PLAYLIST') {
+      return isMixId((command.watchEndpoint && command.watchEndpoint.playlistId) || browsePlaylistId(command.browseEndpoint));
+    }
+    return false;
+  }
+  const lockup = item.lockupViewModel;
+  if (lockup) {
+    if (lockup.contentType === 'LOCKUP_CONTENT_TYPE_MIX') return true;
+    return lockup.contentType === 'LOCKUP_CONTENT_TYPE_PLAYLIST' && isMixId(lockup.contentId);
+  }
+  return !!(item.radioRenderer || item.compactRadioRenderer || item.gridRadioRenderer);
+}
+
+/**
  * The browse page a response belongs to: the browse_id the response names in
  * its tracking parameters, else the page in the address (`#/browse?c=FE...`).
  * A continuation names no page of its own, so the address is what tells it.

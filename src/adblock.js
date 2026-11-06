@@ -4,7 +4,7 @@ import { getWebOSVersion } from './webos-utils';
 import { FetchRegistry } from './hooks';
 import { upgradeResponseThumbnails, thumbnailHookRequired } from './thumbnail-quality.js';
 import { raiseRowsAhead } from './rows-ahead.js';
-import { itemTitle, itemChannel, itemDurationSeconds, itemWatchedPercent, keepsWatchedVideos } from './feed-filters.js';
+import { itemTitle, itemChannel, itemDurationSeconds, itemWatchedPercent, keepsWatchedVideos, isMixItem } from './feed-filters.js';
 import { extendLongPressMenu } from './long-press-menu.js';
 import { noteQueuePlayability } from './video-queue.js';
 import { applyDeArrow } from './dearrow/index.js';
@@ -74,6 +74,7 @@ const CONFIG_KEYS = {
   MEMBERS: 'removeMembersOnly',
   AI: 'removeAiVideos',
   LIVE_GAMES: 'removeTopLiveGames',
+  MIXES: 'removeMixes',
   MOST_RELEVANT: 'removeMostRelevant',
   RECOMMENDED: 'hideRecommendedVideos',
   GUEST_PROMPTS: 'hideGuestSignInPrompts',
@@ -246,6 +247,7 @@ const cfgFlags = {
   badgeMask: 0,
   removeAiVideos: false,
   removeTopLiveGames: false,
+  removeMixes: false,
   removeMostRelevant: false,
   hideRecommended: false,
   hideGuestPrompts: false,
@@ -308,6 +310,7 @@ function recomputeFilterFlags() {
     (cfgFlags.removeUpcomingVideos ? BADGE_UPCOMING : 0) |
     (cfgFlags.removeMembersOnly ? BADGE_MEMBERS : 0);
   cfgFlags.removeTopLiveGames = adBlock && !!cfgSnapshot[CONFIG_KEYS.LIVE_GAMES];
+  cfgFlags.removeMixes = adBlock && !!cfgSnapshot[CONFIG_KEYS.MIXES];
   cfgFlags.removeMostRelevant = adBlock && !!cfgSnapshot[CONFIG_KEYS.MOST_RELEVANT];
   cfgFlags.hideRecommended = adBlock && !!cfgSnapshot[CONFIG_KEYS.RECOMMENDED];
   cfgFlags.hideGuestPrompts = adBlock && !!cfgSnapshot[CONFIG_KEYS.GUEST_PROMPTS];
@@ -341,6 +344,7 @@ function recomputeFilterFlags() {
     cfgFlags.removeMembersOnly ||
     cfgFlags.removeAiVideos ||
     cfgFlags.removeTopLiveGames ||
+    cfgFlags.removeMixes ||
     cfgFlags.removeMostRelevant ||
     cfgFlags.hideRecommended ||
     cfgFlags.hideGuestPrompts ||
@@ -931,7 +935,7 @@ function applySchemaFilters(data, responseType, config) {
       // Members-only badges were missing, so they did nothing there unless a
       // feed filter was on as well).
       if (config.hideGuestPrompts || config.feedFilters || config.decorateItems ||
-          config.removeAiVideos || config.removeGlobalShorts || config.badgeMask) {
+          config.removeAiVideos || config.removeGlobalShorts || config.removeMixes || config.badgeMask) {
          let pivotContents = getByPath(data, schema?.pivotPath);
          if (!pivotContents) {
             pivotContents = findObjects(data, ['pivot'], 8).pivot?.sectionListRenderer?.contents;
@@ -1283,6 +1287,7 @@ function shouldDropItem(item, config) {
   if (config.enableAdBlock && (hasAdRenderer(item) || isReelAd(item))) return true;
   if (config.hideGuestPrompts && isGuestPrompt(item)) return true;
   if (config.removeGlobalShorts && isShortsItem(item)) return true;
+  if (config.removeMixes && isMixItem(item)) return true;
   // Remove AI Videos: only videos ai-content-filter.js already found labelled "AI".
   if (config.removeAiVideos && isAiVideoStored(extractAiVideoId(item))) return true;
   if (config.feedFilters && dropsByFeedFilters(item, config)) return true;

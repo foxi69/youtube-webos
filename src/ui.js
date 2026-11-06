@@ -975,6 +975,7 @@ function createOptionsPanel() {
   const elRemoveGlobalShorts = createConfigCheckbox('removeGlobalShorts');
   const elRemoveLiveVideos = createConfigCheckbox('removeLiveVideos');
   const elRemoveTopLiveGames = createConfigCheckbox('removeTopLiveGames');
+  const elRemoveMixes = createConfigCheckbox('removeMixes');
   const elRemoveMostRelevant = createConfigCheckbox('removeMostRelevant');
   const elHideRecommended = createConfigCheckbox('hideRecommendedVideos');
   const elRemoveUpcoming = createConfigCheckbox('removeUpcomingVideos');
@@ -985,7 +986,7 @@ function createOptionsPanel() {
   elMarkAi.querySelector('input').id = 'ytaf-mark-ai';
   let elGuestPrompts = null;
   // Remove AI Videos and Mark AI Videos side by side, in a row of their own.
-  cosmeticGroup.push(elRemoveGlobalShorts, elRemoveLiveVideos, elRemoveTopLiveGames, elRemoveMostRelevant, elRemoveUpcoming, elRemoveMembersOnly, elRemoveAi, elMarkAi, elHideRecommended);
+  cosmeticGroup.push(elRemoveGlobalShorts, elRemoveLiveVideos, elRemoveTopLiveGames, elRemoveMostRelevant, elRemoveUpcoming, elRemoveMembersOnly, elRemoveMixes, elHideRecommended, elRemoveAi, elMarkAi);
   if (isGuestMode()) { elGuestPrompts = createConfigCheckbox('hideGuestSignInPrompts'); cosmeticGroup.push(elGuestPrompts); }
 
   pageFilters.appendChild(createSection('Cosmetic Filtering', cosmeticGroup, 'ytaf-section-2col'));
@@ -999,7 +1000,7 @@ function createOptionsPanel() {
   // Blocking, so it genuinely does nothing while Ad Blocking is off. Greying it
   // out is what tells the user that, instead of leaving a checkbox that looks
   // armed but is inert.
-  const adBlockDependents = [elTrackingBlock, elRemoveGlobalShorts, elRemoveLiveVideos, elRemoveTopLiveGames, elRemoveMostRelevant, elRemoveUpcoming, elRemoveMembersOnly, elRemoveAi, elHideRecommended, elGuestPrompts];
+  const adBlockDependents = [elTrackingBlock, elRemoveGlobalShorts, elRemoveLiveVideos, elRemoveTopLiveGames, elRemoveMostRelevant, elRemoveUpcoming, elRemoveMembersOnly, elRemoveMixes, elRemoveAi, elHideRecommended, elGuestPrompts];
   const updateDependencyState = () => {
     const enabled = configRead('enableAdBlock');
     adBlockDependents.forEach(el => { setState(el, enabled); });
