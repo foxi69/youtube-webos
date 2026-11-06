@@ -1153,6 +1153,8 @@ function createOptionsPanel() {
   	  ] : []),
   	  createConfigCheckbox('fitPageBesideGuide'),
   	  createElement('div', { text: 'Shrinks the page beside the open left menu, instead of pushing its right side off the screen', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
+  	  createConfigCheckbox('removeLowMemoryStyle'),
+  	  createElement('div', { text: 'Takes away the black boxes YouTube puts behind the player\'s titles and timestamps when it saves memory', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   	  createConfigCheckbox('fixMultilineTitles'),
   	  createConfigCheckbox('removeBlackBorders')
     ];
@@ -2194,7 +2196,7 @@ function initGlobalStyles() {
         html.oled-theme-active .ZghAqf,
         html.oled-theme-active .RAE3Re .AmQJbe,
         html.oled-theme-active .tVp1L,
-        html.oled-theme-active .app-quality-root .DnwJH,
+        html.oled-theme-active .DnwJH,
         html.oled-theme-active .qRdzpd.stQChb .TYE3Ed,
         html.oled-theme-active .k82tDb { background-color: #000 !important; }
         html.oled-theme-active .ytLrGuideResponseGradient { display: none; }
@@ -2202,9 +2204,13 @@ function initGlobalStyles() {
         html.oled-theme-active .p0DeOc { background-color: #000 !important; background-image: none !important; }
         html.oled-theme-active ytlr-player-focus-ring { border: 0.375rem solid rgb(200, 200, 200) !important; }
         html.oled-theme-active ytlr-surface-page { background-image: none !important; background-color: #000 !important; }
-        html.oled-theme-active.oled-transparent-shelf .app-quality-root .UGcxnc .dxLAmd,
-        html.oled-theme-active.oled-transparent-shelf .app-quality-root .UGcxnc .Dc2Zic .JkDfAc { background-color: rgba(0, 0, 0, 0) !important; }
+        html.oled-theme-active.oled-transparent-shelf .UGcxnc .dxLAmd,
+        html.oled-theme-active.oled-transparent-shelf .UGcxnc .Dc2Zic .JkDfAc { background-color: rgba(0, 0, 0, 0) !important; }
 
+        /* The .app-quality-root rules below restyle YouTube's low-memory
+           black boxes. With Remove Black Text Boxes on (app-quality-fix.js)
+           the class is off <body> and the boxes are gone, so they apply only
+           with it off. */
         html.ytaf-fix-titles .app-quality-root .SK1srf .WVWtef,
         html.ytaf-fix-titles .app-quality-root .SK1srf .niS3yd {
             padding-bottom: 0.37vh !important;

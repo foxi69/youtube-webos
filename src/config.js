@@ -271,6 +271,8 @@ const configOptions = new Map([
   ['enableOledCareMode', { default: false, desc: 'OLED-Care Mode (True Black UI)' }],
   ['videoShelfOpacity', { default: 100, desc: 'Video shelf opacity' }],
   ['fixMultilineTitles', { default: true, desc: 'Fix Multiline Titles' }],
+  // Takes YouTube's low-memory class off <body> (app-quality-fix.js).
+  ['removeLowMemoryStyle', { default: true, desc: 'Remove Black Text Boxes' }],
   ['loadRowsAhead', { default: true, desc: 'Load Rows Ahead' }],
   ['keyboardSearch', { default: true, desc: 'Type in Search with a Keyboard' }],
   ['searchUploadDate', { default: 'any', desc: 'Search: Upload Date' }],

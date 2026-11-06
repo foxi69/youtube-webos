@@ -50,6 +50,7 @@ run quality-tag-test "$B"
 run watch-time-test "$B"
 run search-filter-test "$B"
 run sponsorblock-labels-test "$B"
+run low-memory-style-test "$B"
 
 # Coverage stops here: c8 reads the bundle on disk when it reports, so that
 # must still be the build the tests ran (the modern build reuses the path).
