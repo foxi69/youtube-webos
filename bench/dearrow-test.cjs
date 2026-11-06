@@ -249,6 +249,12 @@ const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-d
     const el = render(win, item);
     const r = parse(browse([item]));
     await waitFor(() => shownTitle(el) === 'the iPhone review', 2000);
+    // The webOS 22+ build keeps thumbnail copies as blobs: turned off, they are freed.
+    const revoked = [];
+    if (modern) {
+      await waitFor(() => tileThumb(itemsOf(r)[0]).indexOf('COPY') !== -1, 2000);
+      win.URL.revokeObjectURL = (u) => { revoked.push(u); };
+    }
     // The switch in the panel.
     const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
     Object.defineProperty(e, 'keyCode', { get: () => GREEN, configurable: true });
@@ -265,6 +271,10 @@ const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-d
     await wait(50);
     t('turned off: the stored response has YouTube\'s title back', tileTitle(itemsOf(r)[0]) === 'Clickbait title', tileTitle(itemsOf(r)[0]));
     t('turned off: the tile on screen too', shownTitle(el) === 'Clickbait title', shownTitle(el));
+    if (modern) {
+      t('turned off: the thumbnail copies are freed', revoked.length > 0 && revoked.every((u) => u.indexOf('blob:') === 0), JSON.stringify(revoked));
+      t('turned off: the stored response has YouTube\'s thumbnail back', tileThumb(itemsOf(r)[0]).indexOf('i.ytimg.com') !== -1, tileThumb(itemsOf(r)[0]));
+    }
 
     const labels = Array.from(win.document.querySelectorAll('#ytaf-page-ui-tweaks .section-title')).map((x) => x.textContent);
     t('a DeArrow section on UI Tweaks', labels.indexOf('DeArrow') !== -1, labels.join('|'));

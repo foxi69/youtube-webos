@@ -50,9 +50,9 @@ function restoreTiles() {
 }
 
 /**
- * Forgets everything (too many videos remembered): originals back on screen
- * and in the stored responses while they are still known, then the videos,
- * the queue and the thumbnails.
+ * Forgets everything (too many videos remembered, or DeArrow switched off):
+ * originals back on screen and in the stored responses while they are still
+ * known, then the videos, the queue and the thumbnails, whose blobs are freed.
  */
 function wipe() {
   restoreTiles();
@@ -82,17 +82,20 @@ export function applyDeArrow(data, responseType) {
 /**
  * A DeArrow setting changed: everything is decided again (answers already
  * fetched are reused), newest first, since those are the videos likely on
- * screen; turned off, YouTube's own come back everywhere.
+ * screen. Turned off, YouTube's own come back everywhere and everything
+ * DeArrow kept goes with them: the thumbnail copies would otherwise stay in
+ * memory, up to the thumbnail budget, for the rest of the session.
+ * (NicholasBly's 0.8.5 build 3, fork watch #107.)
  */
 function onSettingsChange() {
+  if (!configRead('enableDeArrow')) {
+    wipe();
+    return;
+  }
   nextGeneration();
   // Stored responses get the new output as they are parsed again.
   unpatchResponses();
   clearQueue();
-  if (!configRead('enableDeArrow')) {
-    restoreTiles();
-    return;
-  }
   const ids = [];
   videos.forEach((video, videoId) => {
     ids.push(videoId);
