@@ -249,11 +249,16 @@ const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-d
     const el = render(win, item);
     const r = parse(browse([item]));
     await waitFor(() => shownTitle(el) === 'the iPhone review', 2000);
-    // The webOS 22+ build keeps thumbnail copies as blobs: turned off, they are freed.
+    // A thumbnail copy first (a blob on the webOS 22+ build, a data URL on the
+    // legacy one): turned off, the blobs are freed.
+    await waitFor(() => tileThumb(itemsOf(r)[0]).indexOf('COPY') !== -1, 2000);
+    t('a thumbnail copy before turning it off', tileThumb(itemsOf(r)[0]).indexOf('COPY') !== -1, tileThumb(itemsOf(r)[0]));
     const revoked = [];
+    let blobsMade = 0;
     if (modern) {
-      await waitFor(() => tileThumb(itemsOf(r)[0]).indexOf('COPY') !== -1, 2000);
       win.URL.revokeObjectURL = (u) => { revoked.push(u); };
+      const make = win.URL.createObjectURL;
+      win.URL.createObjectURL = (b) => { blobsMade++; return make(b); };
     }
     // The switch in the panel.
     const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
@@ -271,10 +276,31 @@ const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-d
     await wait(50);
     t('turned off: the stored response has YouTube\'s title back', tileTitle(itemsOf(r)[0]) === 'Clickbait title', tileTitle(itemsOf(r)[0]));
     t('turned off: the tile on screen too', shownTitle(el) === 'Clickbait title', shownTitle(el));
+    t('turned off: the stored response has YouTube\'s thumbnail back',
+      tileThumb(itemsOf(r)[0]) === 'https://i.ytimg.com/vi/custom00001/hqdefault.jpg', tileThumb(itemsOf(r)[0]));
     if (modern) {
       t('turned off: the thumbnail copies are freed', revoked.length > 0 && revoked.every((u) => u.indexOf('blob:') === 0), JSON.stringify(revoked));
-      t('turned off: the stored response has YouTube\'s thumbnail back', new URL(tileThumb(itemsOf(r)[0])).hostname === 'i.ytimg.com', tileThumb(itemsOf(r)[0]));
     }
+    // Back on in the same session: the tile on screen gets DeArrow's title
+    // again without a new response, and a new thumbnail copy is made (the
+    // freed blob is not used again).
+    const blobsBefore = blobsMade;
+    if (sw) {
+      const input = sw.querySelector('input');
+      input.checked = true;
+      input.dispatchEvent(new win.Event('change'));
+    }
+    await waitFor(() => shownTitle(el) === 'the iPhone review', 2000);
+    t('turned back on: the tile on screen has DeArrow\'s title again', shownTitle(el) === 'the iPhone review', shownTitle(el));
+    await waitFor(() => tileThumb(itemsOf(r)[0]).indexOf('COPY') !== -1, 2000);
+    t('turned back on: a new thumbnail copy in the stored response', tileThumb(itemsOf(r)[0]).indexOf('COPY') !== -1 &&
+      (!modern || blobsMade > blobsBefore), tileThumb(itemsOf(r)[0]) + ' blobs made ' + (blobsMade - blobsBefore));
+    if (sw) {
+      const input = sw.querySelector('input');
+      input.checked = false;
+      input.dispatchEvent(new win.Event('change'));
+    }
+    await wait(50);
 
     const labels = Array.from(win.document.querySelectorAll('#ytaf-page-ui-tweaks .section-title')).map((x) => x.textContent);
     t('a DeArrow section on UI Tweaks', labels.indexOf('DeArrow') !== -1, labels.join('|'));
