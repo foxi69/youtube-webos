@@ -26,6 +26,7 @@ import './sponsorblock.js';
 import './emoji-font.js';
 import './screensaver-fix.js';
 import './yt-fixes.css';
+import './app-quality-fix.js';
 import './comments-fix.js';
 import './watch.js';
 import './mute-previews.js';

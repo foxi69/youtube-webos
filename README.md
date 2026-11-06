@@ -280,6 +280,7 @@ The actions each key can take are listed under [Remote control](#-remote-control
 | Mute Video Previews | Off |
 | Fix Black Tile Previews (webOS 3-6 only) | On |
 | Fit Page Beside Open Menu | Off |
+| Remove Black Text Boxes | On |
 | Fix Multiline Titles | On |
 | New Liquid Glass UI | Off |
 | Emoji + Characters Fix (webOS 3-4 only) | On |
