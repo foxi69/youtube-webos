@@ -80,9 +80,27 @@ export function applyDeArrow(data, responseType) {
 }
 
 /**
+ * Switched off: YouTube's titles and thumbnails back everywhere, then the
+ * thumbnail copies freed, with what pointed at them: they would otherwise
+ * stay in memory, up to the thumbnail budget, for the rest of the session
+ * (NicholasBly's 0.8.5 build 3, fork watch #107). The videos and their
+ * answers stay, a few strings each, so switching DeArrow back on decides
+ * them again at once, the tiles on screen included.
+ */
+function switchOff() {
+  restoreTiles();
+  videos.forEach((video) => {
+    video.thumb = null;
+    video.crowdThumb = false;
+    video.shownThumb = null;
+  });
+  forgetThumbs();
+}
+
+/**
  * A DeArrow setting changed: everything is decided again (answers already
  * fetched are reused), newest first, since those are the videos likely on
- * screen; turned off, YouTube's own come back everywhere.
+ * screen; turned off, YouTube's own come back everywhere (switchOff).
  */
 function onSettingsChange() {
   nextGeneration();
@@ -90,7 +108,7 @@ function onSettingsChange() {
   unpatchResponses();
   clearQueue();
   if (!configRead('enableDeArrow')) {
-    restoreTiles();
+    switchOff();
     return;
   }
   const ids = [];
