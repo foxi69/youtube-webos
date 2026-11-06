@@ -1,4 +1,4 @@
-import { logoStyles, timeRemainingModes, thumbnailQualityModes, videoCodecModes, uiThemes, clockModes, startPageModes, minVideoLengthModes, seekStepModes, searchUploadDateModes, dearrowTitleFormats, dearrowThumbnailFallbacks } from './config.js';
+import { logoStyles, timeRemainingModes, thumbnailQualityModes, videoCodecModes, uiThemes, clockModes, startPageModes, minVideoLengthModes, seekStepModes, maxVideoAgeModes, searchUploadDateModes, dearrowTitleFormats, dearrowThumbnailFallbacks } from './config.js';
 import { configAddChangeListener, configRead, configWrite, configGetDesc, segmentTypes, configGetDefault, shortcutActions, sbModes, sbModesHighlight, forcePreviewModes, configGetProfileStatus } from './config.js';
 import './ui.css';
 import './auto-login.js';
@@ -1035,6 +1035,8 @@ function createOptionsPanel() {
     const feedSection = createSection('Feed Filters', [
       createConfigCheckbox('hideWatchedVideos'),
       createAlignedCycleControl('minVideoLength', minVideoLengthModes),
+      createAlignedCycleControl('maxVideoAge', maxVideoAgeModes),
+      createConfigCheckbox('hideDuplicateVideos'),
       createListEditor('blockedChannels', {
         placeholder: 'Channel name, then OK',
         emptyText: 'None. Block one here, or with a long press on a video (UI Tweaks tab).',
