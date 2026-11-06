@@ -10,6 +10,7 @@ import { noteQueuePlayability } from './video-queue.js';
 import { applyDeArrow } from './dearrow/index.js';
 import { extractAiVideoId } from './ai-video-id.js';
 import { isAiVideoStored } from './ai-video-store.js';
+import { applySidebar, sidebarHookRequired } from './sidebar.js';
 
 const DEBUG = false;
 const EMOJI_DEBUG = false; 
@@ -90,7 +91,8 @@ const CONFIG_KEYS = {
   BLOCKED_KEYWORDS: 'blockedKeywords',
   ORIGINAL_AUDIO: 'forceOriginalAudio',
   LONG_PRESS: 'extendLongPressMenu',
-  DEARROW: 'enableDeArrow'
+  DEARROW: 'enableDeArrow',
+  HIDDEN_SIDEBAR: 'hiddenSidebarEntries'
 };
 
 // A video counts as watched from this much of its red progress bar.
@@ -266,7 +268,9 @@ const cfgFlags = {
   decorateItems: false,
   extendLongPress: false,
   // DeArrow's titles and thumbnails (dearrow/), after the filters.
-  deArrow: false
+  deArrow: false,
+  // Hide Left Menu Entries (sidebar.js): an entry hidden, or none learnt yet.
+  sidebar: false
 };
 
 // Set per response by filterResponse(): the pages that list videos because
@@ -331,6 +335,8 @@ function recomputeFilterFlags() {
   cfgFlags.extendLongPress = !!cfgSnapshot[CONFIG_KEYS.LONG_PRESS];
   cfgFlags.deArrow = !!cfgSnapshot[CONFIG_KEYS.DEARROW];
   cfgFlags.decorateItems = cfgFlags.extendLongPress;
+  // A UI setting, not a filter: on with Ad Blocking off too.
+  cfgFlags.sidebar = sidebarHookRequired();
 
   anyResponseFilterEnabled = !!(
     cfgFlags.enableAdBlock ||
@@ -353,7 +359,7 @@ function recomputeFilterFlags() {
     cfgFlags.decorateItems ||
     cfgFlags.deArrow
   );
-  anyFilterEnabled = anyResponseFilterEnabled || cfgFlags.loadRowsAhead;
+  anyFilterEnabled = anyResponseFilterEnabled || cfgFlags.loadRowsAhead || cfgFlags.sidebar;
 
   Object.assign(cfgFlagsNoEmoji, cfgFlags);
   cfgFlagsNoEmoji.enableLegacyEmojiFix = false;
@@ -780,6 +786,8 @@ function filterResponse(data, text) {
   // Before the Shorts guard below: a browse response parsed while a Short
   // plays still wants its rows ahead.
   if (cfgFlags.loadRowsAhead) raiseRowsAhead(data, responseType);
+  // The left menu, whatever else is on.
+  if (cfgFlags.sidebar) applySidebar(data);
   if (!anyResponseFilterEnabled) return;
 
   // The legacy emoji fix walks every item it filters; a text without an
@@ -1712,7 +1720,8 @@ export function parseHookRequired() {
     cfgSnapshot[CONFIG_KEYS.ORIGINAL_AUDIO] ||
     cfgSnapshot[CONFIG_KEYS.LONG_PRESS] ||
     cfgSnapshot[CONFIG_KEYS.DEARROW] ||
-    thumbnailHookRequired()
+    thumbnailHookRequired() ||
+    sidebarHookRequired()
   );
 }
 

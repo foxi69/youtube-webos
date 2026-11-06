@@ -1,5 +1,6 @@
 /**
- * Logo selector, Live-video filter, Shorts guide entry, and page-1 sizing.
+ * Logo selector, Live-video filter, Shorts guide entry, Hide Left Menu Entries
+ * and page-1 sizing.
  * DOM fixtures are copied verbatim from real webOS 25 captures.
  */
 const fs = require('fs');
@@ -19,7 +20,7 @@ const LOGO_HTML =
   '<ytlr-thumbnail-details tabindex="-1" class="cFXl0 XVmJGe cFrowd" ' +
   `style="background-image: url(&quot;${DEFAULT_URL}&quot;);"></ytlr-thumbnail-details></ytlr-logo-entity>`;
 
-function boot(cfg, extraHtml = '') {
+function boot(cfg, extraHtml = '', storage = {}) {
   const dom = new JSDOM(
     `<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app>${extraHtml}</ytlr-app></body></html>`,
     { runScripts: 'outside-only', url: 'https://www.youtube.com/tv',
@@ -40,6 +41,7 @@ function boot(cfg, extraHtml = '') {
     enableSponsorBlock: false, enableReturnYouTubeDislike: false,
     upgradeThumbnails: false, enableAutoLogin: false, logoStyle: 'default'
   }, cfg)));
+  for (const k in storage) win.localStorage.setItem(k, storage[k]);
   applyChrome38Downgrade(win);
   win.eval(fs.readFileSync(bundlePath, 'utf8'));
   return { win, NS, pump: () => { const q = rafQ; rafQ = []; for (const cb of q) cb(0); } };
@@ -226,6 +228,132 @@ const shelfItems = (r) => r.contents.tvBrowseRenderer.content.tvSurfaceContentRe
     ] };
     const out = win.JSON.parse(NS(guide));
     t('[guide] left alone when Remove Shorts is off', out.items.length === 1);
+  }
+
+  // ---------- Hide Left Menu Entries ----------
+  // The guide in the shape MickLesk's fork filters: sections of entries.
+  const navEntry = (title, endpoint, extra) => ({ guideEntryRenderer: Object.assign(
+    { formattedTitle: { simpleText: title }, navigationEndpoint: endpoint }, extra) });
+  const browseTo = (id) => ({ browseEndpoint: { browseId: id } });
+  const sideGuide = () => ({ responseContext: { _pad: pad }, items: [
+    { guideSectionRenderer: { items: [
+      navEntry('Search', { searchEndpoint: {} }),
+      navEntry('Home', browseTo('FEwhat_to_watch')),
+      navEntry('Subscriptions', browseTo('FEsubscriptions'))
+    ] } },
+    { guideSectionRenderer: { items: [
+      navEntry('Some Channel', browseTo('UCabcdefghijklmnopqrstuv'),
+        { thumbnail: { thumbnails: [{ url: 'https://yt3.ggpht.com/x' }] } })
+    ] } },
+    { guideSectionRenderer: { items: [
+      navEntry('Music', browseTo('FEtopics_music')),
+      navEntry('Gaming', browseTo('FEtopics_gaming'))
+    ] } }
+  ] });
+  const sideTitles = (r) => r.items.map((s) => s.guideSectionRenderer.items
+    .map((x) => x.guideEntryRenderer.formattedTitle.simpleText));
+  const LEARNT = JSON.stringify([
+    { id: 'search', title: 'Search' }, { id: 'FEsubscriptions', title: 'Subscriptions' },
+    { id: 'FEtopics_music', title: 'Music' }, { id: 'FEtopics_gaming', title: 'Gaming' }
+  ]);
+  {
+    // Ad Blocking off: the menu is a UI setting, not one of its filters.
+    const { win, NS } = boot({ enableAdBlock: false });
+    await wait(300);
+    const out = win.JSON.parse(NS(sideGuide()));
+    t('[sidebar] nothing hidden by default', JSON.stringify(sideTitles(out)) ===
+      JSON.stringify([['Search', 'Home', 'Subscriptions'], ['Some Channel'], ['Music', 'Gaming']]),
+      JSON.stringify(sideTitles(out)));
+    const stored = win.localStorage.getItem('ytaf-sidebar-entries');
+    t('[sidebar] the entries are learnt for the panel, without Home and the channels',
+      stored === LEARNT, stored);
+    win.close();
+  }
+  {
+    const { win, NS } = boot({ enableAdBlock: false,
+      hiddenSidebarEntries: ['FEtopics_music', 'FEtopics_gaming', 'search'] });
+    await wait(300);
+    const out = win.JSON.parse(NS(sideGuide()));
+    t('[sidebar] hidden entries, and the section they empty, are taken out',
+      JSON.stringify(sideTitles(out)) === JSON.stringify([['Home', 'Subscriptions'], ['Some Channel']]),
+      JSON.stringify(sideTitles(out)));
+    t('[sidebar] the hidden ones stay listed for the panel',
+      win.localStorage.getItem('ytaf-sidebar-entries') === LEARNT, win.localStorage.getItem('ytaf-sidebar-entries'));
+    // A flat list of entries, the shape the Shorts tests use.
+    const flat = win.JSON.parse(NS({ responseContext: { _pad: pad }, items: [
+      navEntry('Home', browseTo('FEwhat_to_watch')), navEntry('Music', browseTo('FEtopics_music'))] }));
+    t('[sidebar] a flat guide is filtered too', flat.items.length === 1 &&
+      flat.items[0].guideEntryRenderer.formattedTitle.simpleText === 'Home');
+    // Hidden ids are only looked for in the guide.
+    const other = win.JSON.parse(NS({ responseContext: { _pad: pad }, items: [
+      { tileRenderer: { onSelectCommand: browseTo('FEtopics_music') } }] }));
+    t('[sidebar] other responses are left alone', other.items.length === 1);
+    win.close();
+  }
+  {
+    // The panel lists the learnt entries; ticking one hides it from the next guide on.
+    const { win, NS, pump } = boot({ enableAdBlock: false }, '', { 'ytaf-sidebar-entries': LEARNT });
+    await wait(300);
+    const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
+    Object.defineProperty(e, 'keyCode', { get: () => 404, configurable: true });
+    dispatchTrusted(win.document.body, e);
+    for (let i = 0; i < 20; i++) pump();
+    const section = Array.from(win.document.querySelectorAll('#ytaf-page-ui-tweaks .ytaf-settings-section'))
+      .find((s) => s.querySelector('.section-title')?.textContent === 'Hide Left Menu Entries');
+    t('[sidebar] a Hide Left Menu Entries section on UI Tweaks', !!section);
+    const rows = section ? Array.from(section.querySelectorAll('label')) : [];
+    t('[sidebar] one switch per learnt entry, all off',
+      JSON.stringify(rows.map((l) => l.textContent)) === JSON.stringify(['Search', 'Subscriptions', 'Music', 'Gaming']) &&
+      rows.every((l) => !l.querySelector('input').checked), JSON.stringify(rows.map((l) => l.textContent)));
+    const music = rows.find((l) => l.textContent === 'Music');
+    if (music) {
+      const input = music.querySelector('input');
+      input.checked = true;
+      input.dispatchEvent(new win.Event('change'));
+    }
+    await wait(300);
+    const saved = JSON.parse(win.localStorage.getItem('ytaf-configuration'));
+    t('[sidebar] ticking a switch saves the entry as hidden',
+      JSON.stringify(saved.hiddenSidebarEntries) === JSON.stringify(['FEtopics_music']), JSON.stringify(saved.hiddenSidebarEntries));
+    const out = win.JSON.parse(NS(sideGuide()));
+    t('[sidebar] and the next guide comes without it',
+      JSON.stringify(sideTitles(out)[2]) === JSON.stringify(['Gaming']), JSON.stringify(sideTitles(out)));
+    t('[sidebar] the switch stays ticked', !!music && music.querySelector('input').checked);
+    win.close();
+  }
+  {
+    // Everything else on the JSON.parse hook off: the hook stays for the menu
+    // while an entry is hidden or none is learnt yet.
+    const bare = { enableAdBlock: false, loadRowsAhead: false, enableAutoLogin: false };
+    const a = boot(Object.assign({ hiddenSidebarEntries: ['FEtopics_music'] }, bare), '',
+      { 'ytaf-sidebar-entries': LEARNT });
+    await wait(300);
+    const out = a.win.JSON.parse(a.NS(sideGuide()));
+    t('[sidebar] a hidden entry keeps the hook in with nothing else on',
+      JSON.stringify(sideTitles(out)[2]) === JSON.stringify(['Gaming']), JSON.stringify(sideTitles(out)));
+    a.win.close();
+    const b = boot(bare);
+    await wait(300);
+    b.win.JSON.parse(b.NS(sideGuide()));
+    t('[sidebar] and so does an empty list to learn',
+      b.win.localStorage.getItem('ytaf-sidebar-entries') === LEARNT);
+    b.win.close();
+  }
+  {
+    const { win, pump } = boot({}, '');
+    await wait(300);
+    const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
+    Object.defineProperty(e, 'keyCode', { get: () => 404, configurable: true });
+    dispatchTrusted(win.document.body, e);
+    for (let i = 0; i < 20; i++) pump();
+    const section = Array.from(win.document.querySelectorAll('#ytaf-page-ui-tweaks .ytaf-settings-section'))
+      .find((s) => s.querySelector('.section-title')?.textContent === 'Hide Left Menu Entries');
+    t('[sidebar] before the menu has loaded, the section says so',
+      !!section && /None yet/.test(section.textContent) && !section.querySelector('label'));
+    win.JSON.parse(win.JSON.stringify(sideGuide()));
+    const rows = section ? section.querySelectorAll('label').length : 0;
+    t('[sidebar] and lists the entries once it has', rows === 4, String(rows));
+    win.close();
   }
 
   // ---------- 3. Page 1 sizing ----------

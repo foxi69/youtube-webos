@@ -288,6 +288,7 @@ The actions each key can take are listed under [Remote control](#-remote-control
 | Emoji + Characters Fix (webOS 3-4 only) | On |
 | Start Page (Home, Subscriptions, Library, History) | Home |
 | More Options in the Long-Press Menu | Off |
+| Hide Left Menu Entries (a switch per entry: Search, Subscriptions, Music, Gaming...) | None hidden |
 | DeArrow | Off |
 | Show the DeArrow Logo on Crowdsourced Titles/Thumbnails | On |
 | Crowdsourced Titles | On |
@@ -299,7 +300,8 @@ The actions each key can take are listed under [Remote control](#-remote-control
 **Fit Page Beside Open Menu**: while the left menu is open, YouTube slides the page right and its right side leaves
 the screen; with this option the page shrinks to fit beside the menu instead. DeArrow asks sponsor.ajay.app by hash
 prefix, like SponsorBlock; a thumbnail it shows (and the random frame's time) is asked for by the video's id. The
-Start Page is not used on a launch into a video.
+Start Page is not used on a launch into a video. **Hide Left Menu Entries** lists the menu's fixed entries, not the
+subscribed channels or Home, once YouTube has loaded the menu; a ticked one is gone from the next start of the app.
 </details>
 
 <details>
@@ -418,6 +420,7 @@ of the project; credits are in [CHANGELOG.md](CHANGELOG.md).
   more entries in the long-press menu of a video.
 - Video queue: "Add to queue" in the long-press menu, with Play Next in Queue and Clear Queue shortcuts.
 - Start Page: open on Subscriptions, the Library or the History.
+- Hide Left Menu Entries: take Music, Gaming, News or any other fixed entry out of YouTube's left menu.
 - About tab: update check, What's New after an update and Reset All Settings.
 - OLED care: black overlay on Red with keep-alive, OLED-Care Mode (true-black UI), Audio-Only Mode, Sleep Timer.
 - Smart clock (time, or date and time) that hides in fullscreen and when the description panel is open, or

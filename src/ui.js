@@ -22,6 +22,7 @@ import { VERSION_LABEL } from './version.js';
 import { buildAboutPage } from './about.js';
 import { clearQueue, playNextInQueue } from './video-queue.js';
 import { titleFormattingSupported } from './dearrow/index.js';
+import { getSidebarEntries, SIDEBAR_ENTRIES_EVENT } from './sidebar.js';
 
 // Re-export so existing `import { showNotification } from './ui'` sites keep working.
 export const showNotification = _showNotification;
@@ -692,6 +693,54 @@ function createListEditor(key, { placeholder, emptyText, channelButton }) {
     createElement('div', { class: 'ytaf-list-title', text: configGetDesc(key) }), ...children);
 }
 
+/**
+ * Hide Left Menu Entries: a switch for each entry of YouTube's left menu, as
+ * it was last loaded (sidebar.js); a ticked one is hidden. The switches are
+ * rebuilt when the menu brings other entries, and only ticked or unticked
+ * when the setting changes, so the focused one stays.
+ */
+function createSidebarSection() {
+  const KEY = 'hiddenSidebarEntries';
+  const hint = createElement('div', { text: 'Ticked entries are taken out of the left menu from the next start of the app. Home always stays', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh', width: '100%' } });
+  // In two columns, so the switches are the section's own children.
+  const section = createSection('Hide Left Menu Entries', [hint], 'ytaf-section-2col');
+  let rows = [];
+  let inputs = [];
+
+  const setHidden = (id, hide) => {
+    const values = configRead(KEY).filter((v) => v !== id);
+    if (hide) values.push(id);
+    configWrite(KEY, values);
+  };
+  const sync = () => {
+    const hidden = configRead(KEY);
+    inputs.forEach((input) => { input.checked = hidden.indexOf(input.ytafEntryId) !== -1; });
+  };
+  const render = () => {
+    rows.forEach((row) => { if (row.parentNode) row.parentNode.removeChild(row); });
+    rows = [];
+    inputs = [];
+    const entries = getSidebarEntries();
+    if (!entries.length) {
+      rows.push(createElement('div', { class: 'ytaf-list-empty', style: { width: '100%' }, text: 'None yet: they show here once YouTube has loaded its left menu.' }));
+    }
+    entries.forEach((entry) => {
+      const input = createElement('input', { type: 'checkbox', events: { change: (evt) => setHidden(entry.id, evt.target.checked) } });
+      input.ytafEntryId = entry.id;
+      inputs.push(input);
+      const labelText = createElement('span', { class: 'label-text', text: entry.title });
+      rows.push(createElement('label', {}, createElement('div', { class: 'label-content', style: { fontSize: '2.1vh' } }, input, labelText)));
+    });
+    rows.forEach((row) => { section.insertBefore(row, hint); });
+    sync();
+  };
+
+  configAddChangeListener(KEY, sync);
+  window.addEventListener(SIDEBAR_ENTRIES_EVENT, render);
+  render();
+  return section;
+}
+
 // --- Main Options Panel Logic ---
 
 function createOptionsPanel() {
@@ -1171,6 +1220,8 @@ function createOptionsPanel() {
       createAlignedCycleControl('startPage', startPageModes),
       createConfigCheckbox('extendLongPressMenu')
     ]));
+
+    pageUITweaks.appendChild(createSidebarSection());
 
     // DeArrow: the switch and the logo, then the title and thumbnail options,
     // greyed out while it is off (and the thumbnail fallback while
@@ -2452,6 +2503,8 @@ configAddChangeListener('hideEndcards', () => syncAdblockHook());
 configAddChangeListener('upgradeThumbnails', () => syncAdblockHook());
 // Load Rows Ahead raises the continuation threshold inside the same hook.
 configAddChangeListener('loadRowsAhead', () => syncAdblockHook());
+// Hide Left Menu Entries filters the guide response in the same hook.
+configAddChangeListener('hiddenSidebarEntries', () => syncAdblockHook());
 // "Are you still watching?" (Bypass Nag Screens) and the subtitle start state
 // are rewritten in the same hook.
 configAddChangeListener('enableAutoLogin', () => syncAdblockHook());
