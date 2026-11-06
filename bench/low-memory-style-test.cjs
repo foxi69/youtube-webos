@@ -115,13 +115,16 @@ setTimeout(async () => {
     win.document.body.className = 'WEB_PAGE_TYPE_BROWSE';
     // YouTube's own grey backgrounds, for OLED-Care to override.
     win.document.body.insertAdjacentHTML('beforeend',
-      '<style>.DnwJH, .UGcxnc .dxLAmd { background-color: rgb(33, 33, 33); }</style>' +
-      '<div class="DnwJH"></div><div class="UGcxnc"><div class="dxLAmd"></div></div>');
+      '<style>.DnwJH, .UGcxnc .dxLAmd, .UGcxnc .Dc2Zic .JkDfAc { background-color: rgb(33, 33, 33); }</style>' +
+      '<div class="DnwJH"></div><div class="UGcxnc"><div class="dxLAmd"></div>' +
+      '<div class="Dc2Zic"><div class="JkDfAc"></div></div></div>');
     const bg = (sel) => win.getComputedStyle(win.document.querySelector(sel)).backgroundColor;
     t('OLED-Care: the element under the player is black without the class',
       /^(?:rgb\(0, 0, 0\)|#000)$/.test(bg('.DnwJH')), bg('.DnwJH'));
     t('OLED-Care: the transparent shelf without the class',
       /rgba\(0, 0, 0, 0\)|transparent/.test(bg('.dxLAmd')), bg('.dxLAmd'));
+    t('OLED-Care: the shelf\'s inner backdrop too',
+      /rgba\(0, 0, 0, 0\)|transparent/.test(bg('.JkDfAc')), bg('.JkDfAc'));
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);
