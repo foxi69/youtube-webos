@@ -1,6 +1,7 @@
 import { AudioEngine } from './speed/audio-engine.js';
 import { installMseHook, isSupportedSpeed, SUPPORTED_SPEEDS } from './speed/mse-hook.js';
-import { keepStretchableAudio, allowSpeedMenuOnSurround } from './speed/containers.js';
+import { keepStretchableAudio, allowSpeedMenuOnSurround, LEGACY_STRETCHABLE_AUDIO_RE } from './speed/containers.js';
+import { legacyAudioCodecs } from './speed/legacy-decoder.js';
 import { watchPosition } from './speed/position-watch.js';
 import { showNotification } from './notifications.js';
 import { configRead, configAddChangeListener } from './config.js';
@@ -68,7 +69,8 @@ export function installSpeedButtonPatch(win, isOn) {
 // The player response of a reload at a speed other than 1x (and of the next
 // video while it lasts) loses the audio the engine cannot stretch
 // (speed/containers.js). At 1x the offer is left as it is: AC-3 stays.
-export function installAudioOfferFilter(win, getSpeed) {
+// Without WebCodecs only AAC LC can be stretched (`stretchable`).
+export function installAudioOfferFilter(win, getSpeed, stretchable) {
   const json = win.JSON || JSON;
   const original = json.parse;
   const patched = function () {
@@ -77,7 +79,7 @@ export function installAudioOfferFilter(win, getSpeed) {
       r &&
       typeof r === 'object' &&
       (r.streamingData || (r.playerResponse && r.playerResponse.streamingData));
-    if (streaming && getSpeed() !== 1) keepStretchableAudio(streaming);
+    if (streaming && getSpeed() !== 1) keepStretchableAudio(streaming, stretchable);
     return r;
   };
   json.parse = patched;
@@ -121,9 +123,11 @@ export function hookRateAssignments(win, controller, now = () => Date.now()) {
     },
     set(fn) {
       if (Object(this) !== this) return;
+      // hasOwnProperty, not Object.hasOwn (Chromium 93): this runs on every
+      // setPlaybackRate assignment, on webOS 4-6 and 22 too.
       const plain =
         Object.getPrototypeOf(this) === proto &&
-        !Object.hasOwn(this, 'constructor');
+        !Object.prototype.hasOwnProperty.call(this, 'constructor');
       Object.defineProperty(this, 'setPlaybackRate', {
         value:
           plain && typeof fn === 'function'
@@ -189,7 +193,7 @@ const CAP_ABOVE = 1;
 const BELOW_1080 = ['hd720', 'large', 'medium', 'small', 'tiny'];
 const ABOVE_1080 = ['highres', 'hd2880', 'hd2160', 'hd1440'];
 
-export function createSpeedController({ win, getPlayer, notify, configRead }) {
+export function createSpeedController({ win, getPlayer, notify, configRead, codecs }) {
   let currentSpeed = 1;
   let activeSink = null;
   let pending = null;
@@ -197,7 +201,7 @@ export function createSpeedController({ win, getPlayer, notify, configRead }) {
   let stopPositionWatch = null;
 
   function isSupported() {
-    return typeof win.AudioDecoder !== 'undefined';
+    return typeof win.AudioDecoder !== 'undefined' || !!codecs;
   }
 
   function enabled() {
@@ -355,7 +359,7 @@ export function createSpeedController({ win, getPlayer, notify, configRead }) {
   function createAudioSink({ speed, element }) {
     releaseAudioSink();
 
-    const engine = new AudioEngine({ win, speed, onError });
+    const engine = new AudioEngine({ win, speed, onError, codecs });
     if (element) {
       engine.attachVideo(element);
       engine.setVolume(element.volume, element.muted);
@@ -395,15 +399,14 @@ export function speedCapsQuality() {
 }
 
 export function installSpeedFeature(win, { notify, configRead: cfgRead, getPlayer }) {
-  if (
-    typeof win.AudioDecoder === 'undefined' ||
-    typeof win.AudioContext === 'undefined' ||
-    typeof win.MediaSource === 'undefined'
-  ) {
+  if (typeof win.AudioContext === 'undefined' || typeof win.MediaSource === 'undefined') {
     return null;
   }
+  // Without WebCodecs (webOS 4-6 and 22): AAC decoded with decodeAudioData.
+  const codecs = typeof win.AudioDecoder === 'undefined' ? legacyAudioCodecs(win) : null;
+  if (typeof win.AudioDecoder === 'undefined' && !codecs) return null;
 
-  const ctrl = createSpeedController({ win, getPlayer, notify, configRead: cfgRead });
+  const ctrl = createSpeedController({ win, getPlayer, notify, configRead: cfgRead, codecs });
   const mseHook = installMseHook(win, {
     getSpeed: ctrl.getSpeed,
     createAudioSink: ctrl.createAudioSink,
@@ -417,7 +420,7 @@ export function installSpeedFeature(win, { notify, configRead: cfgRead, getPlaye
   const restoreSurround = allowSpeedMenuOnSurround(win, isOn);
   const restoreRateHook = hookRateAssignments(win, ctrl);
   const restoreButton = installSpeedButtonPatch(win, isOn);
-  const restoreAudioOffer = installAudioOfferFilter(win, ctrl.getSpeed);
+  const restoreAudioOffer = installAudioOfferFilter(win, ctrl.getSpeed, codecs ? LEGACY_STRETCHABLE_AUDIO_RE : undefined);
   const bindTimer =
     typeof win.setInterval === 'function'
       ? win.setInterval(() => bindPlayerRate(getPlayer(), ctrl), 1000)

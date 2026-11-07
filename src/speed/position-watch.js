@@ -12,6 +12,8 @@
 //   the <video> waiting at 0 while the player buffers at its position, and
 //   stays so. So the check goes on after the video has played, and seeks to the
 //   player's position (which starts it) when that lasts.
+// - It is about the video the speed changed on: another one opened within
+//   those 25 s ends it, so nothing seeks or caps that one.
 
 const TICK_MS = 250;
 const WATCH_TICKS = 100; // 25 s
@@ -37,14 +39,28 @@ export function watchPosition(win, player, at, onPlaying, quality) {
   let low = 0;
   let caps = 0;
 
+  const idOf = () => {
+    const data = typeof player.getVideoData === 'function' ? player.getVideoData() : null;
+    return (data && data.video_id) || null;
+  };
+  let videoId = null;
+  try { videoId = idOf(); } catch { /* checked on each tick */ }
+
   const stop = () => win.clearInterval(timer);
   const timer = win.setInterval(() => {
     let state;
     let now;
+    let id;
     try {
       state = player.getPlayerState();
       now = player.getCurrentTime();
+      id = idOf();
     } catch {
+      stop();
+      return;
+    }
+    // Another video now (an id while it loads may still be missing).
+    if (videoId && id && id !== videoId) {
       stop();
       return;
     }
