@@ -23,6 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Fixes
 
++ Playback speed: another video opened within 25 seconds of a speed change is left alone. The check after the speed change's reload carried on on it, and could move it to the old video's position or set the 1080p cap on it.
 + DeArrow: switched off, it frees the thumbnail copies it kept as well as putting YouTube's titles and thumbnails back. They stayed in memory, up to the thumbnail budget, for the rest of the session. From NicholasBly's 0.8.5 build 3 (fork watch #107).
 + SponsorBlock: the switch applies at once, and a hash change within the same video keeps the handler, so its segments and Skip Segments Once's memory stay. From mirijanristic's fork, as are the fixes below.
 + Opening the settings during the OLED blackout ends the blackout; the panel used to open unseen beneath it.

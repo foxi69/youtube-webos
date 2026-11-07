@@ -30,6 +30,8 @@ function setup(start) {
     state: start.state,
     time: start.t,
     seeks: [],
+    videoId: 'abcdefghijk',
+    getVideoData() { return { video_id: this.videoId }; },
     getPlayerState() { return this.state; },
     getCurrentTime() { return this.time; },
     seekTo(to) { this.seeks.push(to); }
@@ -160,6 +162,35 @@ import(MODULE).then(({ watchPosition }) => {
     watchPosition(s.win, s.player, AT, () => {});
     s.run(1000);
     t('a player that went away ends the check', s.timers.size === 0, s.timers.size);
+  }
+
+  {
+    // Another video opened within the check's 25 s: it is not touched.
+    const s = setup({ state: 3, t: AT, vt: AT });
+    let caps = 0;
+    watchPosition(s.win, s.player, AT, () => { caps++; }, { isLow: () => true, setCap: () => { caps++; } });
+    s.run(1000);
+    s.player.videoId = 'otherother1';
+    s.player.state = 1;
+    s.player.time = 3;
+    s.video.currentTime = 3;
+    s.run(5000);
+    t('another video opened meanwhile is neither moved nor capped', s.player.seeks.length === 0 && caps === 0,
+      `seeks ${s.player.seeks.join()}, caps ${caps}`);
+    t('and the check ends', s.timers.size === 0, s.timers.size);
+  }
+  {
+    // While the reload loads, the player may name no video yet.
+    const s = setup({ state: -1, t: AT, vt: AT });
+    watchPosition(s.win, s.player, AT, () => {});
+    s.player.videoId = '';
+    s.run(1000);
+    s.player.videoId = 'abcdefghijk';
+    s.player.state = 1;
+    s.player.time = 2;
+    s.video.currentTime = 2;
+    s.run(500);
+    t('a moment with no video named does not end the check', s.player.seeks.join() === '11.2', s.player.seeks.join());
   }
 
   console.log(`${passed} passed, ${failed} failed`);
