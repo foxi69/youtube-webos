@@ -21,7 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Fixes
 
-+ Hide Videos Older Than and Hide Repeated Videos: under a video played from a playlist, only the playlist's row is left whole, found by the playlist the response names for the playing video as well. A playlist named only there had its row filtered, and the recommendation rows beside a playlist were not filtered at all.
++ Hide Videos Older Than and Hide Repeated Videos: under a video played from a playlist, only the playlist's row is left whole, found by the playlist the response names for the playing video as well. A playlist named only there had its row filtered, and the recommendation rows beside a playlist were not filtered at all. A recommendation of a video in that playlist now counts as the repeat.
 + Prefer Original Audio: a format of the original track stays even when only its other formats say it is the original. It was dropped, which could leave a video without its AAC audio.
 + Remove Shorts / Remove Live Videos: the guide entries are found even when an empty (null) field of the same name comes first in the response. The search used to stop early, or take the empty field for the list.
 + Video queue: a queued video that played was not seen as playing, as the player's state event named no video (or the previous one), so a refusal YouTube sent later on that page (for the next video, say) skipped it with "Could not play". The event now names the video the player has.

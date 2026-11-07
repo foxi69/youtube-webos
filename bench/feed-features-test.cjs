@@ -244,6 +244,24 @@ const ids = (r) => itemsOf(r).map((i) => (i.tileRenderer || i.lockupViewModel).c
     t('off keeps the repeats', shelf(off, 1) === 'bbbbbbbbbbb,ccccccccccc,aaaaaaaaaaa,ccccccccccc', shelf(off, 1));
     const noAdBlock = boot({ enableAdBlock: false, hideDuplicateVideos: true, maxVideoAge: '7' }).parse(twoShelves());
     t('both do nothing with Ad Blocking off', shelf(noAdBlock, 1) === 'bbbbbbbbbbb,ccccccccccc,aaaaaaaaaaa,ccccccccccc', shelf(noAdBlock, 1));
+    // Under the player: a recommendation of a video in the playlist being
+    // played is the repeat, even in a row above the playlist's.
+    const inPlaylist = (id) => {
+      const item = tile(id);
+      item.tileRenderer.onSelectCommand.watchEndpoint.playlistId = 'PLmine';
+      return item;
+    };
+    const row = (items) => ({ shelfRenderer: { content: { horizontalListRenderer: { items } } } });
+    const watchNext = parse({ responseContext: { _pad: pad },
+      currentVideoEndpoint: { watchEndpoint: { videoId: 'listfirst__', playlistId: 'PLmine' } },
+      contents: { singleColumnWatchNextResults: { pivot: { sectionListRenderer: { contents: [
+        row([tile('sharedvideo'), tile('recommended')]),
+        row([inPlaylist('listfirst__'), inPlaylist('sharedvideo'), inPlaylist('listfirst__')])
+      ] } } } } });
+    const pivotRow = (i) => watchNext.contents.singleColumnWatchNextResults.pivot.sectionListRenderer.contents[i]
+      .shelfRenderer.content.horizontalListRenderer.items.map((x) => x.tileRenderer.contentId).join(',');
+    t('under a playlist, a recommendation of one of its videos is the repeat, and the playlist stays whole',
+      pivotRow(0) === 'recommended' && pivotRow(1) === 'listfirst__,sharedvideo,listfirst__', pivotRow(0) + ' | ' + pivotRow(1));
     t('no jsdomError (Hide Repeated Videos)', errors.length === 0, errors[0]);
   }
   // ---- Remove Mixes ----

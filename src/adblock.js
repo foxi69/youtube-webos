@@ -1481,6 +1481,17 @@ function processSectionListOptimized(contents, config, contextName = '', skipEmo
   const initialCount = contents.length;
   let writeIdx = 0;
 
+  // Hide Repeated Videos: the playlist's row stays whole, but its videos are
+  // on the page first, wherever the row sits, so a recommendation of one of
+  // them is the repeat.
+  if (config.hideDuplicates && listsFilterHere && playlistHere !== null) {
+    for (let i = 0; i < contents.length; i++) {
+      if (!isPlaylistRow(contents[i], playlistHere)) continue;
+      const rowItems = contents[i].shelfRenderer.content.horizontalListRenderer.items;
+      for (let j = 0; j < rowItems.length; j++) isRepeat(rowItems[j]);
+    }
+  }
+
   for (let i = 0; i < contents.length; i++) {
     const item = contents[i];
     let keepItem = true;
