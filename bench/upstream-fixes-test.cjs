@@ -2,7 +2,9 @@
  * Fixes taken from mirijanristic's fork: the SponsorBlock switch and same-video
  * hash changes, the OLED blackout under the panel, the Auto Login window, test
  * thumbnails, chapter skipping without markers, the clock after standby and
- * the no-ad flag with Ad Blocking off.
+ * the no-ad flag with Ad Blocking off. And fixes from a code review: the
+ * player state event's video, Force Max Quality switched off and on at once,
+ * and SponsorBlock's chosen segment over a refresh.
  *
  * Usage: node bench/upstream-fixes-test.cjs [dist/webOSUserScripts/userScript.js]
  */
@@ -29,15 +31,17 @@ function boot(cfg, opts = {}) {
   win.XMLHttpRequest = class { open(){} send(){} setRequestHeader(){} getResponseHeader(){return null;} addEventListener(){} };
   win.requestAnimationFrame = (cb) => setTimeout(cb, 0);
   win.cancelAnimationFrame = () => {};
-  // A clock that can jump, for the time windows and the standby.
-  const clock = { offset: 0 };
+  // A clock that can jump, for the time windows and the standby, or stand
+  // still (frozenAt) for a throttle.
+  const clock = { offset: 0, frozenAt: null };
   const RealDate = win.Date;
+  const at = () => (clock.frozenAt !== null ? clock.frozenAt : RealDate.now() + clock.offset);
   win.Date = class extends RealDate {
     constructor(...args) {
       if (args.length) super(...args);
-      else super(RealDate.now() + clock.offset);
+      else super(at());
     }
-    static now() { return RealDate.now() + clock.offset; }
+    static now() { return at(); }
   };
   const NS = win.JSON.stringify;
   win.localStorage.setItem('ytaf-configuration', NS(Object.assign({
@@ -49,6 +53,7 @@ function boot(cfg, opts = {}) {
   win.Element.prototype.remove = function remove() { if (this.parentNode) this.parentNode.removeChild(this); };
   // Requests that never answer: a handler stays as it is.
   win.fetch = () => new Promise(() => {});
+  if (opts.setup) opts.setup(win);
   win.eval(fs.readFileSync(bundlePath, 'utf8'));
   const key = (code) => {
     const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
@@ -130,6 +135,86 @@ setTimeout(async () => {
     t('turning it on starts it for this video', win.sponsorblock && win.sponsorblock.videoID === 'otherother1');
   }
 
+  // ---- SponsorBlock: the segment chosen to be watched, over a refresh ----
+  {
+    const { win } = boot({ enableSponsorBlock: true },
+      { url: 'https://www.youtube.com/tv#/watch?v=abcdefghijk', bodyClass: 'WEB_PAGE_TYPE_WATCH' });
+    await wait(600);
+    const sb = win.sponsorblock;
+    const seg = (uuid, start) => ({ UUID: uuid, segment: [start, start + 10], category: 'sponsor', actionType: 'skip' });
+    sb.segments = [seg('aaa', 100), seg('bbb', 200), seg('ccc', 300)];
+    // "Skip to previous" chose to watch bbb.
+    sb.tempWhitelistIndex = 1;
+    sb.applyRefreshedSegments([seg('new', 50), seg('aaa', 100), seg('bbb', 200), seg('ccc', 300)], 'sig1');
+    t('SponsorBlock refresh: the segment chosen to be watched stays chosen when one is added before it',
+      sb.tempWhitelistIndex === 2 && sb.segments[sb.tempWhitelistIndex].UUID === 'bbb', String(sb.tempWhitelistIndex));
+    sb.applyRefreshedSegments([seg('new', 50), seg('aaa', 100), seg('ccc', 300)], 'sig2');
+    t('and none is chosen once it is gone', sb.tempWhitelistIndex === -1, String(sb.tempWhitelistIndex));
+  }
+
+  // ---- The player state event names the video playing ----
+  {
+    const player = '<div id="ytlr-player__player-container-player"><video></video></div>';
+    const setup = async (cfg) => {
+      const env = boot(cfg, { url: 'https://www.youtube.com/tv#/watch?v=abcdefghijk', bodyClass: 'WEB_PAGE_TYPE_WATCH', html: player });
+      const p = env.win.document.getElementById('ytlr-player__player-container-player');
+      let onState = null;
+      let id = 'abcdefghijk';
+      Object.assign(p, {
+        setPlaybackQualityRange() {}, setPlaybackQuality() {},
+        getPlaybackQuality: () => 'hd1080', getPlaybackQualityLabel: () => 'hd1080',
+        getAvailableQualityLevels: () => ['hd1080', 'auto'],
+        getVideoData: () => ({ video_id: id }), getPlayerState: () => -1, getCurrentTime: () => 0,
+        pauseVideo() {}, playVideo() {}, isInline: () => false,
+        addEventListener(type, fn) { if (type === 'onStateChange') onState = fn; }
+      });
+      env.win.dispatchEvent(new env.win.CustomEvent('yt-navigate-finish', { detail: { pageType: 'watch' } }));
+      await wait(600);
+      const seen = [];
+      env.win.addEventListener('yt-player-state-change', (e) => seen.push(e.detail.videoId));
+      return { env, seen, fire: (state) => onState && onState(state), next: (v) => { id = v; } };
+    };
+    const off = await setup({ forceHighResVideo: false });
+    off.fire(1);
+    off.next('otherother1');
+    off.fire(-1);
+    t('state event: the video playing, with Force Max Quality off, a new one too', off.seen.join() === 'abcdefghijk,otherother1', off.seen.join());
+    off.env.win.close();
+    const on = await setup({ forceHighResVideo: true });
+    on.fire(1);
+    on.next('otherother1');
+    on.fire(-1);
+    t('state event: the new video on its first event, with Force Max Quality on', on.seen.join() === 'abcdefghijk,otherother1', on.seen.join());
+    on.env.win.close();
+  }
+
+  // ---- Force Max Quality off and on again at once ----
+  {
+    const { win, key, clock } = boot({ forceHighResVideo: false });
+    await wait(300);
+    // All three clicks at one instant, well inside the 2 s throttle.
+    clock.frozenAt = win.Date.now();
+    key(GREEN);
+    await wait(20);
+    win.document.querySelectorAll('.ytaf-tab-btn')[1].click();
+    await wait(20);
+    const box = Array.from(win.document.querySelectorAll('#ytaf-page-player label'))
+      .find((l) => l.textContent.trim() === 'Force Max Quality').querySelector('input');
+    const stored = () => win.localStorage.getItem('yt-player-quality');
+    box.click();
+    await wait(20);
+    const first = !!stored();
+    box.click();
+    await wait(20);
+    const cleared = !stored();
+    box.click();
+    await wait(20);
+    const again = !!stored();
+    clock.frozenAt = null;
+    t('Force Max Quality off and on again within 2 s writes its quality record again', first && cleared && again,
+      JSON.stringify({ first, cleared, now: stored() }));
+  }
+
   // ---- Auto Login: the time window ----
   {
     const { win, clock } = boot({ enableAutoLogin: true, autoSelectAccount: true });
@@ -186,6 +271,58 @@ setTimeout(async () => {
       await wait(100);
       t('a second press while chapters load says nothing yet', /Loading chapters/.test(toasts()) && !/No chapters found/.test(toasts()), toasts());
     }
+  }
+
+  // ---- A notification updated after its time ran out shows again ----
+  {
+    // The 1 s and 3 s timers wait for the test, so the message's own time can
+    // run out while the play/pause shortcut still holds its handle.
+    const held = [];
+    const setup = (win) => {
+      const realTimeout = win.setTimeout.bind(win);
+      const realClear = win.clearTimeout.bind(win);
+      let nextId = 1e6;
+      win.setTimeout = (fn, ms, ...args) => {
+        if (ms === 1000 || ms === 3000) { held.push({ fn, ms, id: ++nextId }); return nextId; }
+        return realTimeout(fn, ms, ...args);
+      };
+      win.clearTimeout = (id) => {
+        const i = held.findIndex((h) => h.id === id);
+        if (i !== -1) held.splice(i, 1);
+        else realClear(id);
+      };
+    };
+    const SIX = 54;
+    const { win, key, toasts } = boot({ shortcut_key_6: 'play_pause' },
+      { html: '<video></video>', url: 'https://www.youtube.com/tv#/watch?v=abcdefghijk', bodyClass: 'WEB_PAGE_TYPE_WATCH', setup });
+    await wait(300);
+    const video = win.document.querySelector('video');
+    let paused = true;
+    Object.defineProperty(video, 'paused', { get: () => paused });
+    video.play = () => { paused = false; };
+    video.pause = () => { paused = true; };
+    const fire = (ms, first) => {
+      for (let i = 0; i < held.length; i++) {
+        if (held[i].ms !== ms) continue;
+        const h = held.splice(i--, 1)[0];
+        h.fn();
+        if (first) return;
+      }
+    };
+    held.length = 0;
+    key(SIX);
+    await wait(50);
+    const shown = /Playing/.test(toasts());
+    fire(3000, true); // the message's time is up; the shortcut keeps its handle
+    await wait(150); // past the shortcut's own debounce
+    key(SIX);
+    await wait(50);
+    fire(1000);
+    await wait(50);
+    const msg = win.document.querySelector('.ytaf-notification-container .message');
+    t('a notification updated just after its time ran out stays on screen',
+      shown && /Paused/.test(toasts()) && !!msg && !msg.classList.contains('message-hidden'),
+      JSON.stringify({ shown, now: toasts(), hidden: msg && msg.className }));
   }
 
   // ---- The clock after standby ----

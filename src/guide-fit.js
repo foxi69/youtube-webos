@@ -22,6 +22,7 @@ const fitStyle = document.createElement('style');
 let collapsedWidth = 156;
 let wasOpen = false;
 let watched = null;
+let observer = null;
 
 /**
  * The shift and scale (origin top left) that put the page's content, which
@@ -45,9 +46,11 @@ function rightEdge(guide) {
 }
 
 function update(guide) {
-  const width = guide.getBoundingClientRect().width;
-  const open = configRead('fitPageBesideGuide') && width > collapsedWidth * 1.5;
   const root = document.documentElement;
+  // Off: nothing is measured, so the check every 2 s forces no layout.
+  const on = !!configRead('fitPageBesideGuide');
+  const width = on ? guide.getBoundingClientRect().width : 0;
+  const open = on && width > collapsedWidth * 1.5;
   if (open) {
     const { shift, scale } = fitBesideGuide(window.innerWidth, collapsedWidth, rightEdge(guide), GAP);
     const vars = `html { --ytaf-guide-shift: ${shift}px; --ytaf-guide-scale: ${scale}; }`;
@@ -56,7 +59,7 @@ function update(guide) {
     root.setAttribute(OPEN_ATTRIBUTE, '');
   } else {
     if (width > 0 && width <= collapsedWidth * 1.5) collapsedWidth = width;
-    root.removeAttribute(OPEN_ATTRIBUTE);
+    if (root.hasAttribute(OPEN_ATTRIBUTE)) root.removeAttribute(OPEN_ATTRIBUTE);
   }
   if (open !== wasOpen) {
     wasOpen = open;
@@ -70,8 +73,12 @@ function update(guide) {
 function watch() {
   const guide = document.querySelector('ytlr-guide-response');
   if (guide && guide !== watched) {
+    // A re-created guide: the old one's observer goes with it, or each one
+    // YouTube made would keep measuring a guide no longer on the page.
+    if (observer) observer.disconnect();
     watched = guide;
-    new ResizeObserver(() => update(guide)).observe(guide);
+    observer = new ResizeObserver(() => update(guide));
+    observer.observe(guide);
   }
   if (watched) update(watched);
 }

@@ -48,6 +48,11 @@ export function showNotification(text, time = 3000) {
 
   requestAnimationFrame(() => requestAnimationFrame(() => elmInner.classList.remove('message-hidden')));
 
+  // Set once remove() has run: the message fades out, and leaves the page a
+  // second later unless an update() brings it back first.
+  let removed = false;
+  let detachTimer = null;
+
   const remove = () => {
     if (elmInner._removeTimer) clearTimeout(elmInner._removeTimer);
     elmInner._removeTimer = null;
@@ -55,13 +60,28 @@ export function showNotification(text, time = 3000) {
     if (liveMessages.get(elmInner.textContent)?.elmInner === elmInner) {
       liveMessages.delete(elmInner.textContent);
     }
-    setTimeout(() => elm.remove(), 1000);
+    removed = true;
+    if (detachTimer) clearTimeout(detachTimer);
+    detachTimer = setTimeout(() => {
+      detachTimer = null;
+      elm.remove();
+    }, 1000);
+  };
+
+  // A handle kept after its message went (its time ran out) shows it again:
+  // the fade-out's removal is called off, and the message put back.
+  const revive = () => {
+    removed = false;
+    if (detachTimer) clearTimeout(detachTimer);
+    detachTimer = null;
+    if (!elm.isConnected) ensureContainer().appendChild(elm);
+    elmInner.classList.remove('message-hidden');
   };
 
   if (time > 0) elmInner._removeTimer = setTimeout(remove, time);
 
   const update = (newText, newTime = 3000) => {
-    if (elmInner.textContent === newText) {
+    if (elmInner.textContent === newText && !removed) {
       if (newTime > 0) {
         if (elmInner._removeTimer) clearTimeout(elmInner._removeTimer);
         elmInner._removeTimer = setTimeout(remove, newTime);
@@ -72,7 +92,7 @@ export function showNotification(text, time = 3000) {
       liveMessages.delete(elmInner.textContent);
     }
     elmInner.textContent = newText;
-    elmInner.classList.remove('message-hidden');
+    revive();
     if (elmInner._removeTimer) clearTimeout(elmInner._removeTimer);
     if (newTime > 0) elmInner._removeTimer = setTimeout(remove, newTime);
     liveMessages.set(newText, { elmInner, handle });

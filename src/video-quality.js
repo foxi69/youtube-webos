@@ -201,6 +201,8 @@ function clearLocalStorageQuality() {
   } catch { /* ignore */ }
   cachedQualitySettings = null;
   cachedQualityExpiration = 0;
+  // Switched back on at once, the record must be written again, not throttled.
+  lastWriteTime = 0;
 }
 
 // --- webOS 25: playback position after the quality switch ---
@@ -425,8 +427,13 @@ function handleStateChange(state) {
   // visibility) and sponsorblock.js (overlay cache invalidation, observer
   // re-arm, chain-skip re-arm, high-freq loop teardown) both subscribe to it.
   // It must not be suppressed by an unrelated quality setting.
+  // The video the player has now, read here: lastVideoId is quality forcing's
+  // own and kept only while it is on (and is the previous video's on a new
+  // one's first event), so the video queue never saw the video it opened play.
+  let currentVideoId = null;
+  try { currentVideoId = player.getVideoData?.()?.video_id || null; } catch { /* none yet */ }
   window.dispatchEvent(new CustomEvent('yt-player-state-change', {
-    detail: { state: actualState, videoId: lastVideoId }
+    detail: { state: actualState, videoId: currentVideoId }
   }));
 
   scheduleQualityToast(actualState);

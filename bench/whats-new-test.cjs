@@ -14,7 +14,7 @@ const INSTALLED = JSON.parse(fs.readFileSync('package.json', 'utf8')).version;
 const SEEN = 'ytaf-seen-version';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-function boot(bodyClass, storage) {
+function boot(bodyClass, storage, setup) {
   const dom = new JSDOM(`<!doctype html><html><body class="${bodyClass}"><ytlr-app></ytlr-app></body></html>`,
     { runScripts: 'outside-only', url: 'https://www.youtube.com/tv', virtualConsole: new VirtualConsole(), pretendToBeVisual: true });
   const win = dom.window;
@@ -24,6 +24,7 @@ function boot(bodyClass, storage) {
   win.requestAnimationFrame = () => 1;
   win.cancelAnimationFrame = () => {};
   for (const k of Object.keys(storage)) win.localStorage.setItem(k, storage[k]);
+  if (setup) setup(win);
   applyChrome38Downgrade(win);
   win.eval(fs.readFileSync(bundlePath, 'utf8'));
   return win;
@@ -68,6 +69,43 @@ const t = (name, ok, extra) => {
   await sleep(3600);
   t('option off: no window', !open(off));
   t('option off: the version is stored', seen(off) === INSTALLED, seen(off));
+
+  // An update offered while What's New is owed, both waiting on "Who's
+  // watching": the Update window waits its turn instead of opening over What's
+  // New. Timers run ten times faster here, What's New's own start on another
+  // beat, so the update offer is the first to see the browse page.
+  {
+    const bridgeErrors = [];
+    const update = boot('WEB_PAGE_TYPE_ACCOUNT_SELECTOR', {
+      'ytaf-configuration': CONFIG, [SEEN]: '0.1.0',
+      'ytaf-update-check': JSON.stringify({ at: Date.now(), latest: '99.0.0', ipk: { url: 'https://example.com/a.ipk' } })
+    }, (win) => {
+      const realTimeout = win.setTimeout.bind(win);
+      win.setTimeout = (fn, ms, ...args) => realTimeout(fn, ms === 3000 ? 350 : (ms || 0) / 10, ...args);
+      win.PalmServiceBridge = function () {
+        this.call = (uri) => {
+          const answer = /getAppInfo/.test(uri) ? JSON.stringify({ returnValue: true, appInfo: { id: 'hb' } }) : 'null';
+          // The Homebrew Channel answers a little late; the installer with
+          // something that is not an object.
+          setTimeout(() => {
+            try { this.onservicecallback(answer); } catch (e) { bridgeErrors.push(e.message); }
+          }, /getAppInfo/.test(uri) ? 400 : 10);
+        };
+      };
+    });
+    await sleep(1600);
+    update.document.body.className = 'WEB_PAGE_TYPE_BROWSE';
+    await sleep(900);
+    const titles = () => Array.from(update.document.querySelectorAll('.ytaf-dialog-title')).map((n) => n.textContent);
+    t('update offered during What\'s New: one window at a time', titles().length === 1 && /What's new/.test(titles()[0]), JSON.stringify(titles()));
+    update.dispatchEvent(new update.KeyboardEvent('keydown', { keyCode: 27, bubbles: true }));
+    await sleep(300);
+    t('and the Update window comes once What\'s New closes', titles().length === 1 && /Update/.test(titles()[0]), JSON.stringify(titles()));
+    const button = Array.from(update.document.querySelectorAll('.ytaf-dialog-btn')).find((b) => b.textContent === 'Update');
+    if (button) button.click();
+    await sleep(100);
+    t('an installer answer that is not an object throws nothing', !!button && bridgeErrors.length === 0, button ? bridgeErrors.join(' | ') : 'no Update button');
+  }
 
   console.log(`${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);

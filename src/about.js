@@ -126,11 +126,14 @@ function lunaCall(uri, params, onResponse, keep) {
     bridge.onservicecallback = (msg) => {
       let res = null;
       try { res = JSON.parse(msg); } catch { /* not JSON */ }
+      // `keep` and `onResponse` both get an object, even for an answer that
+      // is not one (null, or not JSON).
+      if (!res || typeof res !== 'object') res = {};
       if (!keep || !keep(res)) {
         const i = liveBridges.indexOf(bridge);
         if (i !== -1) liveBridges.splice(i, 1);
       }
-      if (onResponse) onResponse(res || {});
+      if (onResponse) onResponse(res);
     };
     bridge.call(uri, JSON.stringify(params));
     return true;
@@ -227,8 +230,11 @@ function offerUpdate(latest) {
   if (!isNewer(latest)) return;
   const stored = readJSON(CHECK_KEY) || {};
   if (stored.notified === latest && Date.now() - (stored.notifiedAt || 0) < CHECK_EVERY_MS) return;
-  whenIdle(OFFER_WAIT_MS, () => {
-    detectHomebrew((homebrew) => {
+  // The Homebrew Channel is asked first: asked once the app was idle, its
+  // answer came after a gap in which What's New could open, and the Update
+  // window then opened over it and left it on the page.
+  detectHomebrew((homebrew) => {
+    whenIdle(OFFER_WAIT_MS, () => {
       const now = readJSON(CHECK_KEY) || {};
       now.notified = latest;
       now.notifiedAt = Date.now();

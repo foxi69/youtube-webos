@@ -232,6 +232,13 @@ function settleProbe() {
   const p = probe;
   p.timer = null;
   const now = queryText();
+  // The query box went away meanwhile: nothing to tell from, and a mode
+  // settled on that would hold for the rest of the session. The next
+  // character decides.
+  if (now === null) {
+    probe = null;
+    return;
+  }
   if (now !== p.before) {
     mode = 'native';
     typedCount += p.chars.length;
@@ -259,7 +266,12 @@ function tryStrategy(p, strategy) {
   p.timer = setTimeout(() => {
     p.timer = null;
     if (probe !== p) return;
-    if (queryText() !== before) {
+    const after = queryText();
+    if (after === null) {
+      probe = null; // as in settleProbe: the box went away, decide later
+      return;
+    }
+    if (after !== before) {
       mode = 'osk';
       pressStrategy = strategy;
       typedCount++;

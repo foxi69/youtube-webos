@@ -341,7 +341,6 @@ export {};
     'auto-login.js',
     'notifications.js',
     'watch.js',
-    'yt-fixes.js',
     'lang-settings-fix',
     'block-webos-cast',
     'ui.js',
@@ -539,7 +538,7 @@ export {};
     writeNow: ['config.js', 'Flushes the config to localStorage', 'light'],
     scheduleWrite: ['config.js', 'Debounces the localStorage write', 'free'],
 
-    // ---- auto-login / watch / notifications / yt-fixes ------------------
+    // ---- auto-login / watch / notifications -----------------------------
     attemptActiveBypass: ['auto-login.js', 'Skips the "who is watching" screen', 'medium'],
     disableWhosWatching: ['auto-login.js', 'Writes the identity bypass flags', 'light'],
     setInlinePlayback: ['auto-login.js', 'Forces preview autoplay on or off', 'light'],
@@ -550,9 +549,6 @@ export {};
     updateVisibility: ['watch.js', 'Shows the clock only where allowed', 'light'],
     showNotification: ['notifications.js', 'Queues an on-screen toast', 'light'],
     ensureContainer: ['notifications.js', 'Creates the toast container', 'free'],
-    initYouTubeFixes: ['yt-fixes.js', 'Enables the search history patch', 'free'],
-    attemptSearchHistoryFix: ['yt-fixes.js', 'Repopulates search history rows', 'medium'],
-    populateSearchHistory: ['yt-fixes.js', 'Writes history entries into the DOM', 'medium'],
 
     // ---- hooks -----------------------------------------------------------
     stringify: ['json-stringify.ts', 'Injects isInlinePlaybackNoAd into requests', 'hot'],
