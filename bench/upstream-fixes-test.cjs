@@ -2,7 +2,9 @@
  * Fixes taken from mirijanristic's fork: the SponsorBlock switch and same-video
  * hash changes, the OLED blackout under the panel, the Auto Login window, test
  * thumbnails, chapter skipping without markers, the clock after standby and
- * the no-ad flag with Ad Blocking off.
+ * the no-ad flag with Ad Blocking off. And fixes from a code review: the
+ * player state event's video, Force Max Quality switched off and on at once,
+ * and SponsorBlock's chosen segment over a refresh.
  *
  * Usage: node bench/upstream-fixes-test.cjs [dist/webOSUserScripts/userScript.js]
  */
@@ -128,6 +130,80 @@ setTimeout(async () => {
     box.click();
     await wait(50);
     t('turning it on starts it for this video', win.sponsorblock && win.sponsorblock.videoID === 'otherother1');
+  }
+
+  // ---- SponsorBlock: the segment chosen to be watched, over a refresh ----
+  {
+    const { win } = boot({ enableSponsorBlock: true },
+      { url: 'https://www.youtube.com/tv#/watch?v=abcdefghijk', bodyClass: 'WEB_PAGE_TYPE_WATCH' });
+    await wait(600);
+    const sb = win.sponsorblock;
+    const seg = (uuid, start) => ({ UUID: uuid, segment: [start, start + 10], category: 'sponsor', actionType: 'skip' });
+    sb.segments = [seg('aaa', 100), seg('bbb', 200), seg('ccc', 300)];
+    // "Skip to previous" chose to watch bbb.
+    sb.tempWhitelistIndex = 1;
+    try { sb.applyRefreshedSegments([seg('new', 50), seg('aaa', 100), seg('bbb', 200), seg('ccc', 300)], 'sig1'); } catch { /* drawing, in jsdom */ }
+    t('SponsorBlock refresh: the segment chosen to be watched stays chosen when one is added before it',
+      sb.tempWhitelistIndex === 2 && sb.segments[sb.tempWhitelistIndex].UUID === 'bbb', String(sb.tempWhitelistIndex));
+    try { sb.applyRefreshedSegments([seg('new', 50), seg('aaa', 100), seg('ccc', 300)], 'sig2'); } catch { /* drawing, in jsdom */ }
+    t('and none is chosen once it is gone', sb.tempWhitelistIndex === -1, String(sb.tempWhitelistIndex));
+  }
+
+  // ---- The player state event names the video playing ----
+  {
+    const player = '<div id="ytlr-player__player-container-player"><video></video></div>';
+    const setup = async (cfg) => {
+      const env = boot(cfg, { url: 'https://www.youtube.com/tv#/watch?v=abcdefghijk', bodyClass: 'WEB_PAGE_TYPE_WATCH', html: player });
+      const p = env.win.document.getElementById('ytlr-player__player-container-player');
+      let onState = null;
+      let id = 'abcdefghijk';
+      Object.assign(p, {
+        setPlaybackQualityRange() {}, setPlaybackQuality() {},
+        getPlaybackQuality: () => 'hd1080', getPlaybackQualityLabel: () => 'hd1080',
+        getAvailableQualityLevels: () => ['hd1080', 'auto'],
+        getVideoData: () => ({ video_id: id }), getPlayerState: () => -1, getCurrentTime: () => 0,
+        pauseVideo() {}, playVideo() {}, isInline: () => false,
+        addEventListener(type, fn) { if (type === 'onStateChange') onState = fn; }
+      });
+      env.win.dispatchEvent(new env.win.CustomEvent('yt-navigate-finish', { detail: { pageType: 'watch' } }));
+      await wait(600);
+      const seen = [];
+      env.win.addEventListener('yt-player-state-change', (e) => seen.push(e.detail.videoId));
+      return { env, seen, fire: (state) => onState && onState(state), next: (v) => { id = v; } };
+    };
+    const off = await setup({ forceHighResVideo: false });
+    off.fire(1);
+    t('state event: the video playing, with Force Max Quality off', off.seen.join() === 'abcdefghijk', off.seen.join());
+    off.env.win.close();
+    const on = await setup({ forceHighResVideo: true });
+    on.fire(1);
+    on.next('otherother1');
+    on.fire(-1);
+    t('state event: the new video on its first event, with Force Max Quality on', on.seen.join() === 'abcdefghijk,otherother1', on.seen.join());
+    on.env.win.close();
+  }
+
+  // ---- Force Max Quality off and on again at once ----
+  {
+    const { win, key } = boot({ forceHighResVideo: false });
+    await wait(300);
+    key(GREEN);
+    await wait(20);
+    win.document.querySelectorAll('.ytaf-tab-btn')[1].click();
+    await wait(20);
+    const box = Array.from(win.document.querySelectorAll('#ytaf-page-player label'))
+      .find((l) => l.textContent.trim() === 'Force Max Quality').querySelector('input');
+    const stored = () => win.localStorage.getItem('yt-player-quality');
+    box.click();
+    await wait(20);
+    const first = !!stored();
+    box.click();
+    await wait(20);
+    const cleared = !stored();
+    box.click();
+    await wait(20);
+    t('Force Max Quality off and on again within 2 s writes its quality record again', first && cleared && !!stored(),
+      JSON.stringify({ first, cleared, now: stored() }));
   }
 
   // ---- Auto Login: the time window ----

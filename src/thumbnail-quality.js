@@ -916,8 +916,10 @@ function settledRank(videoId, resolved) {
 }
 
 function onProbeDone(videoId, rank, generation) {
-  // Correcting a tile changes what is on screen, so the cached sample is stale.
-  visibleSample = null;
+  // Correcting a tile changes what is on screen, so the cached sample is stale:
+  // taken again on the next look, but compared with this one, so a probe that
+  // finishes does not refill the on-screen budget as a new screen would.
+  visibleSampleAt = 0;
   activeProbes--;
 
   // Answered against a ladder that no longer applies (the mode changed while it
