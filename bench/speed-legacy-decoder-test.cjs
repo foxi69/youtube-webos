@@ -94,7 +94,7 @@ function setup(total, { hold = false } = {}) {
       v.fn();
     });
   };
-  const release = () => held.splice(0).forEach((f) => f());
+  const release = () => held.splice(0).forEach((f) => { f(); });
   return { win, calls, fire, timers, held, release };
 }
 
@@ -105,6 +105,7 @@ const frame = (i) => {
 };
 
 const settle = async () => {
+  // eslint-disable-next-line no-await-in-loop -- one microtask turn at a time, on purpose
   for (let i = 0; i < 200; i++) await Promise.resolve();
 };
 
@@ -248,11 +249,12 @@ function ramp(out, first, end) {
     t('configured again, it decodes again', out.length === 1 && ramp(out, 0, 43) === true, ramp(out, 0, 43));
     dec.close();
     send(50, 60);
+    t('close(): the flush timer is cleared', env.timers.size === 0, env.timers.size);
     env.fire(60000);
     await settle();
     env.release();
     await settle();
-    t('close(): nothing more', out.length === 1 && dec.state === 'closed' && env.timers.size === 0);
+    t('close(): nothing more', out.length === 1 && dec.state === 'closed');
   }
 
   // ---- discard() while a piece is being decoded ----
@@ -317,6 +319,43 @@ function ramp(out, first, end) {
       errors.length === 0 && got === 86 * 1024 &&
         engine.pcm[0].t === 0 && engine.pcm[1].t === (43 * DUR) / 1e6 && engine.pcm[0].ch[0][1025] === 1025,
       `${errors[0] || ''} ${got / 1024} frames, starts ${engine.pcm.map((p) => p.t).join(',')}`);
+    engine.destroy();
+  }
+
+  // ---- The engine's discard() reaches a piece being decoded ----
+  {
+    const { AudioEngine } = await import(ENGINE);
+    const env = setup(130, { hold: true });
+    const win = Object.assign({}, env.win, {
+      AudioContext: class {
+        constructor() { this.currentTime = 0; this.destination = {}; this.state = 'running'; }
+        createGain() { return { gain: { value: 1 }, connect() {} }; }
+        close() { this.state = 'closed'; }
+      },
+      setInterval: () => 1,
+      clearInterval: () => {}
+    });
+    const engine = new AudioEngine({ win, speed: 1.5, onError: () => {}, codecs: mod.legacyAudioCodecs(win) });
+    engine.attachVideo({ currentTime: 0, paused: true, addEventListener() {}, removeEventListener() {} });
+    engine.configure(CFG);
+    await settle();
+    const chunks = [];
+    for (let i = 0; i < 130; i++) {
+      const f = frame(i);
+      chunks.push({ pts: f.timestamp / 1e6, duration: DUR / 1e6, key: true, data: f.data });
+    }
+    engine.push(chunks);
+    await settle();
+    const decoding = env.held.length > 0 && engine.pcm.length === 0;
+    engine.discard(0.2, 0.4);
+    env.release();
+    await settle();
+    env.release();
+    await settle();
+    const overlap = engine.pcm.filter((p) => p.t < 0.4 && p.t + p.n / p.rate > 0.2);
+    t('engine.discard(): a piece being decoded does not bring the range back',
+      decoding && engine.pcm.length > 0 && overlap.length === 0,
+      `decoding ${decoding}, ${engine.pcm.length} blocks, overlapping ${overlap.map((p) => `${p.t}+${p.n / p.rate}`).join(',')}`);
     engine.destroy();
   }
 

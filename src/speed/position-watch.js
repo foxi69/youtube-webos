@@ -13,7 +13,9 @@
 //   stays so. So the check goes on after the video has played, and seeks to the
 //   player's position (which starts it) when that lasts.
 // - It is about the video the speed changed on: another one opened within
-//   those 25 s ends it, so nothing seeks or caps that one.
+//   those 25 s ends it, so nothing seeks or caps that one. The video is named
+//   by the caller (the player may name none yet right after the reload), and
+//   a tick on which the player names no video corrects nothing.
 
 const TICK_MS = 250;
 const WATCH_TICKS = 100; // 25 s
@@ -29,9 +31,10 @@ const OFF_BY_S = 2;
  * @param {number} at the position the reload should continue from, in seconds
  * @param {() => void} onPlaying runs once, when the video first plays
  * @param {{isLow: () => boolean, setCap: () => void}} [quality] the speed's quality cap
+ * @param {string} [targetId] the video the speed changed on (else the one the player names now)
  * @returns {() => void} stops the check
  */
-export function watchPosition(win, player, at, onPlaying, quality) {
+export function watchPosition(win, player, at, onPlaying, quality, targetId) {
   let ticks = 0;
   let stalled = 0;
   let seeks = 0;
@@ -39,12 +42,15 @@ export function watchPosition(win, player, at, onPlaying, quality) {
   let low = 0;
   let caps = 0;
 
+  const namesVideos = typeof player.getVideoData === 'function';
   const idOf = () => {
-    const data = typeof player.getVideoData === 'function' ? player.getVideoData() : null;
+    const data = namesVideos ? player.getVideoData() : null;
     return (data && data.video_id) || null;
   };
-  let videoId = null;
-  try { videoId = idOf(); } catch { /* checked on each tick */ }
+  let videoId = targetId || null;
+  if (!videoId) {
+    try { videoId = idOf(); } catch { /* checked on each tick */ }
+  }
 
   const stop = () => win.clearInterval(timer);
   const timer = win.setInterval(() => {
@@ -62,6 +68,13 @@ export function watchPosition(win, player, at, onPlaying, quality) {
     // Another video now (an id while it loads may still be missing).
     if (videoId && id && id !== videoId) {
       stop();
+      return;
+    }
+    if (!videoId) videoId = id;
+    // No video named: it may be another one already, so nothing is corrected
+    // on this tick; the check goes on.
+    if (namesVideos && !id) {
+      if (++ticks >= WATCH_TICKS) stop();
       return;
     }
 

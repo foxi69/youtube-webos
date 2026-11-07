@@ -259,7 +259,7 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
     if (!videoData || !videoData.video_id) return;
     lastReloadAt = Date.now();
     player.loadVideoById(videoData.video_id, at);
-    restorePosition(player, at);
+    restorePosition(player, at, videoData.video_id);
     // If YouTube's own menu is bound (native-menu.js), keep what it shows in
     // line with the real speed once the reloaded video has started.
     const setRate = player.__ytafOriginalSetPlaybackRate;
@@ -275,7 +275,7 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
     }
   }
 
-  function restorePosition(player, at) {
+  function restorePosition(player, at, videoId) {
     if (stopPositionWatch) stopPositionWatch();
     const setCap = () => {
       if (currentSpeed > CAP_ABOVE) player.setPlaybackQualityRange('hd1080', 'hd1080');
@@ -287,7 +287,7 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
         return levels.indexOf('hd1080') !== -1 && BELOW_1080.indexOf(player.getPlaybackQuality()) !== -1;
       },
       setCap
-    });
+    }, videoId);
   }
 
   function setSpeed(speed, { immediate = false } = {}) {
