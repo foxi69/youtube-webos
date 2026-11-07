@@ -22,7 +22,7 @@ import { VERSION_LABEL } from './version.js';
 import { buildAboutPage } from './about.js';
 import { clearQueue, playNextInQueue } from './video-queue.js';
 import { titleFormattingSupported } from './dearrow/index.js';
-import { getSidebarEntries, SIDEBAR_ENTRIES_EVENT } from './sidebar.js';
+import { getSidebarEntries, hiddenIds, SIDEBAR_ENTRIES_EVENT } from './sidebar.js';
 
 // Re-export so existing `import { showNotification } from './ui'` sites keep working.
 export const showNotification = _showNotification;
@@ -708,12 +708,12 @@ function createSidebarSection() {
   let inputs = [];
 
   const setHidden = (id, hide) => {
-    const values = configRead(KEY).filter((v) => v !== id);
+    const values = hiddenIds().filter((v) => v !== id);
     if (hide) values.push(id);
     configWrite(KEY, values);
   };
   const sync = () => {
-    const hidden = configRead(KEY);
+    const hidden = hiddenIds();
     inputs.forEach((input) => { input.checked = hidden.indexOf(input.ytafEntryId) !== -1; });
   };
   const render = () => {

@@ -322,6 +322,41 @@ const shelfItems = (r) => r.contents.tvBrowseRenderer.content.tvSurfaceContentRe
     win.close();
   }
   {
+    // A smaller menu (fewer entries) keeps a hidden entry listed, so it can be shown again.
+    const { win, NS } = boot({ enableAdBlock: false, hiddenSidebarEntries: ['FEtopics_music'] }, '',
+      { 'ytaf-sidebar-entries': LEARNT });
+    await wait(300);
+    win.JSON.parse(NS({ responseContext: { _pad: pad }, items: [{ guideSectionRenderer: { items: [
+      navEntry('Search', { searchEndpoint: {} }), navEntry('Subscriptions', browseTo('FEsubscriptions'))] } }] }));
+    const list = JSON.parse(win.localStorage.getItem('ytaf-sidebar-entries')).map((e) => e.id).join(',');
+    t('[sidebar] a smaller menu keeps the hidden entry listed, and drops the others',
+      list === 'search,FEsubscriptions,FEtopics_music', list);
+    win.close();
+  }
+  {
+    // A stored value that is not a list counts as nothing hidden; the switches still work.
+    const { win, NS, pump } = boot({ enableAdBlock: false, hiddenSidebarEntries: 'oops' }, '',
+      { 'ytaf-sidebar-entries': LEARNT });
+    await wait(300);
+    const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
+    Object.defineProperty(e, 'keyCode', { get: () => 404, configurable: true });
+    dispatchTrusted(win.document.body, e);
+    for (let i = 0; i < 20; i++) pump();
+    const section = Array.from(win.document.querySelectorAll('#ytaf-page-ui-tweaks .ytaf-settings-section'))
+      .find((s) => s.querySelector('.section-title')?.textContent === 'Hide Left Menu Entries');
+    const music = section && Array.from(section.querySelectorAll('label')).find((l) => l.textContent === 'Music');
+    t('[sidebar] with a broken stored value the section is still built', !!music);
+    if (music) {
+      const input = music.querySelector('input');
+      input.checked = true;
+      input.dispatchEvent(new win.Event('change'));
+    }
+    const out = win.JSON.parse(NS(sideGuide()));
+    t('[sidebar] and ticking a switch still hides the entry',
+      JSON.stringify(sideTitles(out)[2]) === JSON.stringify(['Gaming']), JSON.stringify(sideTitles(out)));
+    win.close();
+  }
+  {
     // Everything else on the JSON.parse hook off: the hook stays for the menu
     // while an entry is hidden or none is learnt yet.
     const bare = { enableAdBlock: false, loadRowsAhead: false, enableAutoLogin: false };

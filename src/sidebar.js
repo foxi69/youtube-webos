@@ -83,7 +83,7 @@ function saveEntries(list) {
   }
 }
 
-function hiddenIds() {
+export function hiddenIds() {
   const value = configRead('hiddenSidebarEntries');
   return Array.isArray(value) ? value : [];
 }
@@ -145,5 +145,12 @@ export function applySidebar(data) {
   }
   items.length = w;
 
-  if (seen.length) saveEntries(seen);
+  if (!seen.length) return;
+  // A menu that comes without a hidden entry (a smaller one) leaves it
+  // listed, or its switch would be gone and it could not be shown again.
+  const known = getSidebarEntries();
+  for (let i = 0; i < known.length; i++) {
+    if (!seenIds[known[i].id] && hidden.indexOf(known[i].id) !== -1) seen.push(known[i]);
+  }
+  saveEntries(seen);
 }
