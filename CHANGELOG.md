@@ -28,6 +28,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 + SponsorBlock: after the segments were refreshed mid-video, a segment chosen with Skip to Previous could be skipped again, and another one left alone in its place; the choice now follows its segment.
 + Force Max Quality: switched off and on again within 2 s, its quality record is written again at once.
 + Max Thumbnail Quality: a finished check no longer refills the allowance for on-screen checks, which had stopped capping them during a scroll. Once that allowance is spent, the newly loaded tiles are checked next, not after the screen goes quiet behind on-screen ones it no longer lets through.
++ Update available and What's New: when both were due, waiting on "Who's watching", the Update window could open over What's New and leave it on the page behind it, with no way to close it. They now open one after the other.
++ Notifications: one updated just as its time ran out (Paused / Playing on the play/pause shortcut, say) stays on screen; it was gone a second later.
++ Fit Page Beside Menu: switched off, the menu is no longer measured every 2 seconds, which made the TV lay out the page each time; and a menu YouTube makes again no longer leaves the old one's watcher behind.
++ Show Watch Time With the Clock: coming back to the app with the video still playing counts on; that time was left out until the next pause and play.
++ Type in Search with a Keyboard: leaving the search page within a moment of the first key no longer stops typing on the on-screen keyboard for the rest of the session.
 + DeArrow: switched off, it frees the thumbnail copies it kept as well as putting YouTube's titles and thumbnails back. They stayed in memory, up to the thumbnail budget, for the rest of the session. From NicholasBly's 0.8.5 build 3 (fork watch #107).
 + SponsorBlock: the switch applies at once, and a hash change within the same video keeps the handler, so its segments and Skip Segments Once's memory stay. From mirijanristic's fork, as are the fixes below.
 + Opening the settings during the OLED blackout ends the blackout; the panel used to open unseen beneath it.

@@ -111,6 +111,10 @@ setTimeout(async () => {
     const { win, probed } = boot({ upgradeThumbnails: true, thumbnailQualityMode: 'safe' },
       '<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app>' + tiles + '</ytlr-app></body></html>');
     await tick();
+    // The module's clock stands still, so the idle gate (1.2 s after a parse)
+    // never opens here, however slow the run: only the budgets let probes go.
+    const frozen = win.performance.now();
+    Object.defineProperty(win.performance, 'now', { value: () => frozen, configurable: true });
     win.JSON.parse(tileResponse(win.JSON.stringify, rendered));
     await new Promise((r) => setTimeout(r, 200));
     const fresh = ['newtile0000', 'newtile0001', 'newtile0002', 'newtile0003'];

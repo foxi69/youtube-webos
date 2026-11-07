@@ -53,6 +53,7 @@ function boot(cfg, opts = {}) {
   win.Element.prototype.remove = function remove() { if (this.parentNode) this.parentNode.removeChild(this); };
   // Requests that never answer: a handler stays as it is.
   win.fetch = () => new Promise(() => {});
+  if (opts.setup) opts.setup(win);
   win.eval(fs.readFileSync(bundlePath, 'utf8'));
   const key = (code) => {
     const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
@@ -270,6 +271,58 @@ setTimeout(async () => {
       await wait(100);
       t('a second press while chapters load says nothing yet', /Loading chapters/.test(toasts()) && !/No chapters found/.test(toasts()), toasts());
     }
+  }
+
+  // ---- A notification updated after its time ran out shows again ----
+  {
+    // The 1 s and 3 s timers wait for the test, so the message's own time can
+    // run out while the play/pause shortcut still holds its handle.
+    const held = [];
+    const setup = (win) => {
+      const realTimeout = win.setTimeout.bind(win);
+      const realClear = win.clearTimeout.bind(win);
+      let nextId = 1e6;
+      win.setTimeout = (fn, ms, ...args) => {
+        if (ms === 1000 || ms === 3000) { held.push({ fn, ms, id: ++nextId }); return nextId; }
+        return realTimeout(fn, ms, ...args);
+      };
+      win.clearTimeout = (id) => {
+        const i = held.findIndex((h) => h.id === id);
+        if (i !== -1) held.splice(i, 1);
+        else realClear(id);
+      };
+    };
+    const SIX = 54;
+    const { win, key, toasts } = boot({ shortcut_key_6: 'play_pause' },
+      { html: '<video></video>', url: 'https://www.youtube.com/tv#/watch?v=abcdefghijk', bodyClass: 'WEB_PAGE_TYPE_WATCH', setup });
+    await wait(300);
+    const video = win.document.querySelector('video');
+    let paused = true;
+    Object.defineProperty(video, 'paused', { get: () => paused });
+    video.play = () => { paused = false; };
+    video.pause = () => { paused = true; };
+    const fire = (ms, first) => {
+      for (let i = 0; i < held.length; i++) {
+        if (held[i].ms !== ms) continue;
+        const h = held.splice(i--, 1)[0];
+        h.fn();
+        if (first) return;
+      }
+    };
+    held.length = 0;
+    key(SIX);
+    await wait(50);
+    const shown = /Playing/.test(toasts());
+    fire(3000, true); // the message's time is up; the shortcut keeps its handle
+    await wait(150); // past the shortcut's own debounce
+    key(SIX);
+    await wait(50);
+    fire(1000);
+    await wait(50);
+    const msg = win.document.querySelector('.ytaf-notification-container .message');
+    t('a notification updated just after its time ran out stays on screen',
+      shown && /Paused/.test(toasts()) && !!msg && !msg.classList.contains('message-hidden'),
+      JSON.stringify({ shown, now: toasts(), hidden: msg && msg.className }));
   }
 
   // ---- The clock after standby ----
