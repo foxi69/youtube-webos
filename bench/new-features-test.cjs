@@ -236,6 +236,21 @@ const shelfItems = (r) => r.contents.tvBrowseRenderer.content.tvSurfaceContentRe
       JSON.stringify(titles) === JSON.stringify(['Home']) && out.a.items === null, JSON.stringify(titles));
   }
   {
+    // A flat guide `items` list met after an `items: null` is still the one
+    // filtered: the null is not kept in its place.
+    const { win, NS } = boot({ removeGlobalShorts: true });
+    await wait(300);
+    const guide = { responseContext: { _pad: pad }, a: { items: null },
+      b: { c: { items: [
+        { guideEntryRenderer: { title: { simpleText: 'Home' } } },
+        { guideEntryRenderer: { title: { simpleText: 'Shorts' }, navigationEndpoint: { browseEndpoint: { browseId: 'FEshorts' } } } }
+      ] } } };
+    const out = win.JSON.parse(NS(guide));
+    const titles = out.b.c.items.map((x) => x.guideEntryRenderer.title.simpleText);
+    t('[guide] a flat items list after an items: null is filtered: Shorts goes, Home stays',
+      JSON.stringify(titles) === JSON.stringify(['Home']) && out.a.items === null, JSON.stringify(titles));
+  }
+  {
     const { win, NS } = boot({ removeGlobalShorts: false });
     await wait(300);
     const guide = { responseContext: { _pad: pad }, items: [

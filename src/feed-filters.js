@@ -255,7 +255,12 @@ export function playingPlaylistId(data) {
   const panel = next.playlist && next.playlist.playlist;
   if (panel && typeof panel.playlistId === 'string' && panel.playlistId) return panel.playlistId;
   const match = /[?&]list=([^&]+)/.exec(window.location.hash || '');
-  return match ? decodeURIComponent(match[1]) : null;
+  if (!match) return null;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch (e) {
+    return null; // a malformed escape in the address
+  }
 }
 
 /**

@@ -1064,7 +1064,8 @@ function takeFrom(set, picked, limit) {
 
 /**
  * Up to `limit` queued ids: the on-screen ones first, then the latest parse's in
- * the order it queued them, then the head of the queue. Each tier is read from
+ * the order it queued them, then the head of the queue - each tier first only
+ * for what its budget admits now (admitToTier). Each tier is read from
  * its own small set against the queue, so a pick costs the size of those sets
  * plus `limit`, not a pass over the whole queue (up to PROBE_ATTEMPT_LIMIT ids,
  * drained three at a time).
@@ -1072,7 +1073,12 @@ function takeFrom(set, picked, limit) {
 function pickProbeIds(rendered, limit) {
   const picked = [];
   if (limit <= 0) return picked;
-  if (rendered) takeFrom(rendered, picked, limit);
+  // Each tier first takes only as many as its budget lets go now, so tiles a
+  // spent tier would hold for idle never take the slots of the next tier's.
+  if (rendered && visibleBudget > 0) takeFrom(rendered, picked, Math.min(limit, visibleBudget));
+  if (urgentLeft > 0 && picked.length < limit) takeFrom(latestParse, picked, Math.min(limit, picked.length + urgentLeft));
+  // What is left waits for idle, in the same order.
+  if (rendered && picked.length < limit) takeFrom(rendered, picked, limit);
   if (picked.length < limit) takeFrom(latestParse, picked, limit);
   if (picked.length < limit) takeFrom(probeQueue, picked, limit);
   return picked;

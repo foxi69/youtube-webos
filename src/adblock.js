@@ -1747,9 +1747,10 @@ function findObjects(haystack, needlesArray, maxDepth = 10) {
 
     for (let i = 0; i < targetCount; i++) {
       const needle = needlesArray[i];
-      // The first value found is kept, falsy or not: a null met again further
-      // down must not be counted twice and end the search early.
-      if (results[needle] === undefined && currentObj[needle] !== undefined) {
+      // The first value that is there is kept, and counted once: a null is
+      // passed over, so it neither ends the search early nor hides a real
+      // value met further down (a flat guide `items` after an `items: null`).
+      if (results[needle] === undefined && currentObj[needle] != null) {
         results[needle] = currentObj[needle];
         foundCount++;
       }

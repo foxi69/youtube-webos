@@ -31,15 +31,17 @@ function boot(cfg, opts = {}) {
   win.XMLHttpRequest = class { open(){} send(){} setRequestHeader(){} getResponseHeader(){return null;} addEventListener(){} };
   win.requestAnimationFrame = (cb) => setTimeout(cb, 0);
   win.cancelAnimationFrame = () => {};
-  // A clock that can jump, for the time windows and the standby.
-  const clock = { offset: 0 };
+  // A clock that can jump, for the time windows and the standby, or stand
+  // still (frozenAt) for a throttle.
+  const clock = { offset: 0, frozenAt: null };
   const RealDate = win.Date;
+  const at = () => (clock.frozenAt !== null ? clock.frozenAt : RealDate.now() + clock.offset);
   win.Date = class extends RealDate {
     constructor(...args) {
       if (args.length) super(...args);
-      else super(RealDate.now() + clock.offset);
+      else super(at());
     }
-    static now() { return RealDate.now() + clock.offset; }
+    static now() { return at(); }
   };
   const NS = win.JSON.stringify;
   win.localStorage.setItem('ytaf-configuration', NS(Object.assign({
@@ -142,10 +144,10 @@ setTimeout(async () => {
     sb.segments = [seg('aaa', 100), seg('bbb', 200), seg('ccc', 300)];
     // "Skip to previous" chose to watch bbb.
     sb.tempWhitelistIndex = 1;
-    try { sb.applyRefreshedSegments([seg('new', 50), seg('aaa', 100), seg('bbb', 200), seg('ccc', 300)], 'sig1'); } catch { /* drawing, in jsdom */ }
+    sb.applyRefreshedSegments([seg('new', 50), seg('aaa', 100), seg('bbb', 200), seg('ccc', 300)], 'sig1');
     t('SponsorBlock refresh: the segment chosen to be watched stays chosen when one is added before it',
       sb.tempWhitelistIndex === 2 && sb.segments[sb.tempWhitelistIndex].UUID === 'bbb', String(sb.tempWhitelistIndex));
-    try { sb.applyRefreshedSegments([seg('new', 50), seg('aaa', 100), seg('ccc', 300)], 'sig2'); } catch { /* drawing, in jsdom */ }
+    sb.applyRefreshedSegments([seg('new', 50), seg('aaa', 100), seg('ccc', 300)], 'sig2');
     t('and none is chosen once it is gone', sb.tempWhitelistIndex === -1, String(sb.tempWhitelistIndex));
   }
 
@@ -173,7 +175,9 @@ setTimeout(async () => {
     };
     const off = await setup({ forceHighResVideo: false });
     off.fire(1);
-    t('state event: the video playing, with Force Max Quality off', off.seen.join() === 'abcdefghijk', off.seen.join());
+    off.next('otherother1');
+    off.fire(-1);
+    t('state event: the video playing, with Force Max Quality off, a new one too', off.seen.join() === 'abcdefghijk,otherother1', off.seen.join());
     off.env.win.close();
     const on = await setup({ forceHighResVideo: true });
     on.fire(1);
@@ -185,8 +189,10 @@ setTimeout(async () => {
 
   // ---- Force Max Quality off and on again at once ----
   {
-    const { win, key } = boot({ forceHighResVideo: false });
+    const { win, key, clock } = boot({ forceHighResVideo: false });
     await wait(300);
+    // All three clicks at one instant, well inside the 2 s throttle.
+    clock.frozenAt = win.Date.now();
     key(GREEN);
     await wait(20);
     win.document.querySelectorAll('.ytaf-tab-btn')[1].click();
@@ -202,7 +208,9 @@ setTimeout(async () => {
     const cleared = !stored();
     box.click();
     await wait(20);
-    t('Force Max Quality off and on again within 2 s writes its quality record again', first && cleared && !!stored(),
+    const again = !!stored();
+    clock.frozenAt = null;
+    t('Force Max Quality off and on again within 2 s writes its quality record again', first && cleared && again,
       JSON.stringify({ first, cleared, now: stored() }));
   }
 

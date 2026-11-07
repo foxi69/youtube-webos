@@ -209,6 +209,14 @@ const ids = (r) => itemsOf(r).map((i) => (i.tileRenderer || i.lockupViewModel).c
       t(`a playlist being played (${how}) keeps its row whole, the other rows are filtered`,
         row(r, 0) === 'listold____,listnew____' && row(r, 1) === 'recnew_____', row(r, 0) + ' | ' + row(r, 1));
     }
+    // Named only by the address; a malformed escape there is no playlist.
+    const byAddress = boot({ maxVideoAge: '365' }, { url: 'https://www.youtube.com/tv#/watch?v=listnew____&list=PLmine' }).parse(next(null));
+    t('a playlist named only by the address keeps its row whole',
+      row(byAddress, 0) === 'listold____,listnew____' && row(byAddress, 1) === 'recnew_____', row(byAddress, 0) + ' | ' + row(byAddress, 1));
+    const badUrl = boot({ maxVideoAge: '365' }, { url: 'https://www.youtube.com/tv#/watch?v=listnew____&list=%E0%A4%A' });
+    const bad = badUrl.parse(next(null));
+    t('a malformed list= in the address is no playlist, and breaks nothing',
+      row(bad, 0) === 'listnew____' && row(bad, 1) === 'recnew_____' && badUrl.errors.length === 0, row(bad, 0) + ' | ' + row(bad, 1));
     t('no jsdomError (Hide Videos Older Than)', errors.length === 0, errors[0]);
   }
 
