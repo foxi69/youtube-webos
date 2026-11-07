@@ -140,6 +140,59 @@ const ids = (r) => itemsOf(r).map((i) => (i.tileRenderer || i.lockupViewModel).c
     t('the videos beside the player are filtered too', pivotIds === 'pivotok____', pivotIds);
     t('no jsdomError (feed filters)', errors.length === 0, errors[0]);
   }
+  // ---- Remove Mixes ----
+  {
+    const mixFeed = () => browse([
+      // The MIX types.
+      { tileRenderer: { contentId: 'tilemixtype', contentType: 'TILE_CONTENT_TYPE_MIX', onSelectCommand: { watchEndpoint: { videoId: 'aaaaaaaaaaa', playlistId: 'RDaaaaaaaaaaa' } } } },
+      { lockupViewModel: { contentId: 'RDMMlockmix', contentType: 'LOCKUP_CONTENT_TYPE_MIX' } },
+      // Playlist type with a Mix id: by its watch-playlist endpoint, its watch endpoint, its browse endpoint, as a lockup.
+      { tileRenderer: { contentId: 'tilewplmix_', onSelectCommand: { watchPlaylistEndpoint: { playlistId: 'RDEMxyz' } } } },
+      { tileRenderer: { contentId: 'tileplmix__', contentType: 'TILE_CONTENT_TYPE_PLAYLIST', onSelectCommand: { watchEndpoint: { videoId: 'bbbbbbbbbbb', playlistId: 'RDbbbbbbbbbbb' } } } },
+      { tileRenderer: { contentId: 'tilebrowse_', contentType: 'TILE_CONTENT_TYPE_PLAYLIST', onSelectCommand: { browseEndpoint: { browseId: 'VLRDAMVMccc' } } } },
+      { lockupViewModel: { contentId: 'RDcccccccccc', contentType: 'LOCKUP_CONTENT_TYPE_PLAYLIST' } },
+      // A Mix id only in the tile's own id; a Mix page without a type; a lockup whose tap opens the Mix.
+      { tileRenderer: { contentId: 'RDEMtileid', contentType: 'TILE_CONTENT_TYPE_PLAYLIST', onSelectCommand: { watchEndpoint: { videoId: 'eeeeeeeeeee' } } } },
+      { tileRenderer: { contentId: 'tilenotype_', onSelectCommand: { browseEndpoint: { browseId: 'VLRDfffffffffff' } } } },
+      { lockupViewModel: { contentId: 'opaquelock_', contentType: 'LOCKUP_CONTENT_TYPE_PLAYLIST',
+        rendererContext: { commandContext: { onTap: { innertubeCommand: { browseEndpoint: { browseId: 'VLRDggggggggggg' } } } } } } },
+      // These stay: a YouTube Music album (RDCLAK), an ordinary playlist, and a video playing inside a Mix.
+      { lockupViewModel: { contentId: 'RDCLAK5uy_album', contentType: 'LOCKUP_CONTENT_TYPE_PLAYLIST' } },
+      { lockupViewModel: { contentId: 'opaquealbum', contentType: 'LOCKUP_CONTENT_TYPE_PLAYLIST',
+        rendererContext: { commandContext: { onTap: { innertubeCommand: { browseEndpoint: { browseId: 'VLRDCLAK5uy_x' } } } } } } },
+      { tileRenderer: { contentId: 'notypepl___', onSelectCommand: { browseEndpoint: { browseId: 'VLPLordinary' } } } },
+      { tileRenderer: { contentId: 'PLordinary_', contentType: 'TILE_CONTENT_TYPE_PLAYLIST', onSelectCommand: { watchEndpoint: { videoId: 'ddddddddddd', playlistId: 'PLordinary' } } } },
+      { tileRenderer: { contentId: 'videoinmix_', contentType: 'TILE_CONTENT_TYPE_VIDEO', onSelectCommand: { watchEndpoint: { videoId: 'videoinmix_', playlistId: 'RDvideoinmix_' } } } },
+      tile('plainvideo_')
+    ]);
+    const { parse, errors } = boot({ removeMixes: true });
+    t('Remove Mixes drops Mix tiles and lockups, keeps albums, playlists and videos in a Mix',
+      ids(parse(mixFeed())) === 'RDCLAK5uy_album,opaquealbum,notypepl___,PLordinary_,videoinmix_,plainvideo_', ids(parse(mixFeed())));
+    const watchNext = {
+      responseContext: { _pad: pad },
+      contents: { singleColumnWatchNextResults: { pivot: { sectionListRenderer: { contents: [
+        { shelfRenderer: { content: { horizontalListRenderer: { items: [{ lockupViewModel: { contentId: 'RDpivotmix_', contentType: 'LOCKUP_CONTENT_TYPE_MIX' } }, lockup('pivotok____')] } } } }
+      ] } } } }
+    };
+    const pivotIds = parse(watchNext).contents.singleColumnWatchNextResults.pivot.sectionListRenderer.contents[0]
+      .shelfRenderer.content.horizontalListRenderer.items.map((i) => i.lockupViewModel.contentId).join(',');
+    t('Remove Mixes alone drops the Mix beside the player', pivotIds === 'pivotok____', pivotIds);
+    t('no jsdomError (Remove Mixes)', errors.length === 0, errors[0]);
+    const off = boot({ removeMixes: false }).parse(mixFeed());
+    t('Remove Mixes off keeps every Mix', itemsOf(off).length === 15, ids(off));
+    const noAdBlock = boot({ enableAdBlock: false, removeMixes: true }).parse(mixFeed());
+    t('Remove Mixes does nothing with Ad Blocking off', itemsOf(noAdBlock).length === 15, ids(noAdBlock));
+    // The older radio renderers.
+    const radios = () => browse([
+      { radioRenderer: { playlistId: 'RDradio1' } },
+      { compactRadioRenderer: { playlistId: 'RDradio2' } },
+      { gridRadioRenderer: { playlistId: 'RDradio3' } },
+      tile('afterradio_')
+    ]);
+    const kept = (r) => itemsOf(r).map((i) => Object.keys(i)[0]).join(',');
+    t('Remove Mixes drops the older radio renderers', kept(parse(radios())) === 'tileRenderer', kept(parse(radios())));
+    t('and keeps them when off', itemsOf(boot({ removeMixes: false }).parse(radios())).length === 4);
+  }
   {
     const { parse } = boot({ enableAdBlock: false, hideWatchedVideos: true, blockedKeywords: ['clickbait'] });
     const r = parse(browse([tile('watched95__', { watched: 95 }), tile('keyword____', { title: 'clickbait' })]));
