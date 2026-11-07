@@ -123,9 +123,11 @@ export function hookRateAssignments(win, controller, now = () => Date.now()) {
     },
     set(fn) {
       if (Object(this) !== this) return;
+      // hasOwnProperty, not Object.hasOwn (Chromium 93): this runs on every
+      // setPlaybackRate assignment, on webOS 4-6 and 22 too.
       const plain =
         Object.getPrototypeOf(this) === proto &&
-        !Object.hasOwn(this, 'constructor');
+        !Object.prototype.hasOwnProperty.call(this, 'constructor');
       Object.defineProperty(this, 'setPlaybackRate', {
         value:
           plain && typeof fn === 'function'
