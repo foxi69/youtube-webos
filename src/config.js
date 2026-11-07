@@ -303,6 +303,8 @@ const configOptions = new Map([
   ['checkForUpdates', { default: true, desc: 'Check for Updates' }],
   ['showWhatsNew', { default: true, desc: "Show What's New After an Update" }],
   ['fitPageBesideGuide', { default: false, desc: 'Fit Page Beside Open Menu' }],
+  // Left menu entries taken out, by browse id (sidebar.js).
+  ['hiddenSidebarEntries', { default: [], desc: 'Hidden Left Menu Entries' }],
   ['enableLegacyEmojiFix', { default: true, desc: 'Emoji + Characters Fix' }],
   ['hideGuestSignInPrompts', { default: false, desc: 'Guest Mode: Hide Sign-in Buttons' }],
   ['forceHighResVideo', { default: false, desc: 'Force Max Quality' }],
