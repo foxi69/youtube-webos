@@ -13,6 +13,14 @@ const bundlePath = process.argv[2] || 'dist/webOSUserScripts/userScript.js';
 const INSTALLED = JSON.parse(fs.readFileSync('package.json', 'utf8')).version;
 const SEEN = 'ytaf-seen-version';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Polls until cond() holds or the time runs out; returns whether it held.
+function waitFor(cond, timeout = 5000, step = 25) {
+  const end = Date.now() + timeout;
+  const poll = () => (cond() ? Promise.resolve(true)
+    : Date.now() >= end ? Promise.resolve(false)
+      : sleep(step).then(poll));
+  return poll();
+}
 
 function boot(bodyClass, storage, setup) {
   const dom = new JSDOM(`<!doctype html><html><body class="${bodyClass}"><ytlr-app></ytlr-app></body></html>`,
@@ -76,6 +84,7 @@ const t = (name, ok, extra) => {
   // beat, so the update offer is the first to see the browse page.
   {
     const bridgeErrors = [];
+    let hbAnswered = false;
     const update = boot('WEB_PAGE_TYPE_ACCOUNT_SELECTOR', {
       'ytaf-configuration': CONFIG, [SEEN]: '0.1.0',
       'ytaf-update-check': JSON.stringify({ at: Date.now(), latest: '99.0.0', ipk: { url: 'https://example.com/a.ipk' } })
@@ -84,23 +93,34 @@ const t = (name, ok, extra) => {
       win.setTimeout = (fn, ms, ...args) => realTimeout(fn, ms === 3000 ? 350 : (ms || 0) / 10, ...args);
       win.PalmServiceBridge = function () {
         this.call = (uri) => {
-          const answer = /getAppInfo/.test(uri) ? JSON.stringify({ returnValue: true, appInfo: { id: 'hb' } }) : 'null';
+          const hb = /getAppInfo/.test(uri);
+          const answer = hb ? JSON.stringify({ returnValue: true, appInfo: { id: 'hb' } }) : 'null';
           // The Homebrew Channel answers a little late; the installer with
           // something that is not an object.
           setTimeout(() => {
             try { this.onservicecallback(answer); } catch (e) { bridgeErrors.push(e.message); }
-          }, /getAppInfo/.test(uri) ? 400 : 10);
+            if (hb) hbAnswered = true;
+          }, hb ? 400 : 10);
         };
       };
     });
     await sleep(1600);
     update.document.body.className = 'WEB_PAGE_TYPE_BROWSE';
-    await sleep(900);
     const titles = () => Array.from(update.document.querySelectorAll('.ytaf-dialog-title')).map((n) => n.textContent);
-    t('update offered during What\'s New: one window at a time', titles().length === 1 && /What's new/.test(titles()[0]), JSON.stringify(titles()));
-    update.dispatchEvent(new update.KeyboardEvent('keydown', { keyCode: 27, bubbles: true }));
+    // Both windows must have had their chance: What's New is open and the
+    // Homebrew Channel has answered the update offer. Only then does "one
+    // window" say the Update window waited, whatever the timing on CI.
+    const whatsNewOpen = await waitFor(() => titles().some((x) => /What's new/.test(x)));
+    const hbDone = await waitFor(() => hbAnswered);
+    // The answer's window, had it not waited, opens on the next turns.
     await sleep(300);
-    t('and the Update window comes once What\'s New closes', titles().length === 1 && /Update/.test(titles()[0]), JSON.stringify(titles()));
+    t('update offered during What\'s New: one window at a time',
+      whatsNewOpen && hbDone && titles().length === 1 && /What's new/.test(titles()[0]),
+      JSON.stringify({ whatsNewOpen, hbDone, titles: titles() }));
+    update.dispatchEvent(new update.KeyboardEvent('keydown', { keyCode: 27, bubbles: true }));
+    const updateOpen = await waitFor(() => titles().some((x) => /Update/.test(x)));
+    t('and the Update window comes once What\'s New closes',
+      updateOpen && titles().length === 1 && /Update/.test(titles()[0]), JSON.stringify(titles()));
     const button = Array.from(update.document.querySelectorAll('.ytaf-dialog-btn')).find((b) => b.textContent === 'Update');
     if (button) button.click();
     await sleep(100);
