@@ -1,10 +1,10 @@
 import { configGetAll, configAddChangeListener } from './config';
-import { isShortsPage } from './utils';
+import { isShortsPage, isSearchPage } from './utils';
 import { getWebOSVersion } from './webos-utils';
 import { FetchRegistry } from './hooks';
 import { upgradeResponseThumbnails, thumbnailHookRequired } from './thumbnail-quality.js';
 import { raiseRowsAhead } from './rows-ahead.js';
-import { itemTitle, itemChannel, itemDurationSeconds, itemWatchedPercent, keepsWatchedVideos } from './feed-filters.js';
+import { itemTitle, itemChannel, itemDurationSeconds, itemWatchedPercent, itemAgeDays, keepsWatchedVideos, playsFromPlaylist, isMixItem } from './feed-filters.js';
 import { extendLongPressMenu } from './long-press-menu.js';
 import { noteQueuePlayability } from './video-queue.js';
 import { applyDeArrow } from './dearrow/index.js';
@@ -75,6 +75,7 @@ const CONFIG_KEYS = {
   MEMBERS: 'removeMembersOnly',
   AI: 'removeAiVideos',
   LIVE_GAMES: 'removeTopLiveGames',
+  MIXES: 'removeMixes',
   MOST_RELEVANT: 'removeMostRelevant',
   RECOMMENDED: 'hideRecommendedVideos',
   GUEST_PROMPTS: 'hideGuestSignInPrompts',
@@ -87,6 +88,8 @@ const CONFIG_KEYS = {
   AUTO_CAPTIONS: 'disableAutoCaptions',
   HIDE_WATCHED: 'hideWatchedVideos',
   MIN_LENGTH: 'minVideoLength',
+  MAX_AGE: 'maxVideoAge',
+  DUPLICATES: 'hideDuplicateVideos',
   BLOCKED_CHANNELS: 'blockedChannels',
   BLOCKED_KEYWORDS: 'blockedKeywords',
   ORIGINAL_AUDIO: 'forceOriginalAudio',
@@ -248,6 +251,7 @@ const cfgFlags = {
   badgeMask: 0,
   removeAiVideos: false,
   removeTopLiveGames: false,
+  removeMixes: false,
   removeMostRelevant: false,
   hideRecommended: false,
   hideGuestPrompts: false,
@@ -261,6 +265,8 @@ const cfgFlags = {
   feedFilters: false,
   hideWatched: false,
   minLengthSeconds: 0,
+  maxAgeDays: 0,
+  hideDuplicates: false,
   blockedChannels: null,
   blockedKeywords: null,
   forceOriginalAudio: false,
@@ -276,6 +282,11 @@ const cfgFlags = {
 // Set per response by filterResponse(): the pages that list videos because
 // they were watched keep them (keepsWatchedVideos).
 let hideWatchedHere = false;
+// Also per response: the age and repeat filters leave those pages and search
+// alone, and the repeats are counted within one response (videoId -> the
+// item that showed it first).
+let listsFilterHere = false;
+const seenVideos = new Map();
 
 function lowerCasedList(value) {
   const out = [];
@@ -312,6 +323,7 @@ function recomputeFilterFlags() {
     (cfgFlags.removeUpcomingVideos ? BADGE_UPCOMING : 0) |
     (cfgFlags.removeMembersOnly ? BADGE_MEMBERS : 0);
   cfgFlags.removeTopLiveGames = adBlock && !!cfgSnapshot[CONFIG_KEYS.LIVE_GAMES];
+  cfgFlags.removeMixes = adBlock && !!cfgSnapshot[CONFIG_KEYS.MIXES];
   cfgFlags.removeMostRelevant = adBlock && !!cfgSnapshot[CONFIG_KEYS.MOST_RELEVANT];
   cfgFlags.hideRecommended = adBlock && !!cfgSnapshot[CONFIG_KEYS.RECOMMENDED];
   cfgFlags.hideGuestPrompts = adBlock && !!cfgSnapshot[CONFIG_KEYS.GUEST_PROMPTS];
@@ -326,12 +338,14 @@ function recomputeFilterFlags() {
   // The feed filters are Ad Blocking's, like the other item filters.
   cfgFlags.hideWatched = adBlock && !!cfgSnapshot[CONFIG_KEYS.HIDE_WATCHED];
   cfgFlags.minLengthSeconds = adBlock ? (Number(cfgSnapshot[CONFIG_KEYS.MIN_LENGTH]) || 0) * 60 : 0;
+  cfgFlags.maxAgeDays = adBlock ? Number(cfgSnapshot[CONFIG_KEYS.MAX_AGE]) || 0 : 0;
+  cfgFlags.hideDuplicates = adBlock && !!cfgSnapshot[CONFIG_KEYS.DUPLICATES];
   const channels = adBlock ? lowerCasedList(cfgSnapshot[CONFIG_KEYS.BLOCKED_CHANNELS]) : [];
   const keywords = adBlock ? lowerCasedList(cfgSnapshot[CONFIG_KEYS.BLOCKED_KEYWORDS]) : [];
   cfgFlags.blockedChannels = channels.length ? channels : null;
   cfgFlags.blockedKeywords = keywords.length ? keywords : null;
   cfgFlags.feedFilters = !!(cfgFlags.hideWatched || cfgFlags.minLengthSeconds ||
-    cfgFlags.blockedChannels || cfgFlags.blockedKeywords);
+    cfgFlags.blockedChannels || cfgFlags.blockedKeywords || cfgFlags.maxAgeDays || cfgFlags.hideDuplicates);
   cfgFlags.extendLongPress = !!cfgSnapshot[CONFIG_KEYS.LONG_PRESS];
   cfgFlags.deArrow = !!cfgSnapshot[CONFIG_KEYS.DEARROW];
   cfgFlags.decorateItems = cfgFlags.extendLongPress;
@@ -347,6 +361,7 @@ function recomputeFilterFlags() {
     cfgFlags.removeMembersOnly ||
     cfgFlags.removeAiVideos ||
     cfgFlags.removeTopLiveGames ||
+    cfgFlags.removeMixes ||
     cfgFlags.removeMostRelevant ||
     cfgFlags.hideRecommended ||
     cfgFlags.hideGuestPrompts ||
@@ -366,6 +381,7 @@ function recomputeFilterFlags() {
   for (const k in cfgFlagsEmojiOnly) cfgFlagsEmojiOnly[k] = false;
   cfgFlagsEmojiOnly.badgeMask = 0;
   cfgFlagsEmojiOnly.minLengthSeconds = 0;
+  cfgFlagsEmojiOnly.maxAgeDays = 0;
   cfgFlagsEmojiOnly.blockedChannels = null;
   cfgFlagsEmojiOnly.blockedKeywords = null;
   cfgFlagsEmojiOnly.enableLegacyEmojiFix = cfgFlags.enableLegacyEmojiFix;
@@ -795,6 +811,9 @@ function filterResponse(data, text) {
   // text instead). (From mirijanristic's fork.)
   const flags = cfgFlags.enableLegacyEmojiFix && !mayNeedEmojiWork(text) ? cfgFlagsNoEmoji : cfgFlags;
   hideWatchedHere = flags.hideWatched && !keepsWatchedVideos(data);
+  listsFilterHere = (flags.maxAgeDays || flags.hideDuplicates) && responseType !== 'SEARCH' &&
+    !isSearchPage() && !keepsWatchedVideos(data) && !playsFromPlaylist(data);
+  seenVideos.clear();
 
   if (isShortsPage() && responseType && IGNORE_ON_SHORTS.has(responseType)) {
     // The Shorts player gets these unfiltered, but their titles, comments
@@ -939,7 +958,7 @@ function applySchemaFilters(data, responseType, config) {
       // Members-only badges were missing, so they did nothing there unless a
       // feed filter was on as well).
       if (config.hideGuestPrompts || config.feedFilters || config.decorateItems ||
-          config.removeAiVideos || config.removeGlobalShorts || config.badgeMask) {
+          config.removeAiVideos || config.removeGlobalShorts || config.removeMixes || config.badgeMask) {
          let pivotContents = getByPath(data, schema?.pivotPath);
          if (!pivotContents) {
             pivotContents = findObjects(data, ['pivot'], 8).pivot?.sectionListRenderer?.contents;
@@ -1291,10 +1310,28 @@ function shouldDropItem(item, config) {
   if (config.enableAdBlock && (hasAdRenderer(item) || isReelAd(item))) return true;
   if (config.hideGuestPrompts && isGuestPrompt(item)) return true;
   if (config.removeGlobalShorts && isShortsItem(item)) return true;
+  if (config.removeMixes && isMixItem(item)) return true;
   // Remove AI Videos: only videos ai-content-filter.js already found labelled "AI".
   if (config.removeAiVideos && isAiVideoStored(extractAiVideoId(item))) return true;
   if (config.feedFilters && dropsByFeedFilters(item, config)) return true;
-  return hasWantedBadge(item, config.badgeMask);
+  if (hasWantedBadge(item, config.badgeMask)) return true;
+  // Last, so the first time a video shows is one that stays.
+  return !!(config.hideDuplicates && listsFilterHere && isRepeat(item));
+}
+
+/**
+ * Hide Repeated Videos: whether a video already showed in this response, in
+ * another item. The same item asked twice is not a repeat.
+ */
+function isRepeat(item) {
+  const videoId = extractAiVideoId(item);
+  if (!videoId) return false;
+  const first = seenVideos.get(videoId);
+  if (!first) {
+    seenVideos.set(videoId, item);
+    return false;
+  }
+  return first !== item;
 }
 
 function containsAny(text, needles) {
@@ -1320,6 +1357,10 @@ function dropsByFeedFilters(item, config) {
   if (config.minLengthSeconds) {
     const seconds = itemDurationSeconds(item);
     if (seconds !== null && seconds < config.minLengthSeconds) return true;
+  }
+  if (config.maxAgeDays && listsFilterHere) {
+    const days = itemAgeDays(item);
+    if (days !== null && days > config.maxAgeDays) return true;
   }
   return !!(config.hideWatched && hideWatchedHere && itemWatchedPercent(item) >= WATCHED_PERCENT);
 }
