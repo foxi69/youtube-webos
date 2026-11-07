@@ -22,7 +22,10 @@ committed for it. Because of that memory, a commit is reported even when it
 was made days before it was pushed (anything up to LOOKBACK_DAYS old), not
 only when its date falls after the last run.
 Commits that NicholasBly's main already has are left out: the Sync upstream
-workflow brings those in. Bot commits (dependabot and the like) are skipped.
+workflow brings those in, and so are commits whose title is already one of
+our main's: our own work that a fork took in again under another sha
+(squash-merged pull requests, a rebase). Bot commits (dependabot and the
+like) are skipped.
 
 Environment: GITHUB_TOKEN, GITHUB_REPOSITORY (owner/name), optional
 ROOT_REPOS (comma separated), FIRST_RUN_DAYS, MAX_BRANCHES, DRY_RUN=1.
@@ -50,6 +53,7 @@ LOOKBACK_DAYS = int(os.environ.get('LOOKBACK_DAYS', '30'))
 KNOWN_KEEP_DAYS = LOOKBACK_DAYS + 15
 MAX_FORK_DEPTH = 6
 MAX_COMMITS_SHOWN = 15
+MAX_MAIN_TITLES = 1000
 DRY_RUN = os.environ.get('DRY_RUN') == '1'
 LABEL = 'fork-watch'
 STATE_TITLE = 'Fork watch state'
@@ -143,6 +147,12 @@ def upstream_shas():
     return {c['sha'] for c in (cmp or {}).get('commits', [])}, (cmp or {}).get('ahead_by', 0)
 
 
+def main_titles():
+    """First lines of our main's latest commits, to know our own work again in a fork."""
+    commits = get_all(f'/repos/{REPO}/commits', {'sha': 'main'}, limit=MAX_MAIN_TITLES)
+    return {c['commit']['message'].splitlines()[0] for c in commits if c['commit']['message']}
+
+
 def watched_forks(since):
     """Every repository in the roots' fork trees (roots included) pushed after `since`."""
     seen = {}
@@ -179,10 +189,11 @@ def is_bot(commit):
     return login.endswith('[bot]') or commit['commit']['author']['name'].endswith('[bot]')
 
 
-def new_commits(fork, cutoff, seen, known, today):
+def new_commits(fork, cutoff, seen, known, today, ours):
     """Commits on the fork's branches that are not in our main, newer than `cutoff`
     and not reported before. `seen` holds shas handled in this run (upstream's
-    included), shared across forks; `known` holds earlier runs' reports."""
+    included), shared across forks; `known` holds earlier runs' reports; `ours`
+    holds our main's commit titles."""
     owner = fork['owner']['login']
     branches = get_all(f"/repos/{fork['full_name']}/branches", limit=MAX_BRANCHES)
     found = {}
@@ -198,11 +209,14 @@ def new_commits(fork, cutoff, seen, known, today):
             if when <= cutoff or c['sha'] in seen or c['sha'][:12] in known or is_bot(c):
                 continue
             seen.add(c['sha'])
+            title = c['commit']['message'].splitlines()[0] if c['commit']['message'] else ''
+            if title in ours:
+                continue
             known[c['sha'][:12]] = today
             found[c['sha']] = {
                 'sha': c['sha'],
                 'branch': branch['name'],
-                'title': c['commit']['message'].splitlines()[0][:120],
+                'title': title[:120],
                 'author': (c.get('author') or {}).get('login') or c['commit']['author']['name'],
                 'date': c['commit']['committer']['date'][:10],
                 'url': c['html_url'],
@@ -328,9 +342,10 @@ def main():
 
     ensure_label()
     seen, upstream_ahead = upstream_shas()
+    ours = main_titles()
     forks = []
     for fork in watched_forks(since):
-        commits = new_commits(fork, cutoff, seen, known, today)
+        commits = new_commits(fork, cutoff, seen, known, today, ours)
         print(f"{fork['full_name']}: {len(commits)} new commit(s)")
         if commits:
             forks.append((fork, commits))

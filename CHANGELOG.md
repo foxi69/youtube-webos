@@ -23,6 +23,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Fixes
 
++ Hide Videos Older Than and Hide Repeated Videos: under a video played from a playlist, only the playlist's row is left whole, found by the playlist the response names for the playing video as well. A playlist named only there had its row filtered, and the recommendation rows beside a playlist were not filtered at all. A recommendation of a video in that playlist now counts as the repeat.
++ Prefer Original Audio: a format of the original track stays even when only its other formats say it is the original. It was dropped, which could leave a video without its AAC audio.
++ Remove Shorts / Remove Live Videos: the guide entries are found even when an empty (null) field of the same name comes first in the response. The search used to stop early, or take the empty field for the list.
++ Video queue: a queued video that played was not seen as playing, as the player's state event named no video (or the previous one), so a refusal YouTube sent later on that page (for the next video, say) skipped it with "Could not play". The event now names the video the player has.
++ SponsorBlock: after the segments were refreshed mid-video, a segment chosen with Skip to Previous could be skipped again, and another one left alone in its place; the choice now follows its segment.
++ Force Max Quality: switched off and on again within 2 s, its quality record is written again at once.
++ Max Thumbnail Quality: a finished check no longer refills the allowance for on-screen checks, which had stopped capping them during a scroll. Once that allowance is spent, the newly loaded tiles are checked next, not after the screen goes quiet behind on-screen ones it no longer lets through.
++ Update available and What's New: when both were due, waiting on "Who's watching", the Update window could open over What's New and leave it on the page behind it, with no way to close it. They now open one after the other.
++ Notifications: one updated just as its time ran out (Paused / Playing on the play/pause shortcut, say) stays on screen; it was gone a second later.
++ Fit Page Beside Menu: switched off, the menu is no longer measured every 2 seconds, which made the TV lay out the page each time; and a menu YouTube makes again no longer leaves the old one's watcher behind.
++ Show Watch Time With the Clock: coming back to the app with the video still playing counts on; that time was left out until the next pause and play.
++ Type in Search with a Keyboard: leaving the search page within a moment of the first key no longer stops typing on the on-screen keyboard for the rest of the session.
 + Playback speed: another video opened within 25 seconds of a speed change is left alone. The check after the speed change's reload carried on on it, and could move it to the old video's position or set the 1080p cap on it.
 + DeArrow: switched off, it frees the thumbnail copies it kept as well as putting YouTube's titles and thumbnails back. They stayed in memory, up to the thumbnail budget, for the rest of the session. From NicholasBly's 0.8.5 build 3 (fork watch #107).
 + SponsorBlock: the switch applies at once, and a hash change within the same video keeps the handler, so its segments and Skip Segments Once's memory stay. From mirijanristic's fork, as are the fixes below.
@@ -35,6 +47,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 + A voice launch without a query no longer searches for "undefined".
 + Remove AI Videos, Remove Shorts and Remove Live / Upcoming / Members-Only Videos also apply to the videos beside and under the player. They did so only when one of the feed filters (Hide Watched Videos, Hide Videos Shorter Than, Blocked Channels, Hide Videos Whose Title Contains) was on as well, so a video found to be AI stayed in the row beside the player. Found while testing in the webOS TV Simulators.
 + YouTube Logo: the Premium (or Default) wordmark stays when the app comes back from the background or after a long idle. YouTube then drew the header again with its own wordmark, and it stayed until the next page change. The wordmark is now set by a stylesheet rule, as Hidden always was, which wins over YouTube's own each time it draws the header; nothing polls for it any more. From NicholasBly/youtube-webos#214 (fork watch #96).
++ `src/yt-fixes.js` is gone: nothing loaded it, so its search history patch never ran. `yt-fixes.css` stays.
 
 ## Docs
 

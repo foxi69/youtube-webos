@@ -44,6 +44,8 @@ run speed-restore-test
 run speed-legacy-decoder-test
 run speed-legacy-install-test "$B"
 run whats-new-test "$B"
+run guide-fit-test "$B"
+run keyboard-search-test "$B"
 run ai-filter-test "$B" legacy
 run emoji-loop-test "$B" 40
 run force-codec-test "$B"
