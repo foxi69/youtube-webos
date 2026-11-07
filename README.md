@@ -181,7 +181,7 @@ keyboard (OK on the box) or a USB/Bluetooth one, then OK; select an entry to rem
 | Show Video Quality on Start | Off |
 | Show Video Quality Next to the Title | Off |
 | Force Video Codec (Auto, AV1, VP9, AVC, HEVC, Avoid AV1) | Auto |
-| Playback Speed Control (webOS 23 and newer) | On |
+| Playback Speed Control (webOS 4 and newer; on webOS 4-6 and 22 with AAC audio only) | On |
 | Auto-Translate Subtitles (pick a language) | Off |
 | Turn On Translated Subtitles Automatically | Off |
 | Don't Turn On Subtitles by Themselves | Off |
@@ -200,7 +200,9 @@ Korean and Chinese. The chosen language is pinned to the top of the subtitle men
 it, a "*Language* (auto-translated)" track is added, translated by YouTube's own servers.
 
 **Playback Speed Control** unlocks YouTube's Speed menu: 0.25× to 2× with the pitch kept. Every launch starts at
-1×, and off 1× a video with surround audio plays in stereo.
+1×, and off 1× a video with surround audio plays in stereo. webOS 4-6 and 22 have no WebCodecs, so there the audio
+is decoded the older way, which works with **AAC audio only**: off 1× the video plays its AAC track, and a video
+without one stays at 1×. Not on webOS 3.
 
 Return YouTube Dislike sends the id of every video you open to returnyoutubedislikeapi.com.
 </details>
@@ -410,7 +412,7 @@ of the project; credits are in [CHANGELOG.md](CHANGELOG.md).
 - Return YouTube Dislike in the description panel (off by default).
 - [DeArrow](https://dearrow.ajay.app/) community titles and thumbnails in place of clickbait (off by default).
 - Force Max Quality, Force Video Codec and Max Thumbnail Quality.
-- Playback speed from 0.25× to 2× with the pitch kept (webOS 23 and newer).
+- Playback speed from 0.25× to 2× with the pitch kept (webOS 4 and newer; on webOS 4-6 and 22 with AAC audio only).
 - Auto-Translate Subtitles, and the original audio in place of dubbed tracks.
 - Bypass Nag Screens: account picker, Premium and other upsell screens, and "Are you still watching?".
   Optionally, always ask who is watching.

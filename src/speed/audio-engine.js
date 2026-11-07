@@ -10,9 +10,15 @@ export class AudioEngine {
     chunkS = 0.1,
     extraDelayMs = 0,
     onError,
-    createStretcher
+    createStretcher,
+    codecs
   }) {
     this.win = win;
+    // WebCodecs, or what stands in for it on a TV without (legacy-decoder.js).
+    this.codecs = codecs || {
+      AudioDecoder: win.AudioDecoder,
+      EncodedAudioChunk: win.EncodedAudioChunk
+    };
     this.speed = speed;
     this.leadS = leadS;
     this.chunkS = chunkS;
@@ -124,7 +130,7 @@ export class AudioEngine {
     this.cfg = cfg;
     if (this.decoder && this.decoder.state !== 'closed') this.decoder.close();
     this.decoder = null;
-    this.win.AudioDecoder.isConfigSupported(cfg)
+    this.codecs.AudioDecoder.isConfigSupported(cfg)
       .then((res) => {
         // A newer configure() may have arrived while this check was pending:
         // only the latest configuration gets a decoder.
@@ -137,7 +143,7 @@ export class AudioEngine {
           );
           return;
         }
-        this.decoder = new this.win.AudioDecoder({
+        this.decoder = new this.codecs.AudioDecoder({
           output: (data) => this.onAudioData(data),
           error: (e) => this.reportError(e)
         });
@@ -176,7 +182,7 @@ export class AudioEngine {
     for (const c of chunks) {
       const ptsUs = Math.round(c.pts * 1e6);
       const durUs = Math.round(c.duration * 1e6);
-      const eac = new this.win.EncodedAudioChunk({
+      const eac = new this.codecs.EncodedAudioChunk({
         type: c.key ? 'key' : 'delta',
         timestamp: ptsUs,
         duration: durUs,
@@ -223,15 +229,19 @@ export class AudioEngine {
       const cEnd = c.pts + c.dur;
       return !(cEnd > aUs && c.pts < bUs);
     });
-    this.pcm = this.pcm.flatMap((p) => {
+    // A loop rather than flatMap, which Chromium 53-68 (webOS 4 and 5) lack.
+    const kept = [];
+    this.pcm.forEach((p) => {
       const pEnd = p.t + p.n / p.rate;
-      if (p.t >= b || pEnd <= a) return [p];
-      const pieces = [];
+      if (p.t >= b || pEnd <= a) {
+        kept.push(p);
+        return;
+      }
       if (p.t < a) {
         const nBefore = Math.floor((a - p.t) * p.rate);
         if (nBefore > 0) {
           const chBefore = p.ch.map((c) => c.slice(0, nBefore));
-          pieces.push({ t: p.t, n: nBefore, rate: p.rate, ch: chBefore });
+          kept.push({ t: p.t, n: nBefore, rate: p.rate, ch: chBefore });
         }
       }
       if (pEnd > b) {
@@ -239,7 +249,7 @@ export class AudioEngine {
         const startIdx = p.n - nAfter;
         if (nAfter > 0) {
           const chAfter = p.ch.map((c) => c.slice(startIdx));
-          pieces.push({
+          kept.push({
             t: p.t + startIdx / p.rate,
             n: nAfter,
             rate: p.rate,
@@ -247,8 +257,8 @@ export class AudioEngine {
           });
         }
       }
-      return pieces;
     });
+    this.pcm = kept;
   }
 
   reset() {

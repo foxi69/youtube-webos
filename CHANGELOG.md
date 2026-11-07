@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Added
 
++ **Playback Speed Control on webOS 4-6 and 22** (#97): these TVs have no WebCodecs, so the audio is decoded with the older Web Audio decodeAudioData() instead, about a second at a time, each piece with 4 AAC frames before and after it so the pieces join without a click. It works with **AAC audio only** (Chromium 53 cannot decode Opus that way): off 1× the player is offered AAC only, and a video without AAC stays at 1×. Not on webOS 3 (Chromium 38). Measured first on a webOS 4 TV with a test app, thanks to John-nata.
+
 + **Remove Black Text Boxes** (UI Tweaks, on by default): the player's title, channel line and timestamps get their soft shadow back instead of solid black boxes. YouTube's server can send a TV a memory-saving flag, at any time and still after a reinstall; YouTube then puts `app-quality-root` on the page, and its own stylesheet draws the boxes. The class now comes off, again each time YouTube puts it back; the rest of YouTube's memory saving stays as it is. Turned off, the class goes back. OLED-Care's true black under the player and the transparent shelf no longer need the class. From NicholasBly/youtube-webos#215, seen on an LG C2 (webOS 22).
 
 + **Reset All Settings** (About tab): a second press within a few seconds puts every setting back to its default. With Separate Settings for Each Account on, it resets this account's settings and the ones the whole TV shares; the other accounts keep theirs.

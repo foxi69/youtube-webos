@@ -846,6 +846,8 @@ export function demuxClusters(u8, { timecodeScale, trackNumber }) {
 // The audio the engine can stretch: AAC (mp4a) and Opus, the two codecs the
 // init parsers above read.
 const STRETCHABLE_AUDIO_RE = /codecs="?(mp4a\.|opus)/i;
+// Without WebCodecs (legacy-decoder.js): AAC LC only.
+export const LEGACY_STRETCHABLE_AUDIO_RE = /codecs="?mp4a\.40\.2"?(?:[;,\s]|$)/i;
 
 function isAudioFormat(f) {
   return !!f && typeof f.mimeType === 'string' && f.mimeType.indexOf('audio/') === 0;
@@ -857,10 +859,10 @@ function isAudioFormat(f) {
  * which WebCodecs refuses, and the speed fell back to 1x ("not available for
  * this video"). The video formats are left alone. Returns the number removed.
  */
-export function keepStretchableAudio(streamingData) {
+export function keepStretchableAudio(streamingData, stretchable = STRETCHABLE_AUDIO_RE) {
   const list = streamingData && streamingData.adaptiveFormats;
   if (!Array.isArray(list)) return 0;
-  const keep = list.filter((f) => !isAudioFormat(f) || STRETCHABLE_AUDIO_RE.test(f.mimeType));
+  const keep = list.filter((f) => !isAudioFormat(f) || stretchable.test(f.mimeType));
   if (keep.length === list.length || !keep.some(isAudioFormat)) return 0;
   streamingData.adaptiveFormats = keep;
   return list.length - keep.length;
