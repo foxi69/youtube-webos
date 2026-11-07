@@ -21,6 +21,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Fixes
 
++ Hide Videos Older Than and Hide Repeated Videos: under a video played from a playlist, only the playlist's row is left whole, found by the playlist the response names for the playing video as well. A playlist named only there had its row filtered, and the recommendation rows beside a playlist were not filtered at all.
++ Prefer Original Audio: a format of the original track stays even when only its other formats say it is the original. It was dropped, which could leave a video without its AAC audio.
++ Remove Shorts / Remove Live Videos: the guide entries are found even when an empty (null) field of the same name comes first in the response; the search used to stop early.
 + DeArrow: switched off, it frees the thumbnail copies it kept as well as putting YouTube's titles and thumbnails back. They stayed in memory, up to the thumbnail budget, for the rest of the session. From NicholasBly's 0.8.5 build 3 (fork watch #107).
 + SponsorBlock: the switch applies at once, and a hash change within the same video keeps the handler, so its segments and Skip Segments Once's memory stay. From mirijanristic's fork, as are the fixes below.
 + Opening the settings during the OLED blackout ends the blackout; the panel used to open unseen beneath it.

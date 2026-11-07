@@ -242,13 +242,20 @@ export function itemAgeDays(item) {
 }
 
 /**
- * Whether a response is the page under a video played from a playlist (a Mix
- * too): its row of the playlist's videos is the playlist, and stays whole.
+ * The playlist (a Mix too) the video of a watch-next response plays from, or
+ * null: the one the response names for the playing video (as Hide Recommended
+ * Videos reads it), its playlist panel, or the address. Its row under the
+ * player is the playlist, and stays whole.
  */
-export function playsFromPlaylist(data) {
+export function playingPlaylistId(data) {
   const next = data && data.contents && data.contents.singleColumnWatchNextResults;
-  if (!next) return false;
-  return !!next.playlist || /[?&]list=/.test(window.location.hash || '');
+  if (!next) return null;
+  const current = data.currentVideoEndpoint && data.currentVideoEndpoint.watchEndpoint;
+  if (current && typeof current.playlistId === 'string' && current.playlistId) return current.playlistId;
+  const panel = next.playlist && next.playlist.playlist;
+  if (panel && typeof panel.playlistId === 'string' && panel.playlistId) return panel.playlistId;
+  const match = /[?&]list=([^&]+)/.exec(window.location.hash || '');
+  return match ? decodeURIComponent(match[1]) : null;
 }
 
 /**

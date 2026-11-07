@@ -183,18 +183,32 @@ const ids = (r) => itemsOf(r).map((i) => (i.tileRenderer || i.lockupViewModel).c
     t('a week: only what came out within 7 days stays, hours too', ids(week) === 'hu5napja___,titleold___,channelold_,hours23____,nodate_____', ids(week));
     const off = boot({ maxVideoAge: '0' }).parse(feed());
     t('Off keeps every video', itemsOf(off).length === 18, ids(off));
-    // Under the player: the row of a playlist being played stays whole.
-    const next = (playlist) => {
+    // Under the player: the row of a playlist being played stays whole, the
+    // recommendations beside it are filtered as ever.
+    const inList = (item) => {
+      item.tileRenderer.onSelectCommand.watchEndpoint.playlistId = 'PLmine';
+      return item;
+    };
+    const next = (how) => {
+      const shelf = (items) => ({ shelfRenderer: { content: { horizontalListRenderer: { items } } } });
       const r = { responseContext: { _pad: pad }, contents: { singleColumnWatchNextResults: {
-        pivot: { sectionListRenderer: { contents: [{ shelfRenderer: { content: { horizontalListRenderer: {
-          items: [dated('nextold____', '3 years ago'), dated('nextnew____', '2 days ago')] } } } }] } } } } };
-      if (playlist) r.contents.singleColumnWatchNextResults.playlist = { playlist: { playlistId: 'PLmine' } };
+        pivot: { sectionListRenderer: { contents: [
+          shelf([inList(dated('listold____', '3 years ago')), inList(dated('listnew____', '2 days ago'))]),
+          shelf([dated('recold_____', '3 years ago'), dated('recnew_____', '2 days ago')])
+        ] } } } } };
+      if (how === 'panel') r.contents.singleColumnWatchNextResults.playlist = { playlist: { playlistId: 'PLmine' } };
+      if (how === 'endpoint') r.currentVideoEndpoint = { watchEndpoint: { videoId: 'listnew____', playlistId: 'PLmine' } };
       return r;
     };
-    const row = (r) => r.contents.singleColumnWatchNextResults.pivot.sectionListRenderer.contents[0]
+    const row = (r, i) => r.contents.singleColumnWatchNextResults.pivot.sectionListRenderer.contents[i]
       .shelfRenderer.content.horizontalListRenderer.items.map((x) => x.tileRenderer.contentId).join(',');
-    t('under the player, an old video goes', row(parse(next(false))) === 'nextnew____', row(parse(next(false))));
-    t('but a playlist being played keeps its row whole', row(parse(next(true))) === 'nextold____,nextnew____', row(parse(next(true))));
+    const plain = parse(next(null));
+    t('under the player, an old video goes', row(plain, 0) === 'listnew____' && row(plain, 1) === 'recnew_____', row(plain, 0) + ' | ' + row(plain, 1));
+    for (const how of ['panel', 'endpoint']) {
+      const r = parse(next(how));
+      t(`a playlist being played (${how}) keeps its row whole, the other rows are filtered`,
+        row(r, 0) === 'listold____,listnew____' && row(r, 1) === 'recnew_____', row(r, 0) + ' | ' + row(r, 1));
+    }
     t('no jsdomError (Hide Videos Older Than)', errors.length === 0, errors[0]);
   }
 
@@ -303,6 +317,8 @@ const ids = (r) => itemsOf(r).map((i) => (i.tileRenderer || i.lockupViewModel).c
       itags(parse(player([video, audio(140, 'de.3', true, 'dubbed-auto'), audio(141, 'en.4', false, 'original')]))) === '137,141');
     t('original audio: one track is left alone',
       itags(parse(player([video, audio(140, 'en.4', true), audio(139, 'en.4', true)]))) === '137,140,139');
+    t('original audio: a format of the original track without xtags of its own stays',
+      itags(parse(player([video, audio(251, 'en.4', false, 'original'), audio(140, 'en.4', false), audio(141, 'de.3', true, 'dubbed-auto'), audio(139, 'de.3', true)]))) === '137,251,140');
     t('original audio: formats without tracks are left alone',
       itags(parse(player([video, { itag: 140, mimeType: 'audio/mp4' }]))) === '137,140');
     const wrapped = parse({ responseContext: { _pad: pad }, playerResponse: player([video, audio(140, 'en.4', true), audio(141, 'de.3', false)]),

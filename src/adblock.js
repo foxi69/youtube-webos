@@ -4,7 +4,7 @@ import { getWebOSVersion } from './webos-utils';
 import { FetchRegistry } from './hooks';
 import { upgradeResponseThumbnails, thumbnailHookRequired } from './thumbnail-quality.js';
 import { raiseRowsAhead } from './rows-ahead.js';
-import { itemTitle, itemChannel, itemDurationSeconds, itemWatchedPercent, itemAgeDays, keepsWatchedVideos, playsFromPlaylist, isMixItem } from './feed-filters.js';
+import { itemTitle, itemChannel, itemDurationSeconds, itemWatchedPercent, itemAgeDays, keepsWatchedVideos, playingPlaylistId, isMixItem } from './feed-filters.js';
 import { extendLongPressMenu } from './long-press-menu.js';
 import { noteQueuePlayability } from './video-queue.js';
 import { applyDeArrow } from './dearrow/index.js';
@@ -282,6 +282,9 @@ const cfgFlags = {
 // Set per response by filterResponse(): the pages that list videos because
 // they were watched keep them (keepsWatchedVideos).
 let hideWatchedHere = false;
+// Set per response too: the playlist the video under the player plays from,
+// whose row the age and repeat filters leave whole (processSectionListOptimized).
+let playlistHere = null;
 // Also per response: the age and repeat filters leave those pages and search
 // alone, and the repeats are counted within one response (videoId -> the
 // item that showed it first).
@@ -812,7 +815,8 @@ function filterResponse(data, text) {
   const flags = cfgFlags.enableLegacyEmojiFix && !mayNeedEmojiWork(text) ? cfgFlagsNoEmoji : cfgFlags;
   hideWatchedHere = flags.hideWatched && !keepsWatchedVideos(data);
   listsFilterHere = (flags.maxAgeDays || flags.hideDuplicates) && responseType !== 'SEARCH' &&
-    !isSearchPage() && !keepsWatchedVideos(data) && !playsFromPlaylist(data);
+    !isSearchPage() && !keepsWatchedVideos(data);
+  playlistHere = listsFilterHere ? playingPlaylistId(data) : null;
   seenVideos.clear();
 
   if (isShortsPage() && responseType && IGNORE_ON_SHORTS.has(responseType)) {
@@ -1485,6 +1489,10 @@ function processSectionListOptimized(contents, config, contextName = '', skipEmo
       // Kept as sent.
     } else if (item.shelfRenderer) {
       const shelf = item.shelfRenderer;
+      // The row of the playlist being played is the playlist: the age and
+      // repeat filters leave it whole (the others still apply).
+      const wholeRow = listsFilterHere && playlistHere !== null && isPlaylistRow(item, playlistHere);
+      if (wholeRow) listsFilterHere = false;
       if (shouldDropShelf(shelf, config)) keepItem = false;
       // A shelf we emptied has to go with its items. Left in place it still
       // has a title and a content box, so the app renders the header plus a
@@ -1497,6 +1505,7 @@ function processSectionListOptimized(contents, config, contextName = '', skipEmo
         keepItem = false;
         if (DEBUG) debugLog(`${contextName ? contextName + ': ' : ''}Dropped emptied shelf "${getShelfTitleOptimized(shelf)}"`);
       }
+      if (wholeRow) listsFilterHere = true;
     } else if (filterSectionItemLists(item, config) === 0) {
       // A bare grid or horizontal list keeps its (filtered) place, and with
       // it its continuation; anything else is an item of its own.
@@ -1695,11 +1704,26 @@ function keepOriginalAudio(holder) {
   }
   if (!byXtags && !(hasDefault && hasOther)) return;
 
+  // The tracks the xtags call original: a format of one of them stays even
+  // when its own xtags say nothing (only some formats of a track carry them).
+  const originalTracks = {};
+  if (byXtags) {
+    for (let i = 0; i < formats.length; i++) {
+      const format = formats[i];
+      if (format && format.audioTrack && audioContentOf(format) === 'original') originalTracks[format.audioTrack.id] = true;
+    }
+  }
+
   let w = 0;
   for (let i = 0; i < formats.length; i++) {
     const format = formats[i];
-    const keep = !format || !format.audioTrack ||
-      (byXtags ? audioContentOf(format) === 'original' : format.audioTrack.audioIsDefault === true);
+    let keep = !format || !format.audioTrack;
+    if (!keep && byXtags) {
+      const content = audioContentOf(format);
+      keep = content === 'original' || (content === '' && originalTracks[format.audioTrack.id] === true);
+    } else if (!keep) {
+      keep = format.audioTrack.audioIsDefault === true;
+    }
     if (keep) formats[w++] = format;
   }
   if (DEBUG && w !== formats.length) debugLog(`Original audio: dropped ${formats.length - w} dubbed format(s)`);
@@ -1723,7 +1747,9 @@ function findObjects(haystack, needlesArray, maxDepth = 10) {
 
     for (let i = 0; i < targetCount; i++) {
       const needle = needlesArray[i];
-      if (!results[needle] && currentObj[needle] !== undefined) {
+      // The first value found is kept, falsy or not: a null met again further
+      // down must not be counted twice and end the search early.
+      if (results[needle] === undefined && currentObj[needle] !== undefined) {
         results[needle] = currentObj[needle];
         foundCount++;
       }

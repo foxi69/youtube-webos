@@ -220,6 +220,21 @@ const shelfItems = (r) => r.contents.tvBrowseRenderer.content.tvSurfaceContentRe
       JSON.stringify(titles) === JSON.stringify(['Home', 'Library']), JSON.stringify(titles));
   }
   {
+    // A null met before the guide (any falsy value) must not end the search
+    // for it: counted again at each meeting, it used to fill the count early.
+    const { win, NS } = boot({ removeGlobalShorts: true });
+    await wait(300);
+    const guide = { responseContext: { _pad: pad },
+      a: { items: null, sections: null }, b: { items: null, sections: null }, c: { items: null, sections: null },
+      d: { e: { guideRenderer: { items: [
+        { guideEntryRenderer: { title: { simpleText: 'Home' } } },
+        { guideEntryRenderer: { title: { simpleText: 'Shorts' }, navigationEndpoint: { browseEndpoint: { browseId: 'FEshorts' } } } }
+      ] } } } };
+    const out = win.JSON.parse(NS(guide));
+    t('[guide] nulls on the way do not stop the search for the guide',
+      out.d.e.guideRenderer.items.length === 1, JSON.stringify(out.d.e.guideRenderer.items.map((x) => x.guideEntryRenderer.title.simpleText)));
+  }
+  {
     const { win, NS } = boot({ removeGlobalShorts: false });
     await wait(300);
     const guide = { responseContext: { _pad: pad }, items: [
