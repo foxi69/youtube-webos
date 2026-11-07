@@ -231,8 +231,9 @@ const shelfItems = (r) => r.contents.tvBrowseRenderer.content.tvSurfaceContentRe
         { guideEntryRenderer: { title: { simpleText: 'Shorts' }, navigationEndpoint: { browseEndpoint: { browseId: 'FEshorts' } } } }
       ] } } } };
     const out = win.JSON.parse(NS(guide));
-    t('[guide] nulls on the way do not stop the search for the guide',
-      out.d.e.guideRenderer.items.length === 1, JSON.stringify(out.d.e.guideRenderer.items.map((x) => x.guideEntryRenderer.title.simpleText)));
+    const titles = out.d.e.guideRenderer.items.map((x) => x.guideEntryRenderer.title.simpleText);
+    t('[guide] nulls on the way do not stop the search for the guide: Shorts goes, Home stays',
+      JSON.stringify(titles) === JSON.stringify(['Home']) && out.a.items === null, JSON.stringify(titles));
   }
   {
     const { win, NS } = boot({ removeGlobalShorts: false });
