@@ -52,6 +52,14 @@ const configs = [
       // Off: Object.hasOwn is Chromium 93+, polyfilled nowhere (the webOS 22
       // build has no polyfills), and the rule's fix broke webOS 3-6 and 22.
       'prefer-object-has-own': 'off',
+      'no-restricted-properties': [
+        'error',
+        {
+          object: 'Object',
+          property: 'hasOwn',
+          message: 'Object.hasOwn is Chromium 93+; use Object.prototype.hasOwnProperty.call (webOS 3-6 and 22).'
+        }
+      ],
       'prefer-exponentiation-operator': 'error',
       'prefer-regex-literals': ['error', { disallowRedundantWrapping: true }],
       'array-callback-return': [

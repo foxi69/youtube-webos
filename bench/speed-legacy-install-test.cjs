@@ -32,7 +32,9 @@ function boot() {
   const dom = new JSDOM('<!doctype html><html><body class="WEB_PAGE_TYPE_WATCH"><ytlr-app></ytlr-app></body></html>',
     { runScripts: 'outside-only', url: 'https://www.youtube.com/tv#/watch?v=abcdefghijk', virtualConsole: vc, pretendToBeVisual: true });
   const win = dom.window;
-  setUserAgent(win, UA.webos23);
+  // webOS 4: the buffer limit (hooks/buffer-limit.js) wraps addSourceBuffer
+  // as well, around the speed code's own wrapper.
+  setUserAgent(win, UA.webos4);
   win.launchParams = '{}';
   win.XMLHttpRequest = class { open(){} send(){} setRequestHeader(){} getResponseHeader(){return null;} addEventListener(){} };
   win.fetch = () => new Promise(() => {});
@@ -76,6 +78,7 @@ function boot() {
   const { win } = boot();
   await wait(100);
   t('the speed control installs without WebCodecs', !!win.ytafSpeed && win.ytafSpeed.isSupported(), String(!!win.ytafSpeed));
+  t('the webOS 4 buffer limit is on as well', typeof win.__ytafBufferStats === 'function');
 
   // YouTube builds its player API with a plain object: obj.setPlaybackRate = fn.
   let built;
