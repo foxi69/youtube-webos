@@ -33,11 +33,15 @@ const DUR = Math.round((1024 / RATE) * 1e6);
 const ASC = new Uint8Array([0x12, 0x10]);
 const CFG = { codec: 'mp4a.40.2', sampleRate: RATE, numberOfChannels: 2, description: ASC };
 
-/** A fake TV: timers run by hand, decodeAudioData as described above. */
-function setup(total) {
+/**
+ * A fake TV: timers run by hand, decodeAudioData as described above. With
+ * `hold`, a decode finishes only when the test calls release().
+ */
+function setup(total, { hold = false } = {}) {
   const timers = new Map();
   let id = 0;
   const calls = [];
+  const held = [];
   class FakeOAC {
     constructor(channels, length, rate) {
       this.rate = rate;
@@ -68,7 +72,8 @@ function setup(total) {
         }
       });
       const audio = { length: n, sampleRate: this.rate, numberOfChannels: 2, getChannelData: (c) => ch[c] };
-      Promise.resolve().then(() => ok(audio));
+      if (hold) held.push(() => ok(audio));
+      else Promise.resolve().then(() => ok(audio));
       return undefined;
     }
   }
@@ -89,7 +94,8 @@ function setup(total) {
       v.fn();
     });
   };
-  return { win, calls, fire, timers };
+  const release = () => held.splice(0).forEach((f) => f());
+  return { win, calls, fire, timers, held, release };
 }
 
 const frame = (i) => {
@@ -175,9 +181,12 @@ function ramp(out, first, end) {
       JSON.stringify(env.calls.map((c) => [c[0], c[c.length - 1]])));
     env.fire(400);
     await settle();
-    env.fire(2000);
+    // The last 4 frames wait for frames after them that never come: never
+    // decoded without them, as on a pause they would click.
+    t('the joined audio is the whole ramp but the last 4 frames, no click, no gap', ramp(out, 0, 126) === true, ramp(out, 0, 126));
+    env.fire(60000);
     await settle();
-    t('the joined audio is the whole ramp, no click, no gap', ramp(out, 0, 130) === true, ramp(out, 0, 130));
+    t('and nothing is ever decoded without its frames after it', ramp(out, 0, 126) === true && env.timers.size === 0, ramp(out, 0, 126));
     t('at the stream rate', out.every((o) => o.rate === RATE));
     t('no error', errors.length === 0, errors[0]);
   }
@@ -193,13 +202,14 @@ function ramp(out, first, end) {
     await settle();
     const before = out.reduce((n, o) => n + o.a.length, 0) / 1024;
     t('on a pause, all but the last frames are decoded', before === 56, before);
+    env.fire(60000);
+    await settle();
+    t('however long the pause, the last frames wait', out.reduce((n, o) => n + o.a.length, 0) / 1024 === 56);
     send(60, 130);
     await settle();
     env.fire(400);
     await settle();
-    env.fire(2000);
-    await settle();
-    t('and it joins on without a click', ramp(out, 0, 130) === true, ramp(out, 0, 130));
+    t('and it joins on without a click', ramp(out, 0, 126) === true, ramp(out, 0, 126));
   }
 
   // ---- Frames sent again, out of order ----
@@ -219,23 +229,53 @@ function ramp(out, first, end) {
 
   // ---- reset() and close() ----
   {
-    const env = setup(130);
+    const env = setup(130, { hold: true });
     const { dec, out, send } = decoder(mod, env);
     dec.configure(CFG);
     send(0, 50);
-    // A piece is being decoded now; reset() before it is done.
-    dec.reset();
     await settle();
-    t('reset(): a piece decoded before it is dropped', out.length === 0 && dec.state === 'unconfigured');
+    t('a piece is being decoded', env.held.length === 1 && out.length === 0);
+    // reset() before it is done; then it finishes.
+    dec.reset();
+    env.release();
+    await settle();
+    t('reset(): a piece that finishes after it gives nothing', out.length === 0 && dec.state === 'unconfigured');
     dec.configure(CFG);
     send(0, 50);
     await settle();
-    t('configured again, it decodes again', out.length === 1);
+    env.release();
+    await settle();
+    t('configured again, it decodes again', out.length === 1 && ramp(out, 0, 43) === true, ramp(out, 0, 43));
     dec.close();
     send(50, 60);
-    env.fire(2000);
+    env.fire(60000);
+    await settle();
+    env.release();
     await settle();
     t('close(): nothing more', out.length === 1 && dec.state === 'closed' && env.timers.size === 0);
+  }
+
+  // ---- discard() while a piece is being decoded ----
+  {
+    const env = setup(130, { hold: true });
+    const { dec, out, send } = decoder(mod, env);
+    dec.configure(CFG);
+    send(0, 50);
+    await settle();
+    // The player removes frames 10-19 from its buffer meanwhile.
+    dec.discard(10 * DUR, 20 * DUR);
+    env.release();
+    await settle();
+    const runs = out.map((o) => `${Math.round(o.ts / DUR)}+${o.a.length / 1024}`).join(',');
+    t('discard(): a piece being decoded leaves the removed frames out', runs === '0+10,20+23' &&
+      ramp(out.slice(0, 1), 0, 10) === true && ramp(out.slice(1), 20, 43) === true, runs);
+  }
+
+  // ---- 960-sample frames ----
+  {
+    const { AudioDecoder } = mod.legacyAudioCodecs(setup(1).win);
+    t('AAC LC with 960-sample frames is not (ADTS cannot say so)',
+      !(await AudioDecoder.isConfigSupported({ codec: 'mp4a.40.2', sampleRate: 44100, numberOfChannels: 2, description: new Uint8Array([0x12, 0x14]) })).supported);
   }
 
   // ---- A configuration it cannot take ----

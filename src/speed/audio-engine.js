@@ -225,6 +225,8 @@ export class AudioEngine {
     }
     const aUs = Math.round(a * 1e6);
     const bUs = Math.round(b * 1e6);
+    // Audio still being decoded must not bring the range back (legacy-decoder.js).
+    if (this.decoder && typeof this.decoder.discard === 'function') this.decoder.discard(aUs, bUs);
     this.chunks = this.chunks.filter((c) => {
       const cEnd = c.pts + c.dur;
       return !(cEnd > aUs && c.pts < bUs);

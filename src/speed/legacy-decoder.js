@@ -23,11 +23,10 @@ const PRE = 4;
 const POST = 4;
 // When no frame has come for this long (the video paused, the engine not
 // reading further ahead yet), what there is gets decoded, all but the last
-// frames, which stay as the next piece's frames before it...
+// frames, which wait for the frames after them. Never without: on a pause
+// those would click when it plays on. At the very end of a video that leaves
+// its last 4 frames (about 90 ms) unplayed.
 const FLUSH_MS = 400;
-// ...and after this long (the end of the video) those too, without frames
-// after them.
-const FINAL_MS = 2000;
 // Frames this far behind the newest one are forgotten.
 const KEEP_S = 20;
 
@@ -43,8 +42,10 @@ export function parseAacConfig(cfg) {
   const aot = bytes[0] >> 3;
   const srIndex = ((bytes[0] & 7) << 1) | (bytes[1] >> 7);
   const channels = (bytes[1] >> 3) & 15;
-  // AAC LC only, a rate ADTS can name, 1 to 7 channels.
-  if (aot !== 2 || srIndex >= RATES.length || channels < 1 || channels > 7) return null;
+  // 960-sample frames: ADTS cannot say so, and the decoder would take 1024.
+  const shortFrames = (bytes[1] >> 2) & 1;
+  // AAC LC only, a rate ADTS can name, 1 to 7 channels, 1024-sample frames.
+  if (aot !== 2 || srIndex >= RATES.length || channels < 1 || channels > 7 || shortFrames) return null;
   return { aot, srIndex, channels, sampleRate: RATES[srIndex] };
 }
 
@@ -156,9 +157,7 @@ export function legacyAudioCodecs(win) {
 
     stopTimers() {
       if (this.flushTimer) win.clearTimeout(this.flushTimer);
-      if (this.finalTimer) win.clearTimeout(this.finalTimer);
       this.flushTimer = null;
-      this.finalTimer = null;
     }
 
     decode(chunk) {
@@ -195,11 +194,6 @@ export function legacyAudioCodecs(win) {
         this.level = 1;
         this.pump();
       }, FLUSH_MS);
-      this.finalTimer = win.setTimeout(() => {
-        this.finalTimer = null;
-        this.level = 2;
-        this.pump();
-      }, FINAL_MS);
     }
 
     /** Whether frame i follows frame i - 1 with no gap. */
@@ -214,7 +208,7 @@ export function legacyAudioCodecs(win) {
      * it is decoded with, [from, to); or null to wait for more frames.
      * `level` 0: only a piece whose frames after it are all there (or end at
      * a gap); 1, on a pause: also a shorter one, ending its frames-after short
-     * of the last frame; 2, at the end: whatever there is.
+     * of the last frame.
      */
     nextPiece(level) {
       const list = this.frames;
@@ -231,8 +225,8 @@ export function legacyAudioCodecs(win) {
       const postReady = r - b >= POST || gap;
       const cut = b < r && list[b].done;
       if (!((b - a === PIECE || cut || (b === r && gap)) && postReady)) {
-        if (level === 1 && r - a > POST) b = Math.min(b, r - POST);
-        else if (level < 2) return null;
+        if (level !== 1 || r - a <= POST) return null;
+        b = Math.min(b, r - POST);
       }
       let from = a;
       while (from > 0 && a - from < PRE && this.joins(from)) from--;
@@ -257,12 +251,25 @@ export function legacyAudioCodecs(win) {
         if (gen !== this.gen) return;
         this.busy = false;
         const keep = Math.max(0, Math.min(need, audio.length - drop));
-        if (keep > 0) {
-          const channels = [];
-          for (let c = 0; c < audio.numberOfChannels; c++) {
-            channels.push(audio.getChannelData(c).slice(drop, drop + keep));
+        // The frames discarded meanwhile (discard()) give nothing: each run of
+        // the others is its own output.
+        for (let i = 0; i < own.length;) {
+          if (own[i].gone) {
+            i++;
+            continue;
           }
-          this.output(new LegacyAudioData(own[0].ts, audio.sampleRate, channels));
+          let j = i + 1;
+          while (j < own.length && !own[j].gone) j++;
+          const s0 = drop + i * FRAME;
+          const s1 = drop + Math.min(j * FRAME, keep);
+          if (s1 > s0) {
+            const channels = [];
+            for (let c = 0; c < audio.numberOfChannels; c++) {
+              channels.push(audio.getChannelData(c).slice(s0, s1));
+            }
+            this.output(new LegacyAudioData(own[i].ts, audio.sampleRate, channels));
+          }
+          i = j;
         }
         this.pump();
       };
@@ -278,6 +285,19 @@ export function legacyAudioCodecs(win) {
       } catch (e) {
         failed(e);
       }
+    }
+
+    /**
+     * The engine dropped [aUs, bUs) (the player removed it from its buffer):
+     * those frames are forgotten, and a piece being decoded leaves them out.
+     * Not part of WebCodecs; the engine calls it when the decoder has it.
+     */
+    discard(aUs, bUs) {
+      this.frames = this.frames.filter((f) => {
+        const hit = f.ts + f.dur > aUs && f.ts < bUs;
+        if (hit) f.gone = true;
+        return !hit;
+      });
     }
 
     fail(e) {
