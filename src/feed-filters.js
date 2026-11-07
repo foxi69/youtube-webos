@@ -157,10 +157,19 @@ function browsePlaylistId(endpoint) {
   return typeof id === 'string' && id.indexOf('VL') === 0 ? id.slice(2) : null;
 }
 
+/** Whether a command opens a Mix: its page, or the Mix played as a playlist. */
+function opensMix(command) {
+  if (!command) return false;
+  return isMixId(browsePlaylistId(command.browseEndpoint)) ||
+    isMixId(command.watchPlaylistEndpoint && command.watchPlaylistEndpoint.playlistId) ||
+    isMixId(command.watchEndpoint && command.watchEndpoint.playlistId);
+}
+
 /**
- * Whether an item is a Mix: a tile or a lockup of the MIX type, or of the
- * playlist type with a Mix id, or one of the older radio renderers. A video
- * that merely plays inside a Mix (its watch endpoint names the Mix as its
+ * Whether an item is a Mix: a tile or a lockup of the MIX type; one that opens
+ * a Mix's page (VLRD...), whatever its type; one of the playlist type whose id
+ * or command is a Mix; or one of the older radio renderers. A video that
+ * merely plays inside a Mix (its watch endpoint names the Mix as its
  * playlist) is a video and stays. (Idea from MickLesk's fork.)
  */
 export function isMixItem(item) {
@@ -169,16 +178,17 @@ export function isMixItem(item) {
     const type = typeof tile.contentType === 'string' ? tile.contentType : '';
     if (type.slice(-4) === '_MIX') return true;
     const command = tile.onSelectCommand || {};
+    if (isMixId(browsePlaylistId(command.browseEndpoint))) return true;
     if (command.watchPlaylistEndpoint) return isMixId(command.watchPlaylistEndpoint.playlistId);
-    if (type === 'TILE_CONTENT_TYPE_PLAYLIST') {
-      return isMixId((command.watchEndpoint && command.watchEndpoint.playlistId) || browsePlaylistId(command.browseEndpoint));
-    }
-    return false;
+    return type === 'TILE_CONTENT_TYPE_PLAYLIST' && (isMixId(tile.contentId) || opensMix(command));
   }
   const lockup = item.lockupViewModel;
   if (lockup) {
     if (lockup.contentType === 'LOCKUP_CONTENT_TYPE_MIX') return true;
-    return lockup.contentType === 'LOCKUP_CONTENT_TYPE_PLAYLIST' && isMixId(lockup.contentId);
+    if (lockup.contentType !== 'LOCKUP_CONTENT_TYPE_PLAYLIST') return false;
+    const context = lockup.rendererContext && lockup.rendererContext.commandContext;
+    const tap = context && context.onTap && context.onTap.innertubeCommand;
+    return isMixId(lockup.contentId) || opensMix(tap);
   }
   return !!(item.radioRenderer || item.compactRadioRenderer || item.gridRadioRenderer);
 }
