@@ -83,9 +83,11 @@ function drawCopy(url, videoId, width, key) {
       }
       /** Remembers the copy and its weight, if there is one, and resolves with it. */
       const finish = (copy, weight) => {
-        if (settled) {
-          // Timed out while toBlob ran: nobody takes this copy.
+        if (settled || !configRead('enableDeArrow')) {
+          // Timed out while toBlob ran, or DeArrow switched off meanwhile:
+          // nobody takes this copy, and it is not kept.
           if (copy && copy.indexOf('blob:') === 0) URL.revokeObjectURL(copy);
+          if (!settled) done(null);
           return;
         }
         if (copy) {

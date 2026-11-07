@@ -239,6 +239,8 @@ const configOptions = new Map([
   ['removeAiVideos', { default: false, desc: 'Remove AI Videos' }],
   ['markAiVideos', { default: false, desc: 'Mark AI Videos' }],
   ['removeTopLiveGames', { default: false, desc: 'Remove Top Live Games' }],
+  // YouTube's generated Mix playlists (feed-filters.js isMixItem).
+  ['removeMixes', { default: false, desc: 'Remove Mixes' }],
   ['removeMostRelevant', { default: false, desc: 'Remove "Most Relevant" Shelf' }],
   // The rows under a playing video (NicholasBly/youtube-webos#207).
   ['hideRecommendedVideos', { default: false, desc: 'Hide Recommended Videos Under the Player' }],

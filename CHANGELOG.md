@@ -9,6 +9,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## Added
 
 + **Hide Videos Older Than** and **Hide Repeated Videos** (Filters, Feed Filters, off by default, with Ad Blocking). The first hides videos older than a week, a month, 3 or 6 months, a year or 2 years, read from the "2 years ago" on the tile (never from its title) in English, Hungarian, German, Spanish, French, Italian, Portuguese, Dutch, Polish, Russian, Ukrainian, Turkish, Chinese, Japanese and Korean; a video whose date is in another language, or has none, stays. The second keeps a video only the first time it shows on a page, when Home lists it in several rows. Both leave the history, the library, playlists and search as they are. Ideas from MickLesk's fork (fork watch #107).
+
++ **Remove Mixes** (Filters, off by default, with Ad Blocking): YouTube's generated Mix playlists leave Home, search and the rows beside the player: tiles and lockups of the Mix type, and playlists whose id is a Mix's (RD...). YouTube Music's albums and charts (RDCLAK...) and ordinary playlists stay, and so does a video that plays inside a Mix. Idea from MickLesk's fork (fork watch #107).
+
 + **Remove Black Text Boxes** (UI Tweaks, on by default): the player's title, channel line and timestamps get their soft shadow back instead of solid black boxes. YouTube's server can send a TV a memory-saving flag, at any time and still after a reinstall; YouTube then puts `app-quality-root` on the page, and its own stylesheet draws the boxes. The class now comes off, again each time YouTube puts it back; the rest of YouTube's memory saving stays as it is. Turned off, the class goes back. OLED-Care's true black under the player and the transparent shelf no longer need the class. From NicholasBly/youtube-webos#215, seen on an LG C2 (webOS 22).
 
 + **Reset All Settings** (About tab): a second press within a few seconds puts every setting back to its default. With Separate Settings for Each Account on, it resets this account's settings and the ones the whole TV shares; the other accounts keep theirs.
@@ -16,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Fixes
 
++ DeArrow: switched off, it frees the thumbnail copies it kept as well as putting YouTube's titles and thumbnails back. They stayed in memory, up to the thumbnail budget, for the rest of the session. From NicholasBly's 0.8.5 build 3 (fork watch #107).
 + SponsorBlock: the switch applies at once, and a hash change within the same video keeps the handler, so its segments and Skip Segments Once's memory stay. From mirijanristic's fork, as are the fixes below.
 + Opening the settings during the OLED blackout ends the blackout; the panel used to open unseen beneath it.
 + Auto Login: after coming back to the app, the account selector is skipped only for 15 seconds. It used to stay on, so opening the profile picker later pressed OK by itself.
