@@ -44,6 +44,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 + A voice launch without a query no longer searches for "undefined".
 + Remove AI Videos, Remove Shorts and Remove Live / Upcoming / Members-Only Videos also apply to the videos beside and under the player. They did so only when one of the feed filters (Hide Watched Videos, Hide Videos Shorter Than, Blocked Channels, Hide Videos Whose Title Contains) was on as well, so a video found to be AI stayed in the row beside the player. Found while testing in the webOS TV Simulators.
 + YouTube Logo: the Premium (or Default) wordmark stays when the app comes back from the background or after a long idle. YouTube then drew the header again with its own wordmark, and it stayed until the next page change. The wordmark is now set by a stylesheet rule, as Hidden always was, which wins over YouTube's own each time it draws the header; nothing polls for it any more. From NicholasBly/youtube-webos#214 (fork watch #96).
++ `src/yt-fixes.js` is gone: nothing loaded it, so its search history patch never ran. `yt-fixes.css` stays.
 
 ## Docs
 
