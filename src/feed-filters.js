@@ -182,8 +182,24 @@ const AGE_PATTERNS = [
     [['초', 0], ['분', 0], ['시', 0], ['일', 1], ['주', 7], ['개', 30], ['년', 365]]]
 ];
 
-/** The text of a tile's lines, a lockup's metadata rows or a video's date: everything but the title. */
-function ageText(item) {
+function collectStrings(value, out, depth) {
+  if (typeof value === 'string') {
+    out.push(value);
+    return;
+  }
+  if (!value || typeof value !== 'object' || depth > 8) return;
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) collectStrings(value[i], out, depth + 1);
+    return;
+  }
+  for (const key in value) collectStrings(value[key], out, depth + 1);
+}
+
+/**
+ * The texts of a tile's lines, a lockup's metadata rows or a video's date,
+ * in the order they are shown: everything but the title.
+ */
+function ageTexts(item) {
   const tile = item.tileRenderer;
   let part;
   if (tile) part = tile.metadata?.tileMetadataRenderer?.lines;
@@ -192,21 +208,12 @@ function ageText(item) {
     const video = videoRendererOf(item);
     part = video ? video.publishedTimeText : null;
   }
-  if (!part) return '';
-  try {
-    return JSON.stringify(part);
-  } catch {
-    return '';
-  }
+  const out = [];
+  collectStrings(part, out, 0);
+  return out;
 }
 
-/**
- * How many days ago a video came out, from the "2 years ago" its tile shows,
- * or null: no such text, or a language AGE_PATTERNS does not know.
- */
-export function itemAgeDays(item) {
-  const text = ageText(item);
-  if (!text) return null;
+function daysIn(text) {
   for (let i = 0; i < AGE_PATTERNS.length; i++) {
     const match = AGE_PATTERNS[i][0].exec(text);
     if (!match) continue;
@@ -217,6 +224,31 @@ export function itemAgeDays(item) {
     }
   }
   return null;
+}
+
+/**
+ * How many days ago a video came out, from the "2 years ago" its tile shows,
+ * or null: no such text, or a language AGE_PATTERNS does not know.
+ */
+export function itemAgeDays(item) {
+  // The date comes after the channel: read from the last text back, so a
+  // channel named "Class of 2 years ago" is not taken for the date.
+  const texts = ageTexts(item);
+  for (let i = texts.length - 1; i >= 0; i--) {
+    const days = daysIn(texts[i]);
+    if (days !== null) return days;
+  }
+  return null;
+}
+
+/**
+ * Whether a response is the page under a video played from a playlist (a Mix
+ * too): its row of the playlist's videos is the playlist, and stays whole.
+ */
+export function playsFromPlaylist(data) {
+  const next = data && data.contents && data.contents.singleColumnWatchNextResults;
+  if (!next) return false;
+  return !!next.playlist || /[?&]list=/.test(window.location.hash || '');
 }
 
 /**

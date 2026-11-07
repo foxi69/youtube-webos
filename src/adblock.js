@@ -4,7 +4,7 @@ import { getWebOSVersion } from './webos-utils';
 import { FetchRegistry } from './hooks';
 import { upgradeResponseThumbnails, thumbnailHookRequired } from './thumbnail-quality.js';
 import { raiseRowsAhead } from './rows-ahead.js';
-import { itemTitle, itemChannel, itemDurationSeconds, itemWatchedPercent, itemAgeDays, keepsWatchedVideos } from './feed-filters.js';
+import { itemTitle, itemChannel, itemDurationSeconds, itemWatchedPercent, itemAgeDays, keepsWatchedVideos, playsFromPlaylist } from './feed-filters.js';
 import { extendLongPressMenu } from './long-press-menu.js';
 import { noteQueuePlayability } from './video-queue.js';
 import { applyDeArrow } from './dearrow/index.js';
@@ -800,7 +800,7 @@ function filterResponse(data, text) {
   const flags = cfgFlags.enableLegacyEmojiFix && !mayNeedEmojiWork(text) ? cfgFlagsNoEmoji : cfgFlags;
   hideWatchedHere = flags.hideWatched && !keepsWatchedVideos(data);
   listsFilterHere = (flags.maxAgeDays || flags.hideDuplicates) && responseType !== 'SEARCH' &&
-    !isSearchPage() && !keepsWatchedVideos(data);
+    !isSearchPage() && !keepsWatchedVideos(data) && !playsFromPlaylist(data);
   seenVideos.clear();
 
   if (isShortsPage() && responseType && IGNORE_ON_SHORTS.has(responseType)) {
