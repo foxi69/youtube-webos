@@ -1762,6 +1762,12 @@ class SponsorBlockHandler {
             this.skippedSegmentIndices.clear();
             segments.forEach((s, i) => { if (s.UUID && skippedUUIDs.has(s.UUID)) this.skippedSegmentIndices.add(i); });
         }
+        // The segment chosen to be watched ("skip to previous") is an index into
+        // the list too: it follows its segment, or goes when that is gone.
+        if (this.tempWhitelistIndex !== -1) {
+            const chosen = before[this.tempWhitelistIndex];
+            this.tempWhitelistIndex = chosen && chosen.UUID ? segments.findIndex(s => s.UUID === chosen.UUID) : -1;
+        }
         const added = segments.length - before.length;
 
         this.segments = segments;

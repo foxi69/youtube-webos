@@ -100,6 +100,31 @@ setTimeout(async () => {
       urlsOf(out)[0] + ' / probed: ' + probed.join(' | '));
   }
 
+  {
+    // On-screen tiles of an earlier parse spend the visible budget; the new
+    // parse's own tiles (below the fold) are next, now - not after the idle
+    // delay behind on-screen tiles the budget no longer admits.
+    const rendered = [];
+    for (let i = 0; i < 24; i++) rendered.push('onscreen' + String(i).padStart(3, '0'));
+    const tiles = rendered.map((id) =>
+      `<ytlr-thumbnail-details style="background-image: url(https://i.ytimg.com/vi/${id}/hqdefault.jpg)"></ytlr-thumbnail-details>`).join('');
+    const { win, probed } = boot({ upgradeThumbnails: true, thumbnailQualityMode: 'safe' },
+      '<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app>' + tiles + '</ytlr-app></body></html>');
+    await tick();
+    // The module's clock stands still, so the idle gate (1.2 s after a parse)
+    // never opens here, however slow the run: only the budgets let probes go.
+    const frozen = win.performance.now();
+    Object.defineProperty(win.performance, 'now', { value: () => frozen, configurable: true });
+    win.JSON.parse(tileResponse(win.JSON.stringify, rendered));
+    await new Promise((r) => setTimeout(r, 200));
+    const fresh = ['newtile0000', 'newtile0001', 'newtile0002', 'newtile0003'];
+    win.JSON.parse(tileResponse(win.JSON.stringify, fresh));
+    await new Promise((r) => setTimeout(r, 500));
+    const reached = fresh.filter((id) => probed.some((u) => u.indexOf('/' + id + '/') !== -1));
+    t('thumbnails: a new parse\'s tiles are probed before the idle delay once the on-screen budget is spent',
+      reached.length === fresh.length, 'probed: ' + reached.join(',') + ' of ' + probed.length + ' probes');
+  }
+
   // ---- return-dislike: panel detection + navigation ----
   {
     const { win, pump } = boot({ enableReturnYouTubeDislike: true },
