@@ -113,6 +113,17 @@ const fire = (el, type) => el.dispatchEvent(new win.Event(type));
   offset += 2 * MIN;
   t('a video already playing when the watch page shows counts', / · 1h 08m watched$/.test(refresh()), JSON.stringify(clockText()));
 
+  // In the background, then back with the video still playing (no 'playing').
+  let hidden = false;
+  Object.defineProperty(doc, 'hidden', { get: () => hidden, configurable: true });
+  hidden = true;
+  doc.dispatchEvent(new win.Event('visibilitychange'));
+  offset += 3 * MIN;
+  hidden = false;
+  doc.dispatchEvent(new win.Event('visibilitychange'));
+  offset += 4 * MIN;
+  t('the background does not count, playing on after it does', / · 1h 12m watched$/.test(refresh()), JSON.stringify(clockText()));
+
   toggle('Show Watch Time With the Clock');
   t('switched off: the time alone', !/watched/.test(clockText()) && clockText().length > 0, JSON.stringify(clockText()));
 

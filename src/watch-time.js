@@ -58,17 +58,26 @@ document.addEventListener('playing', onPlaying, true);
 ['pause', 'ended', 'waiting', 'emptied', 'abort', 'error'].forEach((type) => {
   document.addEventListener(type, onStopped, true);
 });
+/** Starts a stretch for a video already playing, which sends no new 'playing'. */
+function resumeIfPlaying() {
+  if (document.hidden || (!isWatchPage() && !isShortsPage())) return;
+  const video = getVideo();
+  if (video && !video.paused && !video.ended) start(video);
+}
+
 // Leaving the player, or the app going to the background, ends a stretch;
-// the next 'playing' starts one.
+// the next 'playing' starts one, or coming back to a video that plays on.
 window.addEventListener('ytaf-page-update', () => {
   if (!isWatchPage() && !isShortsPage()) {
     stop();
     return;
   }
   // A video that started a moment before the page type changed.
-  const video = getVideo();
-  if (video && !video.paused && !video.ended && !document.hidden) start(video);
+  resumeIfPlaying();
 });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) stop();
+  // Back from the background with the video still playing (the TV's own
+  // overlay, say): it sends no 'playing', so the stretch starts here.
+  else resumeIfPlaying();
 });
