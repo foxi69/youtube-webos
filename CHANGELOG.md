@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Added
 
++ **Playback Speed Control on webOS 4-6 and 22** (#97): these TVs have no WebCodecs, so the audio is decoded with the older Web Audio decodeAudioData() instead, about a second at a time, each piece with 4 AAC frames before and after it so the pieces join without a click. It works with **AAC audio only** (Chromium 53 cannot decode Opus that way): off 1× the player is offered AAC only, and a video without AAC stays at 1×. Not on webOS 3 (Chromium 38). Measured first on a webOS 4 TV with a test app, thanks to John-nata.
+
 + **Hide Left Menu Entries** (UI Tweaks): a switch for each fixed entry of YouTube's left menu (Search, Subscriptions, Music, Gaming, News...), listed once YouTube has loaded the menu; a ticked one is taken out from the next start of the app, and a section left empty with it. Home and the subscribed channels stay. Works with Ad Blocking off too. From MickLesk's fork.
 
 + **Hide Videos Older Than** and **Hide Repeated Videos** (Filters, Feed Filters, off by default, with Ad Blocking). The first hides videos older than a week, a month, 3 or 6 months, a year or 2 years, read from the "2 years ago" on the tile (never from its title) in English, Hungarian, German, Spanish, French, Italian, Portuguese, Dutch, Polish, Russian, Ukrainian, Turkish, Chinese, Japanese and Korean; a video whose date is in another language, or has none, stays. The second keeps a video only the first time it shows on a page, when Home lists it in several rows. Both leave the history, the library, playlists and search as they are. Ideas from MickLesk's fork (fork watch #107).
@@ -33,6 +35,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 + Fit Page Beside Menu: switched off, the menu is no longer measured every 2 seconds, which made the TV lay out the page each time; and a menu YouTube makes again no longer leaves the old one's watcher behind.
 + Show Watch Time With the Clock: coming back to the app with the video still playing counts on; that time was left out until the next pause and play.
 + Type in Search with a Keyboard: leaving the search page within a moment of the first key no longer stops typing on the on-screen keyboard for the rest of the session.
++ Playback speed: another video opened within 25 seconds of a speed change is left alone. The check after the speed change's reload carried on on it, and could move it to the old video's position or set the 1080p cap on it.
 + DeArrow: switched off, it frees the thumbnail copies it kept as well as putting YouTube's titles and thumbnails back. They stayed in memory, up to the thumbnail budget, for the rest of the session. From NicholasBly's 0.8.5 build 3 (fork watch #107).
 + SponsorBlock: the switch applies at once, and a hash change within the same video keeps the handler, so its segments and Skip Segments Once's memory stay. From mirijanristic's fork, as are the fixes below.
 + Opening the settings during the OLED blackout ends the blackout; the panel used to open unseen beneath it.

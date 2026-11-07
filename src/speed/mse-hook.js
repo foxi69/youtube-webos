@@ -12,6 +12,7 @@ import {
   demuxClusters,
   parseElements
 } from './containers.js';
+import { CustomEventTarget } from '../custom-event-target';
 
 export const SUPPORTED_SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
@@ -453,7 +454,16 @@ export function installMseHook(
   // remove() here), ~75 chunks a second at 1.5x.
   const BACK_BUFFER_S = 60;
 
-  class FakeAudioSourceBuffer extends win.EventTarget {
+  // new EventTarget() throws before Chromium 64 (webOS 4 and 5): the
+  // stand-in from custom-event-target.ts then, which has what this needs.
+  let EventTargetBase = win.EventTarget;
+  try {
+    new EventTargetBase();
+  } catch {
+    EventTargetBase = CustomEventTarget;
+  }
+
+  class FakeAudioSourceBuffer extends EventTargetBase {
     constructor(win, mime, speed, sink, onError) {
       super();
       this.win = win;
