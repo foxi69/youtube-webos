@@ -140,6 +140,90 @@ const ids = (r) => itemsOf(r).map((i) => (i.tileRenderer || i.lockupViewModel).c
     t('the videos beside the player are filtered too', pivotIds === 'pivotok____', pivotIds);
     t('no jsdomError (feed filters)', errors.length === 0, errors[0]);
   }
+  // ---- Hide Videos Older Than ----
+  {
+    // A tile's second line, or a lockup's second metadata row, says how old it is.
+    const dated = (id, age, opts = {}) => {
+      const item = tile(id, opts);
+      item.tileRenderer.metadata.tileMetadataRenderer.lines.push(
+        { lineRenderer: { items: [{ lineItemRenderer: { text: { runs: [{ text: '1.2M views' }] } } }, { lineItemRenderer: { text: { simpleText: age } } }] } });
+      return item;
+    };
+    const datedLockup = (id, age) => {
+      const item = lockup(id);
+      item.lockupViewModel.metadata.lockupMetadataViewModel.metadata.contentMetadataViewModel.metadataRows.push(
+        { metadataParts: [{ text: { content: '12K views' } }, { text: { content: age } }] });
+      return item;
+    };
+    const feed = (browseId) => browse([
+      dated('en3years___', '3 years ago'),
+      dated('en11months_', '11 months ago'),
+      dated('streamed2y_', 'Streamed 2 years ago'),
+      dated('hu2eve_____', '2 éve'),
+      dated('hu5napja___', '5 napja'),
+      dated('de2jahre___', 'vor 2 Jahren'),
+      dated('es3meses___', 'hace 3 meses'),
+      dated('zh2months__', '45万次观看 · 2个月前'),
+      dated('zh2years___', '2年前'),
+      dated('ru1god_____', '1 год назад'),
+      dated('ru2goda____', '2 года назад'),
+      dated('ko3years___', '3년 전'),
+      dated('titleold___', '1 day ago', { title: 'What I did 5 years ago' }),
+      dated('channelold_', '1 day ago', { channel: 'Class of 2 years ago' }),
+      dated('hours23____', '23 hours ago'),
+      tile('nodate_____'),
+      datedLockup('lock4years_', '4 years ago'),
+      datedLockup('lock2weeks_', '2 weeks ago')
+    ], browseId);
+    const { parse, errors } = boot({ maxVideoAge: '365' });
+    t('Hide Videos Older Than a year: older ones go, in every language read; the title and the channel do not count, no date stays',
+      ids(parse(feed())) === 'en11months_,hu5napja___,es3meses___,zh2months__,ru1god_____,titleold___,channelold_,hours23____,nodate_____,lock2weeks_', ids(parse(feed())));
+    t('the history keeps old videos', itemsOf(parse(feed('FEhistory'))).length === 18);
+    const week = boot({ maxVideoAge: '7' }).parse(feed());
+    t('a week: only what came out within 7 days stays, hours too', ids(week) === 'hu5napja___,titleold___,channelold_,hours23____,nodate_____', ids(week));
+    const off = boot({ maxVideoAge: '0' }).parse(feed());
+    t('Off keeps every video', itemsOf(off).length === 18, ids(off));
+    // Under the player: the row of a playlist being played stays whole.
+    const next = (playlist) => {
+      const r = { responseContext: { _pad: pad }, contents: { singleColumnWatchNextResults: {
+        pivot: { sectionListRenderer: { contents: [{ shelfRenderer: { content: { horizontalListRenderer: {
+          items: [dated('nextold____', '3 years ago'), dated('nextnew____', '2 days ago')] } } } }] } } } } };
+      if (playlist) r.contents.singleColumnWatchNextResults.playlist = { playlist: { playlistId: 'PLmine' } };
+      return r;
+    };
+    const row = (r) => r.contents.singleColumnWatchNextResults.pivot.sectionListRenderer.contents[0]
+      .shelfRenderer.content.horizontalListRenderer.items.map((x) => x.tileRenderer.contentId).join(',');
+    t('under the player, an old video goes', row(parse(next(false))) === 'nextnew____', row(parse(next(false))));
+    t('but a playlist being played keeps its row whole', row(parse(next(true))) === 'nextold____,nextnew____', row(parse(next(true))));
+    t('no jsdomError (Hide Videos Older Than)', errors.length === 0, errors[0]);
+  }
+
+  // ---- Hide Repeated Videos ----
+  {
+    const twoShelves = (browseId) => {
+      const r = browse([tile('aaaaaaaaaaa'), lockup('bbbbbbbbbbb')], browseId);
+      r.contents.tvBrowseRenderer.content.tvSurfaceContentRenderer.content.sectionListRenderer.contents.push(
+        { shelfRenderer: { title: { runs: [{ text: 'Again' }] }, content: { horizontalListRenderer: {
+          items: [tile('bbbbbbbbbbb'), tile('ccccccccccc'), lockup('aaaaaaaaaaa'), tile('ccccccccccc')] } } } });
+      return r;
+    };
+    const shelf = (r, i) => r.contents.tvBrowseRenderer.content.tvSurfaceContentRenderer.content.sectionListRenderer
+      .contents[i].shelfRenderer.content.horizontalListRenderer.items.map((x) => (x.tileRenderer || x.lockupViewModel).contentId).join(',');
+    const { parse, errors } = boot({ hideDuplicateVideos: true });
+    const first = parse(twoShelves());
+    t('Hide Repeated Videos: a video keeps its first place only',
+      shelf(first, 0) === 'aaaaaaaaaaa,bbbbbbbbbbb' && shelf(first, 1) === 'ccccccccccc', shelf(first, 0) + ' | ' + shelf(first, 1));
+    const again = parse(twoShelves());
+    t('each response counts on its own: the same page again is the same', shelf(again, 0) === 'aaaaaaaaaaa,bbbbbbbbbbb' && shelf(again, 1) === 'ccccccccccc',
+      shelf(again, 0) + ' | ' + shelf(again, 1));
+    const playlist = parse(twoShelves('VLPLsomething'));
+    t('a playlist keeps its repeats', shelf(playlist, 1) === 'bbbbbbbbbbb,ccccccccccc,aaaaaaaaaaa,ccccccccccc', shelf(playlist, 1));
+    const off = boot({ hideDuplicateVideos: false }).parse(twoShelves());
+    t('off keeps the repeats', shelf(off, 1) === 'bbbbbbbbbbb,ccccccccccc,aaaaaaaaaaa,ccccccccccc', shelf(off, 1));
+    const noAdBlock = boot({ enableAdBlock: false, hideDuplicateVideos: true, maxVideoAge: '7' }).parse(twoShelves());
+    t('both do nothing with Ad Blocking off', shelf(noAdBlock, 1) === 'bbbbbbbbbbb,ccccccccccc,aaaaaaaaaaa,ccccccccccc', shelf(noAdBlock, 1));
+    t('no jsdomError (Hide Repeated Videos)', errors.length === 0, errors[0]);
+  }
   // ---- Remove Mixes ----
   {
     const mixFeed = () => browse([

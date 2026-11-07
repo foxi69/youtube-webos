@@ -401,8 +401,8 @@ of the project; credits are in [CHANGELOG.md](CHANGELOG.md).
 - Ad blocking with a schema-based filter engine: cleaner Home, Search and Shorts. It also hides QR-code and
   shop overlays and the "Includes paid promotion" banner during playback.
 - Optional filters: Shorts, live, upcoming, members-only and AI videos, Mixes, "Most Relevant" shelf, Top Live Games,
-  recommendations under the player, guest sign-in prompts, watched videos, videos shorter than a set length,
-  blocked channels and title keywords. Search: Upload Date.
+  recommendations under the player, guest sign-in prompts, watched videos, videos shorter than a set length or
+  older than a set age, a video repeated on the same page, blocked channels and title keywords. Search: Upload Date.
 - [SponsorBlock](https://sponsor.ajay.app/): every skip category, including Hook, Filler and muted segments, plus
   Highlight; a colour for every segment and a desktop-style segment list; auto, manual and seek-bar-only modes per
   category, and Skip Segments Once; full-video label and time with skips removed; new segments picked up during

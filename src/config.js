@@ -151,6 +151,20 @@ export const minVideoLengthModes = {
   20: '20 min'
 };
 
+/**
+ * Hide Videos Older Than, in days, from the "2 years ago" on the tile
+ * (feed-filters.js itemAgeDays). '0' is off.
+ */
+export const maxVideoAgeModes = {
+  0: 'Off',
+  7: '1 week',
+  30: '1 month',
+  90: '3 months',
+  180: '6 months',
+  365: '1 year',
+  730: '2 years'
+};
+
 /** Left/Right Seek Step, in seconds while the player controls are hidden. '0': YouTube's own. */
 export const seekStepModes = {
   0: "YouTube's Default",
@@ -233,6 +247,8 @@ const configOptions = new Map([
   // Feed filters (feed-filters.js). Like the filters above, they need Ad Blocking on.
   ['hideWatchedVideos', { default: false, desc: 'Hide Watched Videos' }],
   ['minVideoLength', { default: '0', desc: 'Hide Videos Shorter Than' }],
+  ['maxVideoAge', { default: '0', desc: 'Hide Videos Older Than' }],
+  ['hideDuplicateVideos', { default: false, desc: 'Hide Repeated Videos' }],
   // Names as YouTube shows them; compared without case.
   ['blockedChannels', { default: [], desc: 'Blocked Channels' }],
   ['blockedKeywords', { default: [], desc: 'Hide Videos Whose Title Contains' }],
