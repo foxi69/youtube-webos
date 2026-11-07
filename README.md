@@ -290,6 +290,7 @@ The actions each key can take are listed under [Remote control](#-remote-control
 | Emoji + Characters Fix (webOS 3-4 only) | On |
 | Start Page (Home, Subscriptions, Library, History) | Home |
 | More Options in the Long-Press Menu | Off |
+| Hide Left Menu Entries (a switch per entry: Search, Subscriptions, Music, Gaming...) | None hidden |
 | DeArrow | Off |
 | Show the DeArrow Logo on Crowdsourced Titles/Thumbnails | On |
 | Crowdsourced Titles | On |
@@ -301,7 +302,8 @@ The actions each key can take are listed under [Remote control](#-remote-control
 **Fit Page Beside Open Menu**: while the left menu is open, YouTube slides the page right and its right side leaves
 the screen; with this option the page shrinks to fit beside the menu instead. DeArrow asks sponsor.ajay.app by hash
 prefix, like SponsorBlock; a thumbnail it shows (and the random frame's time) is asked for by the video's id. The
-Start Page is not used on a launch into a video.
+Start Page is not used on a launch into a video. **Hide Left Menu Entries** lists the menu's fixed entries, not the
+subscribed channels or Home, once YouTube has loaded the menu; a ticked one is gone from the next start of the app.
 </details>
 
 <details>
@@ -402,9 +404,9 @@ of the project; credits are in [CHANGELOG.md](CHANGELOG.md).
 - Support for webOS 3, 4, 5, 6, 22, 23, 24, 25 and newer (2016 and newer LG TVs). webOS 1 and 2 are not supported; [SiberianMishka/youtube-webos-legacy](https://github.com/SiberianMishka/youtube-webos-legacy) is a build for them.
 - Ad blocking with a schema-based filter engine: cleaner Home, Search and Shorts. It also hides QR-code and
   shop overlays and the "Includes paid promotion" banner during playback.
-- Optional filters: Shorts, live, upcoming, members-only and AI videos, "Most Relevant" shelf, Top Live Games,
-  recommendations under the player, guest sign-in prompts, watched videos, videos shorter than a set length,
-  blocked channels and title keywords. Search: Upload Date.
+- Optional filters: Shorts, live, upcoming, members-only and AI videos, Mixes, "Most Relevant" shelf, Top Live Games,
+  recommendations under the player, guest sign-in prompts, watched videos, videos shorter than a set length or
+  older than a set age, a video repeated on the same page, blocked channels and title keywords. Search: Upload Date.
 - [SponsorBlock](https://sponsor.ajay.app/): every skip category, including Hook, Filler and muted segments, plus
   Highlight; a colour for every segment and a desktop-style segment list; auto, manual and seek-bar-only modes per
   category, and Skip Segments Once; full-video label and time with skips removed; new segments picked up during
@@ -420,6 +422,7 @@ of the project; credits are in [CHANGELOG.md](CHANGELOG.md).
   more entries in the long-press menu of a video.
 - Video queue: "Add to queue" in the long-press menu, with Play Next in Queue and Clear Queue shortcuts.
 - Start Page: open on Subscriptions, the Library or the History.
+- Hide Left Menu Entries: take Music, Gaming, News or any other fixed entry out of YouTube's left menu.
 - About tab: update check, What's New after an update and Reset All Settings.
 - OLED care: black overlay on Red with keep-alive, OLED-Care Mode (true-black UI), Audio-Only Mode, Sleep Timer.
 - Smart clock (time, or date and time) that hides in fullscreen and when the description panel is open, or

@@ -142,6 +142,168 @@ export function itemWatchedPercent(item) {
 }
 
 /**
+ * How old a video is, from the "2 years ago" its tile shows, in the languages
+ * the TV may show it in: [pattern, [[unit stem, days], ...]]. The first group
+ * is the number, the second the unit; a unit is matched by the first stem it
+ * starts with, so longer stems come before the shorter ones they begin with.
+ * Seconds, minutes and hours count as 0 days. (Idea from MickLesk's fork,
+ * which reads English and German.)
+ */
+const AGE_PATTERNS = [
+  [/(\d+)\s*(second|minute|hour|day|week|month|year)s?\s+ago/i,
+    [['second', 0], ['minute', 0], ['hour', 0], ['day', 1], ['week', 7], ['month', 30], ['year', 365]]],
+  [/(\d+)\s*(másodperce|perce|órája|napja|hete|hónapja|éve)/i,
+    [['másodperc', 0], ['perc', 0], ['órá', 0], ['nap', 1], ['het', 7], ['hónap', 30], ['év', 365]]],
+  [/vor\s+(\d+)\s*(Sekunde|Minute|Stunde|Tag|Woche|Monat|Jahr)/i,
+    [['sek', 0], ['min', 0], ['stu', 0], ['tag', 1], ['woc', 7], ['mon', 30], ['jah', 365]]],
+  [/hace\s+(\d+)\s*(segundo|minuto|hora|d[ií]a|semana|mes|a[ñn]o)/i,
+    [['seg', 0], ['min', 0], ['hor', 0], ['d', 1], ['sem', 7], ['mes', 30], ['a', 365]]],
+  [/il y a\s+(\d+)\s*(seconde|minute|heure|jour|semaine|mois|an)/i,
+    [['sec', 0], ['min', 0], ['heu', 0], ['jou', 1], ['sem', 7], ['moi', 30], ['an', 365]]],
+  [/(\d+)\s*(second[oi]|minut[oi]|or[ae]|giorn[oi]|settiman[ae]|mes[ei]|ann[oi])\s+fa/i,
+    [['sec', 0], ['min', 0], ['or', 0], ['gio', 1], ['set', 7], ['mes', 30], ['ann', 365]]],
+  [/há\s+(\d+)\s*(segundo|minuto|hora|dia|semana|m[eê]s|ano)/i,
+    [['seg', 0], ['min', 0], ['hor', 0], ['dia', 1], ['sem', 7], ['m', 30], ['ano', 365]]],
+  [/(\d+)\s*(seconde|minu|uur|dag|we+k|maand|jaar)\S*\s+geleden/i,
+    [['sec', 0], ['min', 0], ['uur', 0], ['dag', 1], ['we', 7], ['maa', 30], ['jaa', 365]]],
+  [/(\d+)\s*(sekund|minut|godzin|dzie|dni|tydzie|tygodni|miesi|rok|lat)\S*\s+temu/i,
+    [['sek', 0], ['min', 0], ['god', 0], ['dzie', 1], ['dni', 1], ['tyd', 7], ['tyg', 7], ['mie', 30], ['rok', 365], ['lat', 365]]],
+  [/(\d+)\s*(секунд|минут|час|дн|день|недел|месяц|год|лет)\S*\s+назад/i,
+    [['сек', 0], ['мин', 0], ['час', 0], ['дн', 1], ['ден', 1], ['нед', 7], ['мес', 30], ['год', 365], ['лет', 365]]],
+  [/(\d+)\s*(секунд|хвилин|годин|дн|день|тиж|місяц|рік|рок)\S*\s+тому/i,
+    [['сек', 0], ['хви', 0], ['год', 0], ['дн', 1], ['ден', 1], ['тиж', 7], ['міс', 30], ['рік', 365], ['рок', 365]]],
+  [/(\d+)\s*(saniye|dakika|saat|gün|hafta|ay|yıl)\s+önce/i,
+    [['san', 0], ['dak', 0], ['saa', 0], ['gün', 1], ['haf', 7], ['ay', 30], ['yıl', 365]]],
+  [/(\d+)\s*(分钟|分鐘|小时|小時|个月|個月|[秒天周週年])前/,
+    [['秒', 0], ['分', 0], ['小', 0], ['天', 1], ['周', 7], ['週', 7], ['个', 30], ['個', 30], ['年', 365]]],
+  [/(\d+)\s*(時間|週間|か月|ヶ月|[秒分日年])前/,
+    [['秒', 0], ['分', 0], ['時', 0], ['日', 1], ['週', 7], ['か', 30], ['ヶ', 30], ['年', 365]]],
+  [/(\d+)\s*(시간|개월|[초분일주년])\s*전/,
+    [['초', 0], ['분', 0], ['시', 0], ['일', 1], ['주', 7], ['개', 30], ['년', 365]]]
+];
+
+function collectStrings(value, out, depth) {
+  if (typeof value === 'string') {
+    out.push(value);
+    return;
+  }
+  if (!value || typeof value !== 'object' || depth > 8) return;
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) collectStrings(value[i], out, depth + 1);
+    return;
+  }
+  for (const key in value) collectStrings(value[key], out, depth + 1);
+}
+
+/**
+ * The texts of a tile's lines, a lockup's metadata rows or a video's date,
+ * in the order they are shown: everything but the title.
+ */
+function ageTexts(item) {
+  const tile = item.tileRenderer;
+  let part;
+  if (tile) part = tile.metadata?.tileMetadataRenderer?.lines;
+  else if (item.lockupViewModel) part = item.lockupViewModel.metadata?.lockupMetadataViewModel?.metadata;
+  else {
+    const video = videoRendererOf(item);
+    part = video ? video.publishedTimeText : null;
+  }
+  const out = [];
+  collectStrings(part, out, 0);
+  return out;
+}
+
+function daysIn(text) {
+  for (let i = 0; i < AGE_PATTERNS.length; i++) {
+    const match = AGE_PATTERNS[i][0].exec(text);
+    if (!match) continue;
+    const unit = match[2].toLowerCase();
+    const units = AGE_PATTERNS[i][1];
+    for (let j = 0; j < units.length; j++) {
+      if (unit.indexOf(units[j][0]) === 0) return Number(match[1]) * units[j][1];
+    }
+  }
+  return null;
+}
+
+/**
+ * How many days ago a video came out, from the "2 years ago" its tile shows,
+ * or null: no such text, or a language AGE_PATTERNS does not know.
+ */
+export function itemAgeDays(item) {
+  // The date comes after the channel: read from the last text back, so a
+  // channel named "Class of 2 years ago" is not taken for the date.
+  const texts = ageTexts(item);
+  for (let i = texts.length - 1; i >= 0; i--) {
+    const days = daysIn(texts[i]);
+    if (days !== null) return days;
+  }
+  return null;
+}
+
+/**
+ * Whether a response is the page under a video played from a playlist (a Mix
+ * too): its row of the playlist's videos is the playlist, and stays whole.
+ */
+export function playsFromPlaylist(data) {
+  const next = data && data.contents && data.contents.singleColumnWatchNextResults;
+  if (!next) return false;
+  return !!next.playlist || /[?&]list=/.test(window.location.hash || '');
+}
+
+/**
+ * Whether a playlist id is a Mix: YouTube's generated mixes and radios start
+ * with "RD" (RD<video id>, RDMM "My Mix", RDEM, RDAMVM...). RDCLAK ones are
+ * YouTube Music's albums and charts, which are generated too but are not
+ * mixes, so they stay.
+ */
+function isMixId(id) {
+  return typeof id === 'string' && id.indexOf('RD') === 0 && id.indexOf('RDCLAK') !== 0;
+}
+
+/** The playlist a browse endpoint opens (VL<playlist id>), or null. */
+function browsePlaylistId(endpoint) {
+  const id = endpoint && endpoint.browseId;
+  return typeof id === 'string' && id.indexOf('VL') === 0 ? id.slice(2) : null;
+}
+
+/** Whether a command opens a Mix: its page, or the Mix played as a playlist. */
+function opensMix(command) {
+  if (!command) return false;
+  return isMixId(browsePlaylistId(command.browseEndpoint)) ||
+    isMixId(command.watchPlaylistEndpoint && command.watchPlaylistEndpoint.playlistId) ||
+    isMixId(command.watchEndpoint && command.watchEndpoint.playlistId);
+}
+
+/**
+ * Whether an item is a Mix: a tile or a lockup of the MIX type; one that opens
+ * a Mix's page (VLRD...), whatever its type; one of the playlist type whose id
+ * or command is a Mix; or one of the older radio renderers. A video that
+ * merely plays inside a Mix (its watch endpoint names the Mix as its
+ * playlist) is a video and stays. (Idea from MickLesk's fork.)
+ */
+export function isMixItem(item) {
+  const tile = item.tileRenderer;
+  if (tile) {
+    const type = typeof tile.contentType === 'string' ? tile.contentType : '';
+    if (type.slice(-4) === '_MIX') return true;
+    const command = tile.onSelectCommand || {};
+    if (isMixId(browsePlaylistId(command.browseEndpoint))) return true;
+    if (command.watchPlaylistEndpoint) return isMixId(command.watchPlaylistEndpoint.playlistId);
+    return type === 'TILE_CONTENT_TYPE_PLAYLIST' && (isMixId(tile.contentId) || opensMix(command));
+  }
+  const lockup = item.lockupViewModel;
+  if (lockup) {
+    if (lockup.contentType === 'LOCKUP_CONTENT_TYPE_MIX') return true;
+    if (lockup.contentType !== 'LOCKUP_CONTENT_TYPE_PLAYLIST') return false;
+    const context = lockup.rendererContext && lockup.rendererContext.commandContext;
+    const tap = context && context.onTap && context.onTap.innertubeCommand;
+    return isMixId(lockup.contentId) || opensMix(tap);
+  }
+  return !!(item.radioRenderer || item.compactRadioRenderer || item.gridRadioRenderer);
+}
+
+/**
  * The browse page a response belongs to: the browse_id the response names in
  * its tracking parameters, else the page in the address (`#/browse?c=FE...`).
  * A continuation names no page of its own, so the address is what tells it.
