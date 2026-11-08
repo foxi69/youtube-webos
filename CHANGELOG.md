@@ -20,7 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 + **Reset All Settings** (About tab): a second press within a few seconds puts every setting back to its default. With Separate Settings for Each Account on, it resets this account's settings and the ones the whole TV shares; the other accounts keep theirs.
 + **Video queue**: with More Options in the Long-Press Menu on, holding OK on a video offers "Add to queue". Queued videos play one after another when the current one ends, and the queue lasts until the app closes. A video YouTube refuses to play is reported and the next one starts. The shortcut actions Play Next in Queue and Clear Queue can go on any key.
-+ **Keep App Open When Paused** (Interface, off by default): YouTube closes the app 20 minutes after a video was paused or ended, which shows as the app being gone when the TV's screensaver ends. With this on, that timer is not started; the TV's own power settings still turn the TV off.
++ **Keep App Open When Paused** (Interface, off by default): YouTube closes the app 20 minutes (2 hours with no display) after a video was paused or ended, which shows as the app being gone when the TV's screensaver ends. With this on, that timer does nothing when it fires, also when the switch was turned on during the pause; the TV's own power settings still turn the TV off.
 
 ## Fixes
 

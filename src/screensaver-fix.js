@@ -121,15 +121,29 @@ const playerCtrlObs = new MutationObserver((mutations) => {
 // YouTube's CastLifecycleService closes the app once a video has been paused
 // or has ended for 20 minutes (2 hours with no display): "Exiting app due to
 // playback idleness". A paused video always ends up under the TV's
-// screensaver, so the app was gone when the screensaver ended. With the
-// option on, that one timer is not started; the TV's own power settings still
-// turn it off. Off by default: the exit also clears whatever state was left.
+// screensaver, so the app was gone when the screensaver ended. That one timer
+// still runs, so YouTube can clear it as before, but the option is read when
+// it fires: on, it does nothing. A switch during a pause counts too. The TV's
+// own power settings still turn it off. Off by default: the exit also clears
+// whatever state was left.
 const IDLE_EXIT_DELAYS = { 1200000: true, 7200000: true };
 const nativeSetTimeout = window.setTimeout;
+function isIdleExit(fn) {
+  try {
+    return String(fn).indexOf('playback idleness') !== -1;
+  } catch {
+    return false;
+  }
+}
 window.setTimeout = function (fn, delay) {
-  if (IDLE_EXIT_DELAYS[delay] && typeof fn === 'function' && String(fn).indexOf('playback idleness') !== -1 &&
-      configRead('keepAppOpenWhenPaused')) return 0;
-  return nativeSetTimeout.apply(window, arguments);
+  if (!IDLE_EXIT_DELAYS[delay] || typeof fn !== 'function' || !isIdleExit(fn)) {
+    return nativeSetTimeout.apply(window, arguments);
+  }
+  const args = Array.prototype.slice.call(arguments);
+  args[0] = function () {
+    if (!configRead('keepAppOpenWhenPaused')) return fn.apply(this, arguments);
+  };
+  return nativeSetTimeout.apply(window, args);
 };
 
 // --- webOS screensaver request ---

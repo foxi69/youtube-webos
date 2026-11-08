@@ -20,7 +20,7 @@ const LOGO_HTML =
   '<ytlr-thumbnail-details tabindex="-1" class="cFXl0 XVmJGe cFrowd" ' +
   `style="background-image: url(&quot;${DEFAULT_URL}&quot;);"></ytlr-thumbnail-details></ytlr-logo-entity>`;
 
-function boot(cfg, extraHtml = '', storage = {}) {
+function boot(cfg, extraHtml = '', storage = {}, before) {
   const dom = new JSDOM(
     `<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app>${extraHtml}</ytlr-app></body></html>`,
     { runScripts: 'outside-only', url: 'https://www.youtube.com/tv',
@@ -43,6 +43,7 @@ function boot(cfg, extraHtml = '', storage = {}) {
   }, cfg)));
   for (const k in storage) win.localStorage.setItem(k, storage[k]);
   applyChrome38Downgrade(win);
+  if (before) before(win);
   win.eval(fs.readFileSync(bundlePath, 'utf8'));
   return { win, NS, pump: () => { const q = rafQ; rafQ = []; for (const cb of q) cb(0); } };
 }
@@ -500,22 +501,33 @@ const shelfItems = (r) => r.contents.tvBrowseRenderer.content.tvSurfaceContentRe
   }
 
   {
-    // Keep App Open When Paused: YouTube's exit after 20 minutes paused is
-    // not started; other timers are. Off, YouTube's timer runs as before.
-    const exit = function () { return 'Exiting app due to playback idleness, last state = 2'; };
-    const off = boot({});
-    t("Keep App Open When Paused off: YouTube's exit timer is started", off.win.setTimeout(exit, 1200000) !== 0);
-    off.win.close();
-    const h = boot({ keepAppOpenWhenPaused: true });
-    let ran = 0;
-    const idle = h.win.setTimeout(function () { h.win.console.info('Exiting app due to playback idleness, last state = 2'); ran++; }, 1200000);
-    const other = h.win.setTimeout(function () { ran++; }, 1200000);
-    const short = h.win.setTimeout(function () { ran++; }, 1);
-    await wait(20);
-    t('the paused-idle exit timer is not started', idle === 0, String(idle));
-    t('other timers, 20 minutes long or not, are started', other !== 0 && short !== 0 && ran === 1, `other=${other} ran=${ran}`);
-    h.win.clearTimeout(other);
-    h.win.close();
+    // Keep App Open When Paused: YouTube's exit timer after 20 minutes paused
+    // still gets a real id (YouTube clears it on play), but the option is read
+    // when it fires. Other timers are left as they are.
+    const run = (cfg) => {
+      const timers = [];
+      const h = boot(cfg, '', {}, (win) => {
+        win.setTimeout = (fn, delay) => { timers.push({ fn, delay }); return timers.length; };
+      });
+      const start = timers.length;
+      let exited = 0, other = 0;
+      const idleId = h.win.setTimeout(function () { h.win.console.info('Exiting app due to playback idleness, last state = 2'); exited++; }, 1200000);
+      const otherFn = function () { other++; };
+      h.win.setTimeout(otherFn, 1200000);
+      const odd = function () { other++; };
+      odd.toString = () => { throw new Error('no source'); };
+      let threw = false;
+      try { h.win.setTimeout(odd, 1200000); } catch { threw = true; }
+      const mine = timers.slice(start);
+      for (const tm of mine) tm.fn();
+      h.win.close();
+      return { idle: idleId === start + 1, exited, other, threw, passedOn: mine.length === 3 && mine[1].fn === otherFn && mine[2].fn === odd };
+    };
+    const off = run({});
+    t("Keep App Open When Paused off: YouTube's exit timer runs", off.idle && off.exited === 1, JSON.stringify(off));
+    const on = run({ keepAppOpenWhenPaused: true });
+    t('on: the paused-idle exit timer is started but does nothing', on.idle && on.exited === 0, JSON.stringify(on));
+    t('other timers, and one whose source cannot be read, are passed on as they are', on.passedOn && on.other === 2 && !on.threw, JSON.stringify(on));
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);
