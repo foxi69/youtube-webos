@@ -499,6 +499,20 @@ const shelfItems = (r) => r.contents.tvBrowseRenderer.content.tvSurfaceContentRe
     h2.win.close();
   }
 
+  {
+    // YouTube's exit after 20 minutes paused is not started; other timers are.
+    const h = boot({});
+    let ran = 0;
+    const idle = h.win.setTimeout(function () { h.win.console.info('Exiting app due to playback idleness, last state = 2'); ran++; }, 1200000);
+    const other = h.win.setTimeout(function () { ran++; }, 1200000);
+    const short = h.win.setTimeout(function () { ran++; }, 1);
+    await wait(20);
+    t('the paused-idle exit timer is not started', idle === 0, String(idle));
+    t('other timers, 20 minutes long or not, are started', other !== 0 && short !== 0 && ran === 1, `other=${other} ran=${ran}`);
+    h.win.clearTimeout(other);
+    h.win.close();
+  }
+
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })();
