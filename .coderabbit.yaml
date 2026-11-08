@@ -1,7 +1,8 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
 #
-# CodeRabbit reviews every pull request, strictly, and only comments: it does
-# not write into the PR description, commit to the branch or label the PR.
+# CodeRabbit reviews every pull request, strictly, and comments: it does not
+# write into the PR description or label the PR. It commits to the branch
+# only when asked, with "@coderabbitai fix comments" or the Fix comments box.
 language: en-US
 tone_instructions: >-
   Be direct and specific. Point out real defects and risks with the failing
@@ -21,7 +22,8 @@ reviews:
   poem: false
   in_progress_fortune: false
   sequence_diagrams: false
-  enable_prompt_for_ai_agents: false
+  # Fix comments works from these blocks.
+  enable_prompt_for_ai_agents: true
   slop_detection:
     enabled: false
 
@@ -30,7 +32,7 @@ reviews:
     drafts: false
     auto_incremental_review: true
 
-  # Nothing that pushes commits to the PR branch.
+  # Only Fix comments pushes to the PR branch, and only when asked.
   finishing_touches:
     docstrings:
       enabled: false
@@ -39,7 +41,7 @@ reviews:
     simplify:
       enabled: false
     autofix:
-      enabled: false
+      enabled: true
     fix_ci:
       enabled: false
     resolve_merge_conflict:
