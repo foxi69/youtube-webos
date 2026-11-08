@@ -31,6 +31,7 @@ function boot(cfg, opts = {}) {
   win.requestAnimationFrame = (cb) => { rafQ.push(cb); return rafQ.length; };
   win.cancelAnimationFrame = () => {};
   if (opts.yttv) win._yttv = opts.yttv(win);
+  if (opts.hl) win.ytcfg = { get: (k) => (k === 'HL' ? opts.hl : undefined) };
   const NS = win.JSON.stringify;
   win.localStorage.setItem('ytaf-configuration', NS(Object.assign({
     enableAdBlock: true, enableLegacyEmojiFix: false, enableSponsorBlock: false,
@@ -161,6 +162,9 @@ const ids = (r) => itemsOf(r).map((i) => (i.tileRenderer || i.lockupViewModel).c
       dated('streamed2y_', 'Streamed 2 years ago'),
       dated('hu2eve_____', '2 éve'),
       dated('hu5napja___', '5 napja'),
+      dated('hutv2evvel_', '2 évvel ezelőtt'),
+      dated('hutv3hettel', '3 héttel ezelőtt'),
+      dated('hutv1nappal', '1 nappal ezelőtt'),
       dated('de2jahre___', 'vor 2 Jahren'),
       dated('es3meses___', 'hace 3 meses'),
       dated('zh2months__', '45万次观看 · 2个月前'),
@@ -177,12 +181,18 @@ const ids = (r) => itemsOf(r).map((i) => (i.tileRenderer || i.lockupViewModel).c
     ], browseId);
     const { parse, errors } = boot({ maxVideoAge: '365' });
     t('Hide Videos Older Than a year: older ones go, in every language read; the title and the channel do not count, no date stays',
-      ids(parse(feed())) === 'en11months_,hu5napja___,es3meses___,zh2months__,ru1god_____,titleold___,channelold_,hours23____,nodate_____,lock2weeks_', ids(parse(feed())));
-    t('the history keeps old videos', itemsOf(parse(feed('FEhistory'))).length === 18);
+      ids(parse(feed())) === 'en11months_,hu5napja___,hutv3hettel,hutv1nappal,es3meses___,zh2months__,ru1god_____,titleold___,channelold_,hours23____,nodate_____,lock2weeks_', ids(parse(feed())));
+    t('the history keeps old videos', itemsOf(parse(feed('FEhistory'))).length === 21);
     const week = boot({ maxVideoAge: '7' }).parse(feed());
-    t('a week: only what came out within 7 days stays, hours too', ids(week) === 'hu5napja___,titleold___,channelold_,hours23____,nodate_____', ids(week));
+    t('a week: only what came out within 7 days stays, hours too', ids(week) === 'hu5napja___,hutv1nappal,titleold___,channelold_,hours23____,nodate_____', ids(week));
     const off = boot({ maxVideoAge: '0' }).parse(feed());
-    t('Off keeps every video', itemsOf(off).length === 18, ids(off));
+    t('Off keeps every video', itemsOf(off).length === 21, ids(off));
+    const swedish = boot({ maxVideoAge: '365' }, { hl: 'sv' }).parse(browse([
+      dated('sv2ar______', 'för 2 år sedan'),
+      dated('sv3manader_', 'för 3 månader sedan'),
+      dated('sv1dag_____', 'för 1 dag sedan')
+    ]));
+    t('a language with no pattern of its own (Swedish): read from Intl.RelativeTimeFormat in YouTube\'s language', ids(swedish) === 'sv3manader_,sv1dag_____', ids(swedish));
     // Under the player: the row of a playlist being played stays whole, the
     // recommendations beside it are filtered as ever.
     const inList = (item) => {

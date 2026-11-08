@@ -113,6 +113,15 @@ if (typeof document !== 'undefined') {
     }
 }
 
+// YouTube's UI language (its own setting, not the TV's), lower case.
+export function uiLang() {
+  try {
+    const hl = window.ytcfg && typeof window.ytcfg.get === 'function' && window.ytcfg.get('HL');
+    if (hl) return String(hl).toLowerCase();
+  } catch { /* fall back below */ }
+  return String(navigator.language || 'en').toLowerCase();
+}
+
 export const isWatchPage = () => _isWatchPage;
 export const isShortsPage = () => _isShortsPage;
 export const isSearchPage = () => _isSearchPage;

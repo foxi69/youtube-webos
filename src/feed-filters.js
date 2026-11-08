@@ -10,6 +10,8 @@
  * field it does not have.
  */
 
+import { uiLang } from './utils.js';
+
 // Our own emoji sentinels (adblock.js) and the other invisible marks a title
 // can carry; they must not stop a keyword or a channel name from matching.
 const INVISIBLE_RE = /[\u200B\u200C\u2060\uFEFF]/g;
@@ -142,8 +144,9 @@ export function itemWatchedPercent(item) {
 }
 
 /**
- * How old a video is, from the "2 years ago" its tile shows, in the languages
- * the TV may show it in: [pattern, [[unit stem, days], ...]]. The first group
+ * How old a video is, from the "2 years ago" its tile shows, where
+ * intlAgePatterns() below has no answer (an engine without
+ * Intl.RelativeTimeFormat, or the web's wording): [pattern, [[unit stem, days], ...]]. The first group
  * is the number, the second the unit; a unit is matched by the first stem it
  * starts with, so longer stems come before the shorter ones they begin with.
  * Seconds, minutes and hours count as 0 days. (Idea from MickLesk's fork,
@@ -154,6 +157,9 @@ const AGE_PATTERNS = [
     [['second', 0], ['minute', 0], ['hour', 0], ['day', 1], ['week', 7], ['month', 30], ['year', 365]]],
   [/(\d+)\s*(másodperce|perce|órája|napja|hete|hónapja|éve)/i,
     [['másodperc', 0], ['perc', 0], ['órá', 0], ['nap', 1], ['het', 7], ['hónap', 30], ['év', 365]]],
+  // The TV app's Hungarian: "2 évvel ezelőtt", "3 héttel ezelőtt".
+  [/(\d+)\s*(másodperc|perc|órá|nap|hét|hónap|év)\S*\s+ezelőtt/i,
+    [['másodperc', 0], ['perc', 0], ['órá', 0], ['nap', 1], ['hét', 7], ['hónap', 30], ['év', 365]]],
   [/vor\s+(\d+)\s*(Sekunde|Minute|Stunde|Tag|Woche|Monat|Jahr)/i,
     [['sek', 0], ['min', 0], ['stu', 0], ['tag', 1], ['woc', 7], ['mon', 30], ['jah', 365]]],
   [/hace\s+(\d+)\s*(segundo|minuto|hora|d[ií]a|semana|mes|a[ñn]o)/i,
@@ -213,7 +219,51 @@ function ageTexts(item) {
   return out;
 }
 
+const INTL_UNITS = [['second', 0], ['minute', 0], ['hour', 0], ['day', 1], ['week', 7], ['month', 30], ['year', 365]];
+// Numbers that reach every plural form ("1 год", "2 года", "5 лет", "21 год").
+const INTL_SAMPLES = [1, 2, 3, 5, 11, 21, 22, 25];
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const oneSpace = (s) => s.replace(/\s+/g, ' ');
+let intlAges;
+
+/**
+ * "2 years ago" as the browser words it in YouTube's language, for any
+ * language: [RegExp, days per unit] for each wording of each unit, or [] where
+ * Intl.RelativeTimeFormat is missing (Chromium < 71, webOS 3-5). YouTube's TV
+ * app words it the same way, e.g. Hungarian "2 évvel ezelőtt", where the web
+ * says "2 éve".
+ */
+function intlAgePatterns() {
+  if (intlAges) return intlAges;
+  intlAges = [];
+  try {
+    const format = new Intl.RelativeTimeFormat(uiLang(), { numeric: 'always' });
+    const seen = {};
+    for (let u = 0; u < INTL_UNITS.length; u++) {
+      for (let n = 0; n < INTL_SAMPLES.length; n++) {
+        const parts = format.formatToParts(-INTL_SAMPLES[n], INTL_UNITS[u][0]);
+        let before = '', after = '', number = false;
+        for (let p = 0; p < parts.length; p++) {
+          if (parts[p].type === 'literal') { if (number) after += parts[p].value; else before += parts[p].value; }
+          else number = true;
+        }
+        const source = escapeRe(oneSpace(before)) + '(\\d+)' + escapeRe(oneSpace(after));
+        if (seen[source]) continue;
+        seen[source] = true;
+        intlAges.push([new RegExp(source, 'i'), INTL_UNITS[u][1]]);
+      }
+    }
+  } catch { /* no Intl.RelativeTimeFormat: AGE_PATTERNS alone */ }
+  return intlAges;
+}
+
 function daysIn(text) {
+  const intl = intlAgePatterns();
+  const spaced = oneSpace(text);
+  for (let i = 0; i < intl.length; i++) {
+    const match = intl[i][0].exec(spaced);
+    if (match) return Number(match[1]) * intl[i][1];
+  }
   for (let i = 0; i < AGE_PATTERNS.length; i++) {
     const match = AGE_PATTERNS[i][0].exec(text);
     if (!match) continue;
