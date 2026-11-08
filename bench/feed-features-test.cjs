@@ -198,6 +198,15 @@ const ids = (r) => itemsOf(r).map((i) => (i.tileRenderer || i.lockupViewModel).c
     t('with no Intl only the table is read: Swedish stays unread', tableOnly === 'sv2ar______', tableOnly);
     const undated = ids(boot({ maxVideoAge: '365' }).parse(browse([tile('chan1year__', { channel: '1 year ago' }), dated('fresh______', '1 day ago')])));
     t('a tile with no date whose channel reads "1 year ago" stays', undated === 'chan1year__,fresh______', undated);
+    {
+      // The channel in several runs, which the age texts would get one by one.
+      const split = tile('chanruns___');
+      split.tileRenderer.metadata.tileMetadataRenderer.lines[0].lineRenderer.items[0].lineItemRenderer.text = { runs: [{ text: 'Channel ' }, { text: '1 year ago' }] };
+      const lockupSplit = lockup('lockruns___');
+      lockupSplit.lockupViewModel.metadata.lockupMetadataViewModel.metadata.contentMetadataViewModel.metadataRows[0].metadataParts[0].text = { content: '1 year ago' };
+      const runs = ids(boot({ maxVideoAge: '365' }).parse(browse([split, lockupSplit, dated('fresh______', '1 day ago')])));
+      t("a channel in several runs, or a lockup's channel, is not read as a date", runs === 'chanruns___,lockruns___,fresh______', runs);
+    }
     const off = boot({ maxVideoAge: '0' }).parse(feed());
     t('Off keeps every video', itemsOf(off).length === 21, ids(off));
     const swedish = boot({ maxVideoAge: '365' }, { hl: 'sv' }).parse(browse([
