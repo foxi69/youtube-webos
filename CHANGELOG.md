@@ -21,6 +21,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 + **Reset All Settings** (About tab): a second press within a few seconds puts every setting back to its default. With Separate Settings for Each Account on, it resets this account's settings and the ones the whole TV shares; the other accounts keep theirs.
 + **Video queue**: with More Options in the Long-Press Menu on, holding OK on a video offers "Add to queue". Queued videos play one after another when the current one ends, and the queue lasts until the app closes. A video YouTube refuses to play is reported and the next one starts. The shortcut actions Play Next in Queue and Clear Queue can go on any key.
 
+## Changed
+
++ **Disable Animations** also turns off YouTube's full navigation animations, which the app asks for at launch. It applies from the next start. Idea from stanbrown (NicholasBly/youtube-webos#217, fork watch #118).
+
 ## Fixes
 
 + Hide Videos Older Than and Hide Repeated Videos: under a video played from a playlist, only the playlist's row is left whole, found by the playlist the response names for the playing video as well. A playlist named only there had its row filtered, and the recommendation rows beside a playlist were not filtered at all. A recommendation of a video in that playlist now counts as the repeat.

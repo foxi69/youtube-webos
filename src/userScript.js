@@ -15,6 +15,7 @@ import './subtitle-translate.js';
 import './early-browse.js';
 
 import { SELECTORS } from './utils';
+import { configRead } from './config.js';
 import { handleLaunch, extractLaunchParams } from './launch.js';
 import { attemptActiveBypass, resetActiveBypass } from './auto-login.js';
 import { getWebOSVersion, isWebOS25, simulatorMode } from './webos-utils.js';
@@ -41,6 +42,23 @@ import { initAiContentFilter } from './ai-content-filter.js';
 import { initBufferLimit } from './hooks/buffer-limit.js';
 import { initPreviewFix } from './preview-fix.js';
 import { initAbout } from './about.js';
+
+// Disable Animations also leaves out YouTube's full navigation animations,
+// which the launch address asks for (env_forceFullAnimation, launch.js).
+// YouTube reads the address as it starts, after this script, so taking the
+// flag off it is enough; a change applies from the next start. (After
+// stanbrown, NicholasBly/youtube-webos#217.)
+if (configRead('disableAnimations')) {
+  try {
+    const url = new URL(window.location.href);
+    if (url.searchParams.has('env_forceFullAnimation')) {
+      url.searchParams.delete('env_forceFullAnimation');
+      window.history.replaceState(window.history.state, '', url.toString());
+    }
+  } catch {
+    // An address that cannot be rewritten keeps the animations.
+  }
+}
 
 initPreviewFix();
 initAbout();

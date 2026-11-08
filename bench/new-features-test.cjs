@@ -20,10 +20,10 @@ const LOGO_HTML =
   '<ytlr-thumbnail-details tabindex="-1" class="cFXl0 XVmJGe cFrowd" ' +
   `style="background-image: url(&quot;${DEFAULT_URL}&quot;);"></ytlr-thumbnail-details></ytlr-logo-entity>`;
 
-function boot(cfg, extraHtml = '', storage = {}) {
+function boot(cfg, extraHtml = '', storage = {}, url = 'https://www.youtube.com/tv') {
   const dom = new JSDOM(
     `<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app>${extraHtml}</ytlr-app></body></html>`,
-    { runScripts: 'outside-only', url: 'https://www.youtube.com/tv',
+    { runScripts: 'outside-only', url,
       virtualConsole: new VirtualConsole(), pretendToBeVisual: true });
   const win = dom.window;
   setUserAgent(win, UA.webos23);
@@ -497,6 +497,18 @@ const shelfItems = (r) => r.contents.tvBrowseRenderer.content.tvSurfaceContentRe
     const mark2 = h2.win.document.querySelector('#ytaf-mark-ai');
     t('[panel] persisted Remove remains selected and Mark disabled', remove2.checked && !mark2.checked && mark2.disabled);
     h2.win.close();
+  }
+
+  {
+    // Disable Animations takes the launch address's full-animation flag off.
+    const launch = 'https://www.youtube.com/tv?env_forceFullAnimation=1&env_enableVoice=1#/';
+    const on = boot({ disableAnimations: true }, '', {}, launch);
+    t('Disable Animations: the full-animation flag is taken off the address, the rest stays',
+      on.win.location.search === '?env_enableVoice=1' && on.win.location.hash === '#/', on.win.location.href);
+    on.win.close();
+    const off = boot({ disableAnimations: false }, '', {}, launch);
+    t('animations on: the flag stays', off.win.location.search.indexOf('env_forceFullAnimation=1') !== -1, off.win.location.href);
+    off.win.close();
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);
