@@ -14,8 +14,9 @@ import { configRead } from './config.js';
 
 const ENTRIES_KEY = 'ytaf-sidebar-entries';
 export const SIDEBAR_ENTRIES_EVENT = 'ytaf-sidebar-entries';
-// Home stays: the app opens on it, and without it there is no way back.
-const KEEP = { FEwhat_to_watch: true };
+// Home stays: the app opens on it, and without it there is no way back. On
+// webOS 25 Home is FEtopics (its topics are FEtopics_music and so on).
+const KEEP = { FEwhat_to_watch: true, FEtopics: true };
 
 let entries = null;
 let entriesJson = '';
@@ -49,19 +50,22 @@ function entryId(entry) {
 export function getSidebarEntries() {
   if (entries) return entries;
   entries = [];
+  let raw = null;
   try {
-    const raw = window.localStorage.getItem(ENTRIES_KEY);
+    raw = window.localStorage.getItem(ENTRIES_KEY);
     const list = raw ? JSON.parse(raw) : null;
     if (Array.isArray(list)) {
       for (let i = 0; i < list.length; i++) {
         const e = list[i];
-        if (e && typeof e.id === 'string' && typeof e.title === 'string') entries.push({ id: e.id, title: e.title });
+        // A kept entry (Home) saved by an older version gets no switch.
+        if (e && typeof e.id === 'string' && typeof e.title === 'string' && !KEEP[e.id]) entries.push({ id: e.id, title: e.title });
       }
     }
   } catch {
     // Unreadable: learnt again from the next menu.
   }
-  entriesJson = JSON.stringify(entries);
+  // As stored, so a list cleaned here is written back by the next menu.
+  entriesJson = raw || '[]';
   return entries;
 }
 

@@ -1,5 +1,5 @@
 import { configRead, configAddChangeListener } from './config.js';
-import { SYNTHETIC_KEY_FLAG } from './utils.js';
+import { SYNTHETIC_KEY_FLAG, uiLang } from './utils.js';
 import { fetchJsonWithTimeout } from './fetch-timeout.js';
 
 // Global cache for API responses
@@ -34,15 +34,6 @@ function closestMenuItem(el) {
 // Shown while the count is still unknown, so the factoid can be laid out
 // immediately instead of appearing late.
 const DISLIKE_PLACEHOLDER = '\u2014'; // em dash
-
-// YouTube's UI language (its own setting, not the TV's), lower case.
-function uiLang() {
-  try {
-    const hl = window.ytcfg && typeof window.ytcfg.get === 'function' && window.ytcfg.get('HL');
-    if (hl) return String(hl).toLowerCase();
-  } catch { /* fall back below */ }
-  return String(navigator.language || 'en').toLowerCase();
-}
 
 // The label beside the count, next to YouTube's own "Likes" factoid. YouTube
 // ships no such word on the TV, so the common UI languages are listed here;
