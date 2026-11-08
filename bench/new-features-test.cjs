@@ -20,7 +20,7 @@ const LOGO_HTML =
   '<ytlr-thumbnail-details tabindex="-1" class="cFXl0 XVmJGe cFrowd" ' +
   `style="background-image: url(&quot;${DEFAULT_URL}&quot;);"></ytlr-thumbnail-details></ytlr-logo-entity>`;
 
-function boot(cfg, extraHtml = '', storage = {}) {
+function boot(cfg, extraHtml = '', storage = {}, before) {
   const dom = new JSDOM(
     `<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app>${extraHtml}</ytlr-app></body></html>`,
     { runScripts: 'outside-only', url: 'https://www.youtube.com/tv',
@@ -43,6 +43,7 @@ function boot(cfg, extraHtml = '', storage = {}) {
   }, cfg)));
   for (const k in storage) win.localStorage.setItem(k, storage[k]);
   applyChrome38Downgrade(win);
+  if (before) before(win);
   win.eval(fs.readFileSync(bundlePath, 'utf8'));
   return { win, NS, pump: () => { const q = rafQ; rafQ = []; for (const cb of q) cb(0); } };
 }
@@ -497,6 +498,39 @@ const shelfItems = (r) => r.contents.tvBrowseRenderer.content.tvSurfaceContentRe
     const mark2 = h2.win.document.querySelector('#ytaf-mark-ai');
     t('[panel] persisted Remove remains selected and Mark disabled', remove2.checked && !mark2.checked && mark2.disabled);
     h2.win.close();
+  }
+
+  {
+    // Keep App Open When Paused: YouTube's exit timer after 20 minutes paused
+    // still gets a real id (YouTube clears it on play), but the option is read
+    // when it fires. Other timers are left as they are.
+    const run = (cfg, delay) => {
+      const timers = [];
+      const h = boot(cfg, '', {}, (win) => {
+        win.setTimeout = (fn, delay) => { timers.push({ fn, delay }); return timers.length; };
+      });
+      const start = timers.length;
+      let exited = 0, other = 0;
+      const idleId = h.win.setTimeout(function () { h.win.console.info('Exiting app due to playback idleness, last state = 2'); exited++; }, delay);
+      const otherFn = function () { other++; };
+      h.win.setTimeout(otherFn, delay);
+      const odd = function () { other++; };
+      odd.toString = () => { throw new Error('no source'); };
+      let threw = false;
+      try { h.win.setTimeout(odd, delay); } catch { threw = true; }
+      const mine = timers.slice(start);
+      for (const tm of mine) tm.fn();
+      h.win.close();
+      return { idle: idleId === start + 1, exited, other, threw, passedOn: mine.length === 3 && mine[1].fn === otherFn && mine[2].fn === odd && mine.every((tm) => tm.delay === delay) };
+    };
+    // 20 minutes with a display, 2 hours without one.
+    for (const delay of [1200000, 7200000]) {
+      const off = run({}, delay);
+      t(`Keep App Open When Paused off: YouTube's exit timer runs (${delay} ms)`, off.idle && off.exited === 1, JSON.stringify(off));
+      const on = run({ keepAppOpenWhenPaused: true }, delay);
+      t(`on: the paused-idle exit timer is started but does nothing (${delay} ms)`, on.idle && on.exited === 0, JSON.stringify(on));
+      t(`other timers, and one whose source cannot be read, are passed on as they are (${delay} ms)`, on.passedOn && on.other === 2 && !on.threw, JSON.stringify(on));
+    }
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);
