@@ -181,10 +181,15 @@ const ids = (r) => itemsOf(r).map((i) => (i.tileRenderer || i.lockupViewModel).c
     ], browseId);
     const { parse, errors } = boot({ maxVideoAge: '365' });
     t('Hide Videos Older Than a year: older ones go, in every language read; the title and the channel do not count, no date stays',
-      ids(parse(feed())) === 'en11months_,hu5napja___,hutv3hettel,hutv1nappal,es3meses___,zh2months__,ru1god_____,titleold___,channelold_,hours23____,nodate_____,lock2weeks_', ids(parse(feed())));
+      ids(parse(feed())) === 'en11months_,hu5napja___,hutv3hettel,hutv1nappal,es3meses___,zh2months__,titleold___,channelold_,hours23____,nodate_____,lock2weeks_', ids(parse(feed())));
     t('the history keeps old videos', itemsOf(parse(feed('FEhistory'))).length === 21);
     const week = boot({ maxVideoAge: '7' }).parse(feed());
     t('a week: only what came out within 7 days stays, hours too', ids(week) === 'hu5napja___,hutv1nappal,titleold___,channelold_,hours23____,nodate_____', ids(week));
+    const edge = (mode, list) => ids(boot({ maxVideoAge: mode }).parse(browse(list.map(([id, age]) => dated(id, age)))));
+    const yearEdge = edge('365', [['en1year____', '1 year ago'], ['en12months_', '12 months ago']]);
+    t('a year: "1 year ago" goes (it is shown up to 2 years), "12 months ago" stays', yearEdge === 'en12months_', yearEdge);
+    const weekEdge = edge('7', [['en1week____', '1 week ago'], ['en6days____', '6 days ago']]);
+    t('a week: "1 week ago" goes, "6 days ago" stays', weekEdge === 'en6days____', weekEdge);
     const off = boot({ maxVideoAge: '0' }).parse(feed());
     t('Off keeps every video', itemsOf(off).length === 21, ids(off));
     const swedish = boot({ maxVideoAge: '365' }, { hl: 'sv' }).parse(browse([
