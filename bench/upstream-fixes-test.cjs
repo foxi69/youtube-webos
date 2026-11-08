@@ -325,6 +325,24 @@ setTimeout(async () => {
       JSON.stringify({ shown, now: toasts(), hidden: msg && msg.className }));
   }
 
+  // ---- The same notification twice before it is painted ----
+  {
+    // No frames: a page coming back from the background, where the message's
+    // fade-in has not run yet when the second call comes.
+    const setup = (win) => { win.requestAnimationFrame = () => 0; };
+    const SEVEN = 55;
+    const { win, key } = boot({ shortcut_key_7: 'toggle_comments' },
+      { html: '<video></video>', url: 'https://www.youtube.com/tv#/watch?v=abcdefghijk', bodyClass: 'WEB_PAGE_TYPE_WATCH', setup });
+    await wait(300);
+    key(SEVEN);
+    await wait(250); // past the shortcut's own debounce
+    key(SEVEN);
+    await wait(50);
+    const msgs = win.document.querySelectorAll('.ytaf-notification-container .message');
+    t('the same notification twice before its fade-in shows once', msgs.length === 1,
+      [...msgs].map((m) => m.textContent).join(' | '));
+  }
+
   // ---- The clock after standby ----
   {
     const { win, clock } = boot({ clockMode: 'time' });

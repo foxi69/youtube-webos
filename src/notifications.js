@@ -33,10 +33,11 @@ export function showNotification(text, time = 3000) {
 
   const container = ensureContainer();
 
-  // Reuse an existing visible message with the same text instead of stacking
-  // duplicates — just extend its timer.
+  // Reuse a message with the same text instead of stacking duplicates — just
+  // extend its timer. One is in liveMessages until its remove(), also while it
+  // still waits for its fade-in (no frames come while the page is hidden).
   const existing = liveMessages.get(text);
-  if (existing && existing.elmInner.isConnected && !existing.elmInner.classList.contains('message-hidden')) {
+  if (existing && existing.elmInner.isConnected) {
     if (time > 0) existing.handle.update(text, time);
     return existing.handle;
   }
