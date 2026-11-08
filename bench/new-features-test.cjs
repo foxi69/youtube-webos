@@ -500,8 +500,13 @@ const shelfItems = (r) => r.contents.tvBrowseRenderer.content.tvSurfaceContentRe
   }
 
   {
-    // YouTube's exit after 20 minutes paused is not started; other timers are.
-    const h = boot({});
+    // Keep App Open When Paused: YouTube's exit after 20 minutes paused is
+    // not started; other timers are. Off, YouTube's timer runs as before.
+    const exit = function () { return 'Exiting app due to playback idleness, last state = 2'; };
+    const off = boot({});
+    t("Keep App Open When Paused off: YouTube's exit timer is started", off.win.setTimeout(exit, 1200000) !== 0);
+    off.win.close();
+    const h = boot({ keepAppOpenWhenPaused: true });
     let ran = 0;
     const idle = h.win.setTimeout(function () { h.win.console.info('Exiting app due to playback idleness, last state = 2'); ran++; }, 1200000);
     const other = h.win.setTimeout(function () { ran++; }, 1200000);

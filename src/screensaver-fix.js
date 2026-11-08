@@ -10,6 +10,7 @@
 
 import { waitForChildAdd, sendKey, SELECTORS, REMOTE_KEYS, isWatchPage, isShortsPage, getVideo } from './utils';
 import { lunaCall } from './webos-utils.js';
+import { configRead } from './config.js';
 
 // Set to true when debugging the keep-alive / player-sizing logic.
 const DEBUG = false;
@@ -116,16 +117,18 @@ const playerCtrlObs = new MutationObserver((mutations) => {
   });
 });
 
-// --- YouTube's exit after 20 minutes paused ---
+// --- Keep App Open When Paused ---
 // YouTube's CastLifecycleService closes the app once a video has been paused
 // or has ended for 20 minutes (2 hours with no display): "Exiting app due to
 // playback idleness". A paused video always ends up under the TV's
-// screensaver, so the app was gone when the screensaver ended. That one timer
-// is not started; the TV's own power settings still turn it off.
+// screensaver, so the app was gone when the screensaver ended. With the
+// option on, that one timer is not started; the TV's own power settings still
+// turn it off. Off by default: the exit also clears whatever state was left.
 const IDLE_EXIT_DELAYS = { 1200000: true, 7200000: true };
 const nativeSetTimeout = window.setTimeout;
 window.setTimeout = function (fn, delay) {
-  if (IDLE_EXIT_DELAYS[delay] && typeof fn === 'function' && String(fn).indexOf('playback idleness') !== -1) return 0;
+  if (IDLE_EXIT_DELAYS[delay] && typeof fn === 'function' && String(fn).indexOf('playback idleness') !== -1 &&
+      configRead('keepAppOpenWhenPaused')) return 0;
   return nativeSetTimeout.apply(window, arguments);
 };
 

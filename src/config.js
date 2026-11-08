@@ -320,6 +320,8 @@ const configOptions = new Map([
   // click to open the panel: for remotes with no colour buttons (#189).
   ['pointerSettingsButton', { default: true, desc: 'Settings Button for the Pointer' }],
   ['disableAnimations', { default: false, desc: 'Disable Animations' }],
+  // YouTube closes the app 20 minutes after a pause (screensaver-fix.js).
+  ['keepAppOpenWhenPaused', { default: false, desc: 'Keep App Open When Paused' }],
   // Percent, 40-100 in steps of 10: dims the browse UI, never the video.
   ['uiBrightness', { default: 100, desc: 'UI Brightness' }],
   // Each YouTube account on the TV keeps its own settings - see the
@@ -396,6 +398,7 @@ const DEVICE_KEYS = new Set([
   'keyboardSearch',
   'loadRowsAhead',
   'disableAnimations',
+  'keepAppOpenWhenPaused',
   // Read when the app starts, before "Who's watching" picks an account.
   'startPage'
 ]);

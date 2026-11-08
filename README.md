@@ -231,6 +231,7 @@ Return YouTube Dislike sends the id of every video you open to returnyoutubedisl
 | Search: Upload Date (Any Time, Last Hour, Today, This Week, This Month, This Year) | Any Time |
 | Settings Button for the Pointer | On |
 | Disable Animations | Off |
+| Keep App Open When Paused | Off |
 | Block webOS Cast Service (*webOS 25*) | On |
 </details>
 

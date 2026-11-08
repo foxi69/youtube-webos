@@ -20,10 +20,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 + **Reset All Settings** (About tab): a second press within a few seconds puts every setting back to its default. With Separate Settings for Each Account on, it resets this account's settings and the ones the whole TV shares; the other accounts keep theirs.
 + **Video queue**: with More Options in the Long-Press Menu on, holding OK on a video offers "Add to queue". Queued videos play one after another when the current one ends, and the queue lasts until the app closes. A video YouTube refuses to play is reported and the next one starts. The shortcut actions Play Next in Queue and Clear Queue can go on any key.
++ **Keep App Open When Paused** (Interface, off by default): YouTube closes the app 20 minutes after a video was paused or ended, which shows as the app being gone when the TV's screensaver ends. With this on, that timer is not started; the TV's own power settings still turn the TV off.
 
 ## Fixes
 
-+ The app closed about 20 minutes after a video was paused, mostly noticed when the TV's screensaver ended: YouTube's own timer exits once playback has been paused or ended that long. It is no longer started; the TV's power settings still turn the TV off.
 + Hide Videos Older Than and Hide Repeated Videos: under a video played from a playlist, only the playlist's row is left whole, found by the playlist the response names for the playing video as well. A playlist named only there had its row filtered, and the recommendation rows beside a playlist were not filtered at all. A recommendation of a video in that playlist now counts as the repeat.
 + Prefer Original Audio: a format of the original track stays even when only its other formats say it is the original. It was dropped, which could leave a video without its AAC audio.
 + Remove Shorts / Remove Live Videos: the guide entries are found even when an empty (null) field of the same name comes first in the response. The search used to stop early, or take the empty field for the list.
