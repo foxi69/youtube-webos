@@ -90,22 +90,28 @@ const liveBridges = [];
 export function lunaCall(uri, params, onResponse, keep) {
   const Bridge = typeof window !== 'undefined' ? window.PalmServiceBridge : null;
   if (typeof Bridge !== 'function') return null;
+  let bridge = null;
+  const release = () => {
+    const i = liveBridges.indexOf(bridge);
+    if (i !== -1) liveBridges.splice(i, 1);
+  };
   try {
-    const bridge = new Bridge();
+    // Serialized first: params that cannot be serialized make no bridge.
+    const payload = JSON.stringify(params);
+    bridge = new Bridge();
     liveBridges.push(bridge);
     bridge.onservicecallback = (msg) => {
       let res = null;
       try { res = JSON.parse(msg); } catch { /* not JSON */ }
       if (!res || typeof res !== 'object') res = {};
-      if (!keep || !keep(res)) {
-        const i = liveBridges.indexOf(bridge);
-        if (i !== -1) liveBridges.splice(i, 1);
-      }
+      if (!keep || !keep(res)) release();
       if (onResponse) onResponse(res);
     };
-    bridge.call(uri, JSON.stringify(params));
+    bridge.call(uri, payload);
     return bridge;
   } catch {
+    // A call that threw gets no answer: its bridge is not kept either.
+    release();
     return null;
   }
 }
