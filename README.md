@@ -56,7 +56,7 @@
     </td>
     <td valign="top">
       <h3>🧹 A cleaner feed</h3>
-      Hide watched videos, videos shorter than a set length, blocked channels, title keywords, Shorts, live and members-only videos. DeArrow replaces clickbait titles and thumbnails.
+      Hide watched, short, old and repeated videos, blocked channels, title keywords, Mixes, Shorts, live and members-only videos. DeArrow replaces clickbait titles and thumbnails.
     </td>
   </tr>
 </table>
@@ -157,17 +157,26 @@ column. A setting marked *webOS 25* appears on webOS 25 and newer, and one marke
 | Remove "Most Relevant" Shelf | Off |
 | Remove Upcoming Videos | Off |
 | Remove Members-Only Videos | Off |
+| Remove Mixes (YouTube's generated Mix playlists; YouTube Music albums and charts stay) | Off |
 | Remove AI Videos (labelled "AI" by YouTube; from the second time a video is listed; not on playlist pages) | Off |
 | Mark AI Videos (an "AI" badge on their tiles; works without Ad Blocking) | Off |
 | Hide Recommended Videos Under the Player (the row of a playlist you play stays) | Off |
 | Guest Mode: Hide Sign-in Buttons (*guest*) | Off |
 | Hide Watched Videos (90%+; not in History, Library, playlists) | Off |
 | Hide Videos Shorter Than (1, 2, 3, 5, 10, 20 min) | Off |
+| Hide Videos Older Than (1 week, 1, 3, 6 months, 1, 2 years) | Off |
+| Hide Repeated Videos (a video only the first time it shows on a page) | Off |
 | Blocked Channels | Empty |
 | Hide Videos Whose Title Contains | Empty |
 
 All filters except Ad Blocking and Mark AI Videos need Ad Blocking on. The two lists are edited with a text box: type with the TV's
 keyboard (OK on the box) or a USB/Bluetooth one, then OK; select an entry to remove it.
+
+**Hide Videos Older Than** reads the "2 years ago" on the tile. On webOS 6 and newer it works in any language
+YouTube is set to; on webOS 3-5 in English, Hungarian, German, Spanish, French, Italian, Portuguese, Dutch, Polish,
+Russian, Ukrainian, Turkish, Chinese, Japanese and Korean. A video as old as the setting goes too ("1 year ago" at a
+year), and one without a readable date stays. It and Hide Repeated Videos leave the history, the library, playlists
+and search alone.
 </details>
 
 <details>
@@ -356,7 +365,9 @@ of the project; credits are in [CHANGELOG.md](CHANGELOG.md).
 - *0.9.1:* the name YouTube Foxtended, the About tab with an update check and What's New, Show Most Replayed Graph
   Above the Seek Bar.
 - *0.9.2:* Reset All Settings, and a video queue from the long-press menu: queued videos play one after another,
-  and it lasts until the app closes.
+  and it lasts until the app closes. Playback Speed Control on webOS 4-6 and 22 (AAC audio only), Remove Mixes,
+  Hide Videos Older Than, Hide Repeated Videos, Hide Left Menu Entries, Remove Black Text Boxes and Keep App Open
+  When Paused.
 
 <details>
 <summary><b>Fixed</b></summary>
@@ -396,7 +407,8 @@ of the project; credits are in [CHANGELOG.md](CHANGELOG.md).
   every tile that needs it; Up and Down in the settings panel and in What's New.
 - *0.9.2:* SponsorBlock's switch applies at once; Auto Login no longer presses OK in the profile picker later on;
   the settings open over the OLED blackout; the clock after standby; thumbnail tests; chapter skip on a bar without
-  chapters; AI, Shorts and live filters beside the player; the Premium logo stays after a resume.
+  chapters; AI, Shorts and live filters beside the player; the Premium logo stays after a resume; DeArrow frees its
+  thumbnail copies when switched off; a notification no longer shows twice.
 </details>
 
 <details>

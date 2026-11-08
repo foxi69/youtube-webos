@@ -55,6 +55,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 + The README is up to date: the About tab and Playback Speed Control are in the settings, the speed actions in the remote's list, and 0.9.0 to 0.9.2 in what this fork adds. Preview Picture Fix and Show Preview Diagnostics, which no longer exist, gave way to Fix Black Tile Previews, and the release steps say how a draft gets its version.
 + The README has moving pictures: the remote and what each colour button does, the settings panel going through its tabs, fox tracks over the releases, and the fox asleep at the end. The About tab has its screenshot too.
++ The README's Filters table has Remove Mixes, Hide Videos Older Than and Hide Repeated Videos, and what this fork adds in 0.9.2 lists the features since the queue.
 
 ## [0.9.1] - 2026/11/02
 
