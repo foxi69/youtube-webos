@@ -193,6 +193,24 @@ const ids = (r) => itemsOf(r).map((i) => (i.tileRenderer || i.lockupViewModel).c
       dated('sv1dag_____', 'för 1 dag sedan')
     ]));
     t('a language with no pattern of its own (Swedish): read from Intl.RelativeTimeFormat in YouTube\'s language', ids(swedish) === 'sv3manader_,sv1dag_____', ids(swedish));
+    const persian = boot({ maxVideoAge: '365' }, { hl: 'fa' }).parse(browse([
+      dated('fa2years___', '۲ سال پیش'),
+      dated('fa3months__', '۳ ماه پیش')
+    ]));
+    t('Persian digits are read', ids(persian) === 'fa3months__', ids(persian));
+    const arabic = boot({ maxVideoAge: '365' }, { hl: 'ar' }).parse(browse([
+      dated('ar2years___', 'قبل سنتين'),
+      dated('ar11months_', 'قبل 11 شهرًا')
+    ]));
+    t('a wording with no number in it (Arabic "two years ago") is read', ids(arabic) === 'ar11months_', ids(arabic));
+    {
+      // YouTube's language becomes known after a first feed was read.
+      const late = boot({ maxVideoAge: '365' });
+      late.parse(feed());
+      late.win.ytcfg = { get: (k) => (k === 'HL' ? 'sv' : undefined) };
+      const after = late.parse(browse([dated('sv2ar______', 'för 2 år sedan'), dated('sv1dag_____', 'för 1 dag sedan')]));
+      t('the patterns follow YouTube\'s language when it is known later', ids(after) === 'sv1dag_____', ids(after));
+    }
     // Under the player: the row of a playlist being played stays whole, the
     // recommendations beside it are filtered as ever.
     const inList = (item) => {
