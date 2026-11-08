@@ -14,8 +14,9 @@ import { configRead } from './config.js';
 
 const ENTRIES_KEY = 'ytaf-sidebar-entries';
 export const SIDEBAR_ENTRIES_EVENT = 'ytaf-sidebar-entries';
-// Home stays: the app opens on it, and without it there is no way back.
-const KEEP = { FEwhat_to_watch: true };
+// Home stays: the app opens on it, and without it there is no way back. On
+// webOS 25 Home is FEtopics (its topics are FEtopics_music and so on).
+const KEEP = { FEwhat_to_watch: true, FEtopics: true };
 
 let entries = null;
 let entriesJson = '';

@@ -301,6 +301,18 @@ const shelfItems = (r) => r.contents.tvBrowseRenderer.content.tvSurfaceContentRe
     win.close();
   }
   {
+    // webOS 25's Home is FEtopics: never listed, so it cannot be hidden.
+    const { win, NS } = boot({ enableAdBlock: false, hiddenSidebarEntries: ['FEtopics'] });
+    await wait(300);
+    const out = win.JSON.parse(NS({ responseContext: { _pad: pad }, items: [{ guideSectionRenderer: { items: [
+      navEntry('Home', browseTo('FEtopics')), navEntry('Music', browseTo('FEtopics_music'))] } }] }));
+    const stored = win.localStorage.getItem('ytaf-sidebar-entries');
+    t('[sidebar] webOS 25 Home (FEtopics) stays and is not listed',
+      JSON.stringify(sideTitles(out)) === '[["Home","Music"]]' &&
+      stored === JSON.stringify([{ id: 'FEtopics_music', title: 'Music' }]), JSON.stringify(sideTitles(out)) + ' ' + stored);
+    win.close();
+  }
+  {
     const { win, NS } = boot({ enableAdBlock: false,
       hiddenSidebarEntries: ['FEtopics_music', 'FEtopics_gaming', 'search'] });
     await wait(300);
