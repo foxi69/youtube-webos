@@ -305,6 +305,11 @@ export function itemAgeDays(item) {
   // The date comes after the channel: read from the last text back, so a
   // channel named "Class of 2 years ago" is not taken for the date.
   const texts = ageTexts(item);
+  // The channel's own line is not a date, even when it reads like one and
+  // the tile has no date of its own.
+  const channel = itemChannel(item);
+  const at = channel ? texts.indexOf(channel) : -1;
+  if (at !== -1) texts.splice(at, 1);
   for (let i = texts.length - 1; i >= 0; i--) {
     const days = daysIn(texts[i]);
     if (days !== null) return days;

@@ -32,6 +32,8 @@ function boot(cfg, opts = {}) {
   win.cancelAnimationFrame = () => {};
   if (opts.yttv) win._yttv = opts.yttv(win);
   if (opts.hl) win.ytcfg = { get: (k) => (k === 'HL' ? opts.hl : undefined) };
+  // webOS 3-5: no Intl.RelativeTimeFormat, so the table is read.
+  if (opts.noIntl) { const intl = Object.create(win.Intl); intl.RelativeTimeFormat = undefined; win.Intl = intl; }
   const NS = win.JSON.stringify;
   win.localStorage.setItem('ytaf-configuration', NS(Object.assign({
     enableAdBlock: true, enableLegacyEmojiFix: false, enableSponsorBlock: false,
@@ -185,11 +187,17 @@ const ids = (r) => itemsOf(r).map((i) => (i.tileRenderer || i.lockupViewModel).c
     t('the history keeps old videos', itemsOf(parse(feed('FEhistory'))).length === 21);
     const week = boot({ maxVideoAge: '7' }).parse(feed());
     t('a week: only what came out within 7 days stays, hours too', ids(week) === 'hu5napja___,hutv1nappal,titleold___,channelold_,hours23____,nodate_____', ids(week));
-    const edge = (mode, list) => ids(boot({ maxVideoAge: mode }).parse(browse(list.map(([id, age]) => dated(id, age)))));
-    const yearEdge = edge('365', [['en1year____', '1 year ago'], ['en12months_', '12 months ago']]);
-    t('a year: "1 year ago" goes (it is shown up to 2 years), "12 months ago" stays', yearEdge === 'en12months_', yearEdge);
-    const weekEdge = edge('7', [['en1week____', '1 week ago'], ['en6days____', '6 days ago']]);
-    t('a week: "1 week ago" goes, "6 days ago" stays', weekEdge === 'en6days____', weekEdge);
+    const edge = (mode, list, opts) => ids(boot({ maxVideoAge: mode }, opts).parse(browse(list.map(([id, age]) => dated(id, age)))));
+    for (const [how, opts] of [['', {}], [' (table, no Intl)', { noIntl: true }]]) {
+      const yearEdge = edge('365', [['en1year____', '1 year ago'], ['en12months_', '12 months ago'], ['hutv1evvel_', '1 évvel ezelőtt']], opts);
+      t('a year' + how + ': "1 year ago" goes (it is shown up to 2 years), "12 months ago" stays', yearEdge === 'en12months_', yearEdge);
+      const weekEdge = edge('7', [['en1week____', '1 week ago'], ['en6days____', '6 days ago']], opts);
+      t('a week' + how + ': "1 week ago" goes, "6 days ago" stays', weekEdge === 'en6days____', weekEdge);
+    }
+    const tableOnly = ids(boot({ maxVideoAge: '365' }, { hl: 'sv', noIntl: true }).parse(browse([dated('sv2ar______', 'för 2 år sedan')])));
+    t('with no Intl only the table is read: Swedish stays unread', tableOnly === 'sv2ar______', tableOnly);
+    const undated = ids(boot({ maxVideoAge: '365' }).parse(browse([tile('chan1year__', { channel: '1 year ago' }), dated('fresh______', '1 day ago')])));
+    t('a tile with no date whose channel reads "1 year ago" stays', undated === 'chan1year__,fresh______', undated);
     const off = boot({ maxVideoAge: '0' }).parse(feed());
     t('Off keeps every video', itemsOf(off).length === 21, ids(off));
     const swedish = boot({ maxVideoAge: '365' }, { hl: 'sv' }).parse(browse([
