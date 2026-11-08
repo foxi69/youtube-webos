@@ -1364,7 +1364,8 @@ function dropsByFeedFilters(item, config) {
   }
   if (config.maxAgeDays && listsFilterHere) {
     const days = itemAgeDays(item);
-    if (days !== null && days > config.maxAgeDays) return true;
+    // "1 year ago" is shown up to 2 years: it counts as a year old.
+    if (days !== null && days >= config.maxAgeDays) return true;
   }
   return !!(config.hideWatched && hideWatchedHere && itemWatchedPercent(item) >= WATCHED_PERCENT);
 }

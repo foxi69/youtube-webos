@@ -58,16 +58,16 @@ export function itemTitle(item) {
 }
 
 /** The channel: the first metadata line of a tile or a lockup, a video's byline. */
-export function itemChannel(item) {
+/** The text of a tile's or a lockup's channel line, as it comes, or undefined. */
+function channelText(item) {
   const tile = item.tileRenderer;
-  if (tile) {
-    return textOf(tile.metadata?.tileMetadataRenderer?.lines?.[0]?.lineRenderer?.items?.[0]?.lineItemRenderer?.text);
-  }
-  const lockup = item.lockupViewModel;
-  if (lockup) {
-    const rows = lockup.metadata?.lockupMetadataViewModel?.metadata?.contentMetadataViewModel?.metadataRows;
-    return textOf(rows?.[0]?.metadataParts?.[0]?.text);
-  }
+  if (tile) return tile.metadata?.tileMetadataRenderer?.lines?.[0]?.lineRenderer?.items?.[0]?.lineItemRenderer?.text;
+  const rows = item.lockupViewModel?.metadata?.lockupMetadataViewModel?.metadata?.contentMetadataViewModel?.metadataRows;
+  return rows?.[0]?.metadataParts?.[0]?.text;
+}
+
+export function itemChannel(item) {
+  if (item.tileRenderer || item.lockupViewModel) return textOf(channelText(item));
   const video = videoRendererOf(item);
   if (!video) return null;
   return textOf(video.ownerText) || textOf(video.shortBylineText) || textOf(video.longBylineText);
@@ -188,17 +188,18 @@ const AGE_PATTERNS = [
     [['초', 0], ['분', 0], ['시', 0], ['일', 1], ['주', 7], ['개', 30], ['년', 365]]]
 ];
 
-function collectStrings(value, out, depth) {
+function collectStrings(value, out, depth, skip) {
+  if (value === skip) return;
   if (typeof value === 'string') {
     out.push(value);
     return;
   }
   if (!value || typeof value !== 'object' || depth > 8) return;
   if (Array.isArray(value)) {
-    for (let i = 0; i < value.length; i++) collectStrings(value[i], out, depth + 1);
+    for (let i = 0; i < value.length; i++) collectStrings(value[i], out, depth + 1, skip);
     return;
   }
-  for (const key in value) collectStrings(value[key], out, depth + 1);
+  for (const key in value) collectStrings(value[key], out, depth + 1, skip);
 }
 
 /**
@@ -215,7 +216,9 @@ function ageTexts(item) {
     part = video ? video.publishedTimeText : null;
   }
   const out = [];
-  collectStrings(part, out, 0);
+  // The channel's line is not a date, even when it reads like one and the
+  // tile has no date of its own.
+  collectStrings(part, out, 0, channelText(item) || null);
   return out;
 }
 
