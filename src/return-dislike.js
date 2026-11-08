@@ -707,12 +707,7 @@ class ReturnYouTubeDislike {
            if (this.focusedIndex === -1) this.focusedIndex = 0;
       }
 
-      let nextIndex = this.focusedIndex;
-      if (isDown) {
-          nextIndex = (this.focusedIndex + 1) % this.menuItemsCache.length;
-      } else {
-          nextIndex = (this.focusedIndex - 1 + this.menuItemsCache.length) % this.menuItemsCache.length;
-      }
+      const nextIndex = (this.focusedIndex + (isDown ? 1 : this.menuItemsCache.length - 1)) % this.menuItemsCache.length;
 
       const nextItem = this.menuItemsCache[nextIndex];
       this.isProgrammaticFocus = true;
@@ -890,11 +885,7 @@ if (typeof window !== 'undefined') {
 
     if (!window.returnYouTubeDislike || window.returnYouTubeDislike.videoID !== url.searchParams.get('v')) {
         cleanup();
-        let enabled = true;
-        if (typeof configRead === 'function') {
-            try { enabled = configRead('enableReturnYouTubeDislike'); } catch {}
-        }
-        window.returnYouTubeDislike = new ReturnYouTubeDislike(url.searchParams.get('v'), enabled);
+        window.returnYouTubeDislike = new ReturnYouTubeDislike(url.searchParams.get('v'), configRead('enableReturnYouTubeDislike'));
         window.returnYouTubeDislike.init();
     }
   };
@@ -905,9 +896,7 @@ if (typeof window !== 'undefined') {
   } else {
       setTimeout(handleHashChange, 500);
   }
-  if (typeof configAddChangeListener === 'function') {
-      configAddChangeListener('enableReturnYouTubeDislike', () => { cleanup(); handleHashChange(); });
-  }
+  configAddChangeListener('enableReturnYouTubeDislike', () => { cleanup(); handleHashChange(); });
   window.addEventListener('beforeunload', cleanup, { passive: true });
 }
 

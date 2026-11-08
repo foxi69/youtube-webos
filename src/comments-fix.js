@@ -137,5 +137,3 @@ if (typeof document !== 'undefined') {
   document.addEventListener('focusin', onFocusIn, true);
   startupScan();
 }
-
-export { findCollapsingSelectors, applyFix as applyCommentsCloseFix };

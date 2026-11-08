@@ -16,16 +16,13 @@ import logoRedUrl from './icons/logo-red.png';
 import logoDarkUrl from './icons/logo-dark.png';
 import { getWebOSVersion, isWebOS25, isLegacyWebOS } from './webos-utils.js';
 import { subtitleTranslateLanguages } from './subtitle-translate.js';
-import { showNotification as _showNotification, setNotificationOled, setNotificationTheme } from './notifications.js';
+import { showNotification, setNotificationOled, setNotificationTheme } from './notifications.js';
 import { blockChannel } from './long-press-menu.js';
 import { VERSION_LABEL } from './version.js';
 import { buildAboutPage } from './about.js';
 import { clearQueue, playNextInQueue } from './video-queue.js';
 import { titleFormattingSupported } from './dearrow/index.js';
 import { getSidebarEntries, hiddenIds, SIDEBAR_ENTRIES_EVENT } from './sidebar.js';
-
-// Re-export so existing `import { showNotification } from './ui'` sites keep working.
-export const showNotification = _showNotification;
 
 // YouTube puts every element that scrolls back to its top (a capture "scroll"
 // listener on window), which pinned the settings pages there: the remote moved

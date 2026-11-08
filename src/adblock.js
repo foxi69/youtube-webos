@@ -1,7 +1,7 @@
 import { configGetAll, configAddChangeListener } from './config';
 import { isShortsPage, isSearchPage } from './utils';
 import { getWebOSVersion } from './webos-utils';
-import { FetchRegistry } from './hooks';
+import { FetchRegistry } from './hooks/fetch';
 import { upgradeResponseThumbnails, thumbnailHookRequired } from './thumbnail-quality.js';
 import { raiseRowsAhead } from './rows-ahead.js';
 import { itemTitle, itemChannel, itemDurationSeconds, itemWatchedPercent, itemAgeDays, keepsWatchedVideos, playingPlaylistId, isMixItem } from './feed-filters.js';
@@ -671,7 +671,7 @@ export function initTrackingBlock() {
       return originalXHROpen.apply(this, arguments);
     };
 
-    window.XMLHttpRequest.prototype.send = function(body) {
+    window.XMLHttpRequest.prototype.send = function() {
       if (this.__adblockBlocked) {
         return originalXHRSend.call(this); // drop the telemetry body
       }

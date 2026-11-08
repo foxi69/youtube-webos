@@ -1,9 +1,5 @@
 import './polyfills.js';
 
-// Re-exported for existing import sites; the implementations live in
-// launch.js so index.js can pull them without utils.js's side effects.
-export { extractLaunchParams, handleLaunch } from './launch.js';
-
 export const SELECTORS = {
   PLAYER_ID: 'ytlr-player__player-container-player',
   PLAYER_CONTAINER: 'ytlr-player__player-container',

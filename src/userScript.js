@@ -17,7 +17,7 @@ import './early-browse.js';
 import { SELECTORS } from './utils';
 import { handleLaunch, extractLaunchParams } from './launch.js';
 import { attemptActiveBypass, resetActiveBypass } from './auto-login.js';
-import { isWebOS25, simulatorMode } from './webos-utils.js';
+import { getWebOSVersion, isWebOS25, simulatorMode } from './webos-utils.js';
 import { initBlockWebOSCast } from './block-webos-cast';
 import './app_api/index';
 import './ui.js'; // Registers the green-key handler, options panel, video-quality, global styles
@@ -39,7 +39,6 @@ import './lang-settings-fix';
 import { initAiContentFilter } from './ai-content-filter.js';
 
 import { initBufferLimit } from './hooks/buffer-limit.js';
-import { getWebOSVersion } from './webos-utils.js';
 import { initPreviewFix } from './preview-fix.js';
 import { initAbout } from './about.js';
 

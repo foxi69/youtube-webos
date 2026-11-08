@@ -36,6 +36,7 @@ import { configRead, configAddChangeListener, configResetAll } from './config.js
 import { showNotification } from './notifications.js';
 import { VERSION_LABEL } from './version.js';
 import { REMOTE_KEYS } from './utils.js';
+import { lunaCall } from './webos-utils.js';
 import qrKofiUrl from './icons/qr-kofi.svg';
 import qrGithubUrl from './icons/qr-github.svg';
 
@@ -107,40 +108,6 @@ function writeJSON(key, value) {
 }
 
 // ---- webOS service calls ----------------------------------------------------
-
-// A bridge collected before its answer arrives drops the answer: each call
-// stays referenced until it is done (screensaver-fix.js does the same).
-const liveBridges = [];
-
-/**
- * Calls a luna service. `onResponse(res)` gets each parsed answer; the call is
- * dropped after the first one unless `keep(res)` says more are coming.
- * Returns false when there is no service bridge.
- */
-function lunaCall(uri, params, onResponse, keep) {
-  const Bridge = typeof window !== 'undefined' ? window.PalmServiceBridge : null;
-  if (typeof Bridge !== 'function') return false;
-  try {
-    const bridge = new Bridge();
-    liveBridges.push(bridge);
-    bridge.onservicecallback = (msg) => {
-      let res = null;
-      try { res = JSON.parse(msg); } catch { /* not JSON */ }
-      // `keep` and `onResponse` both get an object, even for an answer that
-      // is not one (null, or not JSON).
-      if (!res || typeof res !== 'object') res = {};
-      if (!keep || !keep(res)) {
-        const i = liveBridges.indexOf(bridge);
-        if (i !== -1) liveBridges.splice(i, 1);
-      }
-      if (onResponse) onResponse(res);
-    };
-    bridge.call(uri, JSON.stringify(params));
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 function launchApp(id, params, failText) {
   const ok = lunaCall('luna://com.webos.applicationManager/launch', params ? { id, params } : { id }, (res) => {
