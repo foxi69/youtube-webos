@@ -75,5 +75,8 @@
     "cpu-features": false,
     "jasmine-spec-reporter": false,
     "ssh2": false
+  },
+  "overrides": {
+    "minimatch@>=7 <11.0.1": "^11.0.5"
   }
 }
