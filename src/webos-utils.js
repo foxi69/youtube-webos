@@ -75,4 +75,43 @@ export function isWebOS25() {
 export function isLegacyWebOS() {
   const version = getWebOSVersion();
   return version >= 3 && version <= 6;
+}
+
+// A bridge collected before its answer arrives drops the answer: each call
+// stays referenced until it is done.
+const liveBridges = [];
+
+/**
+ * Calls a luna service. `onResponse(res)` gets each answer as an object (an
+ * answer that is null or not JSON comes as {}); the call is dropped after the
+ * first one unless `keep(res)` says more are coming. Returns the bridge
+ * (cancel() ends a subscription), or null when there is no service bridge.
+ */
+export function lunaCall(uri, params, onResponse, keep) {
+  const Bridge = typeof window !== 'undefined' ? window.PalmServiceBridge : null;
+  if (typeof Bridge !== 'function') return null;
+  let bridge = null;
+  const release = () => {
+    const i = liveBridges.indexOf(bridge);
+    if (i !== -1) liveBridges.splice(i, 1);
+  };
+  try {
+    // Serialized first: params that cannot be serialized make no bridge.
+    const payload = JSON.stringify(params);
+    bridge = new Bridge();
+    liveBridges.push(bridge);
+    bridge.onservicecallback = (msg) => {
+      let res = null;
+      try { res = JSON.parse(msg); } catch { /* not JSON */ }
+      if (!res || typeof res !== 'object') res = {};
+      if (!keep || !keep(res)) release();
+      if (onResponse) onResponse(res);
+    };
+    bridge.call(uri, payload);
+    return bridge;
+  } catch {
+    // A call that threw gets no answer: its bridge is not kept either.
+    release();
+    return null;
+  }
 }

@@ -9,6 +9,7 @@
  */
 
 import { waitForChildAdd, sendKey, SELECTORS, REMOTE_KEYS, isWatchPage, isShortsPage, getVideo } from './utils';
+import { lunaCall } from './webos-utils.js';
 
 // Set to true when debugging the keep-alive / player-sizing logic.
 const DEBUG = false;
@@ -124,33 +125,6 @@ const playerCtrlObs = new MutationObserver((mutations) => {
 // the call refused on a given firmware; the keep-alive stays as the fallback.
 const TVPOWER_URI = 'luna://com.webos.service.tvpower/power/';
 const SCREENSAVER_CLIENT = 'youtube-webos';
-// A bridge collected before its answer arrives drops the answer; keep each
-// one-shot call referenced until its callback ran.
-const pendingLunaCalls = [];
-
-function lunaCall(method, params, onResponse, subscribe) {
-  const Bridge = typeof window !== 'undefined' ? window.PalmServiceBridge : null;
-  if (typeof Bridge !== 'function') return null;
-  try {
-    const bridge = new Bridge();
-    if (!subscribe) pendingLunaCalls.push(bridge);
-    bridge.onservicecallback = (msg) => {
-      if (!subscribe) {
-        const i = pendingLunaCalls.indexOf(bridge);
-        if (i !== -1) pendingLunaCalls.splice(i, 1);
-      }
-      if (!onResponse) return;
-      let res = null;
-      try { res = JSON.parse(msg); } catch { /* not JSON */ }
-      try { onResponse(res); } catch (e) { DEBUG && console.warn('[ScreensaverFix] luna callback failed:', e); }
-    };
-    bridge.call(TVPOWER_URI + method, JSON.stringify(params));
-    return bridge;
-  } catch (e) {
-    DEBUG && console.warn('[ScreensaverFix] luna call failed:', method, e);
-    return null;
-  }
-}
 
 function isVideoPlaying() {
   if (lastPageType !== 'WATCH' && lastPageType !== 'SHORTS') return false;
@@ -162,8 +136,8 @@ function isVideoPlaying() {
 let screenSaverSubscription = null;
 
 function registerScreenSaverRequest() {
-  screenSaverSubscription = lunaCall('registerScreenSaverRequest', { subscribe: true, clientName: SCREENSAVER_CLIENT }, (res) => {
-    if (!res || res.returnValue === false) {
+  screenSaverSubscription = lunaCall(TVPOWER_URI + 'registerScreenSaverRequest', { subscribe: true, clientName: SCREENSAVER_CLIENT }, (res) => {
+    if (res.returnValue === false) {
       DEBUG && console.info('[ScreensaverFix] Screensaver request refused:', res);
       return;
     }
@@ -172,8 +146,8 @@ function registerScreenSaverRequest() {
     if (res.timestamp === undefined) return;
     const playing = isVideoPlaying();
     DEBUG && console.info(`[ScreensaverFix] Screensaver request: ${playing ? 'blocked (video playing)' : 'allowed'}`);
-    lunaCall('responseScreenSaverRequest', { clientName: SCREENSAVER_CLIENT, ack: !playing, timestamp: res.timestamp });
-  }, true);
+    lunaCall(TVPOWER_URI + 'responseScreenSaverRequest', { clientName: SCREENSAVER_CLIENT, ack: !playing, timestamp: res.timestamp });
+  }, () => true);
 }
 
 registerScreenSaverRequest();
