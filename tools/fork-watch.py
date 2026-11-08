@@ -24,7 +24,9 @@ only when its date falls after the last run.
 Commits that NicholasBly's main already has are left out: the Sync upstream
 workflow brings those in, and so are commits whose title is already one of
 our main's: our own work that a fork took in again under another sha
-(squash-merged pull requests, a rebase). Bot commits (dependabot and the
+(squash-merged pull requests, a rebase), and commits made by this
+repository's owner: our own branch commits that a fork took in before we
+squash-merged them under another title. Bot commits (dependabot and the
 like) are skipped.
 
 Environment: GITHUB_TOKEN, GITHUB_REPOSITORY (owner/name), optional
@@ -184,6 +186,15 @@ def watched_forks(since):
     return out
 
 
+OWNER = REPO.split('/')[0].lower()
+
+
+def is_ours(commit):
+    """Made by this repository's owner, so already known here."""
+    login = ((commit.get('author') or {}).get('login') or '').lower()
+    return login == OWNER
+
+
 def is_bot(commit):
     login = (commit.get('author') or {}).get('login') or ''
     return login.endswith('[bot]') or commit['commit']['author']['name'].endswith('[bot]')
@@ -206,7 +217,7 @@ def new_commits(fork, cutoff, seen, known, today, ours):
             if len(c.get('parents', [])) > 1:
                 continue  # merge commits carry no change of their own
             when = parse_time(c['commit']['committer']['date'])
-            if when <= cutoff or c['sha'] in seen or c['sha'][:12] in known or is_bot(c):
+            if when <= cutoff or c['sha'] in seen or c['sha'][:12] in known or is_bot(c) or is_ours(c):
                 continue
             seen.add(c['sha'])
             title = c['commit']['message'].splitlines()[0] if c['commit']['message'] else ''
