@@ -1,0 +1,120 @@
+// Diagnostic build only (#97): shows on screen what the speed engine does when
+// the speed changes, so a photo tells where the sound drops out on webOS 4-6.
+import { AudioEngine } from './speed/audio-engine.js';
+
+const MAX_EVENTS = 12;
+const events = [];
+const t0 = Date.now();
+let box = null;
+let engine = null;
+let engineAt = 0;
+let firstSoundAt = 0;
+let starving = 0;
+let stops = 0;
+const decodes = { n: 0, totalMs: 0, lastMs: 0, maxMs: 0, fail: 0 };
+
+function sec(ms) {
+  return (ms / 1000).toFixed(2);
+}
+
+function log(text) {
+  events.push(`${sec(Date.now() - t0)} ${text}`);
+  if (events.length > MAX_EVENTS) events.shift();
+}
+
+function pcmAhead(e) {
+  // Decoded audio from where the engine reads on, in seconds.
+  let end = e.inPos;
+  for (let i = 0; i < e.pcm.length; i++) {
+    const p = e.pcm[i];
+    if (p.t <= end + 0.002 && p.t + p.n / p.rate > end) end = p.t + p.n / p.rate;
+  }
+  return end - e.inPos;
+}
+
+function vt(e) {
+  return e && e.video ? e.video.currentTime.toFixed(2) : '-';
+}
+
+// Every time queued audio is cut: a pause, a seek, a stall or a resync.
+const origStop = AudioEngine.prototype.stopFuture;
+AudioEngine.prototype.stopFuture = function () {
+  stops++;
+  log(`cut t=${vt(this)} paused=${this.video && this.video.paused} pcmAhead=${pcmAhead(this).toFixed(2)} decoded=${this.pcm.length}`);
+  return origStop.apply(this, arguments);
+};
+
+const origTick = AudioEngine.prototype.tick;
+AudioEngine.prototype.tick = function () {
+  if (this.video && !this.video.paused && !this.anchorPending && this.nextWhen <= this.ctx.currentTime) starving++;
+  const before = this.sources.size;
+  const r = origTick.apply(this, arguments);
+  if (!firstSoundAt && engine === this && this.sources.size > before) {
+    firstSoundAt = Date.now();
+    log(`first sound ${sec(firstSoundAt - engineAt)} s after the engine started`);
+  }
+  return r;
+};
+
+// How long each piece takes to decode (legacy-decoder.js).
+const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+let owner = OAC && OAC.prototype;
+while (owner && !Object.prototype.hasOwnProperty.call(owner, 'decodeAudioData')) owner = Object.getPrototypeOf(owner);
+if (owner) {
+  const origDecode = owner.decodeAudioData;
+  owner.decodeAudioData = function (buf, ok, fail) {
+    const start = Date.now();
+    const took = () => {
+      const ms = Date.now() - start;
+      decodes.n++;
+      decodes.totalMs += ms;
+      decodes.lastMs = ms;
+      if (ms > decodes.maxMs) decodes.maxMs = ms;
+    };
+    return origDecode.call(this, buf,
+      (audio) => { took(); if (ok) ok(audio); },
+      (err) => { decodes.fail++; log(`decode failed: ${err && err.message}`); if (fail) fail(err); });
+  };
+}
+
+function watchVideo(v) {
+  ['seeking', 'waiting', 'playing', 'pause', 'stalled'].forEach((type) => {
+    v.addEventListener(type, () => { log(`${type} t=${v.currentTime.toFixed(2)}`); });
+  });
+}
+
+function render() {
+  const ctrl = window.ytafSpeed;
+  const e = ctrl && ctrl.activeEngine ? ctrl.activeEngine() : null;
+  if (e !== engine) {
+    engine = e;
+    engineAt = Date.now();
+    firstSoundAt = 0;
+    if (e) {
+      log(`engine started, speed ${e.speed}, ctx ${e.ctx.state} ${e.ctx.sampleRate} Hz`);
+      if (e.video && !e.video.__speedDiag) { e.video.__speedDiag = true; watchVideo(e.video); }
+    } else {
+      log('no engine (1x: native audio)');
+    }
+  }
+  const lines = [`SPEED DIAG (#97)  speed=${ctrl ? ctrl.getSpeed() : '?'}`];
+  if (e) {
+    const now = e.ctx.currentTime;
+    lines.push(`video t=${vt(e)} paused=${e.video && e.video.paused} ready=${e.video && e.video.readyState}`);
+    lines.push(`ctx ${e.ctx.state} anchorWait=${e.anchorPending} queued=${(e.nextWhen - now).toFixed(2)}s`);
+    lines.push(`pcmAhead=${pcmAhead(e).toFixed(2)}s pieces=${e.pcm.length} chunks=${e.chunks.length}`);
+    lines.push(`decoder=${e.decoder ? e.decoder.state : '-'} failed=${e.failed}`);
+  }
+  lines.push(`starving ticks=${starving} cuts=${stops}`);
+  lines.push(`decodes ${decodes.n} last=${decodes.lastMs}ms avg=${decodes.n ? Math.round(decodes.totalMs / decodes.n) : 0}ms max=${decodes.maxMs}ms fail=${decodes.fail}`);
+  if (!box && document.body) {
+    box = document.createElement('div');
+    box.style.cssText = 'position:fixed;top:8px;left:8px;width:46%;z-index:2147483647;' +
+      'background:rgba(0,0,0,.82);color:#ff0;font:15px/1.3 monospace;padding:8px;' +
+      'white-space:pre-wrap;word-break:break-all;pointer-events:none;border:2px solid #f80';
+    document.body.appendChild(box);
+  }
+  if (box) box.textContent = lines.join('\n') + '\n--\n' + events.join('\n');
+}
+
+setInterval(render, 250);
