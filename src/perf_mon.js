@@ -169,38 +169,60 @@ export {};
    * answer "how many ms of blocking work in the last second" — the only figure
    * that correlates with dropped frames.
    */
+  /**
+   * Count and sum per 100ms slot, over the last 6.4s (the longest window
+   * asked for is 5s). A ring of the last samples capped what a window could
+   * hold instead: 128 hits read 64/s at most over 2s.
+   */
+  var SLOT_MS = 100;
+  var SLOTS = 64;
+  function Slots() {
+    this.at = new Array(SLOTS);
+    this.n = new Array(SLOTS);
+    this.sum = new Array(SLOTS);
+  }
+  Slots.prototype.add = function (v) {
+    var s = Math.floor(now() / SLOT_MS);
+    var i = s % SLOTS;
+    if (this.at[i] !== s) {
+      this.at[i] = s;
+      this.n[i] = 0;
+      this.sum[i] = 0;
+    }
+    this.n[i]++;
+    this.sum[i] += v;
+  };
+  Slots.prototype.window = function (w) {
+    var from = Math.floor((now() - w) / SLOT_MS);
+    var sum = 0;
+    var n = 0;
+    for (var i = 0; i < SLOTS; i++) {
+      if (this.at[i] > from) {
+        sum += this.sum[i];
+        n += this.n[i];
+      }
+    }
+    return { sum: sum, count: n };
+  };
+
   function Meter(name) {
     this.name = name;
     this.count = 0;
     this.total = 0;
     this.max = 0;
     this.last = 0;
-    this.ring = new Array(64);
-    this.ringT = new Array(64);
-    this.head = 0;
-    this.filled = 0;
+    this.slots = new Slots();
   }
   Meter.prototype.add = function (v) {
     this.count++;
     this.total += v;
     this.last = v;
     if (v > this.max) this.max = v;
-    this.ring[this.head] = v;
-    this.ringT[this.head] = now();
-    this.head = (this.head + 1) % 64;
-    if (this.filled < 64) this.filled++;
+    this.slots.add(v);
   };
   Meter.prototype.window = function (w) {
-    var cutoff = now() - (w || 1000);
-    var sum = 0;
-    var n = 0;
-    for (var i = 0; i < this.filled; i++) {
-      if (this.ringT[i] >= cutoff) {
-        sum += this.ring[i];
-        n++;
-      }
-    }
-    return { ms: sum, count: n };
+    var s = this.slots.window(w || 1000);
+    return { ms: s.sum, count: s.count };
   };
   Meter.prototype.avg = function () {
     return this.count ? this.total / this.count : 0;
@@ -209,22 +231,15 @@ export {};
   /** Rate counter for events with no duration. */
   function Counter() {
     this.count = 0;
-    this.times = new Array(128);
-    this.head = 0;
-    this.filled = 0;
+    this.slots = new Slots();
   }
   Counter.prototype.hit = function (n) {
     this.count += n || 1;
-    this.times[this.head] = now();
-    this.head = (this.head + 1) % 128;
-    if (this.filled < 128) this.filled++;
+    this.slots.add(0);
   };
   Counter.prototype.rate = function (w) {
     var win = w || 1000;
-    var cutoff = now() - win;
-    var n = 0;
-    for (var i = 0; i < this.filled; i++) if (this.times[i] >= cutoff) n++;
-    return (n * 1000) / win;
+    return (this.slots.window(win).count * 1000) / win;
   };
 
   function fmtMs(v) {
@@ -272,7 +287,9 @@ export {};
     try {
       throw new Error('probe');
     } catch (e) {
-      var m = /(VM\d+|<anonymous>|eval)/.exec(e.stack || '');
+      // With the ":" a location, not a built-in frame such as YouTube's
+      // "Array.forEach (<anonymous>)", and VM12 not a prefix of VM123.
+      var m = /(VM\d+:|<anonymous>:|eval)/.exec(e.stack || '');
       return m ? m[1] : '';
     }
   })();
@@ -348,7 +365,8 @@ export {};
     'config.js',
     'webos-utils.js',
     'polyfills.js',
-    'userScript.js',
+    // Not userScript.js: it is the bundle's own file name, so every frame of
+    // the mod has it, and the name and source fallbacks would never run.
     'fetch.ts',
     'json-stringify.ts',
     'perf_mon.js'
@@ -373,7 +391,7 @@ export {};
     getShelfTitleOptimized: ['adblock.js', 'Reads a shelf title for name matching', 'light'],
     isReelAd: ['adblock.js', 'Detects REEL_VIDEO_TYPE_AD entries', 'free'],
     hasAdRenderer: ['adblock.js', 'Detects ad renderer keys on a tile', 'free'],
-    hasGuestPromptRenderer: ['adblock.js', 'Detects guest sign-in prompt tiles', 'free'],
+    dropSignInPromoButton: ['adblock.js', 'Drops the guest sign-in button from the home feed', 'free'],
     removeEndcardsOptimized: ['adblock.js', 'Clears endcard arrays on PLAYER responses', 'light'],
     removePlayerAdsOptimized: ['adblock.js', 'Strips playerAds and adPlacements', 'light'],
     findObjects: ['adblock.js', 'Recursive needle search (fallback path only)', 'heavy'],
@@ -394,22 +412,13 @@ export {};
     logSchemaMiss: ['adblock.js', 'Debug: logs unmatched response shapes', 'light'],
 
     // ---- thumbnail-quality.js -------------------------------------------
-    enableObserver: ['thumbnail-quality.js', 'Attaches the DOM observer to <ytlr-app>', 'free'],
-    processUpgrade: ['thumbnail-quality.js', 'Probes candidates and applies a better thumbnail', 'heavy'],
-    processRequestQueue: ['thumbnail-quality.js', 'Drains the upgrade queue (3 jobs max)', 'light'],
-    testAndLoadImage: ['thumbnail-quality.js', 'HEAD probe for one candidate quality', 'medium'],
-    getThumbnailUrl: ['thumbnail-quality.js', 'Rewrites a URL to the target quality', 'free'],
-    parseCSSUrl: ['thumbnail-quality.js', 'Extracts the URL from background-image', 'light'],
-    eachThumb: ['thumbnail-quality.js', 'Visits a node plus nested thumbnails', 'medium'],
-    track: ['thumbnail-quality.js', 'Starts observing one thumbnail element', 'light'],
-    untrack: ['thumbnail-quality.js', 'Releases a removed thumbnail element', 'free'],
-    enqueue: ['thumbnail-quality.js', 'Queues an upgrade job for an element', 'free'],
-    detectWebP: ['thumbnail-quality.js', 'One-time WebP support probe', 'free'],
-    ensureWebpDetection: ['thumbnail-quality.js', 'Memoised WebP probe gate', 'free'],
+    upgradeResponseThumbnails: ['thumbnail-quality.js', 'Rewrites thumbnail URLs in a parsed response', 'hot'],
+    scheduleProbe: ['thumbnail-quality.js', 'Queues a check that a size exists', 'free'],
+    resolveQuality: ['thumbnail-quality.js', 'Finds the best size a video has', 'medium'],
+    headExists: ['thumbnail-quality.js', 'HEAD probe for one size', 'medium'],
+    applyCorrection: ['thumbnail-quality.js', 'Rewrites tiles that got a missing size', 'light'],
     capSet: ['thumbnail-quality.js', 'FIFO-capped Map insert', 'free'],
     handleVisibilityChange: ['thumbnail-quality.js', 'Resumes the queue when visible', 'free'],
-    handlePageUpdate: ['thumbnail-quality.js', 'Clears the queue on the account selector', 'free'],
-    _check: ['thumbnail-quality.js', 'IntersectionObserver polyfill scan (webOS 3)', 'heavy'],
 
     // ---- sponsorblock.js -------------------------------------------------
     init: ['sponsorblock.js', 'Fetches segments and wires up the handler', 'medium'],
@@ -507,6 +516,7 @@ export {};
     applyOledMode: ['ui.js', 'Toggles the OLED classes on <html>', 'light'],
     applyTheme: ['ui.js', 'Applies the UI theme classes', 'light'],
     updateLogoState: ['ui.js', 'Swaps the logo variant for the theme', 'light'],
+    applyLogoStyle: ['logo-style.js', 'Applies the YouTube Logo setting', 'light'],
     syncOledShelfOpacity: ['ui.js', 'Updates the shelf opacity property', 'free'],
     skipChapter: ['ui.js', 'Chapter navigation shortcut', 'medium'],
     performBurstSeek: ['ui.js', 'Accumulated seek with debounce', 'light'],
@@ -564,10 +574,21 @@ export {};
     }
   })();
 
-  function captureStack() {
+  /**
+   * The stack below `api` (the patched API the caller called), without the
+   * monitor's own frames: those are always in our bundle, so with them in,
+   * every callback (YouTube's too) read as ours. Error.captureStackTrace leaves
+   * them out however the minifier inlined them. First line: the header.
+   */
+  function captureStack(api) {
     var prev = Error.stackTraceLimit;
     try {
       Error.stackTraceLimit = 12;
+      if (api && Error.captureStackTrace) {
+        var holder = {};
+        Error.captureStackTrace(holder, api);
+        return holder.stack || '';
+      }
       return new Error().stack || '';
     } catch (err) {
       return '';
@@ -597,20 +618,31 @@ export {};
   }
 
   var originCache = new WeakMap();
+  // A frame of a function named after one of the patched APIs (V8 names
+  // `window.setTimeout = function () {}` "window.setTimeout"), or a built-in.
+  var PASS_THROUGH_FRAME_RE =
+    /^\s*at (?:new )?[\w$.]*\b(?:setTimeout|setInterval|requestAnimationFrame|addEventListener|MutationObserver|IntersectionObserver) \(|\((?:<anonymous>|native)\)\s*$/;
 
-  /** Resolve and memoise {module, fn, role, cost, ours} for a callback. */
-  function originOf(fn, hint) {
+  /**
+   * Resolve and memoise {module, fn, role, cost, ours} for a callback, judged
+   * by the code that called `api`, the patched API it was handed to.
+   */
+  function originOf(fn, hint, api) {
     if (typeof fn !== 'function') return unknownOrigin(hint);
     var cached = originCache.get(fn);
     if (cached) return cached;
 
     var name = fn.name || '';
-    var stack = captureStack();
+    var frames = captureStack(api).split('\n').slice(1);
+    // Past the wrappers that only hand the call on (screensaver-fix.js's
+    // window.setTimeout is one, and every YouTube timer goes through it) and
+    // past built-in frames: the code that made the call decides whose it is.
+    while (frames.length > 1 && PASS_THROUGH_FRAME_RE.test(frames[0])) frames.shift();
+    var stack = frames.join('\n');
 
     // Registrations made by the monitor itself must never be charged to the
     // mod, or we would be measuring our own reflection.
-    var frames = stack.split('\n');
-    var callerFrame = (frames[2] || '') + (frames[3] || '');
+    var callerFrame = frames[0] || '';
     if (callerFrame.indexOf('perf_mon') !== -1) {
       var self = {
         module: 'perf_mon.js',
@@ -624,14 +656,16 @@ export {};
       return self;
     }
 
-    var mod = moduleFromStack(stack);
-    if (!mod) mod = moduleFromSource(fn);
-    var reg = name && registryIndex[name] ? registryIndex[name] : null;
-
-    if (!mod && reg) mod = reg.module;
-    if (!mod && hint && hint.module) mod = hint.module;
-
-    var ours = !!mod || isOurCode(stack);
+    // Only the caller: YouTube code run from inside one of our hooks has our
+    // frames further down, and is still YouTube's. The name and source
+    // fallbacks only say which module, once the caller is ours: YouTube has
+    // functions called init or start too.
+    var ours = isOurCode(callerFrame) || !!moduleFromStack(callerFrame);
+    var reg = ours && name && registryIndex[name] ? registryIndex[name] : null;
+    var mod = null;
+    if (ours) {
+      mod = moduleFromStack(stack) || moduleFromSource(fn) || (reg && reg.module) || (hint && hint.module) || null;
+    }
     var o = {
       module: mod || (ours ? 'ytaf (minified)' : 'youtube'),
       fn: name || (hint && hint.fn) || 'anonymous',
@@ -660,7 +694,7 @@ export {};
   // ===================================================================
   // 4. CALL LEDGER + ASYNC ATTRIBUTION CONTEXT
   //    Work started inside a wrapped callback inherits that callback's
-  //    attribution, so a timer scheduled by processUpgrade is still charged
+  //    attribution, so a timer scheduled by resolveQuality is still charged
   //    to thumbnail-quality.js when it eventually fires.
   // ===================================================================
 
@@ -1287,7 +1321,7 @@ export {};
     var NativeMO = window.MutationObserver || window.WebKitMutationObserver;
     if (NativeMO) {
       var PatchedMO = function (callback) {
-        var origin = originOf(callback, { fn: 'mutationCallback' });
+        var origin = originOf(callback, { fn: 'mutationCallback' }, PatchedMO);
         var rec = registerObserver({
           kind: 'mutation',
           origin: origin,
@@ -1353,7 +1387,7 @@ export {};
     var NativeIO = window.IntersectionObserver;
     if (NativeIO) {
       var PatchedIO = function (callback, options) {
-        var origin = originOf(callback, { fn: 'intersectionCallback' });
+        var origin = originOf(callback, { fn: 'intersectionCallback' }, PatchedIO);
         var rec = registerObserver({
           kind: 'intersection',
           origin: origin,
@@ -1402,9 +1436,9 @@ export {};
     var origSetInterval = window.setInterval;
     var origClearInterval = window.clearInterval;
 
-    window.setTimeout = function (fn, delay) {
+    window.setTimeout = function patchedSetTimeout(fn, delay) {
       if (typeof fn !== 'function') return origSetTimeout.apply(window, arguments);
-      var origin = originOf(fn);
+      var origin = originOf(fn, null, patchedSetTimeout);
       if (!origin.ours) {
         var inherited = currentContext();
         if (inherited && inherited.ours) origin = inherited;
@@ -1422,9 +1456,9 @@ export {};
       return origSetTimeout.apply(window, [wrapped, delay].concat(extra));
     };
 
-    window.setInterval = function (fn, delay) {
+    window.setInterval = function patchedSetInterval(fn, delay) {
       if (typeof fn !== 'function') return origSetInterval.apply(window, arguments);
-      var origin = originOf(fn);
+      var origin = originOf(fn, null, patchedSetInterval);
       if (!origin.ours) {
         var inherited = currentContext();
         if (inherited && inherited.ours) origin = inherited;
@@ -1462,9 +1496,9 @@ export {};
 
     if (OPTIONS.probeRaf && window.requestAnimationFrame) {
       var origRaf = window.requestAnimationFrame;
-      window.requestAnimationFrame = function (fn) {
+      window.requestAnimationFrame = function patchedRaf(fn) {
         if (typeof fn !== 'function') return origRaf.apply(window, arguments);
-        var origin = originOf(fn);
+        var origin = originOf(fn, null, patchedRaf);
         if (!origin.ours) {
           var inherited = currentContext();
           if (inherited && inherited.ours) origin = inherited;
@@ -1570,11 +1604,11 @@ export {};
     var origAdd = ET.prototype.addEventListener;
     var origRemove = ET.prototype.removeEventListener;
 
-    ET.prototype.addEventListener = function (type, listener, options) {
+    ET.prototype.addEventListener = function patchedAddEventListener(type, listener, options) {
       if (suppressListenerWrap || typeof listener !== 'function') {
         return origAdd.apply(this, arguments);
       }
-      var origin = originOf(listener, { fn: type + 'Handler' });
+      var origin = originOf(listener, { fn: type + 'Handler' }, patchedAddEventListener);
       if (!origin.ours) return origAdd.apply(this, arguments);
 
       var map = listenerWrappers.get(listener);
@@ -1762,7 +1796,7 @@ export {};
     skipSegmentsOnce: false,
     hideEndcards: false,
     enableAutoLogin: true,
-    hideLogo: false,
+    logoStyle: 'default',
     clockMode: 'off',
     enableOledCareMode: false,
     videoShelfOpacity: 100,
@@ -1778,6 +1812,62 @@ export {};
   var configCache = null;
   var configReadAt = 0;
 
+  // With Separate Settings for Each Account on, the account's own settings
+  // are in CONFIG_KEY::<profile>, laid over the shared ones. The profile is
+  // worked out as config.js readAccountProfile() does it: keep in sync.
+  var IDENTITY_KEY = 'yt.leanback.default::last-identity-used';
+  var ID_FIELD_RE = /id$/i;
+  var FALLBACK_FIELD_RE = /(?:user|email|name)$/i;
+  var VOLATILE_FIELD_RE = /token|expir|time|date|secret|index|session|request|nonce|state/i;
+
+  function collectIdFields(obj, fieldRe, prefix, out, depth) {
+    var keys = Object.keys(obj);
+    for (var i = 0; i < keys.length; i++) {
+      var key = keys[i];
+      if (VOLATILE_FIELD_RE.test(key)) continue;
+      var value = obj[key];
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        if (depth < 1) collectIdFields(value, fieldRe, prefix + key + '.', out, depth + 1);
+      } else if (((typeof value === 'string' && value) || typeof value === 'number') && fieldRe.test(key)) {
+        out.push(prefix + key + '=' + value);
+      }
+    }
+  }
+
+  function hashString(str) {
+    var h1 = 0x811c9dc5;
+    var h2 = 0x01000193 ^ 0x5bd1e995;
+    for (var i = 0; i < str.length; i++) {
+      var c = str.charCodeAt(i);
+      h1 = Math.imul(h1 ^ c, 0x01000193);
+      h2 = Math.imul(h2 ^ c, 0x01000193) ^ (h2 >>> 15);
+    }
+    return ('0000000' + (h1 >>> 0).toString(16)).slice(-8) + ('0000000' + (h2 >>> 0).toString(16)).slice(-8);
+  }
+
+  /** The account whose settings are in use, or null (none, or the guest's, which are not kept). */
+  function accountProfile() {
+    var stored = nativeParse(window.localStorage.getItem(IDENTITY_KEY) || 'null');
+    var data = stored && typeof stored === 'object' ? stored.data : null;
+    if (!data || typeof data !== 'object') return null;
+    if (String(data.identityType || '').indexOf('GUEST') !== -1) return null;
+    var parts = [];
+    collectIdFields(data, ID_FIELD_RE, '', parts, 0);
+    if (!parts.length) collectIdFields(data, FALLBACK_FIELD_RE, '', parts, 0);
+    if (!parts.length) return null;
+    parts.sort();
+    return hashString(parts.join('|'));
+  }
+
+  function overlayStored(merged, key) {
+    var raw = window.localStorage.getItem(key);
+    if (!raw) return;
+    var parsed = nativeParse(raw);
+    for (var k in parsed) {
+      if (Object.prototype.hasOwnProperty.call(parsed, k)) merged[k] = parsed[k];
+    }
+  }
+
   function cfg() {
     if (configCache && now() - configReadAt < 2000) return configCache;
     var merged = {};
@@ -1785,13 +1875,14 @@ export {};
       if (Object.prototype.hasOwnProperty.call(CONFIG_DEFAULTS, k)) merged[k] = CONFIG_DEFAULTS[k];
     }
     safe(function () {
-      var raw = window.localStorage.getItem(CONFIG_KEY);
-      if (!raw) return;
-      var parsed = nativeParse(raw);
-      for (var k2 in parsed) {
-        if (Object.prototype.hasOwnProperty.call(parsed, k2)) merged[k2] = parsed[k2];
-      }
+      overlayStored(merged, CONFIG_KEY);
     }, 'cfg.read');
+    if (merged.perAccountSettings) {
+      safe(function () {
+        var profile = accountProfile();
+        if (profile) overlayStored(merged, CONFIG_KEY + '::' + profile);
+      }, 'cfg.account');
+    }
     configCache = merged;
     configReadAt = now();
     return merged;
@@ -2073,7 +2164,7 @@ export {};
         'A subtree observer on <ytlr-app> tracks every thumbnail tile. Each newly visible tile ' +
         'fires up to three parallel HEAD probes (maxres, sd, hq) against ytimg, capped at 3 ' +
         'concurrent jobs, and the winner is layered onto background-image.',
-      fns: ['enableObserver', 'processUpgrade', 'testAndLoadImage', 'processRequestQueue', 'track'],
+      fns: ['upgradeResponseThumbnails', 'scheduleProbe', 'resolveQuality', 'headExists'],
       perPage: {
         home: 'Highest load in the app: every shelf scroll streams new tiles into the queue.',
         search: 'Same path as home; result tiles are tracked as they mount.',
@@ -2107,7 +2198,7 @@ export {};
             state: 'degraded',
             detail:
               headRate.toFixed(1) +
-              ' probes/s against ytimg — 3 HEADs per tile is saturating the socket pool.',
+              ' probes/s against ytimg — the size probes are saturating the socket pool.',
             data: { upgraded: upgraded, probesPerSec: headRate }
           };
         }
@@ -2383,7 +2474,7 @@ export {};
       pages: ['home', 'search', 'watch'],
       cost: 'light',
       expect: 'Tiles carrying the guest sign-in prompt renderer are filtered out of every list.',
-      fns: ['hasGuestPromptRenderer', 'filterItemsOptimized'],
+      fns: ['dropSignInPromoButton', 'filterItemsOptimized'],
       probe: function () {
         return { state: 'armed', detail: 'Filter is part of the per-tile pass.' };
       }
@@ -2472,14 +2563,18 @@ export {};
     },
 
     {
-      key: 'hideLogo',
-      label: 'Hide YouTube Logo',
+      // YouTube Logo set to Hidden (the old hideLogo switch became logoStyle).
+      key: 'logoStyle',
+      enabledWhen: function (v) {
+        return v === 'hidden';
+      },
+      label: 'YouTube Logo: Hidden',
       lamp: 'LOGO',
-      module: 'ui.js',
+      module: 'logo-style.js',
       pages: ALL_PAGES,
       cost: 'free',
       expect: 'html.ytaf-hide-logo is set. Static CSS only.',
-      fns: ['initGlobalStyles', 'updateLogoState'],
+      fns: ['applyLogoStyle'],
       probe: function () {
         var on = hasClass('ytaf-hide-logo');
         return {
@@ -2980,10 +3075,10 @@ export {};
         value: Math.round(rate * 10) / 10,
         threshold: THRESHOLDS.headProbesPerSec,
         why:
-          'processUpgrade fires up to three parallel HEAD probes per tile. Fast scrolling is ' +
-          'queueing tiles faster than the 3-job gate can drain them.',
+          'resolveQuality checks the sizes of the tiles coming into view, and fast scrolling ' +
+          'is queueing them faster than the probes finish.',
         suggestion:
-          'Lower MAX_CONCURRENT_REQUESTS, or probe sequentially (maxres, then sd) so a hit on the first candidate costs one request instead of three.'
+          'Check how many probes thumbnail-quality.js runs at once, and that deferProbes holds them back while the arrow keys are moving.'
       };
     },
 
@@ -3083,7 +3178,7 @@ export {};
           STATS.domNodes +
           ' elements in the tree. Every subtree observer in the mod pays for this on each batch.',
         suggestion:
-          'Check whether removed shelves are being detached or merely hidden, and confirm untrack() is releasing thumbnail elements.'
+          'Check whether removed shelves are being detached or merely hidden.'
       };
     },
 
@@ -3202,8 +3297,11 @@ export {};
       if (r) out.push(r);
     }
     out.sort(function (a, b) {
+      // Not `rank[x] || 3`: that made critical (0) rank last.
       var rank = { critical: 0, warn: 1, info: 2 };
-      return (rank[a.severity] || 3) - (rank[b.severity] || 3);
+      var ra = a.severity in rank ? rank[a.severity] : 3;
+      var rb = b.severity in rank ? rank[b.severity] : 3;
+      return ra - rb;
     });
     return out;
   }

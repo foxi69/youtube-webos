@@ -5,8 +5,13 @@
  *   3. toggles on 0-0-0 within the window, and NOT on fewer/slower presses
  *   4. does NOT toggle on YELLOW (real or synthetic) - YouTube owns that key
  *   5. lets presses 1 and 2 reach ui.js, so a user shortcut bound to 0 survives
+ *   6. charges YouTube's own timers to YouTube, not to the mod
+ *   7. reads an account's own settings with Separate Settings for Each Account on
+ *   8. counts past 64/s, and lists critical findings first
  */
 const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
 const { JSDOM, VirtualConsole } = require('jsdom');
 const { applyChrome38Downgrade, UA, setUserAgent } = require('./chrome38-env.cjs');
 
@@ -29,8 +34,34 @@ if (!win.cancelAnimationFrame) win.cancelAnimationFrame = (i) => win.clearTimeou
 win.XMLHttpRequest = class { open(){} send(){} setRequestHeader(){} getResponseHeader(){return null;} addEventListener(){} };
 if (legacy) applyChrome38Downgrade(win);
 
+// Separate Settings for Each Account on, and an account whose own SponsorBlock
+// setting is off while the shared one is on. The account's key is worked out
+// with config.js's own functions, so perf_mon's copy of them must agree.
+const configSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'config.js'), 'utf8').replace(/\r\n/g, '\n');
+// From `from` up to and including `to`.
+const take = (from, to) => {
+  const at = configSrc.indexOf(from);
+  const end = configSrc.indexOf(to, at);
+  if (at === -1 || end === -1) throw new Error('config.js has no ' + from);
+  return configSrc.slice(at, end + to.length);
+};
+const profileOf = new Function('data', [
+  take('const VOLATILE_FIELD_RE', '\n'),
+  take('function collectIdFields', '\n}\n'),
+  take('function hashString', '\n}\n'),
+  "const parts = []; collectIdFields(data, /id$/i, '', parts, 0); parts.sort(); return hashString(parts.join('|'));"
+].join('\n'));
+const identity = { id: 'test-account-1' };
+win.localStorage.setItem('yt.leanback.default::last-identity-used', JSON.stringify({ data: identity }));
+win.localStorage.setItem('ytaf-configuration', JSON.stringify({ perAccountSettings: true, enableSponsorBlock: true }));
+win.localStorage.setItem('ytaf-configuration::' + profileOf(identity), JSON.stringify({ enableSponsorBlock: false }));
+
 let threw = null;
 try { win.eval(fs.readFileSync(bundlePath, 'utf8')); } catch (e) { threw = e; }
+
+// A timer set by YouTube's own script, which is not ours.
+vm.runInContext('setTimeout(function ytTick() {}, 0);', dom.getInternalVMContext(),
+  { filename: 'https://www.youtube.com/s/_/kabuki/base.js' });
 
 let pass = 0, fail = 0;
 const t = (name, ok, extra) => {
@@ -72,6 +103,24 @@ setTimeout(() => {
   t('__PERF installed', !!win.__PERF);
   if (!win.__PERF) { console.log(`\n${pass} passed, ${fail} failed`); process.exit(1); }
   win.__PERF.options.requireTrustedKeys = false;
+
+  const entries = Object.keys(win.__PERF.ledger).map((k) => win.__PERF.ledger[k]);
+  const yt = entries.filter((e) => e.origin.fn === 'ytTick');
+  t('YouTube\'s own timer is charged to YouTube', yt.length > 0 && yt.every((e) => !e.origin.ours),
+    JSON.stringify(yt.map((e) => e.origin)));
+  t('the mod\'s own callbacks are still ours', entries.some((e) => e.origin.ours));
+
+  t('an account\'s own settings are read', win.__PERF.config().enableSponsorBlock === false,
+    'enableSponsorBlock=' + win.__PERF.config().enableSponsorBlock);
+
+  // 1000 layout reads at once: 500/s over 2 s, past the critical line (400/s).
+  // A DOM size in the warning band gives a second, lower finding.
+  for (let i = 0; i < 1000; i++) win.__PERF.stats.layout.rect.hit();
+  win.__PERF.stats.domNodes = 7000;
+  const found = win.__PERF.bottlenecks().map((b) => b.id + ':' + b.severity);
+  t('a layout-read storm is found', found.indexOf('layout-read-storm:critical') !== -1, found.join(', '));
+  t('critical findings come first', found[0] === 'layout-read-storm:critical', found.join(', '));
+  win.__PERF.stats.domNodes = 0;
 
   // Find the cluster root by probing before/after a toggle.
   const before = false; // cluster starts hidden
