@@ -84,8 +84,10 @@ def request(method, path, body=None, params=None):
     except urllib.error.HTTPError as err:
         # 404 (deleted fork/branch), 409 (empty repo), 410 (issues turned
         # off) and 422 (unrelated histories) are normal in a fork network:
-        # skip, don't fail the run.
-        if err.code in (404, 409, 410, 422):
+        # skip, don't fail the run. Reads only: a write that fails (the report
+        # issue, the state) must stop the run, or the state moves on and the
+        # findings are never reported.
+        if method == 'GET' and err.code in (404, 409, 410, 422):
             return None, ''
         raise
 
@@ -121,7 +123,10 @@ def fmt_time(value):
 
 
 def state_issue():
-    issues = get_all(f'/repos/{REPO}/issues', {'labels': LABEL, 'state': 'all'}, limit=300)
+    # Oldest first: the state issue is opened on the first run, so newest
+    # first it would fall out of the 300 once that many reports are open.
+    issues = get_all(f'/repos/{REPO}/issues',
+                     {'labels': LABEL, 'state': 'all', 'sort': 'created', 'direction': 'asc'}, limit=300)
     for issue in issues or []:
         if issue.get('title') == STATE_TITLE and 'pull_request' not in issue:
             return issue
