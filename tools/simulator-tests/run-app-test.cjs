@@ -60,9 +60,26 @@ const check = (name, ok, detail) => {
     process.exit(4);
   }, 600000);
   log('app page', t.url);
-  let closed = false;
+  // Set before our own c.close(), which is not a crash.
+  let stopping = false;
   const c = client(t.webSocketDebuggerUrl);
   const { evaluate, key } = c;
+  // From the first command on, whatever step is running: a close missed
+  // during setup, or one outside waitFor, would end the run as a failure
+  // that run-all.cjs does not start again.
+  c.on((msg) => {
+    // 'closed': cdp.cjs's word for a socket that went away (the simulator
+    // gone without either Inspector event), as crash-check.cjs takes it.
+    if ((msg.method === 'Inspector.detached' || msg.method === 'Inspector.targetCrashed' || msg.method === 'closed') && !stopping) {
+      log('APP CLOSED/CRASHED:', msg.method, JSON.stringify(msg.params));
+      // The simulator's renderer crashes now and then once YouTube loads,
+      // with or without our code: the caller starts again.
+      log('page crashed: retry');
+      try { execSync(`taskkill /PID ${sim.pid} /T /F`, { stdio: 'ignore' }); } catch { /* gone */ }
+      process.exit(3);
+    }
+    if (msg.method === 'Page.frameNavigated' && !msg.params.frame.parentId) log('navigated', msg.params.frame.url);
+  });
   const shot = async (name) => {
     const r = await c.send('Page.captureScreenshot', { format: 'png' });
     if (r.result) fs.writeFileSync(path.join(outDir, `${label}-${name}.png`), Buffer.from(r.result.data, 'base64'));
@@ -70,13 +87,6 @@ const check = (name, ok, detail) => {
   const waitFor = async (expr, ms) => {
     const end = Date.now() + ms;
     while (Date.now() < end) {
-      if (closed) {
-        // The simulator's renderer crashes now and then once YouTube loads,
-        // with or without our code: the caller starts again.
-        log('page crashed: retry');
-        try { execSync(`taskkill /PID ${sim.pid} /T /F`, { stdio: 'ignore' }); } catch { /* gone */ }
-        process.exit(3);
-      }
       const v = await evaluate(expr);
       if (v && !v.__error) return v;
       await sleep(500);
@@ -164,13 +174,6 @@ const check = (name, ok, detail) => {
   await c.send('Page.addScriptToEvaluateOnNewDocument', { source: wrapped });
   await c.send('Runtime.runIfWaitingForDebugger');
   log('injected, readyState', await evaluate(wrapped + ';document.readyState'));
-  c.on((msg) => {
-    if (msg.method === 'Inspector.detached' || msg.method === 'Inspector.targetCrashed') {
-      closed = true;
-      log('APP CLOSED/CRASHED:', msg.method, JSON.stringify(msg.params));
-    }
-    if (msg.method === 'Page.frameNavigated' && !msg.params.frame.parentId) log('navigated', msg.params.frame.url);
-  });
   const onYouTube = await waitFor('/youtube\\.com/.test(location.host)', 60000);
   check('start page goes to YouTube', !!onYouTube, await evaluate('location.href'));
   log('user agent as the app sees it:', String(await evaluate('navigator.userAgent')).slice(-40), simYear ? `(platform year ${simYear} added)` : '');
@@ -301,6 +304,7 @@ const check = (name, ok, detail) => {
   // STOP_AFTER_WATCH=1: leave the simulator open on the playing video, to look.
   if (process.env.STOP_AFTER_WATCH === '1') {
     log('stopping here: the simulator stays open on the video (port ' + port + ')');
+    stopping = true;
     c.close();
     fs.writeFileSync(path.join(outDir, `${label}-results.json`), JSON.stringify({ results, exceptions, consoleErrors }, null, 2));
     process.exit(results.some((r) => !r.ok) ? 1 : 0);
@@ -590,10 +594,10 @@ const check = (name, ok, detail) => {
 
   check('no uncaught exceptions', exceptions.length === 0, exceptions.slice(0, 5).join(' || '));
   if (consoleErrors.length) log('console errors:', consoleErrors.length, consoleErrors.slice(0, 5).join(' || '));
-  check('the app stays open', !closed);
   fs.writeFileSync(path.join(outDir, `${label}-results.json`), JSON.stringify({ results, exceptions, consoleErrors }, null, 2));
   const failed = results.filter((r) => !r.ok).length;
   log(`${label}: ${results.length - failed}/${results.length} passed`);
+  stopping = true;
   c.close();
   try {
     execSync(`taskkill /PID ${sim.pid} /T /F`, { stdio: 'ignore' });
