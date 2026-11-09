@@ -46,6 +46,8 @@ const hook: ResolveCommandHook = function (resolveCommand, payload, extra) {
   const setting = setClientSettingEndpoint.settingDatas[idx];
 
   const lang = setting.stringValue;
+  // No language to store: "hl=undefined" in the cookie would stick for 10 years.
+  if (typeof lang !== 'string' || !lang) return passthrough();
   const date = new Date();
   date.setFullYear(date.getFullYear() + 10);
 

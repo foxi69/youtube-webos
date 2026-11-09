@@ -689,6 +689,21 @@ const ids = (r) => itemsOf(r).map((i) => (i.tileRenderer || i.lockupViewModel).c
     t('seek step off: Right is left to YouTube', !e.defaultPrevented);
   }
 
+  // ---- Language setting (lang-settings-fix.ts) ----
+  {
+    const resolved = [];
+    const yttv = () => ({ resolver: Object.assign(function Resolver() {}, { instance: { resolveCommand: (cmd) => { resolved.push(cmd); return 'original'; } } }) });
+    const { win } = boot({}, { yttv });
+    await wait(50);
+    const resolve = win._yttv.resolver.instance.resolveCommand;
+    const setLang = (extra) => ({ setClientSettingEndpoint: { settingDatas: [Object.assign({ clientSettingEnum: { item: 'I18N_LANGUAGE' } }, extra)] } });
+    const r1 = resolve(setLang({}));
+    t('a language setting with no language goes to YouTube untouched',
+      r1 === 'original' && win.document.cookie.indexOf('hl=') === -1, r1 + ' / ' + win.document.cookie);
+    resolve(setLang({ stringValue: 'hu' }));
+    t('a language setting stores hl in the PREF cookie', /PREF=[^;]*hl=hu/.test(win.document.cookie), win.document.cookie);
+  }
+
   // ---- Start Page ----
   {
     const start = (opts) => {
