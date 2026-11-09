@@ -53,7 +53,7 @@ const profileOf = new Function('data', [
 ].join('\n'));
 const identity = { id: 'test-account-1' };
 win.localStorage.setItem('yt.leanback.default::last-identity-used', JSON.stringify({ data: identity }));
-win.localStorage.setItem('ytaf-configuration', JSON.stringify({ perAccountSettings: true, enableSponsorBlock: true }));
+win.localStorage.setItem('ytaf-configuration', JSON.stringify({ perAccountSettings: true, enableSponsorBlock: true, upgradeThumbnails: true }));
 win.localStorage.setItem('ytaf-configuration::' + profileOf(identity), JSON.stringify({ enableSponsorBlock: false }));
 
 let threw = null;
@@ -121,6 +121,17 @@ setTimeout(() => {
   t('a layout-read storm is found', found.indexOf('layout-read-storm:critical') !== -1, found.join(', '));
   t('critical findings come first', found[0] === 'layout-read-storm:critical', found.join(', '));
   win.__PERF.stats.domNodes = 0;
+
+  // Max Thumbnail Quality: the module rewrites the URLs in the responses, so
+  // an upgraded tile is a plain url() of a larger size.
+  ['maxresdefault.jpg', 'hq720.jpg', 'hqdefault.jpg'].forEach((name, i) => {
+    const tile = win.document.createElement('ytlr-thumbnail-details');
+    tile.style.backgroundImage = `url("https://i.ytimg.com/vi/video${i}abcd/${name}")`;
+    win.document.body.appendChild(tile);
+  });
+  const thumbs = win.__PERF.features().filter((f) => f.key === 'upgradeThumbnails')[0];
+  t('Max Thumbnail Quality counts the tiles above hqdefault', !!thumbs && thumbs.state === 'firing' && /^2 of 3 tiles/.test(thumbs.detail),
+    thumbs && thumbs.state + ': ' + thumbs.detail);
 
   // Find the cluster root by probing before/after a toggle.
   const before = false; // cluster starts hidden

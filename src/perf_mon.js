@@ -1936,46 +1936,31 @@ export {};
     }
     return false;
   }
-  // Copied verbatim from thumbnail-quality.js:27 (YT_THUMBNAIL_SELECTOR).
-  // Guessing at this selector is how the probe produced a false stall the first
-  // time; if the module changes what it tracks, change this line with it.
+  // thumbnail-quality.js's DOM_SELECTOR: if the module changes what it reads,
+  // change this line with it.
   var THUMB_SELECTOR = 'ytlr-thumbnail-details, ytlr-surface-page, thumbnail image';
 
   /**
-   * thumbnail-quality.js layers the upgraded image in front of the original:
-   *   background-image: url("...maxresdefault..."), url("...original...")
-   * so an upgraded tile is one whose background-image holds two url() layers
-   * with a high-res filename in the first. No attribute is written, which is
-   * why an attribute-based probe reported a false stall.
+   * The size of the image each thumbnail tile on screen shows. The module
+   * rewrites the URLs in YouTube's responses, so an upgraded tile is a plain
+   * url() of a larger size (a later correction is put in front as a second
+   * layer, which the first match reads). Above hqdefault is upgraded.
    */
-  var UPGRADE_RE = /maxresdefault|sddefault|hq720|hqdefault/;
+  var THUMB_NAME_RE = /i\.ytimg\.com\/vi(?:_webp)?\/[\w-]+\/([a-z\d]+)[._]/;
+  var THUMB_RANK = { default: 0, mqdefault: 1, hqdefault: 2, sddefault: 3, hq720: 4, maxresdefault: 5 };
 
-  function isUpgradedTile(el) {
-    var bg = el && el.style && el.style.backgroundImage;
-    if (!bg) return false;
-    // Two url() layers with a high-res filename in the mix: that is the upgrade
-    // sitting in front of the original as a fallback.
-    return bg.indexOf('url(') !== bg.lastIndexOf('url(') && UPGRADE_RE.test(bg);
-  }
-
-  function countUpgradedThumbs() {
-    var n = 0;
-    try {
-      var els = qa(THUMB_SELECTOR);
-      if (!els.length) {
-        // The selector is the module's own, but if this YouTube build renamed
-        // its elements a bounded sweep still finds the effect. Capped so the
-        // probe can never become the expensive thing on the page.
-        els = document.getElementsByTagName('*');
-        var cap = els.length > 4000 ? 4000 : els.length;
-        for (var j = 0; j < cap; j++) if (isUpgradedTile(els[j])) n++;
-        return n;
-      }
-      for (var i = 0; i < els.length; i++) if (isUpgradedTile(els[i])) n++;
-    } catch (e) {
-      return 0;
+  function thumbSizes() {
+    var out = { tiles: 0, upgraded: 0, sizes: {} };
+    var els = qa(THUMB_SELECTOR);
+    for (var i = 0; i < els.length; i++) {
+      var bg = els[i].style && els[i].style.backgroundImage;
+      var m = bg && THUMB_NAME_RE.exec(bg);
+      if (!m) continue;
+      out.tiles++;
+      out.sizes[m[1]] = (out.sizes[m[1]] || 0) + 1;
+      if ((THUMB_RANK[m[1]] || 0) > THUMB_RANK.hqdefault) out.upgraded++;
     }
-    return n;
+    return out;
   }
 
   /** The one <video> the mod cares about. */
@@ -2161,57 +2146,47 @@ export {};
       idlePages: ['shorts', 'account'],
       cost: 'heavy',
       expect:
-        'A subtree observer on <ytlr-app> tracks every thumbnail tile. Each newly visible tile ' +
-        'fires up to three parallel HEAD probes (maxres, sd, hq) against ytimg, capped at 3 ' +
-        'concurrent jobs, and the winner is layered onto background-image.',
+        'Thumbnail URLs are rewritten to a larger size inside the JSON.parse hook, before the ' +
+        'app sees them. Sizes not known to exist are checked with HEAD probes against ytimg, ' +
+        'and a tile that got a missing size is corrected with a second background layer.',
       fns: ['upgradeResponseThumbnails', 'scheduleProbe', 'resolveQuality', 'headExists'],
       perPage: {
-        home: 'Highest load in the app: every shelf scroll streams new tiles into the queue.',
-        search: 'Same path as home; result tiles are tracked as they mount.',
+        home: 'Most tiles in the app: every shelf scroll brings new responses and probes.',
+        search: 'Same path as home.',
         watch: 'Only the related shelf, so probe volume should be much lower than home.',
         shorts: 'Nothing to do — Shorts tiles are not upgraded.'
       },
       probe: function () {
-        // thumbnail-quality.js marks an upgrade by PREPENDING a second url()
-        // to background-image, keeping the original as a fallback layer. There
-        // is no marker attribute, so count the layered tiles directly.
-        var upgraded = countUpgradedThumbs();
-        var obs = observersFrom('thumbnail-quality.js');
+        var t = thumbSizes();
         var headRate = chanRate('thumbnails', 5000);
         var c = chan('thumbnails');
-        var tiles = qa(THUMB_SELECTOR).length;
-        if (!upgraded && !headRate && !c) {
-          // Only call this stalled if there was something to upgrade. An empty
-          // shelf is not a failure.
-          if (!tiles) {
-            return { state: 'armed', detail: 'No thumbnail tiles on screen yet.' };
-          }
-          return {
-            state: 'stalled',
-            detail:
-              tiles + ' tiles on screen, none upgraded and no ytimg probes seen.',
-            data: { tiles: tiles }
-          };
-        }
+        var probes = c ? c.count : 0;
+        var data = { tiles: t.tiles, upgraded: t.upgraded, sizes: t.sizes, probesPerSec: headRate, probes: probes };
+        var sizes = Object.keys(t.sizes)
+          .map(function (k) {
+            return k + ' ' + t.sizes[k];
+          })
+          .join(', ');
+        // An empty shelf is not a failure.
+        if (!t.tiles) return { state: 'armed', detail: 'No thumbnail tiles on screen yet.', data: data };
         if (headRate > THRESHOLDS.headProbesPerSec) {
           return {
             state: 'degraded',
-            detail:
-              headRate.toFixed(1) +
-              ' probes/s against ytimg — the size probes are saturating the socket pool.',
-            data: { upgraded: upgraded, probesPerSec: headRate }
+            detail: headRate.toFixed(1) + ' probes/s against ytimg — the size probes are saturating the socket pool.',
+            data: data
           };
         }
+        if (!t.upgraded) {
+          // Safe mode shows only sizes known to exist: before the first probes
+          // answer, every tile can still be hqdefault.
+          return probes
+            ? { state: 'armed', detail: t.tiles + ' tiles, none above hqdefault yet (' + sizes + '); ' + probes + ' size probes so far.', data: data }
+            : { state: 'stalled', detail: t.tiles + ' tiles, none above hqdefault (' + sizes + ') and no size probes seen.', data: data };
+        }
         return {
-          state: upgraded > 0 || headRate > 0 ? 'firing' : 'armed',
-          detail:
-            upgraded +
-            ' tiles upgraded on screen, ' +
-            headRate.toFixed(1) +
-            ' probes/s, ' +
-            (c ? c.count : 0) +
-            ' total.',
-          data: { upgraded: upgraded, probesPerSec: headRate, observers: obs.length }
+          state: 'firing',
+          detail: t.upgraded + ' of ' + t.tiles + ' tiles above hqdefault (' + sizes + '), ' + headRate.toFixed(1) + ' probes/s, ' + probes + ' total.',
+          data: data
         };
       }
     },
