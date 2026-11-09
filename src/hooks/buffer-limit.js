@@ -87,23 +87,21 @@ function trimSourceBuffer(sb, now) {
  * InvalidStateError and playback stalls.
  */
 var appendPatched = false;
+var DEFERRAL_MARK = '__ytafAppendDeferral';
 
-function patchAppend(sb) {
-  if (appendPatched) return;
+/** Wraps target.appendBuffer with the deferral, once; false when there is nothing to wrap. */
+function wrapAppend(target) {
+  var origAppend = target.appendBuffer;
+  if (typeof origAppend !== 'function' || origAppend[DEFERRAL_MARK]) return false;
 
-  var proto = Object.getPrototypeOf ? Object.getPrototypeOf(sb) : sb.__proto__;
-  if (!proto || typeof proto.appendBuffer !== 'function') {
-    log('could not resolve SourceBuffer prototype; append deferral disabled');
-    return;
-  }
-
-  appendPatched = true;
-  var origAppend = proto.appendBuffer;
-
-  proto.appendBuffer = function (data) {
+  var wrapped = function (data) {
     var self = this;
     if (self.updating && self[trimming]) {
       var onDone = function () {
+        // The player's own updateend listener runs first and may append: then
+        // ours waits for that one to finish, instead of throwing
+        // InvalidStateError and dropping the data.
+        if (self.updating) return;
         self.removeEventListener('updateend', onDone); // no {once:true} on CR38
         self[trimming] = false;
         try {
@@ -118,8 +116,31 @@ function patchAppend(sb) {
     self[trimming] = false;
     return origAppend.call(self, data);
   };
+  wrapped[DEFERRAL_MARK] = true;
+  target.appendBuffer = wrapped;
+  return true;
+}
 
-  log('appendBuffer patched via instance prototype');
+/**
+ * Every SourceBuffer gets the deferral: each prototype seen (not only the
+ * first one, which can be the speed engine's stand-in audio buffer), and a
+ * buffer's own appendBuffer, which the speed engine sets on the video buffer
+ * and which hides the prototype's.
+ */
+function patchAppend(sb) {
+  if (Object.prototype.hasOwnProperty.call(sb, 'appendBuffer')) {
+    if (wrapAppend(sb)) appendPatched = true;
+    return;
+  }
+  var proto = Object.getPrototypeOf ? Object.getPrototypeOf(sb) : sb.__proto__;
+  if (!proto) {
+    log('could not resolve SourceBuffer prototype; append deferral disabled');
+    return;
+  }
+  if (wrapAppend(proto)) {
+    appendPatched = true;
+    log('appendBuffer patched via instance prototype');
+  }
 }
 
 function tick() {

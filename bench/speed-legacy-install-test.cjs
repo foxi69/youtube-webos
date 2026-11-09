@@ -60,10 +60,36 @@ function boot() {
     close() { this.state = 'closed'; }
   };
   win.OfflineAudioContext = class { decodeAudioData() {} };
-  const realSb = () => ({ updating: false, appendBuffer() {}, remove() {}, abort() {}, buffered: { length: 0 } });
+  // appendBuffer on the prototype, as on a real engine; an append while
+  // updating throws, as InvalidStateError does.
+  class FakeSourceBuffer {
+    constructor() {
+      this.updating = false; this.appended = []; this.listeners = []; this.buffered = { length: 0 };
+      this._ts = 0; this._aws = 0; this._awe = Infinity;
+    }
+    // Accessors on the prototype, as a real engine has them: the speed code
+    // rescales these off 1x.
+    get timestampOffset() { return this._ts; }
+    set timestampOffset(v) { this._ts = v; }
+    get appendWindowStart() { return this._aws; }
+    set appendWindowStart(v) { this._aws = v; }
+    get appendWindowEnd() { return this._awe; }
+    set appendWindowEnd(v) { this._awe = v; }
+    appendBuffer(data) {
+      if (this.updating) throw new Error('InvalidStateError');
+      this.appended.push(data);
+      this.updating = true;
+    }
+    remove() { this.updating = true; }
+    abort() {}
+    addEventListener(type, fn) { if (type === 'updateend') this.listeners.push(fn); }
+    removeEventListener(type, fn) { const i = this.listeners.indexOf(fn); if (i !== -1) this.listeners.splice(i, 1); }
+    finish() { this.updating = false; this.listeners.slice().forEach((fn) => { fn(); }); }
+  }
+  win.FakeSourceBuffer = FakeSourceBuffer;
   win.MediaSource = class {
     constructor() { this.readyState = 'open'; }
-    addSourceBuffer() { return realSb(); }
+    addSourceBuffer() { return new FakeSourceBuffer(); }
     get sourceBuffers() { return { length: 0, item: () => undefined }; }
   };
   win.MediaSource.isTypeSupported = () => true;
@@ -89,6 +115,26 @@ function boot() {
   }
   t('a player API object takes its setPlaybackRate (no Object.hasOwn needed)', built === 'function', built);
 
+  // The buffer limit's append deferral: an append that comes while its trim
+  // runs waits, and the player's own updateend listener, which runs first and
+  // appends the next piece, does not make it throw and drop the data.
+  {
+    const ms = new win.MediaSource();
+    const vsb = ms.addSourceBuffer('video/mp4; codecs="avc1.640028"');
+    let playerTurn = true;
+    vsb.addEventListener('updateend', () => {
+      if (playerTurn) { playerTurn = false; vsb.appendBuffer('B'); }
+    });
+    vsb.remove(0, 10);
+    vsb.__ytafTrimming = true;
+    let threw = null;
+    try { vsb.appendBuffer('A'); } catch (e) { threw = e.message; }
+    vsb.finish(); // the trim ends: the player appends B first
+    vsb.finish(); // B ends: the held-back A goes in
+    t('a held-back append waits for the player\'s own append, and is not lost',
+      !threw && vsb.appended.join() === 'B,A', threw || vsb.appended.join());
+  }
+
   // Off 1x, the audio SourceBuffer is the engine's stand-in.
   win.ytafSpeed.setSpeed(1.5);
   let sb;
@@ -106,6 +152,22 @@ function boot() {
     sb.remove(0, 1);
     await wait(50);
     t('and it reports updateend to its listeners', ended === 1, String(ended));
+  }
+  // The speed code gives the video SourceBuffer an appendBuffer of its own,
+  // which hides the prototype's: the deferral must wrap that one too.
+  {
+    const ms = new win.MediaSource();
+    ms.addSourceBuffer('audio/mp4; codecs="mp4a.40.2"');
+    const vsb = ms.addSourceBuffer('video/mp4; codecs="avc1.640028"');
+    t('off 1x, the video SourceBuffer\'s own appendBuffer gets the deferral',
+      Object.prototype.hasOwnProperty.call(vsb, 'appendBuffer') && vsb.appendBuffer.__ytafAppendDeferral === true);
+    vsb.remove(0, 10);
+    vsb.__ytafTrimming = true;
+    let threw = null;
+    try { vsb.appendBuffer(new Uint8Array(16)); } catch (e) { threw = e.message; }
+    t('and an append during the trim is held back, not thrown', !threw && vsb.appended.length === 0, threw || String(vsb.appended.length));
+    vsb.finish();
+    t('and goes in once the trim ends', vsb.appended.length === 1, String(vsb.appended.length));
   }
   if (win.ytafSpeed.releaseAudioSink) win.ytafSpeed.releaseAudioSink();
   win.close();
