@@ -94,8 +94,8 @@ def get(path, params=None):
     return request('GET', path, params=params)[0]
 
 
-def get_all(path, params=None, limit=1000):
-    """Follows Link: rel="next" pagination."""
+def get_all(path, params=None, limit=1000, until=None):
+    """Follows Link: rel="next" pagination; stops after a page whose last item `until` accepts."""
     out = []
     params = dict(params or {}, per_page=100)
     data, link = request('GET', path, params=params)
@@ -103,7 +103,7 @@ def get_all(path, params=None, limit=1000):
         if not data:
             break
         out.extend(data)
-        if len(out) >= limit:
+        if len(out) >= limit or (until and until(data[-1])):
             break
         m = re.search(r'<([^>]+)>;\s*rel="next"', link or '')
         if not m:
@@ -239,8 +239,10 @@ def new_commits(fork, cutoff, seen, known, today, ours):
 def new_pull_requests(since):
     out = []
     for root in ROOTS:
-        pulls = get_all(f'/repos/{root}/pulls', {'state': 'all', 'sort': 'updated',
-                                                  'direction': 'desc'}, limit=100)
+        # Paged back to `since`, not cut at 100: closed ones skipped below must
+        # not hide an older update behind them.
+        pulls = get_all(f'/repos/{root}/pulls', {'state': 'all', 'sort': 'updated', 'direction': 'desc'},
+                        until=lambda pr: parse_time(pr['updated_at']) <= since)
         for pr in pulls or []:
             if parse_time(pr['updated_at']) <= since:
                 break  # sorted by update time
@@ -257,8 +259,8 @@ def new_issues(since):
     """Issues opened on the roots after `since` that are still open."""
     out = []
     for root in ROOTS:
-        issues = get_all(f'/repos/{root}/issues', {'state': 'open', 'sort': 'created',
-                                                    'direction': 'desc'}, limit=100)
+        issues = get_all(f'/repos/{root}/issues', {'state': 'open', 'sort': 'created', 'direction': 'desc'},
+                         until=lambda issue: parse_time(issue['created_at']) <= since)
         for issue in issues or []:
             if parse_time(issue['created_at']) <= since:
                 break  # sorted by creation time
