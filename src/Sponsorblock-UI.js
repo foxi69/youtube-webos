@@ -1,4 +1,5 @@
 import './sponsorblock-ui.css';
+import { categoryColor } from './sponsorblock-labels.js';
 // Bundled rather than fetched from raw.githubusercontent.com at runtime.
 import sponsorBlockIcon from './icons/sponsorblock-icon.png';
 
@@ -16,20 +17,9 @@ class SponsorBlockUI {
         return timeStr.startsWith('00:') ? timeStr.slice(3) : timeStr;
     }
 
+    // The colour the user set for the category, as the seek bar draws it.
     getSegmentColor(category) {
-        const colors = {
-            sponsor: '#00d400',
-            intro: '#00ffff',
-            outro: '#0202ed',
-            interaction: '#cc00ff',
-            selfpromo: '#ffff00',
-            musicofftopic: '#ff9900',
-            preview: '#008fd6',
-            filler: '#7300FF',
-            poi_highlight: '#ff1684',
-            hook: '#395699'
-        };
-        return colors[category] || '#777';
+        return categoryColor(category);
     }
 
     getCategoryName(category) {
