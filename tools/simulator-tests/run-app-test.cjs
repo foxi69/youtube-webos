@@ -165,7 +165,9 @@ const check = (name, ok, detail) => {
   await c.send('Runtime.runIfWaitingForDebugger');
   log('injected, readyState', await evaluate(wrapped + ';document.readyState'));
   c.on((msg) => {
-    if (msg.method === 'Inspector.detached' || msg.method === 'Inspector.targetCrashed') {
+    // 'closed': cdp.cjs's word for a socket that went away (the simulator
+    // gone without either Inspector event), as crash-check.cjs takes it.
+    if (msg.method === 'Inspector.detached' || msg.method === 'Inspector.targetCrashed' || msg.method === 'closed') {
       closed = true;
       log('APP CLOSED/CRASHED:', msg.method, JSON.stringify(msg.params));
     }
