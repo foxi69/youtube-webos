@@ -5,8 +5,9 @@ Fork watch: reports new work in the youtube-webos fork network as suggestions.
 Run by .github/workflows/fork-watch.yml. For every fork of the watched root
 repositories that was pushed to since the last run, each branch is compared
 with this repository's main branch; commits that are not in main and are newer
-than the last run are listed. Pull requests opened or updated on the root
-repositories since the last run are listed too, and so are issues opened on
+than the last run are listed. Pull requests opened, updated or merged on the
+root repositories since the last run are listed too (one closed without
+merging is left out: nothing to port), and so are issues opened on
 them since the last run that are still open (feature requests and bug
 reports worth a look). When anything is new, one
 issue (label "fork-watch") is opened with the findings, so it arrives as a
@@ -93,8 +94,8 @@ def get(path, params=None):
     return request('GET', path, params=params)[0]
 
 
-def get_all(path, params=None, limit=1000):
-    """Follows Link: rel="next" pagination."""
+def get_all(path, params=None, limit=1000, until=None):
+    """Follows Link: rel="next" pagination; stops after a page whose last item `until` accepts."""
     out = []
     params = dict(params or {}, per_page=100)
     data, link = request('GET', path, params=params)
@@ -102,7 +103,7 @@ def get_all(path, params=None, limit=1000):
         if not data:
             break
         out.extend(data)
-        if len(out) >= limit:
+        if len(out) >= limit or (until and until(data[-1])):
             break
         m = re.search(r'<([^>]+)>;\s*rel="next"', link or '')
         if not m:
@@ -238,11 +239,15 @@ def new_commits(fork, cutoff, seen, known, today, ours):
 def new_pull_requests(since):
     out = []
     for root in ROOTS:
-        pulls = get_all(f'/repos/{root}/pulls', {'state': 'all', 'sort': 'updated',
-                                                  'direction': 'desc'}, limit=100)
+        # Paged back to `since`, not cut at 100: closed ones skipped below must
+        # not hide an older update behind them.
+        pulls = get_all(f'/repos/{root}/pulls', {'state': 'all', 'sort': 'updated', 'direction': 'desc'},
+                        until=lambda pr: parse_time(pr['updated_at']) <= since)
         for pr in pulls or []:
             if parse_time(pr['updated_at']) <= since:
                 break  # sorted by update time
+            if pr['state'] == 'closed' and not pr.get('merged_at'):
+                continue  # closed without merging: nothing to port
             state = 'merged' if pr.get('merged_at') else pr['state']
             out.append({'repo': root, 'number': pr['number'], 'title': pr['title'],
                         'user': pr['user']['login'], 'state': state, 'url': pr['html_url'],
@@ -254,8 +259,8 @@ def new_issues(since):
     """Issues opened on the roots after `since` that are still open."""
     out = []
     for root in ROOTS:
-        issues = get_all(f'/repos/{root}/issues', {'state': 'open', 'sort': 'created',
-                                                    'direction': 'desc'}, limit=100)
+        issues = get_all(f'/repos/{root}/issues', {'state': 'open', 'sort': 'created', 'direction': 'desc'},
+                         until=lambda issue: parse_time(issue['created_at']) <= since)
         for issue in issues or []:
             if parse_time(issue['created_at']) <= since:
                 break  # sorted by creation time
