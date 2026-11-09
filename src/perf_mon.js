@@ -172,10 +172,12 @@ export {};
   /**
    * Count and sum per 100ms slot, over the last 6.4s (the longest window
    * asked for is 5s). A ring of the last samples capped what a window could
-   * hold instead: 128 hits read 64/s at most over 2s.
+   * hold instead: 128 hits read 64/s at most over 2s. A longer window is
+   * cut to 6.4s, as older slots are gone.
    */
   var SLOT_MS = 100;
   var SLOTS = 64;
+  var HORIZON_MS = SLOT_MS * SLOTS;
   function Slots() {
     this.at = new Array(SLOTS);
     this.n = new Array(SLOTS);
@@ -193,7 +195,7 @@ export {};
     this.sum[i] += v;
   };
   Slots.prototype.window = function (w) {
-    var from = Math.floor((now() - w) / SLOT_MS);
+    var from = Math.floor((now() - Math.min(w, HORIZON_MS)) / SLOT_MS);
     var sum = 0;
     var n = 0;
     for (var i = 0; i < SLOTS; i++) {
@@ -238,7 +240,7 @@ export {};
     this.slots.add(0);
   };
   Counter.prototype.rate = function (w) {
-    var win = w || 1000;
+    var win = Math.min(w || 1000, HORIZON_MS);
     return (this.slots.window(win).count * 1000) / win;
   };
 
@@ -4557,7 +4559,7 @@ export {};
       }
       return r;
     },
-    /** Hottest instrumented functions in the last N ms. */
+    /** Hottest instrumented functions in the last N ms (6.4s at most). */
     functions: function (windowMs) {
       var f = topFunctions(30, windowMs || 3000);
       if (console.table) console.table(f);

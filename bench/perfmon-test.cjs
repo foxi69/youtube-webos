@@ -120,6 +120,9 @@ setTimeout(() => {
   const found = win.__PERF.bottlenecks().map((b) => b.id + ':' + b.severity);
   t('a layout-read storm is found', found.indexOf('layout-read-storm:critical') !== -1, found.join(', '));
   t('critical findings come first', found[0] === 'layout-read-storm:critical', found.join(', '));
+  // A window longer than the 6.4 s the slots keep is cut to 6.4 s.
+  const longRate = win.__PERF.stats.layout.rect.rate(30000);
+  t('a long window is cut to what is kept', Math.round(longRate) === 156, 'rate(30000)=' + longRate);
   win.__PERF.stats.domNodes = 0;
 
   // Max Thumbnail Quality: the module rewrites the URLs in the responses, so
