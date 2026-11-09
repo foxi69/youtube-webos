@@ -123,13 +123,19 @@ def fmt_time(value):
 
 
 def state_issue():
-    # Oldest first: the state issue is opened on the first run, so newest
-    # first it would fall out of the 300 once that many reports are open.
-    issues = get_all(f'/repos/{REPO}/issues',
-                     {'labels': LABEL, 'state': 'all', 'sort': 'created', 'direction': 'asc'}, limit=300)
-    for issue in issues or []:
-        if issue.get('title') == STATE_TITLE and 'pull_request' not in issue:
-            return issue
+    # Oldest first, page by page until it turns up: the state issue is
+    # opened on the first run, but one opened again (the first deleted) comes
+    # after every report so far.
+    data, link = request('GET', f'/repos/{REPO}/issues',
+                         params={'labels': LABEL, 'state': 'all', 'sort': 'created', 'direction': 'asc', 'per_page': 100})
+    while data:
+        for issue in data:
+            if issue.get('title') == STATE_TITLE and 'pull_request' not in issue:
+                return issue
+        m = re.search(r'<([^>]+)>;\s*rel="next"', link or '')
+        if not m:
+            break
+        data, link = request('GET', m.group(1))
     return None
 
 
