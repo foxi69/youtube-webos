@@ -502,6 +502,14 @@ function pickAccountValues(source) {
 // sharedConfig is what CONFIG_KEY holds: everything with per-account settings
 // off, and the device settings plus the shared profile with them on.
 const sharedConfig = loadStored(CONFIG_KEY) || {};
+// The clock was an on/off switch (showWatch) before it could show the date.
+// Migrated in the stored object itself, before an account's own settings are
+// laid over: run after them it overwrote the account's clock on every start,
+// and with per-account settings on, showWatch was never written away.
+if ('showWatch' in sharedConfig) {
+  if (!('clockMode' in sharedConfig)) sharedConfig.clockMode = sharedConfig.showWatch ? 'time' : 'off';
+  delete sharedConfig.showWatch;
+}
 // The account profile in use, or null while the shared settings are.
 let activeProfile = null;
 let profileSeeded = false;
@@ -526,12 +534,6 @@ if (sharedConfig.perAccountSettings) {
     if (stored) Object.assign(localConfig, pickAccountValues(stored));
     else profileSeeded = true;
   }
-}
-
-// The clock was an on/off switch (showWatch) before it could show the date.
-if ('showWatch' in sharedConfig) {
-  if (!('clockMode' in sharedConfig)) localConfig.clockMode = sharedConfig.showWatch ? 'time' : 'off';
-  delete localConfig.showWatch;
 }
 
 // Debounce localStorage writes — rapid input (e.g. color picker drag) was
