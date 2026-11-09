@@ -406,7 +406,12 @@ function browseIdOf(data) {
     }
   }
   const match = /[?&]c=([^&]+)/.exec(window.location.hash || '');
-  return match ? decodeURIComponent(match[1]) : '';
+  if (!match) return '';
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return ''; // a malformed escape in the address
+  }
 }
 
 /**

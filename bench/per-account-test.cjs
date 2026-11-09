@@ -199,6 +199,38 @@ const ACCOUNT_B = { identityType: 'SIGNED_IN', obfuscatedGaiaId: '2222', accessT
     t('guest: no errors', errors.length === 0, errors.join(' | '));
   }
 
+  {
+    // An old shared store with the clock switch (showWatch) and an account
+    // that has its own clock: the account's value wins, and the old switch is
+    // written away as a clockMode once anything is saved.
+    const seed = { perAccountSettings: true, showWatch: true };
+    const first = boot(seed, ACCOUNT_A);
+    await wait(300);
+    const profile = profileKeys(first.win)[0];
+    const { win, errors } = boot(seed, ACCOUNT_A, { [profile]: { clockMode: 'datetime' } });
+    key(win, GREEN);
+    const clock = win.document.querySelector('.webOs-watch');
+    toggle(win, checkbox(win, RYD));
+    await wait(300);
+    t('showWatch: the account\'s own clock is kept', read(win, profile).clockMode === 'datetime', JSON.stringify(read(win, profile)));
+    const shared = read(win, CONFIG_KEY);
+    t('showWatch: the old switch becomes the shared clockMode', !('showWatch' in shared) && shared.clockMode === 'time', JSON.stringify(shared));
+    t('showWatch: the clock shows', !!clock);
+    t('showWatch: no errors', errors.length === 0, errors.join(' | '));
+  }
+
+  {
+    // The old switch off, with no account clock: the clock stays off.
+    const { win, errors } = boot({ showWatch: false }, ACCOUNT_A);
+    key(win, GREEN);
+    toggle(win, checkbox(win, RYD));
+    await wait(300);
+    const shared = read(win, CONFIG_KEY);
+    t('showWatch off: becomes clockMode off', !('showWatch' in shared) && shared.clockMode === 'off', JSON.stringify(shared));
+    t('showWatch off: no clock', !win.document.querySelector('.webOs-watch'));
+    t('showWatch off: no errors', errors.length === 0, errors.join(' | '));
+  }
+
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })();

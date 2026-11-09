@@ -130,6 +130,11 @@ const ids = (r) => itemsOf(r).map((i) => (i.tileRenderer || i.lockupViewModel).c
     t('a playlist in the address keeps watched videos', ids(parse(feed())).indexOf('lockwatch__') !== -1);
     win.location.hash = '#/browse?c=FEsubscriptions';
     t('Subscriptions hides watched videos', ids(parse(feed())).indexOf('watched95__') === -1);
+    // A malformed escape in the address names no page: the filters still run.
+    win.location.hash = '#/browse?c=%E0%A4%A';
+    t('a malformed c= in the address still filters the feed',
+      ids(parse(feed())) === 'watched50__,long1234___,noduration_,hourlong___', ids(parse(feed())));
+    win.location.hash = '#/browse?c=FEsubscriptions';
 
     const watchNext = {
       responseContext: { _pad: pad },
@@ -682,6 +687,30 @@ const ids = (r) => itemsOf(r).map((i) => (i.tileRenderer || i.lockupViewModel).c
     const off = boot({ seekStep: '0' }, { bodyClass: 'WEB_PAGE_TYPE_WATCH', html: '<video></video><yt-focus-container idomkey="controls"></yt-focus-container>' });
     const e = key(off.win, RIGHT, off.win.document.body);
     t('seek step off: Right is left to YouTube', !e.defaultPrevented);
+  }
+
+  // ---- Language setting (lang-settings-fix.ts) ----
+  {
+    const resolved = [];
+    const yttv = () => ({ resolver: Object.assign(function Resolver() {}, { instance: { resolveCommand: (cmd) => { resolved.push(cmd); return 'original'; } } }) });
+    const { win } = boot({}, { yttv });
+    await wait(50);
+    const resolve = win._yttv.resolver.instance.resolveCommand;
+    const setLang = (extra) => ({ setClientSettingEndpoint: { settingDatas: [Object.assign({ clientSettingEnum: { item: 'I18N_LANGUAGE' } }, extra)] } });
+    const missing = setLang({});
+    const r1 = resolve(missing);
+    t('a language setting with no language goes to YouTube untouched',
+      r1 === 'original' && win.document.cookie.indexOf('hl=') === -1 && resolved.length === 1 && resolved[0] === missing,
+      r1 + ' / ' + win.document.cookie + ' / ' + JSON.stringify(resolved));
+    const notText = setLang({ stringValue: 42 });
+    resolve(notText);
+    t('a language that is not text goes to YouTube untouched too',
+      win.document.cookie.indexOf('hl=') === -1 && resolved.length === 2 && resolved[1] === notText, win.document.cookie);
+    resolved.length = 0;
+    resolve(setLang({ stringValue: 'hu' }));
+    t('a language setting reloads the page',
+      resolved.length === 1 && JSON.stringify(resolved[0]) === '{"signalAction":{"signal":"RELOAD_PAGE"}}', JSON.stringify(resolved));
+    t('a language setting stores hl in the PREF cookie', /PREF=[^;]*hl=hu/.test(win.document.cookie), win.document.cookie);
   }
 
   // ---- Start Page ----
