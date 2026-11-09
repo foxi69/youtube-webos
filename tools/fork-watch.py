@@ -5,8 +5,9 @@ Fork watch: reports new work in the youtube-webos fork network as suggestions.
 Run by .github/workflows/fork-watch.yml. For every fork of the watched root
 repositories that was pushed to since the last run, each branch is compared
 with this repository's main branch; commits that are not in main and are newer
-than the last run are listed. Pull requests opened or updated on the root
-repositories since the last run are listed too, and so are issues opened on
+than the last run are listed. Pull requests opened, updated or merged on the
+root repositories since the last run are listed too (one closed without
+merging is left out: nothing to port), and so are issues opened on
 them since the last run that are still open (feature requests and bug
 reports worth a look). When anything is new, one
 issue (label "fork-watch") is opened with the findings, so it arrives as a
@@ -243,6 +244,8 @@ def new_pull_requests(since):
         for pr in pulls or []:
             if parse_time(pr['updated_at']) <= since:
                 break  # sorted by update time
+            if pr['state'] == 'closed' and not pr.get('merged_at'):
+                continue  # closed without merging: nothing to port
             state = 'merged' if pr.get('merged_at') else pr['state']
             out.append({'repo': root, 'number': pr['number'], 'title': pr['title'],
                         'user': pr['user']['login'], 'state': state, 'url': pr['html_url'],
