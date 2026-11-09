@@ -130,6 +130,11 @@ const ids = (r) => itemsOf(r).map((i) => (i.tileRenderer || i.lockupViewModel).c
     t('a playlist in the address keeps watched videos', ids(parse(feed())).indexOf('lockwatch__') !== -1);
     win.location.hash = '#/browse?c=FEsubscriptions';
     t('Subscriptions hides watched videos', ids(parse(feed())).indexOf('watched95__') === -1);
+    // A malformed escape in the address names no page: the filters still run.
+    win.location.hash = '#/browse?c=%E0%A4%A';
+    t('a malformed c= in the address still filters the feed',
+      ids(parse(feed())) === 'watched50__,long1234___,noduration_,hourlong___', ids(parse(feed())));
+    win.location.hash = '#/browse?c=FEsubscriptions';
 
     const watchNext = {
       responseContext: { _pad: pad },
