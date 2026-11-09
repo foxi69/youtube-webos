@@ -697,10 +697,19 @@ const ids = (r) => itemsOf(r).map((i) => (i.tileRenderer || i.lockupViewModel).c
     await wait(50);
     const resolve = win._yttv.resolver.instance.resolveCommand;
     const setLang = (extra) => ({ setClientSettingEndpoint: { settingDatas: [Object.assign({ clientSettingEnum: { item: 'I18N_LANGUAGE' } }, extra)] } });
-    const r1 = resolve(setLang({}));
+    const missing = setLang({});
+    const r1 = resolve(missing);
     t('a language setting with no language goes to YouTube untouched',
-      r1 === 'original' && win.document.cookie.indexOf('hl=') === -1, r1 + ' / ' + win.document.cookie);
+      r1 === 'original' && win.document.cookie.indexOf('hl=') === -1 && resolved.length === 1 && resolved[0] === missing,
+      r1 + ' / ' + win.document.cookie + ' / ' + JSON.stringify(resolved));
+    const notText = setLang({ stringValue: 42 });
+    resolve(notText);
+    t('a language that is not text goes to YouTube untouched too',
+      win.document.cookie.indexOf('hl=') === -1 && resolved.length === 2 && resolved[1] === notText, win.document.cookie);
+    resolved.length = 0;
     resolve(setLang({ stringValue: 'hu' }));
+    t('a language setting reloads the page',
+      resolved.length === 1 && JSON.stringify(resolved[0]) === '{"signalAction":{"signal":"RELOAD_PAGE"}}', JSON.stringify(resolved));
     t('a language setting stores hl in the PREF cookie', /PREF=[^;]*hl=hu/.test(win.document.cookie), win.document.cookie);
   }
 

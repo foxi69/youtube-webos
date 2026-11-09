@@ -219,6 +219,18 @@ const ACCOUNT_B = { identityType: 'SIGNED_IN', obfuscatedGaiaId: '2222', accessT
     t('showWatch: no errors', errors.length === 0, errors.join(' | '));
   }
 
+  {
+    // The old switch off, with no account clock: the clock stays off.
+    const { win, errors } = boot({ showWatch: false }, ACCOUNT_A);
+    key(win, GREEN);
+    toggle(win, checkbox(win, RYD));
+    await wait(300);
+    const shared = read(win, CONFIG_KEY);
+    t('showWatch off: becomes clockMode off', !('showWatch' in shared) && shared.clockMode === 'off', JSON.stringify(shared));
+    t('showWatch off: no clock', !win.document.querySelector('.webOs-watch'));
+    t('showWatch off: no errors', errors.length === 0, errors.join(' | '));
+  }
+
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })();

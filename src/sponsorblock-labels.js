@@ -152,12 +152,15 @@ export function categoryColor(category) {
   // Only segmentTypes have a colour key: configRead() throws on any other
   // key, which made an exclusive_access label abort the whole SponsorBlock
   // setup ("SB Error: tried to read unknown config key").
-  if (segmentTypes[category]) {
+  // Own keys only: an inherited name ("constructor") would read a colour
+  // key that does not exist.
+  const own = (map) => Object.prototype.hasOwnProperty.call(map, category);
+  if (own(segmentTypes)) {
     const configured = configRead(`${category}Color`);
     if (configured) return safeColor(configured, '#00d400');
     return safeColor(segmentTypes[category].color, '#00d400');
   }
-  if (EXTRA_FULL_CATEGORIES[category]) return EXTRA_FULL_CATEGORIES[category].color;
+  if (own(EXTRA_FULL_CATEGORIES)) return EXTRA_FULL_CATEGORIES[category].color;
   return '#00d400';
 }
 

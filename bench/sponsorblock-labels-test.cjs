@@ -280,6 +280,12 @@ console.log('\ngenerated CSS cannot be broken out of');
   const { sandbox } = load(cfg);
   eq('bad colour falls back', sandbox.categoryColor('sponsor'), '#00d400');
   eq('valid hex passes', sandbox.safeColor('#ABC', '#000'), '#ABC');
+  // configRead throws on an unknown key, as the real one does.
+  const strict = new Proxy(allEnabled, { get: (o, k) => {
+    if (typeof k === 'string' && /Color$/.test(k) && !(k in o)) throw new Error('unknown config key ' + k);
+    return o[k];
+  } });
+  eq('an inherited name is no category', load(strict).sandbox.categoryColor('constructor'), '#00d400');
   eq('junk rejected', sandbox.safeColor('url(x)', '#000'), '#000');
   eq('quotes escaped', sandbox.cssString('a"b'), '"a\\"b"');
   eq('backslash escaped', sandbox.cssString('a\\b'), '"a\\\\b"');
