@@ -1238,7 +1238,7 @@ function createOptionsPanel() {
       );
     }
     const elDeArrowFallback = createAlignedCycleControl('dearrowThumbnailFallback', dearrowThumbnailFallbacks);
-    const elDeArrowFallbackHelp = createElement('div', { text: 'Random Frame: a frame DeArrow picks from the video. Start, middle and end frames: YouTube\'s own', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } });
+    const elDeArrowFallbackHelp = createElement('div', { text: 'Random Frame: a frame DeArrow picks from the video; for it the id of every video shown is sent to DeArrow\'s servers, with the other choices only of videos that have a crowdsourced thumbnail. Start, middle and end frames: YouTube\'s own', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } });
     const deArrowThumbRows = [createConfigCheckbox('dearrowCrowdThumbnails'), elDeArrowFallback, elDeArrowFallbackHelp];
     pageUITweaks.appendChild(createSection('DeArrow', [
       createConfigCheckbox('enableDeArrow'),

@@ -53,6 +53,7 @@ function boot(cfg, opts) {
     enableReturnYouTubeDislike: false, upgradeThumbnails: false
   }, cfg)));
   if (opts.aiStore !== undefined) win.localStorage.setItem('ytaf-ai-videos', opts.aiStore);
+  if (opts.notAiStore !== undefined) win.localStorage.setItem('ytaf-not-ai-videos', opts.notAiStore);
   if (legacy) applyChrome38Downgrade(win);
   win.eval(fs.readFileSync(bundlePath, 'utf8'));
   const doc = win.document;
@@ -375,6 +376,50 @@ function resultItems(win, out, surface) {
     const valid = storedIds(h.win);
     t('store cap: at most 2000 ids retained', valid.length <= 2000, String(valid.length));
     t('store cap: oldest id evicted', valid.indexOf('saved0') === -1);
+    h.close();
+  }
+
+  // "No AI label" is remembered for a week, so the same videos are not asked
+  // about again at every start of the app.
+  {
+    const h = boot({ markAiVideos: true }, { answers: { [id(20)]: 'plain', [id(21)]: 'ai' } });
+    h.card(id(20));
+    h.card(id(21));
+    await wait(3600); // past the store's write delay
+    const saved = h.win.localStorage.getItem('ytaf-not-ai-videos') || '';
+    t('not AI result: remembered', saved.indexOf(id(20) + ':') === 0, saved);
+    t('AI result: not among the remembered "not AI"', saved.indexOf(id(21)) === -1, saved);
+    h.close();
+
+    const h2 = boot({ markAiVideos: true }, { notAiStore: saved, answers: { [id(20)]: 'ai' } });
+    const again = h2.card(id(20));
+    h2.card(id(22));
+    await wait(400);
+    t('a remembered "not AI" video is not asked about again', h2.requests.indexOf(id(20)) === -1 && h2.requests.indexOf(id(22)) !== -1, h2.requests.join(','));
+    t('a remembered "not AI" video gets no badge', !again.hasAttribute(BADGE));
+    h2.close();
+
+    // Run out, far in the future (a clock set back), or not a day at all: asked again.
+    const today = Math.round(Date.now() / 864e5);
+    const stale = [id(30) + ':' + (today - 1), id(31) + ':' + (today + 400), id(32) + ':x'].join(',');
+    const h3 = boot({ markAiVideos: true }, { notAiStore: stale });
+    h3.card(id(30)); h3.card(id(31)); h3.card(id(32));
+    await wait(400);
+    t('an entry that ran out, or is not to be trusted, is asked about again',
+      [30, 31, 32].every((n) => h3.requests.indexOf(id(n)) !== -1), h3.requests.join(','));
+    h3.close();
+  }
+
+  // No lookups while the arrow keys move: they start once the remote is quiet.
+  {
+    const h = boot({ markAiVideos: true }, {});
+    await wait(100);
+    dispatchTrusted(h.doc.body, new h.win.KeyboardEvent('keydown', { keyCode: 40, bubbles: true }));
+    h.card(id(40));
+    await wait(150);
+    const during = h.requests.indexOf(id(40)) !== -1;
+    await wait(500);
+    t('no lookup right after an arrow key, one once it is quiet', !during && h.requests.indexOf(id(40)) !== -1, `during=${during} ${h.requests.join(',')}`);
     h.close();
   }
 

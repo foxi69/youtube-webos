@@ -22,6 +22,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 + **Video queue**: with More Options in the Long-Press Menu on, holding OK on a video offers "Add to queue". Queued videos play one after another when the current one ends, and the queue lasts until the app closes. A video YouTube refuses to play is reported and the next one starts. The shortcut actions Play Next in Queue and Clear Queue can go on any key.
 + **Keep App Open When Paused** (Interface, off by default): YouTube closes the app 20 minutes (2 hours with no display) after a video was paused or ended, which shows as the app being gone when the TV's screensaver ends. With this on, that timer does nothing when it fires, also when the switch was turned on during the pause; the TV's own power settings still turn the TV off.
 
+## Changed
+
++ Remove AI Videos / Mark AI Videos: a video YouTube answered "no AI label" for is remembered for a week and not asked about again. It was asked about again at every start of the app (the answer was kept for an hour, in memory), and Home shows much the same videos each time. A video that gets its label later is noticed when the week is over. And no video is asked about while the arrow keys move: the lookups start once the remote is quiet.
++ DeArrow, Without a Crowdsourced Thumbnail: the note under it now says what Random Frame sends. For it the id of every video shown goes to DeArrow's servers; with the other choices only of the videos that have a crowdsourced thumbnail. Nothing about what is sent changed.
+
 ## Fixes
 
 + The first video opened after the app had been on Home for more than a minute with no player yet got no player at all: the attach made at the start gave up and was not made again for that video, so it had no Force Max Quality, no quality toast, no queue, and none of what follows the player's state. It is made again when the video opens. (On a TV where the script runs once the page has loaded.)
