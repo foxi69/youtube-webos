@@ -372,9 +372,8 @@ function interceptAndUpgradeQuality(videoId) {
 // 1080p for half a minute after a seek; one that got the range fell too
 // once. When the picture gets smaller below the best level, the range is set
 // again, once per video (one that failed before the range was set gets one
-// more try). Not over a
-// level picked by hand in YouTube's menu: the player's preference is then
-// that level, not 'auto' or 'highres'.
+// more try). Not over a level picked by hand in YouTube's menu: the player's
+// preference is then that level, not 'auto' or 'highres'.
 // ponytail: once per video; a stream that falls again stays down, a timed
 // retry would be the next step if that shows up.
 function onVideoResize(evt) {
