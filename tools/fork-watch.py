@@ -187,15 +187,16 @@ def compare(head):
     if not cmp:
         return cmp
     last = -(-(cmp.get('total_commits') or 0) // 100)
-    first = max(1, last - MAX_COMPARE_COMMITS // 100 + 1)
-    # Past the cap, the first pages hold the oldest: they are left out.
+    # Past the cap, the first pages hold the oldest: they are left out. One
+    # page more than the cap holds, as the last one is seldom full.
+    first = max(1, last - MAX_COMPARE_COMMITS // 100)
     commits = list(cmp.get('commits') or []) if first == 1 else []
     for page in range(max(first, 2), last + 1):
         more = get(path, {'per_page': 100, 'page': page})
         if not more or not more.get('commits'):
             break
         commits.extend(more['commits'])
-    cmp['commits'] = commits
+    cmp['commits'] = commits[-MAX_COMPARE_COMMITS:]
     return cmp
 
 

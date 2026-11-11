@@ -119,9 +119,15 @@ many, answer = paged(1150)
 fw.request = Api({'/repos/me/youtube-webos/compare/main...dev:huge': answer})
 cmp = fw.compare('dev:huge')
 got = [c['commit']['message'] for c in cmp['commits']]
-# Whole pages of 100: the last ten of twelve, commits 200 to 1149.
-check('compare: over the cap, the newest pages in order, the oldest left out',
-      got == [c['commit']['message'] for c in many[200:]], f'{len(got)} commits: {got[:1]} .. {got[-1:]}')
+check('compare: over the cap, exactly the newest MAX_COMPARE_COMMITS, in order',
+      got == [c['commit']['message'] for c in many[-fw.MAX_COMPARE_COMMITS:]],
+      f'{len(got)} commits: {got[:1]} .. {got[-1:]}')
+# Two pages short of whole: still all of the newest.
+many, answer = paged(1201)
+fw.request = Api({'/repos/me/youtube-webos/compare/main...dev:huge': answer})
+got = [c['commit']['message'] for c in fw.compare('dev:huge')['commits']]
+check('compare: 1,201 commits, the newest 1,000', got == [c['commit']['message'] for c in many[-1000:]],
+      f'{len(got)} commits: {got[:1]} .. {got[-1:]}')
 
 # --- new_commits(): one branch GitHub cannot compare does not stop the others ---
 api = Api({
