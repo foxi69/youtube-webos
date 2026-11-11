@@ -51,6 +51,22 @@ async function boot(cfg, { html, url, speed = 1, fetch, prepare }) {
     enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
     upgradeThumbnails: false, enableAutoLogin: false
   }, cfg)));
+  // How often the page looks for the player: the attach poll's heartbeat.
+  win.playerLookups = 0;
+  const byId = win.document.getElementById.bind(win.document);
+  win.document.getElementById = (id) => {
+    if (id === 'ytlr-player__player-container-player') win.playerLookups++;
+    return byId(id);
+  };
+  // Every "Playing in ..." toast put on the page, with the page it came on.
+  win.qualityToasts = [];
+  new win.MutationObserver((records) => {
+    for (const record of records) {
+      for (const node of record.addedNodes) {
+        if (/Playing in/.test(node.textContent || '')) win.qualityToasts.push(win.document.body.className);
+      }
+    }
+  }).observe(win.document.documentElement, { childList: true, subtree: true });
   if (prepare) prepare(win);
   if (win.document.readyState !== 'complete') await new Promise((r) => win.addEventListener('load', r));
   win.eval(bundle);
@@ -77,6 +93,17 @@ function makePlayer(win, state) {
   return p;
 }
 
+/** Waits until `check()` holds, at most `ms`; resolves with whether it did. */
+async function until(check, ms) {
+  const end = Date.now() + ms;
+  while (!check()) {
+    if (Date.now() > end) return false;
+    // eslint-disable-next-line no-await-in-loop
+    await sleep(10);
+  }
+  return true;
+}
+
 function openVideo(win) {
   win.location.hash = '#/watch?v=' + VIDEO;
   win.document.body.className = 'WEB_PAGE_TYPE_WATCH';
@@ -86,7 +113,16 @@ function openVideo(win) {
   // ---- The first video after more than a minute on Home with no player ----
   {
     const win = await boot({}, { html: '<body class="WEB_PAGE_TYPE_BROWSE"></body>', url: 'https://www.youtube.com/tv#/', speed: 400 });
-    await sleep(600); // four minutes of page time: the attach has given up
+    // The attach at the start has given up: it looked for the player its
+    // hundred-odd times and then no more, however slowly its timers ran.
+    let seen = -1;
+    const gaveUp = await until(() => {
+      const quiet = win.playerLookups > 100 && win.playerLookups === seen;
+      seen = win.playerLookups;
+      return quiet;
+    }, 20000);
+    await sleep(200);
+    t('the attach at the start gives up with no player', gaveUp && win.playerLookups === seen, `lookups=${win.playerLookups}`);
     const player = makePlayer(win, 1);
     win.document.body.appendChild(player.el);
     let events = 0;
@@ -108,9 +144,8 @@ function openVideo(win) {
     await sleep(100);
     t('the player is attached on Home at the start', player.listeners.length === 1);
     player.emit(1); // the preview plays
-    await sleep(270); // 5.4 s of page time: the toast comes 4 s in and stays 3 s
-    t('a preview on Home: no "Playing in" toast', !/Playing in/.test(win.document.body.textContent));
-    await sleep(400); // 8 s more: past the toast and the subtitles' retry
+    await sleep(670); // 13 s of page time: past the toast's 4 s and the subtitles' retry
+    t('a preview on Home: no "Playing in" toast', win.qualityToasts.length === 0, win.qualityToasts.join(','));
     t('a preview on Home: no subtitles turned on', player.setTrack === 0, `setTrack=${player.setTrack}`);
     // Opened: the same player plays on, with no new state.
     const before = player.setTrack;
@@ -119,7 +154,9 @@ function openVideo(win) {
     await sleep(400);
     t('the video opened from its preview: subtitles turned on', player.setTrack === before + 1 && !!player.track && player.track.languageCode === 'hu',
       `setTrack=${player.setTrack} before=${before}`);
-    t('the video opened from its preview: the "Playing in" toast', /Playing in 720p/.test(win.document.body.textContent));
+    const toasted = await until(() => win.qualityToasts.length > 0, 5000);
+    t('the video opened from its preview: the "Playing in" toast, on the watch page',
+      toasted && win.qualityToasts.length === 1 && win.qualityToasts[0] === 'WEB_PAGE_TYPE_WATCH', win.qualityToasts.join(','));
 
     // Subtitles turned off by hand stay off while the video is watched...
     // By hand means a key press, which also ends the watch for a reset by the player.
@@ -162,11 +199,13 @@ function openVideo(win) {
     });
     // eslint-disable-next-line no-await-in-loop
     await sleep(900);
-    const bars = win.document.querySelectorAll('#previewbar .previewbar').length;
-    const rows = win.document.querySelectorAll('.sb-segment-row').length;
-    const want = muting ? 2 : 1;
-    t(`SponsorBlock, muting ${muting ? 'on' : 'off'}: ${want} mark(s) on the seek bar and row(s) in the list`,
-      bars === want && rows === want, `bars=${bars} rows=${rows}`);
+    // Which ones, not how many: the skip segment is 10 to 20 of 100 s, the mute one 30 to 40.
+    const bars = Array.prototype.map.call(win.document.querySelectorAll('#previewbar .previewbar'), (b) => `${b.style.left} ${b.style.width}`);
+    const rows = Array.prototype.map.call(win.document.querySelectorAll('.sb-segment-row .sb-segment-time'), (r) => r.textContent);
+    const wantBars = muting ? ['10% 10%', '30% 10%'] : ['10% 10%'];
+    const wantRows = muting ? ['00:10 to 00:20', '00:30 to 00:40'] : ['00:10 to 00:20'];
+    t(`SponsorBlock, muting ${muting ? 'on: the skip and the mute segment' : 'off: the skip segment alone'} on the seek bar and in the list`,
+      bars.join('|') === wantBars.join('|') && rows.join('|') === wantRows.join('|'), `bars=${bars.join('|')} rows=${rows.join('|')}`);
     win.close();
   }
 

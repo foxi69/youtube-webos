@@ -14,6 +14,7 @@ import { configRead } from '../config.js';
 import { itemTitle, itemDurationSeconds } from '../feed-filters.js';
 import { TILES_PER_VIDEO, SCAN_MAX_DEPTH, SCAN_MAX_NODES, BADGE_MARK } from './constants.js';
 import { videos, showsCrowdsourced } from './state.js';
+import { settledThumbnailUrl } from '../thumbnail-quality.js';
 
 const VIDEO_ID_RE = /^[\w-]{11}$/;
 
@@ -232,22 +233,22 @@ function applyToTile(node, video) {
 }
 
 /**
- * YouTube's own thumbnail of `video` as its newest remembered tile has it now,
- * or null. Not the URL read when the video was first seen: Max Thumbnail
- * Quality may have drawn a rung there that it has since found missing and
- * corrected in the response.
+ * YouTube's own thumbnail of `video` to put back on a tile, or null: as its
+ * newest remembered tile has it now, else as read when the video was first
+ * seen. Either may be at a rung Max Thumbnail Quality drew before it knew and
+ * has since found missing (it corrects the response, but not every entry, and
+ * not what was read here): that one comes back at the rung the video has.
  */
 export function currentOriginalThumb(video) {
-  const tiles = video.tiles;
-  if (!tiles) return null;
+  const tiles = video.tiles || [];
   for (let i = tiles.length - 1; i >= 0; i--) {
     const rec = originals.get(tiles[i]);
     const thumb = rec ? null : thumbnailOf(tiles[i]);
     const list = rec ? rec.thumbnails : thumb && thumb[0][thumb[1]];
     const url = Array.isArray(list) && list[0] && list[0].url;
-    if (typeof url === 'string' && url) return url;
+    if (typeof url === 'string' && url) return settledThumbnailUrl(url);
   }
-  return null;
+  return video.originalThumb ? settledThumbnailUrl(video.originalThumb) : null;
 }
 
 /** Writes what is now decided for `video` into every tile of it remembered from the responses. */

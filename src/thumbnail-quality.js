@@ -776,6 +776,23 @@ export function upgradeResponseThumbnails(data, responseType) {
   return changed;
 }
 
+/**
+ * `url` as it should be now: a thumbnail URL still at the rung the mode draws
+ * before any proof, for a video since found not to have that rung, comes back
+ * at the rung it does have; any other URL comes back as it is. For the
+ * entries the correction never reached (trackPending keeps eight per video).
+ */
+export function settledThumbnailUrl(url) {
+  if (typeof url !== 'string') return url;
+  const match = THUMB_URL_RE.exec(url);
+  if (!match) return url;
+  const verified = qualityCache.get(match[1]);
+  const rank = rankOf(match[2]);
+  if (verified === undefined || rank !== usefulRank || verified >= rank) return url;
+  const settled = verified < FLOOR_RANK ? FLOOR_RANK : verified;
+  return buildUrl(match[1], QUALITY_NAMES[settled], settled <= GUARANTEED_RANK);
+}
+
 /** Whether adblock.js needs to keep its JSON.parse hook installed for us. */
 export function thumbnailHookRequired() {
   return enabled;

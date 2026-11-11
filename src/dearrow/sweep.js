@@ -71,12 +71,10 @@ function sweepThumb(thumbEl, video, want) {
     const at = background.indexOf(want);
     if (at === -1 || at > 5) thumbEl.style.backgroundImage = `url("${want}")`;
     video.shownThumb = want;
-  } else if (
-    video.shownThumb &&
-    video.originalThumb &&
-    background.indexOf(video.shownThumb) !== -1
-  ) {
-    thumbEl.style.backgroundImage = `url("${currentOriginalThumb(video) || video.originalThumb}")`;
+  } else if (video.shownThumb && background.indexOf(video.shownThumb) !== -1) {
+    // A video first seen in a tile with no thumbnail may have one in a later tile.
+    const original = currentOriginalThumb(video);
+    if (original) thumbEl.style.backgroundImage = `url("${original}")`;
   }
 }
 

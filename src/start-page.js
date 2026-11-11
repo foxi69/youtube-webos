@@ -15,7 +15,9 @@ const BROWSE_IDS = {
 const GIVE_UP_MS = 120000;
 // What the address carries on a launch that goes somewhere (handleLaunch):
 // a video, a playlist, a voice query, a search, a cast.
-const LAUNCH_TARGET_RE = /[?&](?:[cv]|list|vq|va|launch|inApp|search_query|pairingCode|dialLaunch|cc2)=/;
+// A parameter counts by being there, with a value or without ("?dialLaunch"),
+// as block-webos-cast.ts reads the cast ones.
+const LAUNCH_TARGET_RE = /[?&](?:[cv]|list|vq|va|launch|inApp|search_query|pairingCode|dialLaunch|cc2)(?:[=&]|$)/;
 
 /** Whether the address is Home with nothing to open on top of it. */
 function isPlainHome() {
