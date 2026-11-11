@@ -21,8 +21,7 @@ on:
   schedule:
     - cron: '17 5 * * *'
 
-# One run at a time: another one pushing to the sync branch between the
-# .github/ check below and the dispatch would get its commit tested unread.
+# One run at a time: two would merge into the same sync branch at once.
 concurrency:
   group: sync-upstream
   cancel-in-progress: false
@@ -80,25 +79,32 @@ jobs:
         run: |
           # An open sync PR may carry your own conflict fixes: build on it
           # instead of starting over, so nothing on it is ever force-pushed away.
+          merge() {
+            if ! git merge --no-edit "$1"; then
+              {
+                echo "### Merge conflict with $1 - resolve it by hand"
+                echo '```'
+                git diff --name-only --diff-filter=U
+                echo '```'
+              } | tee -a "$GITHUB_STEP_SUMMARY"
+              git merge --abort
+              exit 1
+            fi
+          }
+
           open_pr="$(gh pr list --head "$SYNC_BRANCH" --base main --state open --json number --jq '.[].number')"
           if [ -n "$open_pr" ]; then
             git fetch origin "$SYNC_BRANCH"
             git checkout -B "$SYNC_BRANCH" "origin/$SYNC_BRANCH"
+            # main may have moved on since the pull request was opened: the
+            # branch gets it too, so what is tested is what the merge gives.
+            merge origin/main
           else
             git checkout -B "$SYNC_BRANCH"
           fi
           echo "open_pr=$open_pr" >> "$GITHUB_OUTPUT"
 
-          if ! git merge --no-edit "upstream/$UPSTREAM_BRANCH"; then
-            {
-              echo "### Merge conflict - resolve it by hand"
-              echo '```'
-              git diff --name-only --diff-filter=U
-              echo '```'
-            } | tee -a "$GITHUB_STEP_SUMMARY"
-            git merge --abort
-            exit 1
-          fi
+          merge "upstream/$UPSTREAM_BRANCH"
 
           if [ -n "$open_pr" ]; then
             git push origin "$SYNC_BRANCH"
@@ -142,11 +148,14 @@ jobs:
             } | tee -a "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          # The dispatch runs the branch as it is then: only when that is
-          # still the commit checked above (no one pushed to it since).
-          remote="$(git ls-remote origin "refs/heads/$SYNC_BRANCH" | cut -f1)"
-          if [ "$remote" != "$(git rev-parse HEAD)" ]; then
-            echo "### Build & Test not started: $SYNC_BRANCH moved on since the check ($remote)" | tee -a "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-          gh workflow run main.yml --ref "$SYNC_BRANCH"
+          # Dispatched on a branch made for the commit checked above, not on
+          # the sync branch: a push to that one after the check would have
+          # its workflows run unread. The same commit, so the checks still
+          # show on the pull request. The earlier ones are deleted.
+          sha="$(git rev-parse HEAD)"
+          ref="upstream-sync-checked/${sha:0:12}"
+          for old in $(git ls-remote --heads origin 'refs/heads/upstream-sync-checked/*' | cut -f2); do
+            [ "$old" = "refs/heads/$ref" ] || git push -q origin --delete "$old" || true
+          done
+          git push -q origin "$sha:refs/heads/$ref"
+          gh workflow run main.yml --ref "$ref"
