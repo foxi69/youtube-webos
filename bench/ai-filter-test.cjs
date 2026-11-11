@@ -422,6 +422,22 @@ function resultItems(win, out, surface) {
     h.close();
   }
 
+  // Lookups already queued wait for the remote too: two run at a time, and
+  // the third and fourth do not start while the arrows move.
+  {
+    const h = boot({ markAiVideos: true }, { delay: 100 });
+    for (let n = 50; n < 54; n++) h.card(id(n));
+    await wait(80); // the sweep has queued all four, two are running
+    const first = h.requests.length;
+    dispatchTrusted(h.doc.body, new h.win.KeyboardEvent('keydown', { keyCode: 39, bubbles: true }));
+    await wait(220); // the two running have answered, the remote is still moving
+    const during = h.requests.length;
+    await wait(500);
+    t('queued lookups wait while the arrows move, and start once the remote is quiet',
+      first === 2 && during === 2 && h.requests.length === 4, `first=${first} during=${during} after=${h.requests.length}`);
+    h.close();
+  }
+
   console.log(`AI filter tests: ${pass} passed, ${fail} failed`);
   process.exitCode = fail ? 1 : 0;
 })().catch((e) => { console.error(e); process.exit(1); });

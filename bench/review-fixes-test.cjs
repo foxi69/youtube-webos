@@ -203,6 +203,27 @@ function openVideo(win) {
     const wantRows = muting ? ['00:10 to 00:20', '00:30 to 00:40'] : ['00:10 to 00:20'];
     t(`SponsorBlock, muting ${muting ? 'on: the skip and the mute segment' : 'off: the skip segment alone'} on the seek bar and in the list`,
       bars.join('|') === wantBars.join('|') && rows.join('|') === wantRows.join('|'), `bars=${bars.join('|')} rows=${rows.join('|')}`);
+    // Switched during the video, in the panel: the bar and the list follow at once.
+    const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
+    Object.defineProperty(e, 'keyCode', { get: () => 404, configurable: true }); // green: the panel
+    dispatchTrusted(win.document.body, e);
+    // The SponsorBlock page is built a frame after the panel opens.
+    await until(() => Array.from(win.document.querySelectorAll('label .label-text')).some((l) => l.textContent === 'Allow segments that mute audio'), 2000);
+    const label = Array.from(win.document.querySelectorAll('label'))
+      .find((l) => (l.querySelector('.label-text') || {}).textContent === 'Allow segments that mute audio');
+    const input = label && label.querySelector('input');
+    t('SponsorBlock: the muting switch is in the panel', !!input);
+    if (input) {
+      input.checked = !muting;
+      input.dispatchEvent(new win.Event('change'));
+    }
+    await sleep(300);
+    const barsAfter = Array.prototype.map.call(win.document.querySelectorAll('#previewbar .previewbar'), (b) => `${b.style.left} ${b.style.width}`);
+    const rowsAfter = Array.prototype.map.call(win.document.querySelectorAll('.sb-segment-row .sb-segment-time'), (r) => r.textContent);
+    const flipBars = muting ? ['10% 10%'] : ['10% 10%', '30% 10%'];
+    const flipRows = muting ? ['00:10 to 00:20'] : ['00:10 to 00:20', '00:30 to 00:40'];
+    t(`SponsorBlock, muting switched ${muting ? 'off' : 'on'} during the video: the seek bar and the list follow`,
+      barsAfter.join('|') === flipBars.join('|') && rowsAfter.join('|') === flipRows.join('|'), `bars=${barsAfter.join('|')} rows=${rowsAfter.join('|')}`);
     win.close();
   }
 

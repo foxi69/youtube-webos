@@ -371,16 +371,22 @@ const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-d
   // turns out to have none. YouTube's thumbnail put back on a tile is the one
   // the video has, also where the correction did not reach: it keeps eight
   // entries per video, and the tile drawn here is of a later response.
-  {
+  // A response that ships hq720 proves it: that is what comes back then, not hqdefault.
+  for (const shipped of ['hqdefault', 'hq720']) {
     const { win, parse, pump } = boot({ upgradeThumbnails: true, thumbnailQualityMode: 'eager' }, { head: { delay: 150, length: 1000 } });
+    const shippedTile = () => {
+      const item = tile('custom00001', 'Clickbait title');
+      item.tileRenderer.header.tileHeaderRenderer.thumbnail.thumbnails[0].url = `https://i.ytimg.com/vi/custom00001/${shipped}.jpg`;
+      return item;
+    };
     let last = null;
-    for (let i = 0; i < 12; i++) last = parse(browse([tile('custom00001', 'Clickbait title')]));
+    for (let i = 0; i < 12; i++) last = parse(browse([shippedTile()]));
     const drawn = tileThumb(itemsOf(last)[0]);
-    t('Fast draws maxresdefault before it is checked', drawn === 'https://i.ytimg.com/vi/custom00001/maxresdefault.jpg', drawn);
+    t(`Fast draws maxresdefault before it is checked (${shipped} shipped)`, drawn === 'https://i.ytimg.com/vi/custom00001/maxresdefault.jpg', drawn);
     await waitFor(() => tileThumb(itemsOf(last)[0]).indexOf('COPY') !== -1, 2000);
     const el = render(win, itemsOf(last)[0]);
     await wait(700); // the check has answered (no maxresdefault), and the sweep has run
-    t('the tile on screen has DeArrow\'s thumbnail', shownThumb(el).indexOf('COPY') !== -1, shownThumb(el));
+    t(`the tile on screen has DeArrow's thumbnail (${shipped} shipped)`, shownThumb(el).indexOf('COPY') !== -1, shownThumb(el));
     const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
     Object.defineProperty(e, 'keyCode', { get: () => GREEN, configurable: true });
     dispatchTrusted(win.document.body, e);
@@ -393,8 +399,8 @@ const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-d
       input.dispatchEvent(new win.Event('change'));
     }
     await wait(50);
-    t('turned off: the tile gets back the thumbnail the video has, not the missing size',
-      shownThumb(el) === 'url("https://i.ytimg.com/vi/custom00001/hqdefault.jpg")', shownThumb(el));
+    t(`turned off (${shipped} shipped): the tile gets back the thumbnail the video has, not the missing size`,
+      shownThumb(el) === `url("https://i.ytimg.com/vi/custom00001/${shipped}.jpg")`, shownThumb(el));
   }
 
   // ---- The old thumbnail switch carries over ----

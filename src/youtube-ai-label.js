@@ -37,6 +37,8 @@ let queue = [];
 let active = 0;
 let generation = 0;
 let pausedUntil = 0;
+// No new request starts before this (holdLookups): the remote is moving.
+let heldUntil = 0;
 
 function unknownResult(expiresAt) {
   return { status: 'unknown', expiresAt };
@@ -151,7 +153,7 @@ function start(entry) {
 }
 
 function pump() {
-  while (active < MAX_ACTIVE && queue.length > 0 && Date.now() >= pausedUntil) {
+  while (active < MAX_ACTIVE && queue.length > 0 && Date.now() >= pausedUntil && Date.now() >= heldUntil) {
     const entry = queue.shift();
     if (!entry.done) start(entry);
   }
@@ -189,6 +191,21 @@ export function getAiLabel(videoId) {
   queue.push(entry);
   pump();
   return entry.promise;
+}
+
+/**
+ * No queued lookup starts before `until` (a time): the remote's arrow keys
+ * are moving, and the tiles passed are gone again. Requests already running
+ * finish. resumeLookups() starts what waits, once the time is past: this
+ * module keeps no timer of its own.
+ */
+export function holdLookups(until) {
+  if (until > heldUntil) heldUntil = until;
+}
+
+/** Starts the queued lookups that a hold kept waiting. */
+export function resumeLookups() {
+  pump();
 }
 
 /**

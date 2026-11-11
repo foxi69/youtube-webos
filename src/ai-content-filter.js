@@ -1,6 +1,6 @@
 import './ai-content-filter.css';
 import { configRead, configAddChangeListener } from './config.js';
-import { getAiLabel, cancelAiLabelRequests } from './youtube-ai-label.js';
+import { getAiLabel, cancelAiLabelRequests, holdLookups, resumeLookups } from './youtube-ai-label.js';
 import { extractAiVideoId } from './ai-video-id.js';
 import { recordAiVideo, removeAiVideo, recordNotAiVideo, notAiUntil } from './ai-video-store.js';
 
@@ -25,6 +25,7 @@ const SWEEP_DELAY_MS = 50;
 // the rows is when the app is busiest, and the tiles passed are gone again.
 const NAV_PAUSE_MS = 350;
 let lastNavAt = 0;
+let resumeTimer = null;
 
 let initialized = false;
 let enabled = false;
@@ -259,7 +260,12 @@ export function initAiContentFilter() {
   configAddChangeListener('enableAdBlock', refresh);
   // Arrow keys: one timestamp, read by the sweep.
   document.addEventListener('keydown', (evt) => {
-    if (enabled && evt.keyCode >= 37 && evt.keyCode <= 40) lastNavAt = Date.now();
+    if (!enabled || evt.keyCode < 37 || evt.keyCode > 40) return;
+    lastNavAt = Date.now();
+    // The lookups already queued wait too, not only the next sweep's.
+    holdLookups(lastNavAt + NAV_PAUSE_MS);
+    clearTimeout(resumeTimer);
+    resumeTimer = setTimeout(resumeLookups, NAV_PAUSE_MS);
   }, true);
   if (document.body) refresh();
   else document.addEventListener('DOMContentLoaded', refresh);

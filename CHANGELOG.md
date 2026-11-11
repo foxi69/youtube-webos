@@ -25,7 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## Changed
 
 + The AI label and Most Replayed lookups ask YouTube as its web client, of a version written in one place now (`src/web-client.js`). Should YouTube stop taking that version, which it answers with an error to every lookup, a toast says so once instead of the two features going quiet.
-+ Remove AI Videos / Mark AI Videos: a video YouTube answered "no AI label" for is remembered for a week and not asked about again. It was asked about again at every start of the app (the answer was kept for an hour, in memory), and Home shows much the same videos each time. A video that gets its label later is noticed when the week is over. And no video is asked about while the arrow keys move: the lookups start once the remote is quiet.
++ Remove AI Videos / Mark AI Videos: a video YouTube answered "no AI label" for is remembered for a week and not asked about again. It was asked about again at every start of the app (the answer was kept for an hour, in memory), and Home shows much the same videos each time. A video that gets its label later is noticed when the week is over. And no video is asked about while the arrow keys move, the ones already waiting included: the lookups start once the remote is quiet.
 + DeArrow, Without a Crowdsourced Thumbnail: the note under it now says what Random Frame sends. For it the id of every video shown goes to DeArrow's servers; with the other choices only of the videos that have a crowdsourced thumbnail. Nothing about what is sent changed.
 
 ## Fixes
@@ -36,7 +36,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 + Start Page: a launch into a video, a voice search or a cast is told from the address as the app builds it, with the query before the hash. It was looked for in the hash only, so it was told from the launch parameters alone.
 + SponsorBlock: a segment that mutes is no longer drawn on the seek bar or listed in the SponsorBlock tab while Allow segments that mute audio is off, where it is neither muted nor skipped (it looked like a segment that would be skipped). Turned on during a video, it shows at once.
 + Video queue: Play Next in Queue works from any page, not only while a video plays, so a queue filled on Home can be started there.
-+ DeArrow switched off (or its copies dropped): a tile gets back YouTube's thumbnail as the response has it now. It got the address read when the video was first seen, which with Max Thumbnail Quality in Fast or Smooth (SD) could be a size the video does not have (a grey picture).
++ DeArrow switched off (or its copies dropped): a tile gets back YouTube's thumbnail as the response has it now. It got the address read when the video was first seen, which with Max Thumbnail Quality in Fast or Smooth (SD) could be a size the video does not have (a grey picture). Where YouTube's own response showed a bigger size (hq720), that one comes back.
 + Separate Settings for Each Account: an account seen for the first time on a TV whose shared settings are from before DeArrow's thumbnail fallbacks keeps the thumbnail switch those had, as the shared settings do.
 + Notifications: a message that stays until it is taken away ("Press Blue to skip") no longer gets a time limit when the same text is shown again with one.
 + SponsorBlock: "Muted ... segment" is not shown a second time when a setting changes inside a muted segment.

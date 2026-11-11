@@ -228,6 +228,12 @@ const promotionAttempts = new Map();
 const pendingEntries = new Map();
 /** videoId -> highest rank already known good, so corrections cannot regress. */
 const provenFloor = new Map();
+/**
+ * videoId -> the rank its entries were corrected to (settledRank): the probe's
+ * answer, or higher where a response proved a better rung. Read by
+ * settledThumbnailUrl for the entries the correction did not reach.
+ */
+const settledRanks = new Map();
 
 let activeProbes = 0;
 let saveTimer = null;
@@ -786,7 +792,8 @@ export function settledThumbnailUrl(url) {
   if (typeof url !== 'string') return url;
   const match = THUMB_URL_RE.exec(url);
   if (!match) return url;
-  const verified = qualityCache.get(match[1]);
+  const settledHere = settledRanks.get(match[1]);
+  const verified = settledHere !== undefined ? settledHere : qualityCache.get(match[1]);
   const rank = rankOf(match[2]);
   if (verified === undefined || rank !== usefulRank || verified >= rank) return url;
   const settled = verified < FLOOR_RANK ? FLOOR_RANK : verified;
@@ -982,6 +989,7 @@ function onProbeDone(videoId, rank, generation) {
   //    tile that has not scrolled into view yet reads `.url` at render time, so
   //    this corrects it before it is ever drawn - no grey frame at all.
   const settled = settledRank(videoId, resolved);
+  capSet(settledRanks, videoId, settled, CACHE_LIMIT);
   applyCorrection(videoId, settled);
 
   // 2. Queue a DOM sweep for tiles that were already on screen.
@@ -1336,6 +1344,7 @@ function resetVerification() {
   probeGeneration++;
   cleanup(false);
   qualityCache.clear();
+  settledRanks.clear();
   unconfirmed.clear();
   dropStoredCache();
 }

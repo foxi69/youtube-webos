@@ -743,6 +743,12 @@ const ids = (r) => itemsOf(r).map((i) => (i.tileRenderer || i.lockupViewModel).c
       await wait(20);
       t(`Start Page leaves a launch with ${param} alone`, b.win.location.hash === '#/', b.win.location.hash);
     }
+    // A name-only one with another parameter after it.
+    for (const param of ['dialLaunch', 'pairingCode', 'cc2']) {
+      b = start({ url: `https://www.youtube.com/tv?env_forceFullAnimation=1&${param}&vs=9#/` });
+      await wait(20);
+      t(`Start Page leaves a launch with ${param}, then another parameter, alone`, b.win.location.hash === '#/', b.win.location.hash);
+    }
     // A parameter that only starts like one of them is no launch target.
     b = start({ url: 'https://www.youtube.com/tv?env_forceFullAnimation=1&vs=9&cc2x=1#/' });
     await wait(20);
