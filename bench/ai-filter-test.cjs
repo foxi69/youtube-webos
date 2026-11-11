@@ -378,13 +378,36 @@ function resultItems(win, out, surface) {
     h.close();
   }
 
+  // Waits until `check()` holds, at most `ms`; resolves with whether it did.
+  const until = async (check, ms) => {
+    const end = Date.now() + ms;
+    while (!check()) {
+      if (Date.now() > end) return false;
+      await wait(10);
+    }
+    return true;
+  };
+  // Whether no lookup started in the first `ms` after `keyAt`, sampled until
+  // then: a lookup read as started before the clock is read started before
+  // that time, so a slow machine cannot make this fail, only see less.
+  const noneWithin = async (count, keyAt, ms) => {
+    for (;;) {
+      const seen = count();
+      const at = Date.now();
+      if (at - keyAt >= ms) return true;
+      if (seen) return false;
+      await wait(10);
+    }
+  };
+
   // "No AI label" is remembered for a week, so the same videos are not asked
   // about again at every start of the app.
   {
     const h = boot({ markAiVideos: true }, { answers: { [id(20)]: 'plain', [id(21)]: 'ai' } });
     h.card(id(20));
     h.card(id(21));
-    await wait(3600); // past the store's write delay
+    // The store writes 3 s after the last answer.
+    await until(() => (h.win.localStorage.getItem('ytaf-not-ai-videos') || '').indexOf(id(20) + ':') !== -1, 10000);
     const saved = h.win.localStorage.getItem('ytaf-not-ai-videos') || '';
     t('not AI result: remembered', saved.indexOf(id(20) + ':') === 0, saved);
     t('AI result: not among the remembered "not AI"', saved.indexOf(id(21)) === -1, saved);
@@ -413,12 +436,13 @@ function resultItems(win, out, surface) {
   {
     const h = boot({ markAiVideos: true }, {});
     await wait(100);
+    const keyAt = Date.now();
     dispatchTrusted(h.doc.body, new h.win.KeyboardEvent('keydown', { keyCode: 40, bubbles: true }));
     h.card(id(40));
-    await wait(150);
-    const during = h.requests.indexOf(id(40)) !== -1;
-    await wait(500);
-    t('no lookup right after an arrow key, one once it is quiet', !during && h.requests.indexOf(id(40)) !== -1, `during=${during} ${h.requests.join(',')}`);
+    // The pause is 350 ms from the key.
+    const quiet = await noneWithin(() => h.requests.indexOf(id(40)) !== -1, keyAt, 300);
+    const after = await until(() => h.requests.indexOf(id(40)) !== -1, 5000);
+    t('no lookup right after an arrow key, one once it is quiet', quiet && after, `quiet=${quiet} ${h.requests.join(',')}`);
     h.close();
   }
 
@@ -427,14 +451,15 @@ function resultItems(win, out, surface) {
   {
     const h = boot({ markAiVideos: true }, { delay: 100 });
     for (let n = 50; n < 54; n++) h.card(id(n));
-    await wait(80); // the sweep has queued all four, two are running
-    const first = h.requests.length;
+    // The sweep has queued all four, two are running.
+    const started = await until(() => h.requests.length === 2, 5000);
+    const keyAt = Date.now();
     dispatchTrusted(h.doc.body, new h.win.KeyboardEvent('keydown', { keyCode: 39, bubbles: true }));
-    await wait(220); // the two running have answered, the remote is still moving
-    const during = h.requests.length;
-    await wait(500);
+    // The two running answer 100 ms in; the other two wait out the pause.
+    const quiet = await noneWithin(() => h.requests.length > 2, keyAt, 300);
+    const after = await until(() => h.requests.length === 4, 5000);
     t('queued lookups wait while the arrows move, and start once the remote is quiet',
-      first === 2 && during === 2 && h.requests.length === 4, `first=${first} during=${during} after=${h.requests.length}`);
+      started && quiet && after, `started=${started} quiet=${quiet} requests=${h.requests.length}`);
     h.close();
   }
 

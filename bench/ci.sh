@@ -30,7 +30,18 @@ for arg in "$@"; do
 done
 
 build() { echo "=== build $*"; npx webpack --mode=production --stats errors-warnings "${env[@]}" "$@"; }
-run() { echo "--- $1"; node "bench/$1.cjs" "${@:2}" | grep -v '^[[:space:]]*$' | tail -n 1; }
+# The last line of each test; on a failure its FAIL lines too, with the line
+# under each, so the CI log says which case failed.
+run() {
+  echo "--- $1"
+  local out status=0
+  out="$(node "bench/$1.cjs" "${@:2}" 2>&1)" || status=$?
+  printf '%s\n' "$out" | grep -v '^[[:space:]]*$' | tail -n 1
+  if [ "$status" -ne 0 ]; then
+    printf '%s\n' "$out" | grep -A1 '^FAIL' || printf '%s\n' "$out" | tail -n 20
+    return "$status"
+  fi
+}
 
 build
 run polyfill-conformance
