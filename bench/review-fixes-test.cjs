@@ -230,7 +230,7 @@ function openVideo(win) {
   // ---- Force Max Quality: a stream that falls on its own is put back up ----
   // A video that starts at its best level gets no range (it would reload),
   // and after a seek the stream fell to 1080p by itself (seen on webOS 25).
-  for (const variant of ['falls', 'byHand', 'throws', 'throwsAfter']) {
+  for (const variant of ['falls', 'byHand', 'throws', 'throwsAfter', 'alwaysThrows']) {
     const win = await boot({ forceHighResVideo: true },
       { html: '<body class="WEB_PAGE_TYPE_WATCH"></body>', url: 'https://www.youtube.com/tv#/watch?v=' + VIDEO, speed: 20 });
     const player = makePlayer(win, -1);
@@ -245,7 +245,7 @@ function openVideo(win) {
       getUserPlaybackQualityPreference: () => (variant === 'byHand' ? 'hd720' : 'auto'),
       setPlaybackQualityRange: (min) => {
         ranges.push(min);
-        if (variant === 'throws' && ranges.length === 1) throw new Error('player busy');
+        if ((variant === 'throws' && ranges.length === 1) || variant === 'alwaysThrows') throw new Error('player busy');
         quality = 'hd1440';
       },
       // With 'throwsAfter', the range goes through and the call after it fails.
@@ -269,6 +269,11 @@ function openVideo(win) {
     } else if (variant === 'byHand') {
       await fall('hd720');
       t('Force Max Quality: a level picked by hand in the menu is left as it is', ranges.length === 0, ranges.join());
+    } else if (variant === 'alwaysThrows') {
+      // Every try fails before the range is set: two tries, then no more.
+      const counts = [];
+      for (let i = 0; i < 4; i++) { await fall('hd1080'); counts.push(ranges.length); }
+      t('Force Max Quality: two failed tries, then no more', counts.join() === '1,2,2,2', counts.join());
     } else if (variant === 'throwsAfter') {
       await fall('hd1080');
       await fall('hd1080');
