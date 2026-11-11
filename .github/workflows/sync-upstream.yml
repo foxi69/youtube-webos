@@ -24,6 +24,8 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  # To start Build & Test on the sync branch (the last step).
+  actions: write
 
 env:
   UPSTREAM_REPO: https://github.com/NicholasBly/youtube-webos.git
@@ -108,3 +110,13 @@ jobs:
               --body "Automatic merge of NicholasBly/youtube-webos main into this fork. Review the upstream changes, test, then merge."; then
             echo "Could not open the pull request (see the permissions note at the top of this workflow). Open it here: ${{ github.server_url }}/${{ github.repository }}/compare/main...$SYNC_BRANCH" | tee -a "$GITHUB_STEP_SUMMARY"
           fi
+
+      # GitHub starts no workflow for what GITHUB_TOKEN does (the push, the
+      # pull request above), workflow_dispatch excepted: without this the
+      # sync pull request had no tests at all. The run's checks show on the
+      # pull request, as they are on its head commit.
+      - name: Run Build & Test on the sync branch
+        if: steps.check.outputs.behind == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run main.yml --ref "$SYNC_BRANCH"
