@@ -17,6 +17,8 @@
  * videos, live streams) or the lookup failed. Never rejects.
  */
 
+import { webNextBody, noteWebAnswer } from './web-client.js';
+
 const VIDEO_ID_RE = /^[\w-]{11}$/;
 const REQUEST_TIMEOUT_MS = 8000;
 const CACHE_MAX = 50;
@@ -110,6 +112,7 @@ function lookup(id) {
       xhr.setRequestHeader('Content-Type', 'application/json');
       xhr.timeout = REQUEST_TIMEOUT_MS;
       xhr.onload = () => {
+        noteWebAnswer(xhr.status);
         if (xhr.status < 200 || xhr.status >= 300) return done(null, false);
         let data;
         try {
@@ -121,10 +124,7 @@ function lookup(id) {
       };
       xhr.onerror = () => done(null, false);
       xhr.ontimeout = () => done(null, false);
-      xhr.send(JSON.stringify({
-        context: { client: { clientName: 'WEB', clientVersion: '2.20250601.01.00', hl: 'en' } },
-        videoId: id
-      }));
+      xhr.send(webNextBody(id));
     } catch {
       done(null, false);
     }

@@ -98,7 +98,6 @@ async function until(check, ms) {
   const end = Date.now() + ms;
   while (!check()) {
     if (Date.now() > end) return false;
-    // eslint-disable-next-line no-await-in-loop
     await sleep(10);
   }
   return true;
@@ -189,7 +188,6 @@ function openVideo(win) {
     const fetch = (url) => (String(url).indexOf('/skipSegments/') !== -1
       ? Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(JSON.parse(JSON.stringify(answer))) })
       : Promise.reject(new Error('offline')));
-    // eslint-disable-next-line no-await-in-loop
     const win = await boot({ enableSponsorBlock: true, enableMutedSegments: muting, sbPeriodicRefresh: false }, {
       html: '<body class="WEB_PAGE_TYPE_WATCH"><video></video><ytlr-progress-bar><div idomkey="slider"></div></ytlr-progress-bar></body>',
       url: 'https://www.youtube.com/tv#/watch?v=' + VIDEO,
@@ -197,7 +195,6 @@ function openVideo(win) {
       // The bar is drawn against the video's length.
       prepare: (w) => Object.defineProperty(w.document.querySelector('video'), 'duration', { get: () => 100, configurable: true })
     });
-    // eslint-disable-next-line no-await-in-loop
     await sleep(900);
     // Which ones, not how many: the skip segment is 10 to 20 of 100 s, the mute one 30 to 40.
     const bars = Array.prototype.map.call(win.document.querySelectorAll('#previewbar .previewbar'), (b) => `${b.style.left} ${b.style.width}`);

@@ -1,5 +1,4 @@
 /** Behaviour tests for learned AI labels, persistence, card badges and removal. */
-/* global __dirname */
 const fs = require('fs');
 const path = require('path');
 const { JSDOM, VirtualConsole } = require('jsdom');

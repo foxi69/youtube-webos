@@ -416,8 +416,8 @@ const ids = (r) => itemsOf(r).map((i) => (i.tileRenderer || i.lockupViewModel).c
   {
     const resolved = [];
     const feedback = [];
-    let blockItem = null;
-    const yttv = (win) => ({
+    let blockItem;
+    const yttv = (_win) => ({
       resolver: Object.assign(function Resolver() {}, { instance: { resolveCommand: (cmd) => { resolved.push(cmd); return 'original'; } } }),
       services: { mappings: {}, get: (name) => (name === 'KabukiInnerTubeClient' ? { fetch: ({ path, payload }) => ({ subscribe: (next) => {
         feedback.push({ path, payload });
@@ -740,7 +740,6 @@ const ids = (r) => itemsOf(r).map((i) => (i.tileRenderer || i.lockupViewModel).c
     for (const param of ['c=FEtopics', 'list=PL1', 'vq=cats', 'va=play', 'launch=voice', 'inApp=true', 'search_query=cats',
       'pairingCode=1', 'dialLaunch=1', 'cc2=1', 'dialLaunch', 'pairingCode', 'cc2']) {
       b = start({ url: `https://www.youtube.com/tv?env_forceFullAnimation=1&${param}#/` });
-      // eslint-disable-next-line no-await-in-loop
       await wait(20);
       t(`Start Page leaves a launch with ${param} alone`, b.win.location.hash === '#/', b.win.location.hash);
     }

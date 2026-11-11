@@ -59,6 +59,10 @@ jobs:
 
       - run: npm ci
 
+      # The whole repository: source, tests and tools (eslint.config.ts).
+      - name: Lint
+        run: npm run lint
+
       # Builds both packages and runs every bench test (bench/ci.sh).
       - name: Test
         run: npm test

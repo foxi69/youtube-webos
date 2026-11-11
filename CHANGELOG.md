@@ -24,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Changed
 
++ The AI label and Most Replayed lookups ask YouTube as its web client, of a version written in one place now (`src/web-client.js`). Should YouTube stop taking that version, which it answers with an error to every lookup, a toast says so once instead of the two features going quiet.
 + Remove AI Videos / Mark AI Videos: a video YouTube answered "no AI label" for is remembered for a week and not asked about again. It was asked about again at every start of the app (the answer was kept for an hour, in memory), and Home shows much the same videos each time. A video that gets its label later is noticed when the week is over. And no video is asked about while the arrow keys move: the lookups start once the remote is quiet.
 + DeArrow, Without a Crowdsourced Thumbnail: the note under it now says what Random Frame sends. For it the id of every video shown goes to DeArrow's servers; with the other choices only of the videos that have a crowdsourced thumbnail. Nothing about what is sent changed.
 
@@ -76,6 +77,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Tests
 
++ Lint in CI (`npm run lint`, the whole repository). Fixed what it found: unused names, invisible characters written as themselves in `adblock.js` (now `\u200B` and the like, the same characters), and in the tests. `src/vendor` (third-party code) is left out, and `var` is allowed in `perf_mon.js` and `hooks/buffer-limit.js`, written that way.
 + `bench/ci.sh --late`: every test with the page already loaded when the userScript runs, as on a TV (`bench/late-injection-preload.cjs`). jsdom had the page still loading, which is how the first video without a player and the previews taken for videos went unseen. `npm run coverage` runs this way, so CI runs every test both ways.
 
 ## [0.9.1] - 2026/11/02

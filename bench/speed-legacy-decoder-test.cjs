@@ -11,7 +11,6 @@
  *
  * Usage: node bench/speed-legacy-decoder-test.cjs
  */
-/* global __dirname */
 const path = require('path');
 const { pathToFileURL } = require('url');
 
@@ -105,7 +104,6 @@ const frame = (i) => {
 };
 
 const settle = async () => {
-  // eslint-disable-next-line no-await-in-loop -- one microtask turn at a time, on purpose
   for (let i = 0; i < 200; i++) await Promise.resolve();
 };
 

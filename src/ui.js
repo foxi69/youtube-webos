@@ -23,6 +23,7 @@ import { buildAboutPage } from './about.js';
 import { clearQueue, playNextInQueue } from './video-queue.js';
 import { titleFormattingSupported } from './dearrow/index.js';
 import { getSidebarEntries, hiddenIds, SIDEBAR_ENTRIES_EVENT } from './sidebar.js';
+import { onWebClientRefused } from './web-client.js';
 
 // YouTube puts every element that scrolls back to its top (a capture "scroll"
 // listener on window), which pinned the settings pages there: the remote moved
@@ -2633,6 +2634,10 @@ window.addEventListener('ytaf-page-update', (evt) => {
   if (evt.detail.isWatch || evt.detail.isShorts) hidePointerButton();
 });
 configAddChangeListener('pointerSettingsButton', (evt) => { if (!evt.detail.newValue) hidePointerButton(); });
+
+// The AI label and Most Replayed lookups ask as YouTube's web client, whose
+// version YouTube may stop taking (web-client.js).
+onWebClientRefused(() => showNotification('YouTube refused the AI label and Most Replayed lookups: the app needs an update', 8000));
 
 // Apply initial states on boot
 syncUiBrightness();

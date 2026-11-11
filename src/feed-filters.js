@@ -332,7 +332,7 @@ export function playingPlaylistId(data) {
   if (!match) return null;
   try {
     return decodeURIComponent(match[1]);
-  } catch (e) {
+  } catch {
     return null; // a malformed escape in the address
   }
 }

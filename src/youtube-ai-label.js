@@ -14,6 +14,8 @@
  * Date.now() comparison, so there is nothing to leak or to cancel.
  */
 
+import { webNextBody, noteWebAnswer } from './web-client.js';
+
 const VIDEO_ID_RE = /^[\w-]{11}$/;
 
 const MAX_ACTIVE = 2;
@@ -133,6 +135,7 @@ function start(entry) {
     xhr.timeout = REQUEST_TIMEOUT_MS;
     xhr.onload = () => {
       const status = xhr.status;
+      noteWebAnswer(status);
       if (status === 429) return rateLimited(entry, gen);
       if (status < 200 || status >= 300) return failed(entry, gen);
       const label = classifyText(xhr.responseText);
@@ -141,10 +144,7 @@ function start(entry) {
     };
     xhr.onerror = () => failed(entry, gen);
     xhr.ontimeout = () => failed(entry, gen);
-    xhr.send(JSON.stringify({
-      context: { client: { clientName: 'WEB', clientVersion: '2.20250601.01.00', hl: 'en' } },
-      videoId: entry.id
-    }));
+    xhr.send(webNextBody(entry.id));
   } catch {
     failed(entry, gen);
   }

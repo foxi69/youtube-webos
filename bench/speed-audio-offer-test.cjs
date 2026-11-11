@@ -6,7 +6,6 @@
  *
  * Usage: node bench/speed-audio-offer-test.cjs
  */
-/* global __dirname */
 const path = require('path');
 const { pathToFileURL } = require('url');
 
