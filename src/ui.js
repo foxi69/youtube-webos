@@ -180,7 +180,8 @@ const ACTION_SCOPES = {
     speed_up: 'VIDEO',
     speed_down: 'VIDEO',
     speed_reset: 'VIDEO',
-    queue_next: 'VIDEO',
+    // From any page: the queue is filled on Home, and can be started there.
+    queue_next: 'GLOBAL',
     queue_clear: 'GLOBAL'
 };
 
@@ -1608,6 +1609,10 @@ function handleSeekStepKey(evt) {
     }
     return;
   }
+  // A press that is not taken below is YouTube's, and so is its keyup: a
+  // keyup we never got (the panel opened meanwhile) must not leave the next
+  // one of this key swallowed.
+  seekStepKeyCode = null;
   const step = Number(configRead('seekStep')) || 0;
   if (!step || optionsPanelVisible || !isWatchPage() || isShortsPage()) return;
   if (isTextBox(document.activeElement) || playerControlsShown() || isEngagementPanelVisible()) return;
@@ -1965,6 +1970,10 @@ function handleShortcutAction(action) {
       clearQueue();
       return;
   }
+  if (action === 'queue_next') {
+      playNextInQueue();
+      return;
+  }
   if (action === 'refresh_page') {
       if (isWatchPage() || isShortsPage()) {
           showNotification('Cannot refresh on player pages');
@@ -1999,10 +2008,6 @@ function handleShortcutAction(action) {
         break;
     case 'jump_to_live':
         jumpToLiveLogic(video);
-        break;
-
-    case 'queue_next':
-        playNextInQueue();
         break;
 
     case 'speed_up':

@@ -726,6 +726,16 @@ const ids = (r) => itemsOf(r).map((i) => (i.tileRenderer || i.lockupViewModel).c
     b = start({ url: 'https://www.youtube.com/tv#/?env_forceFullAnimation=1&v=abcdefghijk' });
     await wait(20);
     t('Start Page leaves a launch into a video alone', b.win.location.hash.indexOf('v=abcdefghijk') !== -1, b.win.location.hash);
+    // As handleLaunch builds the address: the query before the hash.
+    b = start({ url: 'https://www.youtube.com/tv?env_forceFullAnimation=1&env_enableWebSpeech=1&env_enableVoice=1#/' });
+    await wait(20);
+    t('Start Page opens Subscriptions on a plain start (query before the hash)', b.win.location.hash === '#/browse?c=FEsubscriptions', b.win.location.hash);
+    b = start({ url: 'https://www.youtube.com/tv?env_forceFullAnimation=1&v=abcdefghijk#/' });
+    await wait(20);
+    t('Start Page leaves a launch into a video alone (query before the hash)', b.win.location.hash === '#/', b.win.location.hash);
+    b = start({ url: 'https://www.youtube.com/tv?env_forceFullAnimation=1&inApp=true&vs=9&launch=voice&vq=cats#/' });
+    await wait(20);
+    t('Start Page leaves a voice search alone (query before the hash)', b.win.location.hash === '#/', b.win.location.hash);
     b = start({ url: 'https://www.youtube.com/tv#/', launchParams: '{"contentTarget":"v=abcdefghijk"}' });
     await wait(20);
     t('Start Page leaves a launch with a target alone', b.win.location.hash === '#/', b.win.location.hash);

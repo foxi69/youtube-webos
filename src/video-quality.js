@@ -395,7 +395,9 @@ export function playingQualityLabel() {
 }
 
 function scheduleQualityToast(actualState) {
-  if (actualState !== STATE_PLAYING || !configRead('showQualityOnStart')) return;
+  // The watch page only: attached at the start of the app, the player also
+  // reports the tile previews that play in it on Home.
+  if (actualState !== STATE_PLAYING || !configRead('showQualityOnStart') || !isWatchPage()) return;
   let videoId = null;
   try { videoId = player.getVideoData?.()?.video_id || null; } catch { /* ignore */ }
   if (!videoId || videoId === qualityToastVideoId) return;
@@ -626,10 +628,18 @@ export function initVideoQuality() {
 function handleNavigation(event) {
   const isWatch = (event?.detail?.pageType === 'watch') || isWatchPage();
   
-  if (isWatch && !_isWatchPageCached) {
+  // Also when the attach at the start of the app gave up before a player came
+  // (a minute on Home with none): the flag was left set, and the first video
+  // opened after that got no player, so no state events at all.
+  if (isWatch && (!_isWatchPageCached || (!player && !initTimer))) {
     DEBUG && console.info('[VideoQuality] Navigation: Entering watch page');
     setTimeout(initVideoQuality, 0); 
     
+  } else if (isWatch && player) {
+    // Attached since the start of the app: a video opened from its preview
+    // plays on in the same player and sends no new PLAYING.
+    try { scheduleQualityToast(player.getPlayerState?.()); } catch { /* the next state change */ }
+
   } else if (!isWatch && _isWatchPageCached) {
     DEBUG && console.info('[VideoQuality] Navigation: Leaving watch page');
     destroyVideoQuality();

@@ -387,9 +387,12 @@ class SponsorBlockHandler {
             return;
         }
         if (this.mutedSegment === current) return;
+        // The list is rebuilt on every settings change: the same segment again.
+        const same = !!this.mutedSegment && this.mutedSegment.start === current.start && this.mutedSegment.end === current.end;
         if (!this.mutedSegment) this.mutedBefore = video.muted;
         this.mutedSegment = current;
         video.muted = true;
+        if (same) return;
         const name = current.categoryName;
         showNotification(`Muted ${name.charAt(0).toUpperCase() + name.slice(1)} segment`);
     }
@@ -512,6 +515,7 @@ class SponsorBlockHandler {
                 if (config[configKey] !== 'disable') this.activeCategories.add(cat);
             }
             this.rebuildSkipSegments();
+            this.updateSegmentList();
             this._startBarWatch();
             this.drawOverlay();
             this.updateLabels();
@@ -734,7 +738,7 @@ class SponsorBlockHandler {
             // Full-video labels are excluded: they are [0, 0] markers meaning
             // "this whole video is X", not segments, and listing one would show
             // a nonsense 0:00-to-0:00 row.
-            sponsorBlockUI.updateSegments(this.segments.filter(s => !isFullVideoSegment(s)));
+            this.updateSegmentList();
             
             // Explicitly draw overlay now that data is ready
             // (checkForProgressBar might have run when segments were empty)
@@ -954,10 +958,23 @@ class SponsorBlockHandler {
         this._startBarWatch();
     }
 
+    /**
+     * The segments the settings panel lists: not a whole-video label, and not
+     * a mute segment while "Allow segments that mute audio" is off, where it
+     * is neither muted nor skipped (the extension does not even ask for them
+     * then).
+     */
+    updateSegmentList() {
+        const muting = !!configGetAll().enableMutedSegments;
+        sponsorBlockUI.updateSegments(this.segments.filter(s => !isFullVideoSegment(s) && (muting || s.actionType !== 'mute')));
+    }
+
     /** Whether drawOverlay() would draw a mark for this segment. */
     _isDrawable(segment, config) {
         // A full-video label spans [0, 0] and would draw a zero-width bar.
         if (isFullVideoSegment(segment)) return false;
+        // A mute segment does nothing while muting is off: no mark for it.
+        if (segment.actionType === 'mute' && !config.enableMutedSegments) return false;
         const mode = segment.category === 'poi_highlight'
             ? config.sbMode_highlight
             : config[CONFIG_MAPPING[segment.category]];
@@ -1231,7 +1248,7 @@ class SponsorBlockHandler {
         // mid-video invalidates the hash and forces a redraw (§5b fix).
         let colorSig = '';
         for (const k in segmentTypes) colorSig += config[`${k}Color`] || '';
-        const overlayHash = `${duration}_${this.activeCategories.size}_${this.segments.length}_${config.sbMode_highlight}_${colorSig}`;
+        const overlayHash = `${duration}_${this.activeCategories.size}_${this.segments.length}_${config.sbMode_highlight}_${!!config.enableMutedSegments}_${colorSig}`;
         if (overlayHash === this.lastOverlayHash && this.overlay && this.overlay.isConnected) {
             return;
         }
@@ -1777,7 +1794,7 @@ class SponsorBlockHandler {
         const video = this.video;
         if (video && video.duration && !isNaN(video.duration)) this.processSegments(video.duration);
         this.rebuildSkipSegments();
-        sponsorBlockUI.updateSegments(this.segments.filter(s => !isFullVideoSegment(s)));
+        this.updateSegmentList();
         // The first drawable segments of a video that had none start the bar watch.
         this._startBarWatch();
         this.lastOverlayHash = null;

@@ -723,8 +723,10 @@ export function installMseHook(
       const gen = ++this._gen;
       Promise.resolve().then(() => {
         if (gen !== this._gen || !this.updating) return;
-        this.dispatchEvent(new win.Event('update'));
+        // False before 'update' fires, as a real SourceBuffer has it: a
+        // listener that appends from 'update' would otherwise be refused.
         this.updating = false;
+        this.dispatchEvent(new win.Event('update'));
         const e = new win.Event('updateend');
         this.dispatchEvent(e);
         if (this.onupdateend) this.onupdateend(e);

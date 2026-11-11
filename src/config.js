@@ -640,6 +640,11 @@ function switchProfile(profile) {
     // An account seen for the first time (and every guest session) starts
     // from the shared settings.
     incoming = pickAccountValues(Object.assign({}, defaultConfig, sharedConfig));
+    // The shared set of a build before DeArrow's thumbnail fallbacks (above):
+    // the defaults laid under it hide that it has no newer switch.
+    if ('enableDeArrowThumbnails' in sharedConfig && !('dearrowCrowdThumbnails' in sharedConfig)) {
+      incoming.dearrowCrowdThumbnails = !!sharedConfig.enableDeArrowThumbnails;
+    }
     if (storesProfile(profile)) scheduleWrite();
   }
   incoming = pickAccountValues(Object.assign(pickAccountValues(defaultConfig), incoming));

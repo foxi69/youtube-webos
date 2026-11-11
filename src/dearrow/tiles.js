@@ -231,6 +231,25 @@ function applyToTile(node, video) {
   }
 }
 
+/**
+ * YouTube's own thumbnail of `video` as its newest remembered tile has it now,
+ * or null. Not the URL read when the video was first seen: Max Thumbnail
+ * Quality may have drawn a rung there that it has since found missing and
+ * corrected in the response.
+ */
+export function currentOriginalThumb(video) {
+  const tiles = video.tiles;
+  if (!tiles) return null;
+  for (let i = tiles.length - 1; i >= 0; i--) {
+    const rec = originals.get(tiles[i]);
+    const thumb = rec ? null : thumbnailOf(tiles[i]);
+    const list = rec ? rec.thumbnails : thumb && thumb[0][thumb[1]];
+    const url = Array.isArray(list) && list[0] && list[0].url;
+    if (typeof url === 'string' && url) return url;
+  }
+  return null;
+}
+
 /** Writes what is now decided for `video` into every tile of it remembered from the responses. */
 export function applyToVideo(video) {
   if (!video.tiles) return;

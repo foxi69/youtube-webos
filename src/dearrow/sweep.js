@@ -10,6 +10,7 @@ import logoUrl from './dearrow-logo.png';
 import './dearrow.css';
 import { videos, showsCrowdsourced } from './state.js';
 import { thumbOwner } from './thumbs.js';
+import { currentOriginalThumb } from './tiles.js';
 
 // The URL inside a CSS background-image value.
 const BACKGROUND_URL_RE = /url\("?([^")]+)"?\)/;
@@ -75,7 +76,7 @@ function sweepThumb(thumbEl, video, want) {
     video.originalThumb &&
     background.indexOf(video.shownThumb) !== -1
   ) {
-    thumbEl.style.backgroundImage = `url("${video.originalThumb}")`;
+    thumbEl.style.backgroundImage = `url("${currentOriginalThumb(video) || video.originalThumb}")`;
   }
 }
 

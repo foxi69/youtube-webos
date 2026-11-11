@@ -1,5 +1,5 @@
 import { configRead } from './config.js';
-import { SELECTORS, SYNTHETIC_KEY_FLAG, isShortsPage } from './utils.js';
+import { SELECTORS, SYNTHETIC_KEY_FLAG, isShortsPage, isWatchPage } from './utils.js';
 
 /**
  * Auto-translated subtitles in a language of the viewer's choosing.
@@ -271,7 +271,8 @@ JSON.parse = function (text, reviver) {
  * point, both for the viewer and for YouTube's timedtext endpoint (every track
  * switch is a request, and a burst earns HTTP 429):
  *
- *   - one attempt per video, plus at most one re-apply when the player resets
+ *   - one attempt per viewing of a video (until another video plays or the
+ *     watch page is left), plus at most one re-apply when the player resets
  *     the track on its own within a few seconds (it does that while the
  *     captions module settles);
  *   - any key the viewer presses ends it for that video, so captions turned
@@ -283,9 +284,12 @@ const TRACKLIST_POLL_MS = 300;
 const TRACKLIST_TRIES = 10; // ~3 s for the captions module to list its tracks
 const REAPPLY_WINDOW_MS = 5000;
 const REAPPLY_POLL_MS = 500;
-const ATTEMPTED_MAX = 50;
 
-const attemptedVideos = [];
+// The video this viewing's one attempt was made for. Kept for the viewing
+// only: remembered for the whole session, a video watched again later got no
+// subtitles (and none from YouTube either, with Don't Turn On Subtitles by
+// Themselves on).
+let attemptedVideoId = null;
 let lastUserKeyAt = 0;
 let autoTimer = null;
 
@@ -350,16 +354,18 @@ function watchForReset(player, videoId, code, track, appliedAt) {
 }
 
 function autoEnableCaptions() {
-  if (!configRead('subtitleAutoEnable') || isShortsPage()) return;
+  // The watch page only: the player also reports the tile previews that play
+  // in it on Home, and a preview counted as the video's one attempt, so the
+  // video then opened got no subtitles.
+  if (!configRead('subtitleAutoEnable') || isShortsPage() || !isWatchPage()) return;
   const code = currentTarget();
   if (!code) return;
   const player = captionsPlayer();
   if (!player) return;
   const videoId = playerVideoId(player);
-  if (!videoId || attemptedVideos.indexOf(videoId) !== -1) return;
+  if (!videoId || videoId === attemptedVideoId) return;
 
-  attemptedVideos.push(videoId);
-  if (attemptedVideos.length > ATTEMPTED_MAX) attemptedVideos.shift();
+  attemptedVideoId = videoId;
   cancelAutoEnable();
 
   // The captions module loads on demand; until it has, the tracklist is empty.
@@ -406,6 +412,8 @@ window.addEventListener('yt-player-state-change', (evt) => {
 window.addEventListener('ytaf-page-update', (evt) => {
   if (!evt || !evt.detail || !evt.detail.isWatch) {
     cancelAutoEnable();
+    // The viewing is over: opened again, the video gets its attempt again.
+    attemptedVideoId = null;
     return;
   }
   // A watch page entered with the video already running gets no PLAYING change.
