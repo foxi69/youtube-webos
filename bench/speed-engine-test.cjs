@@ -138,7 +138,11 @@ function setup(AudioEngine, { speed = 1.5, start = 0, videoRate = 1, errors = []
 }
 
 /** The live queue: sources not stopped, by start time. */
-const live = (ctx) => ctx.sources.filter((s) => s.stoppedAt === undefined).sort((a, b) => a.when - b.when);
+// A source told to stop later still plays until then.
+const live = (ctx) => ctx.sources.filter((s) => s.stoppedAt === undefined || s.stoppedAt > ctx.currentTime)
+  .sort((a, b) => a.when - b.when);
+/** Every source stopped, now: a stop put off to later would still be heard. */
+const stoppedNow = (ctx) => ctx.sources.every((s) => s.stoppedAt !== undefined && s.stoppedAt <= ctx.currentTime);
 
 /**
  * How far the queued content is from the picture: for each queued sample,
@@ -164,6 +168,8 @@ function offsets(sources, video, { skip = 0.06 } = {}) {
 }
 
 const max = (a) => a.reduce((m, v) => Math.max(m, v), 0);
+/** Every offset under `limit`, and at least one measured (none would prove nothing). */
+const within = (off, limit) => off.length > 0 && max(off) < limit;
 
 (async () => {
   const { AudioEngine } = await import(ENGINE);
@@ -190,7 +196,7 @@ const max = (a) => a.reduce((m, v) => Math.max(m, v), 0);
     // The video at audio time T: where it was at c0, plus speed x the time since.
     const off = offsets(q, (T) => v0 + (T - c0) * speed);
     t(`${speed}x: every queued sample is the content the picture shows then (within 60 ms)`,
-      off.length > 1000 && max(off) < 0.06, `max ${max(off).toFixed(3)} s over ${off.length}`);
+      off.length > 1000 && within(off, 0.06), `max ${max(off).toFixed(3)} s over ${off.length}`);
     t(`${speed}x: both channels`, q.every((s) => s.buffer.data[1].every((v, i) => v === -s.buffer.data[0][i])));
     t(`${speed}x: no error`, env.errors.length === 0, env.errors.map(String).join());
     env.engine.destroy();
@@ -205,7 +211,7 @@ const max = (a) => a.reduce((m, v) => Math.max(m, v), 0);
     env.run(2);
     env.video.paused = true;
     env.video.fire('pause');
-    const stopped = env.ctx.sources.every((s) => s.stoppedAt !== undefined);
+    const stopped = stoppedNow(env.ctx);
     const count = env.ctx.sources.length;
     env.run(1);
     t('pause: everything queued stops at once, nothing new while paused', stopped && env.ctx.sources.length === count,
@@ -217,7 +223,7 @@ const max = (a) => a.reduce((m, v) => Math.max(m, v), 0);
     env.run(2);
     const q = live(env.ctx).filter((s) => s.when >= c0);
     const off = offsets(q, (T) => v0 + (T - c0) * 1.5);
-    t('play on: the audio starts again in step', q.length > 5 && max(off) < 0.08, `max ${max(off).toFixed(3)} s`);
+    t('play on: the audio starts again in step', q.length > 5 && within(off, 0.08), `max ${max(off).toFixed(3)} s`);
     env.engine.destroy();
   }
 
@@ -229,7 +235,7 @@ const max = (a) => a.reduce((m, v) => Math.max(m, v), 0);
     env.push(0, 10);
     env.run(2);
     env.video.fire('seeking');
-    const stopped = env.ctx.sources.every((s) => s.stoppedAt !== undefined);
+    const stopped = stoppedNow(env.ctx);
     env.video.currentTime = 60;
     env.push(55, 75);
     env.video.fire('playing');
@@ -239,7 +245,7 @@ const max = (a) => a.reduce((m, v) => Math.max(m, v), 0);
     // The anchor waits for the first real movement, one tick after c0.
     const off = offsets(q, (T) => 60 + (T - c0) * 1.5);
     t('seek: the old audio stops at once', stopped);
-    t('seek: the audio picks up at the new position', q.length > 5 && max(off) < 0.12, `max ${max(off).toFixed(3)} s`);
+    t('seek: the audio picks up at the new position', q.length > 5 && within(off, 0.12), `max ${max(off).toFixed(3)} s`);
     t('seek: the new position is decoded, not the whole archive',
       env.decoded.some((us) => us / 1e6 > 59) && !env.decoded.some((us) => us / 1e6 > 66), `${env.decoded.length} decoded`);
     env.engine.destroy();
@@ -253,14 +259,14 @@ const max = (a) => a.reduce((m, v) => Math.max(m, v), 0);
     env.push(0, 30);
     env.run(2);
     env.run(0.3, { frozen: true });
-    const stopped = env.ctx.sources.every((s) => s.stoppedAt !== undefined);
+    const stopped = stoppedNow(env.ctx);
     const c0 = env.ctx.currentTime;
     const v0 = env.video.currentTime;
     env.run(2);
     const q = live(env.ctx).filter((s) => s.when >= c0);
     const off = offsets(q, (T) => v0 + (T - c0) * 1.5);
     t('stall: the queue stops instead of running ahead of a frozen picture', stopped);
-    t('stall: the audio comes back in step when the picture moves', q.length > 5 && max(off) < 0.12,
+    t('stall: the audio comes back in step when the picture moves', q.length > 5 && within(off, 0.12),
       `max ${max(off).toFixed(3)} s`);
     env.engine.destroy();
   }
@@ -280,7 +286,7 @@ const max = (a) => a.reduce((m, v) => Math.max(m, v), 0);
       .filter((s) => s.when > env.ctx.currentTime - 5 && s.when < env.ctx.currentTime);
     const off = offsets(q, (T) => v0 + (T - c0) * 1.5 * videoRate);
     const how = videoRate > 1 ? 'fast' : 'slow';
-    t(`drift: the audio stays in step with a clock 3% ${how} (within 0.25 s)`, q.length > 10 && max(off) < 0.25,
+    t(`drift: the audio stays in step with a clock 3% ${how} (within 0.25 s)`, q.length > 10 && within(off, 0.25),
       `max ${max(off).toFixed(3)} s`);
     t(`drift (${how}): by soft corrections, not by stopping the audio again and again`, stops <= 2,
       `${stops} buffers stopped`);

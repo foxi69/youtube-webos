@@ -78,6 +78,10 @@ check('esc: table cell, brackets, backticks and HTML escaped',
 check('esc: a lone # is left as it is', fw.esc('a # b') == 'a # b', fw.esc('a # b'))
 out = fw.esc('Fix GH-123 and gh-7, see https://github.com/up/youtube-webos/issues/9')
 check('esc: no GH-123 reference left', 'GH-123' not in out and 'gh-7' not in out, out)
+check('esc: GH-123 gets one invisible separator, nothing else',
+      fw.esc('Fix GH-123') == 'Fix GH&#8203;-123', fw.esc('Fix GH-123'))
+check('esc: #12 and @bob get one separator each',
+      fw.esc('#12 @bob') == '#&#8203;12 @&#8203;bob', fw.esc('#12 @bob'))
 check('esc: an issue address in a title goes through redirect.github.com',
       'https://github.com/' not in out and 'https://redirect.github.com/up/youtube-webos/issues/9' in out, out)
 check('code: a branch with a backtick stays one code span', fw.code('a`b') == '``a`b``', fw.code('a`b'))

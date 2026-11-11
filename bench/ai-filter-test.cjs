@@ -459,6 +459,12 @@ function resultItems(win, out, surface) {
     let keyAt = 0;
     h.win.addEventListener('keydown', () => { keyAt = Date.now(); }, true);
     dispatchTrusted(h.doc.body, new h.win.KeyboardEvent('keydown', { keyCode: 40, bubbles: true }));
+    // Due when the first key's pause runs out, on the page's own timers: it
+    // fired before the second key's pause ran out, so a timer left from the
+    // first key would have let the lookups go by then too. Late, the machine
+    // was too slow to tell, and the test fails rather than pass by luck.
+    let probeAt = 0;
+    h.win.setTimeout(() => { probeAt = Date.now(); }, 350);
     h.release(id(45));
     h.release(id(46));
     await wait(200);
@@ -466,9 +472,10 @@ function resultItems(win, out, surface) {
     const after = await until(() => h.requests.length === 4, 5000);
     // The third and fourth, from the second key (negative: before it).
     const offsets = h.startedAt.slice(2).map((at) => at - keyAt);
+    const probe = probeAt - keyAt;
     t('a second arrow key within the pause holds the queued lookups again',
-      started && after && offsets.length === 2 && offsets.every((ms) => ms >= 349),
-      `started=${started} after=${after} started at ${offsets.join(', ')} ms from the second key`);
+      started && after && probeAt > 0 && probe < 349 && offsets.length === 2 && offsets.every((ms) => ms >= 349),
+      `started=${started} after=${after} first key's deadline at ${probe} ms, lookups at ${offsets.join(', ')} ms from the second key`);
     h.close();
   }
 

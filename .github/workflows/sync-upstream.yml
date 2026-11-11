@@ -125,8 +125,9 @@ jobs:
 
       # GitHub starts no workflow for what GITHUB_TOKEN does (the push, the
       # pull request above), workflow_dispatch excepted: without this the
-      # sync pull request had no tests at all. The run's checks show on the
-      # pull request, as they are on its head commit.
+      # sync pull request had no tests at all. Such a run's own checks show
+      # on the commit only; its "report" job (main.yml) puts the result on
+      # the commit as a status, which the pull request shows.
       #
       # It runs the workflow file of the sync branch, so it is started only
       # when upstream left .github/ as this fork has it: changed there, the

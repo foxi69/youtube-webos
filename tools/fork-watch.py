@@ -359,10 +359,11 @@ def esc(text):
     for ch in '|[]`':
         text = text.replace(ch, '\\' + ch)
     text = text.replace('<', '&lt;')
-    # GH-123 is a reference too, and so is an issue's github.com address.
-    text = re.sub(r'\b(GH)-(?=\d)', r'\1&#8203;-', text, flags=re.I)
+    # An issue's github.com address is a reference too.
     text = re.sub(r'https?://github\.com/', 'https://redirect.github.com/', text, flags=re.I)
-    return re.sub(r'([@#])(?=\w)', r'\1&#8203;', text)
+    text = re.sub(r'([@#])(?=\w)', r'\1&#8203;', text)
+    # GH-123 as well. Last: the entity's own # must not be split again.
+    return re.sub(r'\b(GH)-(?=\d)', r'\1&#8203;-', text, flags=re.I)
 
 
 def code(text):

@@ -208,7 +208,10 @@ const mdhdTimescale = (u8) => {
     t('video: media passes through unchanged', v.appends[1].length === media.length && v.appends[1].every((b, i) => b === media[i]));
     const webm = ms.addSourceBuffer('video/webm; codecs="vp9"');
     webm.appendBuffer(webmInit());
-    t('video WebM: the TimecodeScale / 1.5', webm.appends[0].length === webmInit().length && env.errors.length === 0);
+    const { findTimecodeScale } = await import(pathToFileURL(path.resolve(__dirname, '../src/speed/containers.js')).href);
+    const scale = findTimecodeScale(webm.appends[0]);
+    t('video WebM: the TimecodeScale / 1.5', scale && scale.value === Math.round(1000000 / 1.5) &&
+      webm.appends[0].length === webmInit().length && env.errors.length === 0, scale && scale.value);
     // An init cut across two appends cannot be rewritten: reported (the speed
     // falls back to 1x), appended as it is. Cut after the ftyp, and inside the moov.
     v.appendBuffer(init.subarray(0, 20));
