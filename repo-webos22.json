@@ -14,16 +14,16 @@
       "iconUri": "https://raw.githubusercontent.com/foxi69/youtube-webos/main/assets/icon.png",
       "manifest": {
         "id": "youtube.leanback.v4",
-        "version": "0.9.1",
+        "version": "0.9.2",
         "type": "web",
         "title": "YouTube Foxtended (webOS 22+)",
         "appDescription": "Ad-free YouTube for webOS 22 and newer, with SponsorBlock, Return YouTube Dislike and DeArrow. The lighter build for newer TVs.",
         "iconUri": "https://raw.githubusercontent.com/foxi69/youtube-webos/main/assets/icon.png",
         "sourceUrl": "https://github.com/foxi69/youtube-webos",
         "rootRequired": false,
-        "ipkUrl": "https://github.com/foxi69/youtube-webos/releases/download/v0.9.1/youtube.leanback.v4_0.9.1_all_webOS22%2B.ipk",
+        "ipkUrl": "https://github.com/foxi69/youtube-webos/releases/download/v0.9.2/youtube.leanback.v4_0.9.2_all_webOS22%2B.ipk",
         "ipkHash": {
-          "sha256": "a7d9e5611989ff166f6964e4208ff794ac6cae35259a9220c2780e84560aa10a"
+          "sha256": "2dc3e9783fab3cad4d257a14aba82f4a00153f9af99155628ece3ea1fe75e057"
         }
       }
     }
