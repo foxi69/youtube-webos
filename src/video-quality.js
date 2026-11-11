@@ -30,8 +30,10 @@ let videoBeingProcessed = null;
 let kickstartInProgress = false;
 
 const qualitySetForVideo = new Set();
-// Videos whose quality was put back up once after the stream fell on its own.
-const relockedVideos = new Set();
+// How often a video's quality was put back up after the stream fell on its
+// own: a second try only after a first that failed.
+const relockTries = new Map();
+const MAX_RELOCK_TRIES = 2;
 
 // webOS 25 first video fix
 let hasKickstarted = false;
@@ -365,8 +367,9 @@ function interceptAndUpgradeQuality(videoId) {
 // one reloads the video on webOS 25), and the adaptive stream then fell to
 // 1080p for half a minute after a seek; one that got the range fell too
 // once. When the picture gets smaller below the best level, the range is set
-// again, once per video. Not over a level picked by hand in YouTube's menu:
-// the player's preference is then that level, not 'auto' or 'highres'.
+// again, once per video (a call that failed gets one more try). Not over a
+// level picked by hand in YouTube's menu: the player's preference is then
+// that level, not 'auto' or 'highres'.
 // ponytail: once per video; a stream that falls again stays down, a timed
 // retry would be the next step if that shows up.
 function onVideoResize(evt) {
@@ -374,13 +377,18 @@ function onVideoResize(evt) {
   if (!player || isDestroyed || !isForceEnabled() || !isWatchPage() || videoBeingProcessed) return;
   try {
     const videoId = player.getVideoData?.()?.video_id;
-    if (!videoId || !qualitySetForVideo.has(videoId) || relockedVideos.has(videoId)) return;
+    const tries = relockTries.get(videoId) || 0;
+    if (!videoId || !qualitySetForVideo.has(videoId) || tries >= MAX_RELOCK_TRIES) return;
     const preference = player.getUserPlaybackQualityPreference?.() || 'auto';
     if (preference !== 'auto' && preference !== 'highres') return;
     if (!levelsListed() || isQualityAlreadyMax()) return;
-    relockedVideos.add(videoId);
+    relockTries.set(videoId, tries + 1);
     DEBUG && console.info('[VideoQuality] Fell to', player.getPlaybackQuality?.(), '- setting the range again');
-    notifyIfUpgraded(setQualityOnPlayer());
+    const result = setQualityOnPlayer();
+    // Set: no more for this video. Failed (a player call threw): one more try
+    // on a later resize, not one on every resize.
+    if (result.success) relockTries.set(videoId, MAX_RELOCK_TRIES);
+    notifyIfUpgraded(result);
   } catch { /* the next resize */ }
 }
 
@@ -571,7 +579,7 @@ export function destroyVideoQuality() {
   lastVideoId = null;
   lastKnownState = null;
   qualitySetForVideo.clear();
-  relockedVideos.clear();
+  relockTries.clear();
   videoBeingProcessed = null;
   _isWatchPageCached = false;
   kickstartInProgress = false;

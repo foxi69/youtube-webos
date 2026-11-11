@@ -22,8 +22,35 @@ function boot(cfg, opts) {
   const win = dom.window;
   setUserAgent(win, legacy ? UA.webos3 : UA.webos23);
   win.launchParams = '{}';
+  // opts.fakeClock: the page's Date.now and setTimeout on a clock the test
+  // moves (clock.advance), so a timing case depends on no scheduler.
+  let clock = null;
+  if (opts.fakeClock) {
+    let now = 1e12;
+    let seq = 0;
+    const timers = new Map();
+    win.Date.now = () => now;
+    win.setTimeout = (fn, ms) => { timers.set(++seq, { fn, at: now + (ms || 0) }); return seq; };
+    win.clearTimeout = (tid) => { timers.delete(tid); };
+    clock = {
+      now: () => now,
+      advance(ms) {
+        const end = now + ms;
+        for (;;) {
+          let nextId = null;
+          for (const [tid, tm] of timers) if (tm.at <= end && (nextId === null || tm.at < timers.get(nextId).at)) nextId = tid;
+          if (nextId === null) break;
+          const due = timers.get(nextId);
+          timers.delete(nextId);
+          now = due.at;
+          due.fn();
+        }
+        now = end;
+      }
+    };
+  }
   const requests = [];
-  // When each request started (Date.now()), in the order of `requests`.
+  // When each request started (the page's Date.now()), in the order of `requests`.
   const startedAt = [];
   // opts.held: the ids whose answers wait for release(id), not for a delay.
   const heldAnswers = {};
@@ -36,7 +63,7 @@ function boot(cfg, opts) {
     send(body) {
       const id = JSON.parse(body).videoId;
       requests.push(id);
-      startedAt.push(Date.now());
+      startedAt.push(win.Date.now());
       const answer = answers[id] || 'plain';
       const delay = opts.delayFor && opts.delayFor[id] !== undefined ? opts.delayFor[id] : (opts.delay || 0);
       const respond = () => {
@@ -87,7 +114,7 @@ function boot(cfg, opts) {
     doc.getElementById('root').appendChild(wrapper);
     return { wrapper, inner };
   };
-  return { win, doc, NS, requests, startedAt, release, card, wrapperLockup, close: () => win.close() };
+  return { win, doc, NS, requests, startedAt, release, card, wrapperLockup, clock, close: () => win.close() };
 }
 const id = (n) => 'vid' + String(n).padStart(8, '0');
 const storedIds = (win) => {
@@ -453,29 +480,29 @@ function resultItems(win, out, surface) {
   // already queued: the first key's timer must not let them go 350 ms after
   // the first key.
   {
-    const h = boot({ markAiVideos: true }, { held: [id(45), id(46)] });
+    // On the page's own clock, moved by the test: no scheduler delay can
+    // make it pass or fail.
+    const h = boot({ markAiVideos: true }, { held: [id(45), id(46)], fakeClock: true });
+    const settle = async (ms) => { for (let i = 0; i < 5; i++) { await new Promise((r) => setImmediate(r)); h.clock.advance(ms / 5); } };
     for (let n = 45; n < 49; n++) h.card(id(n));
-    const started = await until(() => h.requests.length === 2, 5000);
-    let keyAt = 0;
-    h.win.addEventListener('keydown', () => { keyAt = Date.now(); }, true);
-    dispatchTrusted(h.doc.body, new h.win.KeyboardEvent('keydown', { keyCode: 40, bubbles: true }));
-    // Due when the first key's pause runs out, on the page's own timers: it
-    // fired before the second key's pause ran out, so a timer left from the
-    // first key would have let the lookups go by then too. Late, the machine
-    // was too slow to tell, and the test fails rather than pass by luck.
-    let probeAt = 0;
-    h.win.setTimeout(() => { probeAt = Date.now(); }, 350);
+    await settle(500);
+    const started = h.requests.length === 2;
+    const key = () => dispatchTrusted(h.doc.body, new h.win.KeyboardEvent('keydown', { keyCode: 40, bubbles: true }));
+    key();
     h.release(id(45));
     h.release(id(46));
-    await wait(200);
-    dispatchTrusted(h.doc.body, new h.win.KeyboardEvent('keydown', { keyCode: 40, bubbles: true }));
-    const after = await until(() => h.requests.length === 4, 5000);
-    // The third and fourth, from the second key (negative: before it).
-    const offsets = h.startedAt.slice(2).map((at) => at - keyAt);
-    const probe = probeAt - keyAt;
+    await settle(200);
+    const secondAt = h.clock.now();
+    key();
+    // Past the first key's deadline (+350), short of the second's.
+    await settle(300);
+    const heldPastFirst = h.requests.length === 2;
+    // Past the second key's deadline.
+    await settle(100);
+    const offsets = h.startedAt.slice(2).map((at) => at - secondAt);
     t('a second arrow key within the pause holds the queued lookups again',
-      started && after && probeAt > 0 && probe < 349 && offsets.length === 2 && offsets.every((ms) => ms >= 349),
-      `started=${started} after=${after} first key's deadline at ${probe} ms, lookups at ${offsets.join(', ')} ms from the second key`);
+      started && heldPastFirst && offsets.length === 2 && offsets.every((ms) => ms >= 350),
+      `started=${started} heldPastFirst=${heldPastFirst} lookups at ${offsets.join(', ')} ms from the second key`);
     h.close();
   }
 
