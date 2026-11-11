@@ -2136,7 +2136,14 @@ SponsorBlock Optimizations:
 
 - Created basic web app which launches YouTube TV.
 
-[Unreleased]: https://github.com/webosbrew/youtube-webos/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/foxi69/youtube-webos/compare/v0.9.2...main
+[0.9.2]: https://github.com/foxi69/youtube-webos/compare/v0.9.1...v0.9.2
+[0.9.1]: https://github.com/foxi69/youtube-webos/compare/v0.9.0...v0.9.1
+[0.9.0]: https://github.com/foxi69/youtube-webos/compare/v0.8.8...v0.9.0
+[0.8.8]: https://github.com/foxi69/youtube-webos/compare/v0.8.7...v0.8.8
+[0.8.7]: https://github.com/foxi69/youtube-webos/compare/v0.8.6...v0.8.7
+[0.8.6]: https://github.com/foxi69/youtube-webos/compare/v0.8.5...v0.8.6
+[0.8.5]: https://github.com/foxi69/youtube-webos/releases/tag/v0.8.5
 [0.3.1]: https://github.com/webosbrew/youtube-webos/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/webosbrew/youtube-webos/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/webosbrew/youtube-webos/compare/v0.2.0...v0.2.1
