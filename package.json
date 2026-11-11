@@ -20,7 +20,7 @@
     "lint": "eslint",
     "prettier-check": "prettier --ignore-path .prettierignore --check .",
     "test": "bash bench/ci.sh",
-    "coverage": "c8 bash bench/ci.sh --coverage"
+    "coverage": "c8 bash bench/ci.sh --coverage --late"
   },
   "repository": "github:foxi69/youtube-webos",
   "license": "GPL-3.0-only",

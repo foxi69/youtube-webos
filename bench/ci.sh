@@ -3,7 +3,8 @@
 # behaviour. Each test exits non-zero on a failure, which stops the run.
 #
 #   npm test            release builds (minified)
-#   npm run coverage    the same under c8, with unminified, source-mapped builds
+#   npm run coverage    the same under c8, with unminified, source-mapped builds,
+#                       and with the page already loaded when the bundle runs (--late)
 #
 # Left out: the timing benches (hook-bench, panel-bench, module-hotpath-bench,
 # emoji-amplify-test), which measure rather than pass or fail.
@@ -12,11 +13,21 @@ cd "$(dirname "$0")/.."
 
 B=dist/webOSUserScripts/userScript.js
 env=()
-if [ "${1:-}" = --coverage ]; then
-  env=(--env coverage)
-  # Names the bundle the tests eval, so c8 can map it back to src/.
-  export NODE_OPTIONS="${NODE_OPTIONS:-} --require ./bench/coverage-preload.cjs"
-fi
+for arg in "$@"; do
+  case "$arg" in
+    --coverage)
+      env=(--env coverage)
+      # Names the bundle the tests eval, so c8 can map it back to src/.
+      export NODE_OPTIONS="${NODE_OPTIONS:-} --require ./bench/coverage-preload.cjs"
+      ;;
+    --late)
+      # The page already loaded when the bundle runs, as on a TV
+      # (bench/late-injection-preload.cjs).
+      export NODE_OPTIONS="${NODE_OPTIONS:-} --require ./bench/late-injection-preload.cjs"
+      ;;
+    *) echo "unknown option: $arg" >&2; exit 2 ;;
+  esac
+done
 
 build() { echo "=== build $*"; npx webpack --mode=production --stats errors-warnings "${env[@]}" "$@"; }
 run() { echo "--- $1"; node "bench/$1.cjs" "${@:2}" | grep -v '^[[:space:]]*$' | tail -n 1; }

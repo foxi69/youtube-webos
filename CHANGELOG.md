@@ -74,6 +74,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 + The README has moving pictures: the remote and what each colour button does, the settings panel going through its tabs, fox tracks over the releases, and the fox asleep at the end. The About tab has its screenshot too.
 + The README's Filters table has Remove Mixes, Hide Videos Older Than and Hide Repeated Videos, and what this fork adds in 0.9.2 lists the features since the queue.
 
+## Tests
+
++ `bench/ci.sh --late`: every test with the page already loaded when the userScript runs, as on a TV (`bench/late-injection-preload.cjs`). jsdom had the page still loading, which is how the first video without a player and the previews taken for videos went unseen. `npm run coverage` runs this way, so CI runs every test both ways.
+
 ## [0.9.1] - 2026/11/02
 
 The app is now called **YouTube Foxtended**. An About tab with an update check and What's New after an update, YouTube's "most replayed" graph above the seek bar, the Speed menu on surround videos, and fixes from testing on webOS 25. Ships both packages: `_webOS22+.ipk` for webOS 22 and newer, and the legacy `.ipk` for webOS 3-6.
