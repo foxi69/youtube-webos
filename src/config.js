@@ -731,4 +731,4 @@ export function configGetDefault(key) {
 // Export the live object reference directly for zero-overhead caching
 export function configGetAll() {
   return localConfig;
-}
+}

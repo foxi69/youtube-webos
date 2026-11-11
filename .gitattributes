@@ -1,0 +1,7 @@
+# Line endings: LF in the repository and in every checkout, whatever the
+# platform, so a diff shows only what changed. The Windows batch files keep
+# CRLF, which cmd.exe wants. Images are binary.
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.png binary
+*.ipk binary

@@ -1849,4 +1849,4 @@ if (cfgFlags.enableTrackingBlock) {
   } catch (e) {
     console.warn('[AdBlock] Early tracking block install failed:', e.message);
   }
-}
+}

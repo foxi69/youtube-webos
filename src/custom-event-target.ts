@@ -134,4 +134,4 @@ export const CustomEventTarget = EventTargetBase as {
 export type EventMapOf<T> =
   T extends CustomEventTarget<infer U>
     ? { [K in keyof U]: U[K] & TypedEventPartial<T, K> }
-    : never;
+    : never;

@@ -1993,4 +1993,4 @@ if (typeof window !== 'undefined') {
     } else {
         window.addEventListener('load', () => setTimeout(initSB, 500), { once: true });
     }
-}
+}

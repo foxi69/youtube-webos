@@ -77,6 +77,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Tests
 
++ Line endings: LF in every file (`.gitattributes`), the Windows `.cmd` files CRLF. The files were half CRLF, half LF, and seven of them ended in a lone carriage return, which made git take them for binary files (no line diffs). Nothing else in them changed.
 + The upstream sync pull request gets Build & Test: "Sync upstream" starts it on its branch. GitHub starts no workflow for what a workflow's own token pushes or opens, so that pull request had no tests until now.
 + Lint in CI (`npm run lint`, the whole repository). Fixed what it found: unused names, invisible characters written as themselves in `adblock.js` (now `\u200B` and the like, the same characters), and in the tests. `src/vendor` (third-party code) is left out, and `var` is allowed in `perf_mon.js` and `hooks/buffer-limit.js`, written that way.
 + `bench/ci.sh --late`: every test with the page already loaded when the userScript runs, as on a TV (`bench/late-injection-preload.cjs`). jsdom had the page still loading, which is how the first video without a player and the previews taken for videos went unseen. `npm run coverage` runs this way, so CI runs every test both ways.
