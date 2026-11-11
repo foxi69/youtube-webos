@@ -53,6 +53,8 @@ function installGlobals() {
         throw e;
       }
       this.appended.push(data);
+      // A real append runs until its updateend; off by default here.
+      if (this.appendUpdates) this.updating = true;
     }
     remove(start, end) {
       this.removed.push([start, end]);
@@ -154,6 +156,30 @@ const loadLimit = () => import(`${LIMIT}?${++fresh}`);
     g.tick();
     t('trim: a closed globalThis.MediaSource is let go', globalThis.__ytafBufferStats().buffers.length === 0 && stats.buffers.length === 1 &&
       stats.appendPatched === true, JSON.stringify(stats));
+  }
+
+  // ---- The player's own append comes first when the trim ends ----
+  // Its updateend listener (added before the held-back append's) runs first
+  // and appends its next piece: the held-back one then waits for that append
+  // instead of throwing InvalidStateError and being lost (from #129).
+  {
+    const g = installGlobals();
+    const { initBufferLimit } = await loadLimit();
+    initBufferLimit();
+    const ms = new globalThis.MediaSource();
+    g.video(100, URL.createObjectURL(ms));
+    const sb = ms.addSourceBuffer('video/mp4');
+    sb.appendUpdates = true;
+    let playerTurn = true;
+    sb.addEventListener('updateend', () => { if (playerTurn) { playerTurn = false; sb.appendBuffer('B'); } });
+    g.tick();
+    let threw = null;
+    try { sb.appendBuffer('A'); } catch (e) { threw = e.name; }
+    sb.finish(); // the trim ends: the player's B goes first
+    sb.finish(); // B ends: the held-back A goes in
+    t('trim: a held-back append waits for the player\'s own append, and is not lost',
+      sb.removed.length === 1 && threw === null && sb.appended.join() === 'B,A',
+      threw || `${sb.removed.length} removes, appended ${sb.appended.join()}`);
   }
 
   // ---- A stand-in SourceBuffer added first leaves the real ones guarded ----

@@ -108,6 +108,14 @@ function patchAppend(sb) {
     var self = this;
     if (self.updating && self[trimming]) {
       var onDone = function () {
+        // The player's own updateend listener runs first and may append: then
+        // ours waits for that one to finish, instead of throwing
+        // InvalidStateError and dropping the data (from #129).
+        // ponytail: the held-back piece then goes in after the player's newer
+        // one(s), and only once the player leaves an updateend without an
+        // append; lost outright before. Re-queue it ahead of the player's if
+        // an old TV shows gaps.
+        if (self.updating) return;
         self.removeEventListener('updateend', onDone); // no {once:true} on CR38
         self[trimming] = false;
         try {
