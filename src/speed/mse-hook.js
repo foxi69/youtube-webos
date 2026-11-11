@@ -342,7 +342,17 @@ export function installMseHook(
   }
 
   function patchVideoSourceBuffer(sb, mime, speed, onError) {
-    const origAppendBuffer = sb.appendBuffer;
+    // The prototype's appendBuffer, looked up at each call rather than kept:
+    // the buffer limit (hooks/buffer-limit.js) patches it only once it is
+    // handed this SourceBuffer, and its wait during a trim must apply here too
+    // (with the method kept, the first video after the app starts went
+    // without it).
+    const proto = Object.getPrototypeOf(sb);
+    const kept = sb.appendBuffer;
+    const origAppendBuffer = function (data) {
+      const own = proto && proto.appendBuffer;
+      return (typeof own === 'function' ? own : kept).call(this, data);
+    };
     const origRemove = sb.remove;
 
     const isMp4 = mime.includes('mp4');
@@ -393,14 +403,20 @@ export function installMseHook(
       origRemove.call(this, start / speed, end / speed);
     };
 
-    const defineAccessor = (prop, scale) => {
-      let desc = Object.getOwnPropertyDescriptor(sb, prop);
-      let proto = sb;
-      while (!desc && proto) {
-        proto = Object.getPrototypeOf(proto);
-        desc = Object.getOwnPropertyDescriptor(proto, prop);
+    /** The accessor `prop` on sb or its prototype chain; null when there is none. */
+    const findAccessor = (prop) => {
+      for (let o = sb; o; o = Object.getPrototypeOf(o)) {
+        const desc = Object.getOwnPropertyDescriptor(o, prop);
+        if (desc) return desc.get ? desc : null;
       }
-      if (!desc) return;
+      return null;
+    };
+
+    // A property this SourceBuffer lacks is left alone: walking past the end of
+    // the chain threw out of addSourceBuffer, and no video played at all.
+    const defineAccessor = (prop, scale) => {
+      const desc = findAccessor(prop);
+      if (!desc || !desc.set) return;
       Object.defineProperty(sb, prop, {
         get() {
           const val = desc.get.call(this);
@@ -414,17 +430,12 @@ export function installMseHook(
 
     defineAccessor('timestampOffset', speed);
 
-    // appendWindowEnd = Infinity resta Infinity
-    // Infinity / 1.5 = Infinity, Infinity * 1.5 = Infinity, so the generic accessor works.
+    // An appendWindowEnd of Infinity stays Infinity either way (Infinity / 1.5
+    // is Infinity), so the same accessor does for both ends.
     defineAccessor('appendWindowStart', speed);
     defineAccessor('appendWindowEnd', speed);
 
-    let descBuf = Object.getOwnPropertyDescriptor(sb, 'buffered');
-    let protoBuf = sb;
-    while (!descBuf && protoBuf) {
-      protoBuf = Object.getPrototypeOf(protoBuf);
-      descBuf = Object.getOwnPropertyDescriptor(protoBuf, 'buffered');
-    }
+    const descBuf = findAccessor('buffered');
     if (descBuf) {
       Object.defineProperty(sb, 'buffered', {
         get() {

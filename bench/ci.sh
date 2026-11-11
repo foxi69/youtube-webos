@@ -6,6 +6,8 @@
 #   npm run coverage    the same under c8, with unminified, source-mapped builds,
 #                       and with the page already loaded when the bundle runs (--late)
 #
+# Also tools/fork-watch-test.py (Python; skipped without it, outside CI).
+#
 # Left out: the timing benches (hook-bench, panel-bench, module-hotpath-bench,
 # emoji-amplify-test), which measure rather than pass or fail.
 set -euo pipefail
@@ -43,6 +45,37 @@ run() {
   fi
 }
 
+# tools/fork-watch.py with GitHub's API faked. It needs Python 3: without it
+# the test is skipped, except in CI, where that is a failure.
+fork_watch() {
+  echo "--- fork-watch-test"
+  local py=""
+  for candidate in python3 python; do
+    # On Windows, "python3" can be a stub that only offers to install Python.
+    if command -v "$candidate" >/dev/null 2>&1 &&
+      "$candidate" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)' >/dev/null 2>&1; then
+      py="$candidate"
+      break
+    fi
+  done
+  if [ -z "$py" ]; then
+    if [ -n "${CI:-}" ]; then
+      echo "FAIL no Python 3 for tools/fork-watch-test.py"
+      return 1
+    fi
+    echo "skipped: no Python 3"
+    return 0
+  fi
+  local out status=0
+  out="$("$py" tools/fork-watch-test.py 2>&1)" || status=$?
+  printf '%s\n' "$out" | grep -v '^[[:space:]]*$' | tail -n 1
+  if [ "$status" -ne 0 ]; then
+    printf '%s\n' "$out" | grep -A1 '^FAIL' || printf '%s\n' "$out" | tail -n 20
+    return "$status"
+  fi
+}
+
+fork_watch
 build
 run polyfill-conformance
 run launch-test
@@ -65,6 +98,9 @@ run speed-audio-offer-test
 run speed-restore-test
 run speed-legacy-decoder-test
 run speed-core-test
+run speed-engine-test
+run speed-mse-test
+run buffer-limit-test
 run speed-legacy-install-test "$B"
 run whats-new-test "$B"
 run guide-fit-test "$B"

@@ -45,10 +45,13 @@ class StyleEl {
 function load(config) {
   const source = fs
     .readFileSync(SRC, 'utf8')
-    .replace(/^import[^;]+;$/gm, '')
+    // Blanked rather than removed (and the export replaced by as many
+    // characters), so every line and column stays where it is in the file and
+    // coverage maps onto src/sponsorblock-labels.js.
+    .replace(/^import[^;]+;$/gm, (m) => m.replace(/[^\n]/g, ' '))
     // var, not const: only var creates a property on the sandbox global.
     .replace(/^export default new SponsorBlockLabels\(\);$/m, 'var __labels = new SponsorBlockLabels();')
-    .replace(/^export /gm, '');
+    .replace(/^export /gm, '       ');
 
   const head = { children: [], appendChild(el) { el.parentNode = head; head.children.push(el); return el; } };
 
@@ -71,7 +74,7 @@ function load(config) {
   };
   sandbox.window = sandbox;
   vm.createContext(sandbox);
-  vm.runInContext(source, sandbox, { filename: 'sponsorblock-labels.js' });
+  vm.runInContext(source, sandbox, { filename: SRC });
   return { sandbox, head, labels: sandbox.__labels, css: () => (head.children[0] ? head.children[0].textContent : '') };
 }
 
