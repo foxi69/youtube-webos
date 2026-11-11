@@ -14,6 +14,8 @@
  * Date.now() comparison, so there is nothing to leak or to cancel.
  */
 
+import { webNextBody, noteWebAnswer } from './web-client.js';
+
 const VIDEO_ID_RE = /^[\w-]{11}$/;
 
 const MAX_ACTIVE = 2;
@@ -35,6 +37,8 @@ let queue = [];
 let active = 0;
 let generation = 0;
 let pausedUntil = 0;
+// No new request starts before this (holdLookups): the remote is moving.
+let heldUntil = 0;
 
 function unknownResult(expiresAt) {
   return { status: 'unknown', expiresAt };
@@ -133,6 +137,7 @@ function start(entry) {
     xhr.timeout = REQUEST_TIMEOUT_MS;
     xhr.onload = () => {
       const status = xhr.status;
+      noteWebAnswer(status);
       if (status === 429) return rateLimited(entry, gen);
       if (status < 200 || status >= 300) return failed(entry, gen);
       const label = classifyText(xhr.responseText);
@@ -141,17 +146,14 @@ function start(entry) {
     };
     xhr.onerror = () => failed(entry, gen);
     xhr.ontimeout = () => failed(entry, gen);
-    xhr.send(JSON.stringify({
-      context: { client: { clientName: 'WEB', clientVersion: '2.20250601.01.00', hl: 'en' } },
-      videoId: entry.id
-    }));
+    xhr.send(webNextBody(entry.id));
   } catch {
     failed(entry, gen);
   }
 }
 
 function pump() {
-  while (active < MAX_ACTIVE && queue.length > 0 && Date.now() >= pausedUntil) {
+  while (active < MAX_ACTIVE && queue.length > 0 && Date.now() >= pausedUntil && Date.now() >= heldUntil) {
     const entry = queue.shift();
     if (!entry.done) start(entry);
   }
@@ -189,6 +191,27 @@ export function getAiLabel(videoId) {
   queue.push(entry);
   pump();
   return entry.promise;
+}
+
+/**
+ * No queued lookup starts before `until` (a time): the remote's arrow keys
+ * are moving, and the tiles passed are gone again. Requests already running
+ * finish. resumeLookups() starts what waits, once the time is past: this
+ * module keeps no timer of its own.
+ */
+export function holdLookups(until) {
+  if (until > heldUntil) heldUntil = until;
+}
+
+/**
+ * Ends the hold and starts the queued lookups it kept waiting. The hold is
+ * lifted here rather than left to run out: a timer can fire a millisecond
+ * before Date.now() reaches its time, and the queue then stayed stuck, with
+ * nothing to start it again.
+ */
+export function resumeLookups() {
+  heldUntil = 0;
+  pump();
 }
 
 /**

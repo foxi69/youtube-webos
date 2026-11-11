@@ -66,7 +66,9 @@ function run(emojiOn, withEmojiText) {
       for (let t = 0; t < TICKS; t++) {
         const s = titles[t % titles.length];
         const tn = s.firstChild;
-        if (tn && tn.nodeType === 3) tn.data = tn.data;      // idom-style rewrite
+        // An idom-style rewrite: the same text written again, which is still a mutation.
+        // eslint-disable-next-line no-self-assign
+        if (tn && tn.nodeType === 3) tn.data = tn.data;
         pumpFrame();
         await tick();
       }

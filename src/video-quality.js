@@ -30,6 +30,10 @@ let videoBeingProcessed = null;
 let kickstartInProgress = false;
 
 const qualitySetForVideo = new Set();
+// How often a video's quality was put back up after the stream fell on its
+// own: a second try only after a first that failed.
+const relockTries = new Map();
+const MAX_RELOCK_TRIES = 2;
 
 // webOS 25 first video fix
 let hasKickstarted = false;
@@ -270,9 +274,12 @@ function setQualityOnPlayer() {
     return { success: false, upgraded: false };
   }
   
+  // Whether the range call went through: a failure after it (in the calls
+  // that follow) leaves the range set, and the video reloading.
+  let rangeSet = false;
   try {
     if (!player.setPlaybackQualityRange) {
-      return { success: false, upgraded: false };
+      return { success: false, upgraded: false, rangeSet };
     }
     
     if (isQualityAlreadyMax()) {
@@ -283,6 +290,7 @@ function setQualityOnPlayer() {
     DEBUG && console.log('[VideoQuality] Upgrading quality from:', previousQuality);
 
     player.setPlaybackQualityRange('highres', 'highres');
+    rangeSet = true;
     player.setPlaybackQuality?.('highres');
     restorePositionAfterReload();
     
@@ -300,7 +308,7 @@ function setQualityOnPlayer() {
     
   } catch (e) {
     DEBUG && console.warn('[VideoQuality] Error setting quality:', e);
-    return { success: false, upgraded: false };
+    return { success: false, upgraded: false, rangeSet };
   }
 }
 
@@ -359,6 +367,36 @@ function interceptAndUpgradeQuality(videoId) {
   });
 }
 
+// A video that started at its best level is left without a range (setting
+// one reloads the video on webOS 25), and the adaptive stream then fell to
+// 1080p for half a minute after a seek; one that got the range fell too
+// once. When the picture gets smaller below the best level, the range is set
+// again, once per video (one that failed before the range was set gets one
+// more try). Not over a level picked by hand in YouTube's menu: the player's
+// preference is then that level, not 'auto' or 'highres'.
+// ponytail: once per video; a stream that falls again stays down, a timed
+// retry would be the next step if that shows up.
+function onVideoResize(evt) {
+  if (!evt || !evt.target || evt.target.tagName !== 'VIDEO') return;
+  if (!player || isDestroyed || !isForceEnabled() || !isWatchPage() || videoBeingProcessed) return;
+  try {
+    const videoId = player.getVideoData?.()?.video_id;
+    const tries = relockTries.get(videoId) || 0;
+    if (!videoId || !qualitySetForVideo.has(videoId) || tries >= MAX_RELOCK_TRIES) return;
+    const preference = player.getUserPlaybackQualityPreference?.() || 'auto';
+    if (preference !== 'auto' && preference !== 'highres') return;
+    if (!levelsListed() || isQualityAlreadyMax()) return;
+    relockTries.set(videoId, tries + 1);
+    DEBUG && console.info('[VideoQuality] Fell to', player.getPlaybackQuality?.(), '- setting the range again');
+    const result = setQualityOnPlayer();
+    // The range set (a later call may still have thrown): no more for this
+    // video, another try would only reload it again. Failed before the range
+    // was set: one more try on a later resize, not one on every resize.
+    if (result.success || result.rangeSet) relockTries.set(videoId, MAX_RELOCK_TRIES);
+    notifyIfUpgraded(result);
+  } catch { /* the next resize */ }
+}
+
 // --- Show Video Quality on Start ---
 // A few seconds after a video starts playing, a toast with the quality it
 // plays in (e.g. 1080p60), once per video (NicholasBly/youtube-webos#72). The
@@ -395,7 +433,9 @@ export function playingQualityLabel() {
 }
 
 function scheduleQualityToast(actualState) {
-  if (actualState !== STATE_PLAYING || !configRead('showQualityOnStart')) return;
+  // The watch page only: attached at the start of the app, the player also
+  // reports the tile previews that play in it on Home.
+  if (actualState !== STATE_PLAYING || !configRead('showQualityOnStart') || !isWatchPage()) return;
   let videoId = null;
   try { videoId = player.getVideoData?.()?.video_id || null; } catch { /* ignore */ }
   if (!videoId || videoId === qualityToastVideoId) return;
@@ -544,6 +584,7 @@ export function destroyVideoQuality() {
   lastVideoId = null;
   lastKnownState = null;
   qualitySetForVideo.clear();
+  relockTries.clear();
   videoBeingProcessed = null;
   _isWatchPageCached = false;
   kickstartInProgress = false;
@@ -626,10 +667,18 @@ export function initVideoQuality() {
 function handleNavigation(event) {
   const isWatch = (event?.detail?.pageType === 'watch') || isWatchPage();
   
-  if (isWatch && !_isWatchPageCached) {
+  // Also when the attach at the start of the app gave up before a player came
+  // (a minute on Home with none): the flag was left set, and the first video
+  // opened after that got no player, so no state events at all.
+  if (isWatch && (!_isWatchPageCached || (!player && !initTimer))) {
     DEBUG && console.info('[VideoQuality] Navigation: Entering watch page');
     setTimeout(initVideoQuality, 0); 
     
+  } else if (isWatch && player) {
+    // Attached since the start of the app: a video opened from its preview
+    // plays on in the same player and sends no new PLAYING.
+    try { scheduleQualityToast(player.getPlayerState?.()); } catch { /* the next state change */ }
+
   } else if (!isWatch && _isWatchPageCached) {
     DEBUG && console.info('[VideoQuality] Navigation: Leaving watch page');
     destroyVideoQuality();
@@ -650,6 +699,9 @@ function setupListeners() {
         clearLocalStorageQuality();
       }
     });
+
+    // The picture's size changed (a <video> 'resize', caught on its way down).
+    document.addEventListener('resize', onVideoResize, true);
 
     window.addEventListener('yt-navigate-finish', handleNavigation);
 

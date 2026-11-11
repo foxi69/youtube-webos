@@ -1,8 +1,8 @@
 import './ai-content-filter.css';
 import { configRead, configAddChangeListener } from './config.js';
-import { getAiLabel, cancelAiLabelRequests } from './youtube-ai-label.js';
+import { getAiLabel, cancelAiLabelRequests, holdLookups, resumeLookups } from './youtube-ai-label.js';
 import { extractAiVideoId } from './ai-video-id.js';
-import { recordAiVideo, removeAiVideo } from './ai-video-store.js';
+import { recordAiVideo, removeAiVideo, recordNotAiVideo, notAiUntil } from './ai-video-store.js';
 
 /**
  * Checks rendered cards in the background: the first confirmed AI result is
@@ -21,6 +21,11 @@ const WRAPPER_NAME = 'YTLR-PLAYLIST-PANEL-VIDEO-WRAPPER-RENDERER';
 const CARD_SELECTOR = INNER_CARD_SELECTOR + ', ' + WRAPPER_NAME.toLowerCase();
 const CARD_ATTRIBUTES = ['style', 'src', 'href', 'idomkey'];
 const SWEEP_DELAY_MS = 50;
+// No sweep, so no lookup either, this long after an arrow key: moving along
+// the rows is when the app is busiest, and the tiles passed are gone again.
+const NAV_PAUSE_MS = 350;
+let lastNavAt = 0;
+let resumeTimer = null;
 
 let initialized = false;
 let enabled = false;
@@ -104,7 +109,7 @@ function onResult(owner, id, gen, result) {
   const rec = records.get(owner);
   if (rec && rec.pendingId === id && rec.pendingGen === gen) rec.pendingId = null;
   if (result.status === 'ai') recordAiVideo(id);
-  else if (result.status === 'not_ai') removeAiVideo(id);
+  else if (result.status === 'not_ai') { removeAiVideo(id); recordNotAiVideo(id); }
   if (!rec || gen !== generation || !enabled || !owner.isConnected) return;
   if (extractVideoId(owner) !== id) { scheduleSweep(owner); return; }
   rec.id = id;
@@ -135,6 +140,13 @@ function processCard(owner) {
     unmarkCard(owner, rec);
   }
   if (rec.pendingId === id && rec.pendingGen === generation) return;
+  // Answered "no AI label" within the last week (ai-video-store.js): not asked again.
+  const until = notAiUntil(id);
+  if (until) {
+    rec.result = { status: 'not_ai', expiresAt: until };
+    applyResult(owner, rec);
+    return;
+  }
   request(owner, rec, id);
 }
 
@@ -147,6 +159,12 @@ function observeCard(owner) {
 function runSweep() {
   sweepTimer = null;
   if (!enabled) return;
+  const pause = NAV_PAUSE_MS - (Date.now() - lastNavAt);
+  if (pause > 0) {
+    // What was asked for stays asked for (the dirty cards, the full sweep).
+    sweepTimer = setTimeout(runSweep, pause);
+    return;
+  }
   const full = fullSweepPending;
   fullSweepPending = false;
   let owners;
@@ -240,6 +258,15 @@ export function initAiContentFilter() {
   configAddChangeListener('removeAiVideos', refresh);
   configAddChangeListener('markAiVideos', refresh);
   configAddChangeListener('enableAdBlock', refresh);
+  // Arrow keys: one timestamp, read by the sweep.
+  document.addEventListener('keydown', (evt) => {
+    if (!enabled || evt.keyCode < 37 || evt.keyCode > 40) return;
+    lastNavAt = Date.now();
+    // The lookups already queued wait too, not only the next sweep's.
+    holdLookups(lastNavAt + NAV_PAUSE_MS);
+    clearTimeout(resumeTimer);
+    resumeTimer = setTimeout(resumeLookups, NAV_PAUSE_MS);
+  }, true);
   if (document.body) refresh();
   else document.addEventListener('DOMContentLoaded', refresh);
 }

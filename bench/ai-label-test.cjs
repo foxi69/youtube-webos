@@ -6,11 +6,9 @@
  *
  * Usage: node bench/ai-label-test.cjs
  */
-/* global __dirname */
 // Cases run one after another on purpose: they share the fake XHR list, the
 // fake clock and a freshly imported service, so running them concurrently
 // would mix their requests together.
-/* eslint-disable no-await-in-loop */
 const path = require('path');
 const { pathToFileURL } = require('url');
 
@@ -306,6 +304,30 @@ async function main() {
     svc.cancelAiLabelRequests();
     const again = await svc.getAiLabel(id(40));
     t('cancel: already cached results are kept', used() === 1 && again.status === 'ai');
+  }
+
+  // ---- a web client version YouTube no longer takes (web-client.js) ----
+  {
+    const web = await import(pathToFileURL(path.join(ROOT, 'src/web-client.js')).href);
+    let said = 0;
+    web.onWebClientRefused(() => { said++; });
+    const svc = await fresh();
+    const ask = async (n, status) => {
+      const p = svc.getAiLabel(id(n));
+      const x = xhrs[xhrs.length - 1];
+      respond(x, status, status === 200 ? PLAIN_RESPONSE : '{"error":{"code":400}}');
+      await p;
+    };
+    await ask(100, 200); // whatever earlier cases left behind is reset by an answer
+    for (let n = 101; n <= 105; n++) await ask(n, 400);
+    t('refused version: not said after five 400s', said === 0, String(said));
+    await ask(106, 200);
+    for (let n = 107; n <= 111; n++) await ask(n, 400);
+    t('refused version: an answer in between starts the count again', said === 0, String(said));
+    await ask(112, 400);
+    t('refused version: said after six 400s in a row', said === 1, String(said));
+    for (let n = 113; n <= 120; n++) await ask(n, 400);
+    t('refused version: said once', said === 1, String(said));
   }
 
   console.log('\n' + pass + ' passed, ' + fail + ' failed');

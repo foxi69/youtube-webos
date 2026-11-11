@@ -43,8 +43,10 @@ function load(setting, platform) {
   const source = fs
     .readFileSync(SRC, 'utf8')
     // Strip ESM syntax; the deps are injected as sandbox globals instead.
-    .replace(/^import[^;]+;$/gm, '')
-    .replace(/^export function/gm, 'function');
+    // Blanked rather than removed, so every line and column stays where it
+    // is in the file and coverage maps onto src/force-codec.js.
+    .replace(/^import[^;]+;$/gm, (m) => m.replace(/[^\n]/g, ' '))
+    .replace(/^export function/gm, '       function');
 
   const notifications = [];
   const warnings = [];
@@ -70,7 +72,7 @@ function load(setting, platform) {
   };
   sandbox.window = sandbox;
   vm.createContext(sandbox);
-  vm.runInContext(source, sandbox, { filename: 'force-codec.js' });
+  vm.runInContext(source, sandbox, { filename: SRC });
 
   return {
     sandbox,

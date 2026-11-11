@@ -35,10 +35,13 @@ export class WsolaStretcher {
       { length: channels },
       () => new Float32Array(this.W * 4)
     );
-    this.outLen = 0; // Number of generated samples in outBuffer (including overlapping parts)
+    // Where the next frame is written. A frame covers W samples from here and
+    // moves it on by Hs: the samples before outLen have had both overlapping
+    // halves added and are final; the Hs after it hold the newest frame's
+    // second half, waiting for the next frame's first.
+    this.outLen = 0;
 
-    // outReadPos is how many completely finished samples we've produced and are ready to be pulled
-    // Samples are completely finished up to outLen - Hs (because the last Hs samples are waiting for overlap)
+    // How many of the final samples have been pulled.
     this.outReadPos = 0;
 
     this.idealInputPos = 0;
@@ -187,12 +190,9 @@ export class WsolaStretcher {
   }
 
   available() {
-    if (this.speed === 1) {
-      return this.outLen - this.outReadPos;
-    }
-    // The last Hs samples still wait for the next frame's overlap-add.
-    const ready = this.outLen - this.Hs;
-    return Math.max(0, ready - this.outReadPos);
+    // Every sample before outLen is final (at 1x outLen is simply the end of
+    // the copied input). The Hs after it still wait for the next frame.
+    return Math.max(0, this.outLen - this.outReadPos);
   }
 
   pull(n) {

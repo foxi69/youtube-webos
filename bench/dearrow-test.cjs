@@ -73,7 +73,18 @@ function boot(cfg, opts = {}) {
   const win = dom.window;
   setUserAgent(win, modern ? UA.webos23 : UA.webos3);
   win.launchParams = '{}';
-  win.XMLHttpRequest = class { open(){} send(){} setRequestHeader(){} getResponseHeader(){return null;} addEventListener(){} };
+  // opts.head: what a HEAD of a thumbnail answers, after opts.head.delay ms:
+  // its Content-Length (a small one is YouTube's grey placeholder, a missing size).
+  win.XMLHttpRequest = class {
+    open(method) { this._method = method; }
+    send() {
+      if (!opts.head || this._method !== 'HEAD') return;
+      setTimeout(() => { this.status = 200; if (this.onload) this.onload(); }, opts.head.delay);
+    }
+    setRequestHeader(){}
+    getResponseHeader(name) { return opts.head && name === 'Content-Length' ? String(opts.head.length) : null; }
+    addEventListener(){}
+  };
   let rafQ = [];
   win.requestAnimationFrame = (cb) => { rafQ.push(cb); return rafQ.length; };
   win.cancelAnimationFrame = () => {};
@@ -353,6 +364,77 @@ const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-d
     await wait(50);
     t('crowdsourced thumbnails off: YouTube\'s thumbnail, no frame asked for',
       tileThumb(itemsOf(r2)[0]) === 'https://i.ytimg.com/vi/custom00001/hqdefault.jpg' && off.images.length === 0, off.images.join(' '));
+  }
+
+  // ---- Off, with Max Thumbnail Quality drawing sizes it has not checked yet ----
+  // Fast draws maxresdefault at once and corrects the response when the video
+  // turns out to have none. YouTube's thumbnail put back on a tile is the one
+  // the video has, also where the correction did not reach: it keeps eight
+  // entries per video, and the tile drawn here is of a later response.
+  // A response that ships hq720 proves it: that is what comes back then, not hqdefault.
+  for (const shipped of ['hqdefault', 'hq720']) {
+    const { win, parse, pump } = boot({ upgradeThumbnails: true, thumbnailQualityMode: 'eager' }, { head: { delay: 150, length: 1000 } });
+    const shippedTile = () => {
+      const item = tile('custom00001', 'Clickbait title');
+      item.tileRenderer.header.tileHeaderRenderer.thumbnail.thumbnails[0].url = `https://i.ytimg.com/vi/custom00001/${shipped}.jpg`;
+      return item;
+    };
+    let last = null;
+    for (let i = 0; i < 12; i++) last = parse(browse([shippedTile()]));
+    const drawn = tileThumb(itemsOf(last)[0]);
+    t(`Fast draws maxresdefault before it is checked (${shipped} shipped)`, drawn === 'https://i.ytimg.com/vi/custom00001/maxresdefault.jpg', drawn);
+    await waitFor(() => tileThumb(itemsOf(last)[0]).indexOf('COPY') !== -1, 2000);
+    const el = render(win, itemsOf(last)[0]);
+    await wait(700); // the check has answered (no maxresdefault), and the sweep has run
+    t(`the tile on screen has DeArrow's thumbnail (${shipped} shipped)`, shownThumb(el).indexOf('COPY') !== -1, shownThumb(el));
+    const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
+    Object.defineProperty(e, 'keyCode', { get: () => GREEN, configurable: true });
+    dispatchTrusted(win.document.body, e);
+    for (let i = 0; i < 20; i++) pump();
+    const sw = Array.from(win.document.querySelectorAll('#ytaf-page-ui-tweaks label'))
+      .find((l) => l.querySelector('.label-text')?.textContent === 'DeArrow');
+    if (sw) {
+      const input = sw.querySelector('input');
+      input.checked = false;
+      input.dispatchEvent(new win.Event('change'));
+    }
+    await wait(50);
+    t(`turned off (${shipped} shipped): the tile gets back the thumbnail the video has, not the missing size`,
+      shownThumb(el) === `url("https://i.ytimg.com/vi/custom00001/${shipped}.jpg")`, shownThumb(el));
+  }
+
+  // ---- Off: the thumbnail of the newest response, not the first one's ----
+  // Without Max Thumbnail Quality, so nothing rewrites the address: the tile
+  // gets back what YouTube sent last, when it sent another one since.
+  {
+    const { win, parse, pump } = boot({});
+    const at = (v) => {
+      const item = tile('custom00001', 'Clickbait title');
+      item.tileRenderer.header.tileHeaderRenderer.thumbnail.thumbnails[0].url = `https://i.ytimg.com/vi/custom00001/hqdefault.jpg?v=${v}`;
+      return item;
+    };
+    parse(browse([at('first')]));
+    const last = parse(browse([at('later')]));
+    // Without DeArrow's thumbnail first, the original on the tile would prove nothing.
+    const replaced = await waitFor(() => tileThumb(itemsOf(last)[0]).indexOf('COPY') !== -1, 2000);
+    const el = render(win, itemsOf(last)[0]);
+    await wait(500);
+    t('newest response: the tile has DeArrow\'s thumbnail before it is turned off',
+      replaced && shownThumb(el).indexOf('COPY') !== -1, shownThumb(el));
+    const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
+    Object.defineProperty(e, 'keyCode', { get: () => GREEN, configurable: true });
+    dispatchTrusted(win.document.body, e);
+    for (let i = 0; i < 20; i++) pump();
+    const sw = Array.from(win.document.querySelectorAll('#ytaf-page-ui-tweaks label'))
+      .find((l) => l.querySelector('.label-text')?.textContent === 'DeArrow');
+    if (sw) {
+      const input = sw.querySelector('input');
+      input.checked = false;
+      input.dispatchEvent(new win.Event('change'));
+    }
+    await wait(50);
+    t('turned off: the tile gets back the thumbnail of the newest response',
+      !!sw && shownThumb(el) === 'url("https://i.ytimg.com/vi/custom00001/hqdefault.jpg?v=later")', shownThumb(el));
   }
 
   // ---- The old thumbnail switch carries over ----

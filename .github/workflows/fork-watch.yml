@@ -17,6 +17,12 @@ permissions:
   contents: read
   issues: write
 
+# A run started by hand while the scheduled one runs would read the same
+# state and report the same findings twice.
+concurrency:
+  group: fork-watch
+  cancel-in-progress: false
+
 jobs:
   watch:
     runs-on: ubuntu-latest

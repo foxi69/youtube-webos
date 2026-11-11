@@ -147,7 +147,7 @@ function disablePromoUpsell(enable = true) {
       if (existing) {
         try {
           envelope = JSON.parse(existing);
-        } catch (e) {
+        } catch {
           envelope = null;
         }
       }

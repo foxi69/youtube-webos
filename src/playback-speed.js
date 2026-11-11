@@ -163,8 +163,14 @@ export function bindPlayerRate(player, controller, now = () => Date.now()) {
 function wrapRate(original, controller, now) {
   if (original.__ytafUnwrapped) return original;
   const wrapped = function (rate) {
-    const result = original.apply(this, arguments);
     const r = Number(rate);
+    // YouTube's own rate change on a live stream stalls it the same way: a
+    // speed from the menu is refused there (catch-up rates like 1.03 pass).
+    if (r !== 1 && isSupportedSpeed(r) && controller.isLive && controller.isLive()) {
+      controller.setSpeed(r);
+      return original.call(this, 1);
+    }
+    const result = original.apply(this, arguments);
     const sinceReload = now() - controller.lastReloadAt();
     if (
       isSupportedSpeed(r) &&
@@ -208,8 +214,27 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
     return configRead('enablePlaybackSpeed') !== false;
   }
 
+  // A live stream plays at 1x. Faster, it reached the live edge and then
+  // stalled for about 2 s every 5 s (webOS 25); YouTube offers no speed there
+  // either. The speed set is kept for the next video that is not live.
+  function isLive() {
+    try {
+      const data = getPlayer()?.getVideoData?.();
+      return !!(data && data.isLive);
+    } catch {
+      return false;
+    }
+  }
+
+  let liveNoticeAt = 0;
+  function refuseLive() {
+    // Once per press: the player API and YouTube's own object both pass it on.
+    if (Date.now() - liveNoticeAt > 1000) notify('Playback speed is not available on a live stream');
+    liveNoticeAt = Date.now();
+  }
+
     function getSpeed() {
-    return enabled() && isSupported() ? currentSpeed : 1;
+    return enabled() && isSupported() && !isLive() ? currentSpeed : 1;
   }
 
     function position(player) {
@@ -291,6 +316,10 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
   }
 
   function setSpeed(speed, { immediate = false } = {}) {
+    if (speed !== 1 && isSupportedSpeed(speed) && isLive()) {
+      refuseLive();
+      return;
+    }
     if (speed === currentSpeed || !isSupportedSpeed(speed)) return;
     if (!enabled()) {
       notify('Playback speed is disabled in YTAF settings');
@@ -378,6 +407,7 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
         activeEngine: () => (activeSink ? activeSink.engine : null),
     lastReloadAt: () => lastReloadAt,
     isSupported,
+    isLive,
     getSpeed,
     setSpeed,
     cycle,

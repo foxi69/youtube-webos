@@ -399,6 +399,9 @@ function onDialogKey(evt) {
     return;
   }
   stopKey(evt);
+  // Released with the window still open (a button that keeps it): nothing
+  // left to swallow once it closes another way.
+  if (evt.type === 'keyup' && evt.keyCode === swallowKeyUp) swallowKeyUp = null;
   if (evt.type !== 'keydown') return;
   const code = evt.keyCode;
   const reader = dialog.reader;

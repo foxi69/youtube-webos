@@ -21,9 +21,16 @@ on:
   schedule:
     - cron: '17 5 * * *'
 
+# One run at a time: two would merge into the same sync branch at once.
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
 permissions:
   contents: write
   pull-requests: write
+  # To start Build & Test on the sync branch (the last step).
+  actions: write
 
 env:
   UPSTREAM_REPO: https://github.com/NicholasBly/youtube-webos.git
@@ -72,25 +79,32 @@ jobs:
         run: |
           # An open sync PR may carry your own conflict fixes: build on it
           # instead of starting over, so nothing on it is ever force-pushed away.
+          merge() {
+            if ! git merge --no-edit "$1"; then
+              {
+                echo "### Merge conflict with $1 - resolve it by hand"
+                echo '```'
+                git diff --name-only --diff-filter=U
+                echo '```'
+              } | tee -a "$GITHUB_STEP_SUMMARY"
+              git merge --abort
+              exit 1
+            fi
+          }
+
           open_pr="$(gh pr list --head "$SYNC_BRANCH" --base main --state open --json number --jq '.[].number')"
           if [ -n "$open_pr" ]; then
             git fetch origin "$SYNC_BRANCH"
             git checkout -B "$SYNC_BRANCH" "origin/$SYNC_BRANCH"
+            # main may have moved on since the pull request was opened: the
+            # branch gets it too, so what is tested is what the merge gives.
+            merge origin/main
           else
             git checkout -B "$SYNC_BRANCH"
           fi
           echo "open_pr=$open_pr" >> "$GITHUB_OUTPUT"
 
-          if ! git merge --no-edit "upstream/$UPSTREAM_BRANCH"; then
-            {
-              echo "### Merge conflict - resolve it by hand"
-              echo '```'
-              git diff --name-only --diff-filter=U
-              echo '```'
-            } | tee -a "$GITHUB_STEP_SUMMARY"
-            git merge --abort
-            exit 1
-          fi
+          merge "upstream/$UPSTREAM_BRANCH"
 
           if [ -n "$open_pr" ]; then
             git push origin "$SYNC_BRANCH"
@@ -108,3 +122,41 @@ jobs:
               --body "Automatic merge of NicholasBly/youtube-webos main into this fork. Review the upstream changes, test, then merge."; then
             echo "Could not open the pull request (see the permissions note at the top of this workflow). Open it here: ${{ github.server_url }}/${{ github.repository }}/compare/main...$SYNC_BRANCH" | tee -a "$GITHUB_STEP_SUMMARY"
           fi
+
+      # GitHub starts no workflow for what GITHUB_TOKEN does (the push, the
+      # pull request above), workflow_dispatch excepted: without this the
+      # sync pull request had no tests at all. Such a run's own checks show
+      # on the commit only; its "report" job (main.yml) puts the result on
+      # the commit as a status, which the pull request shows.
+      #
+      # It runs the workflow file of the sync branch, so it is started only
+      # when upstream left .github/ as this fork has it: changed there, the
+      # workflow could ask for any permission before anyone has read it.
+      # Build & Test's build job itself is read-only (main.yml).
+      - name: Run Build & Test on the sync branch
+        if: steps.check.outputs.behind == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! git diff --quiet origin/main "$SYNC_BRANCH" -- .github/; then
+            {
+              echo "### Build & Test not started"
+              echo "Upstream changes files under .github/:"
+              echo '```'
+              git diff --name-only origin/main "$SYNC_BRANCH" -- .github/
+              echo '```'
+              echo "Read them, then start Build & Test on $SYNC_BRANCH from the Actions tab."
+            } | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          # Dispatched on a branch made for the commit checked above, not on
+          # the sync branch: a push to that one after the check would have
+          # its workflows run unread. The same commit, so the checks still
+          # show on the pull request. The earlier ones are deleted.
+          sha="$(git rev-parse HEAD)"
+          ref="upstream-sync-checked/${sha:0:12}"
+          for old in $(git ls-remote --heads origin 'refs/heads/upstream-sync-checked/*' | cut -f2); do
+            [ "$old" = "refs/heads/$ref" ] || git push -q origin --delete "$old" || true
+          done
+          git push -q origin "$sha:refs/heads/$ref"
+          gh workflow run main.yml --ref "$ref"

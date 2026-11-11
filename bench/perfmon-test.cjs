@@ -136,8 +136,7 @@ setTimeout(() => {
   t('Max Thumbnail Quality counts the tiles above hqdefault', !!thumbs && thumbs.state === 'firing' && /^2 of 3 tiles/.test(thumbs.detail),
     thumbs && thumbs.state + ': ' + thumbs.detail);
 
-  // Find the cluster root by probing before/after a toggle.
-  const before = false; // cluster starts hidden
+  // The cluster starts hidden.
 
   // 1 press: must NOT toggle
   key(48);

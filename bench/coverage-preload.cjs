@@ -7,7 +7,7 @@ const path = require('path');
 const { pathToFileURL } = require('url');
 
 const readFileSync = fs.readFileSync;
-fs.readFileSync = function (file, options) {
+fs.readFileSync = function (file, _options) {
   const out = readFileSync.apply(this, arguments);
   if (typeof out === 'string' && typeof file === 'string' && /webOSUserScripts[\\/]userScript\.js$/.test(file)) {
     return out + '\n//# sourceURL=' + pathToFileURL(path.resolve(file)).href;

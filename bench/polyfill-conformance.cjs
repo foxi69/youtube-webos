@@ -67,6 +67,8 @@ diff('Array.from empty arraylike', (g) => g.Array.from({ length: 0 }));
 diff('Array.from null throws', (g) => g.Array.from(null));
 
 /* ---- Array.prototype ---- */
+// [1, , 3]: a hole, on purpose: the polyfills must treat it as the engine does.
+// eslint-disable-next-line no-sparse-arrays
 const arrCases = [[1, 2, 3, 4], [], [NaN], [0, -0], ['a', 'b'], [1, , 3]];
 arrCases.forEach((c, i) => {
   diff(`Array#find #${i}`, (g) => g.Array.prototype.find.call(c.slice(), (x) => x === 3));
@@ -79,6 +81,7 @@ arrCases.forEach((c, i) => {
 diff('Array#flat nested', (g) => g.Array.prototype.flat.call([1, [2, [3, [4]]]]));
 diff('Array#flat depth 2', (g) => g.Array.prototype.flat.call([1, [2, [3, [4]]]], 2));
 diff('Array#flat Infinity', (g) => g.Array.prototype.flat.call([1, [2, [3, [4]]]], Infinity));
+// eslint-disable-next-line no-sparse-arrays
 diff('Array#flat holes', (g) => g.Array.prototype.flat.call([1, , 2, [3, , 4]]));
 
 /* ---- String.prototype ---- */
@@ -110,7 +113,7 @@ uspCases.forEach((c, i) => {
   diff(`USP get('a') #${i}`, (g) => new g.URLSearchParams(c).get('a'));
   diff(`USP getAll('a') #${i}`, (g) => new g.URLSearchParams(c).getAll('a'));
   diff(`USP has('a') #${i}`, (g) => new g.URLSearchParams(c).has('a'));
-  diff(`USP forEach #${i}`, (g) => { const o = []; new g.URLSearchParams(c).forEach((v, k) => o.push([k, v])); return o; });
+  diff(`USP forEach #${i}`, (g) => { const o = []; new g.URLSearchParams(c).forEach((v, k) => { o.push([k, v]); }); return o; });
   diff(`USP set #${i}`, (g) => { const p = new g.URLSearchParams(c); p.set('a', 'Z'); return p.toString(); });
   diff(`USP append #${i}`, (g) => { const p = new g.URLSearchParams(c); p.append('n', 'v v'); return p.toString(); });
   diff(`USP delete #${i}`, (g) => { const p = new g.URLSearchParams(c); p.delete('a'); return p.toString(); });
@@ -149,7 +152,7 @@ diff('URL searchParams from existing query', (g) => {
 diff('URL concat pattern from utils.handleLaunch', (g) => {
   const u = new g.URL('https://www.youtube.com/tv#/');
   const extra = new g.URLSearchParams('v=dQw4w9WgXcQ&list=PL+1');
-  extra.forEach((value, key) => u.searchParams.append(key, value));
+  extra.forEach((value, key) => { u.searchParams.append(key, value); });
   return u.toString();
 });
 
@@ -185,6 +188,8 @@ diff('URL concat pattern from utils.handleLaunch', (g) => {
   check('Array.from over an HTMLCollection',
     win.Array.from(host.children).length, 3);
   check('spread over a NodeList',
+    // Counts by iterating: the iteration is what is tested.
+    // eslint-disable-next-line no-unused-vars
     (() => { let n = 0; for (const _ of d.querySelectorAll('.kid')) n++; return n; })(), 3);
   check('NodeList#forEach exists',
     typeof d.querySelectorAll('.kid').forEach, 'function');

@@ -416,8 +416,8 @@ const ids = (r) => itemsOf(r).map((i) => (i.tileRenderer || i.lockupViewModel).c
   {
     const resolved = [];
     const feedback = [];
-    let blockItem = null;
-    const yttv = (win) => ({
+    let blockItem;
+    const yttv = (_win) => ({
       resolver: Object.assign(function Resolver() {}, { instance: { resolveCommand: (cmd) => { resolved.push(cmd); return 'original'; } } }),
       services: { mappings: {}, get: (name) => (name === 'KabukiInnerTubeClient' ? { fetch: ({ path, payload }) => ({ subscribe: (next) => {
         feedback.push({ path, payload });
@@ -726,6 +726,33 @@ const ids = (r) => itemsOf(r).map((i) => (i.tileRenderer || i.lockupViewModel).c
     b = start({ url: 'https://www.youtube.com/tv#/?env_forceFullAnimation=1&v=abcdefghijk' });
     await wait(20);
     t('Start Page leaves a launch into a video alone', b.win.location.hash.indexOf('v=abcdefghijk') !== -1, b.win.location.hash);
+    // As handleLaunch builds the address: the query before the hash.
+    b = start({ url: 'https://www.youtube.com/tv?env_forceFullAnimation=1&env_enableWebSpeech=1&env_enableVoice=1#/' });
+    await wait(20);
+    t('Start Page opens Subscriptions on a plain start (query before the hash)', b.win.location.hash === '#/browse?c=FEsubscriptions', b.win.location.hash);
+    b = start({ url: 'https://www.youtube.com/tv?env_forceFullAnimation=1&v=abcdefghijk#/' });
+    await wait(20);
+    t('Start Page leaves a launch into a video alone (query before the hash)', b.win.location.hash === '#/', b.win.location.hash);
+    b = start({ url: 'https://www.youtube.com/tv?env_forceFullAnimation=1&inApp=true&vs=9&launch=voice&vq=cats#/' });
+    await wait(20);
+    t('Start Page leaves a voice search alone (query before the hash)', b.win.location.hash === '#/', b.win.location.hash);
+    // Each parameter on its own, the cast ones with and without a value.
+    for (const param of ['c=FEtopics', 'list=PL1', 'vq=cats', 'va=play', 'launch=voice', 'inApp=true', 'search_query=cats',
+      'pairingCode=1', 'dialLaunch=1', 'cc2=1', 'dialLaunch', 'pairingCode', 'cc2']) {
+      b = start({ url: `https://www.youtube.com/tv?env_forceFullAnimation=1&${param}#/` });
+      await wait(20);
+      t(`Start Page leaves a launch with ${param} alone`, b.win.location.hash === '#/', b.win.location.hash);
+    }
+    // A name-only one with another parameter after it.
+    for (const param of ['dialLaunch', 'pairingCode', 'cc2']) {
+      b = start({ url: `https://www.youtube.com/tv?env_forceFullAnimation=1&${param}&vs=9#/` });
+      await wait(20);
+      t(`Start Page leaves a launch with ${param}, then another parameter, alone`, b.win.location.hash === '#/', b.win.location.hash);
+    }
+    // A parameter that only starts like one of them is no launch target.
+    b = start({ url: 'https://www.youtube.com/tv?env_forceFullAnimation=1&vs=9&cc2x=1#/' });
+    await wait(20);
+    t('Start Page: a look-alike parameter is a plain start', b.win.location.hash === '#/browse?c=FEsubscriptions', b.win.location.hash);
     b = start({ url: 'https://www.youtube.com/tv#/', launchParams: '{"contentTarget":"v=abcdefghijk"}' });
     await wait(20);
     t('Start Page leaves a launch with a target alone', b.win.location.hash === '#/', b.win.location.hash);

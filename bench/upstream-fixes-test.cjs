@@ -89,7 +89,7 @@ setTimeout(async () => {
       sectionListRenderer: { contents: [{ shelfRenderer: { content: { horizontalListRenderer: { items: [tile('testvariant', 'hqdefault_custom_1'), tile('shortscrop1', 'oar2')] } } } }] } } } } } } });
     const items = r.contents.tvBrowseRenderer.content.tvSurfaceContentRenderer.content.sectionListRenderer.contents[0].shelfRenderer.content.horizontalListRenderer.items;
     const url = (i) => items[i].tileRenderer.header.tileHeaderRenderer.thumbnail.thumbnails[0].url;
-    t('a thumbnail test variant gets the video\'s own thumbnail', /\/testvariant\/sddefault\.(jpg|webp)/.test(url(0)), url(0));
+    t('a thumbnail test variant gets the video\'s own thumbnail', /\/testvariant\/sddefault\.(?:jpg|webp)/.test(url(0)), url(0));
     t('a name the ladder does not know stays as sent', /\/oar2\.jpg/.test(url(1)), url(1));
   }
 

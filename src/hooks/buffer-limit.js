@@ -58,7 +58,7 @@ function trimSourceBuffer(sb, now) {
   var buffered;
   try {
     buffered = sb.buffered;
-  } catch (e) {
+  } catch {
     return; // buffer was detached mid-iteration
   }
   if (!buffered || buffered.length === 0) return;
@@ -85,25 +85,37 @@ function trimSourceBuffer(sb, now) {
  *
  * Without this, an append landing while our remove() is in flight throws
  * InvalidStateError and playback stalls.
+ *
+ * Every prototype is patched once, not only the first one seen: off 1x the
+ * playback speed hands out a stand-in for the audio SourceBuffer
+ * (speed/mse-hook.js), and when that came first the real ones stayed
+ * unguarded.
  */
-var appendPatched = false;
+var patchedProtos = [];
 
 function patchAppend(sb) {
-  if (appendPatched) return;
-
   var proto = Object.getPrototypeOf ? Object.getPrototypeOf(sb) : sb.__proto__;
   if (!proto || typeof proto.appendBuffer !== 'function') {
     log('could not resolve SourceBuffer prototype; append deferral disabled');
     return;
   }
+  if (patchedProtos.indexOf(proto) !== -1) return;
 
-  appendPatched = true;
+  patchedProtos.push(proto);
   var origAppend = proto.appendBuffer;
 
   proto.appendBuffer = function (data) {
     var self = this;
     if (self.updating && self[trimming]) {
       var onDone = function () {
+        // The player's own updateend listener runs first and may append: then
+        // ours waits for that one to finish, instead of throwing
+        // InvalidStateError and dropping the data (from #129).
+        // ponytail: the held-back piece then goes in after the player's newer
+        // one(s), and only once the player leaves an updateend without an
+        // append; lost outright before. Re-queue it ahead of the player's if
+        // an old TV shows gaps.
+        if (self.updating) return;
         self.removeEventListener('updateend', onDone); // no {once:true} on CR38
         self[trimming] = false;
         try {
@@ -183,7 +195,7 @@ export function initBufferLimit(options) {
         });
       }
     }
-    return { appendPatched: appendPatched, buffers: out };
+    return { appendPatched: patchedProtos.length > 0, buffers: out };
   };
 
   // Remember the blob URL so we can match a MediaSource to its <video>.

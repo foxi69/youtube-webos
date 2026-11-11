@@ -38,7 +38,15 @@ export function showNotification(text, time = 3000) {
   // still waits for its fade-in (no frames come while the page is hidden).
   const existing = liveMessages.get(text);
   if (existing && existing.elmInner.isConnected) {
-    if (time > 0) existing.handle.update(text, time);
+    // One kept until its owner removes it (time 0) stays so when the same
+    // text is asked for with a time; a timed one asked to be kept loses its
+    // timer.
+    if (time > 0) {
+      if (existing.elmInner._removeTimer) existing.handle.update(text, time);
+    } else if (existing.elmInner._removeTimer) {
+      clearTimeout(existing.elmInner._removeTimer);
+      existing.elmInner._removeTimer = null;
+    }
     return existing.handle;
   }
 

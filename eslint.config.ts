@@ -97,7 +97,11 @@ const configs = [
     // Why doesn't ESLint do this by default is beyond me.
     files: ['**/*.cjs'],
     languageOptions: {
-      sourceType: 'commonjs'
+      sourceType: 'commonjs',
+      // __dirname, require and the rest of a CommonJS module's own names.
+      globals: {
+        ...globals.node
+      }
     }
   },
 
@@ -110,37 +114,37 @@ const configs = [
   },
 
   {
-    // The simulator tests: Node scripts that drive a simulator step by step.
-    files: ['tools/simulator-tests/**'],
-    languageOptions: {
-      globals: {
-        ...globals.node
-      }
-    },
+    // The bench tests run their cases one after another, on purpose: each
+    // boots its own page and timers, and running them at once would mix them.
+    files: ['bench/**'],
     rules: {
       'no-await-in-loop': 'off'
     }
   },
 
   {
-    // Runs inside the simulator's YouTube page, as a plain script.
-    files: ['tools/simulator-tests/effects-page.js'],
-    languageOptions: {
-      sourceType: 'script',
-      globals: {
-        ...globals.browser
-      }
-    },
+    // Written with `var` throughout: buffer-limit.js in ES5 on purpose (see
+    // its header), and perf_mon.js, a dev tool left in the style it was
+    // written in.
+    files: ['src/perf_mon.js', 'src/hooks/buffer-limit.js'],
     rules: {
-      'no-unused-vars': ['error', { caughtErrors: 'none' }],
-      // Object.hasOwn is Chromium 93+; the webOS 6 simulator is 79.
-      'prefer-object-has-own': 'off'
+      'no-var': 'off'
+    }
+  },
+
+  {
+    // The emoji character class names Unicode symbol blocks by their
+    // characters (EMOJI_CHAR_RE): the ranges are the point.
+    files: ['src/adblock.js'],
+    rules: {
+      'regexp/no-obscure-range': 'off'
     }
   },
 
   {
     // `ignores` field must be in the very bottom config.
-    ignores: ['dist/**/*', '**/*-polyfill.*']
+    // src/vendor: third-party code, kept as its authors wrote it.
+    ignores: ['dist/**/*', '**/*-polyfill.*', 'src/vendor/**/*']
   }
 ] as const satisfies Linter.Config[];
 

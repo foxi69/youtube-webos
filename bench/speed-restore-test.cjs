@@ -6,7 +6,6 @@
  *
  * Usage: node bench/speed-restore-test.cjs
  */
-/* global __dirname */
 const path = require('path');
 const { pathToFileURL } = require('url');
 

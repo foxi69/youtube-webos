@@ -119,13 +119,16 @@ const EMOJI_RE = new RegExp(
 );
 const EMOJI_RE_CAP = new RegExp(`(${EMOJI_RE.source})`, 'g');
 const EMOJI_RE_GLOBAL = new RegExp(EMOJI_RE.source, 'g');
-// Includes our own sentinels: a title that ships ​/‌ verbatim could
+// Includes our own sentinels: a title that ships \u200B/\u200C verbatim could
 // otherwise forge an "already wrapped" region that emoji-font.js then treats
 // as its own output. Stripping first also makes processEmojiString idempotent.
-const CLEAN_TEXT_RE = /[​‌⁠﻿]/g;
+const CLEAN_TEXT_RE = /[\u200B\u200C\u2060\uFEFF]/g;
 // Single-scan gate for "does this string need any emoji work at all" - most
 // YouTube titles are plain text and reject here. Every emoji holds an emoji
 // character or the keycap mark.
+// The class and the surrogate pair of EMOJI_CHAR_RE, then the rest: built
+// from its source, so the alternatives cannot be one class.
+// eslint-disable-next-line regexp/prefer-character-class
 const NEEDS_TEXT_WORK_RE = new RegExp(EMOJI_CHAR_RE.source + '|\\u20E3|[\\u200B\\u200C\\u2060\\uFEFF]');
 // A sentinel to strip or an emoji to wrap, in one scan (wrapAttributedContent).
 const ATTRIBUTED_WORK_RE = new RegExp(`[\\u200B\\u200C\\u2060\\uFEFF]|(${EMOJI_RE.source})`, 'g');
@@ -442,7 +445,7 @@ function processEmojiString(str) {
   if (!NEEDS_TEXT_WORK_RE.test(str)) return str;
   let cleanedStr = str.replace(CLEAN_TEXT_RE, '');
 
-  const replaced = cleanedStr.replace(EMOJI_RE_GLOBAL, '​$&‌');
+  const replaced = cleanedStr.replace(EMOJI_RE_GLOBAL, '\u200B$&\u200C');
   if (EMOJI_DEBUG && replaced !== str) {
     console.log(`[AdBlock-Emoji] Wrapped emoji in string: "${str}"`);
   }
@@ -450,7 +453,7 @@ function processEmojiString(str) {
 }
 
 // Idempotent by construction: the sentinels are stripped first, then re-wrapped
-// from the cleaned text. That also stops a title shipping ​/‌ verbatim
+// from the cleaned text. That also stops a title shipping \u200B/\u200C verbatim
 // from forging an "already wrapped" region.
 function splitIntoRuns(text, originalRun = {}) {
     if (!NEEDS_TEXT_WORK_RE.test(text)) return null;
@@ -464,7 +467,7 @@ function splitIntoRuns(text, originalRun = {}) {
     for (let i = 0; i < parts.length; i++) {
         if (!parts[i]) continue;
         if (i % 2 === 1) {
-            newRuns.push(Object.assign({}, originalRun, { text: '​' + parts[i] + '‌' }));
+            newRuns.push(Object.assign({}, originalRun, { text: '\u200B' + parts[i] + '\u200C' }));
         } else {
             newRuns.push(Object.assign({}, originalRun, { text: parts[i] }));
         }
@@ -499,7 +502,7 @@ function wrapAttributedContent(obj) {
   while (m !== null) {
     out += src.slice(last, m.index);
     if (m[1]) {
-      out += '​' + m[1] + '‌';
+      out += '\u200B' + m[1] + '\u200C';
       edits.push(m.index, m.index + m[1].length, 1);
     } else {
       edits.push(m.index, m.index + 1, -1);
@@ -1846,4 +1849,4 @@ if (cfgFlags.enableTrackingBlock) {
   } catch (e) {
     console.warn('[AdBlock] Early tracking block install failed:', e.message);
   }
-}
+}

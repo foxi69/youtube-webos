@@ -1,5 +1,4 @@
 /** Behaviour tests for learned AI labels, persistence, card badges and removal. */
-/* global __dirname */
 const fs = require('fs');
 const path = require('path');
 const { JSDOM, VirtualConsole } = require('jsdom');
@@ -23,7 +22,38 @@ function boot(cfg, opts) {
   const win = dom.window;
   setUserAgent(win, legacy ? UA.webos3 : UA.webos23);
   win.launchParams = '{}';
+  // opts.fakeClock: the page's Date.now and setTimeout on a clock the test
+  // moves (clock.advance), so a timing case depends on no scheduler.
+  let clock = null;
+  if (opts.fakeClock) {
+    let now = 1e12;
+    let seq = 0;
+    const timers = new Map();
+    win.Date.now = () => now;
+    win.setTimeout = (fn, ms) => { timers.set(++seq, { fn, at: now + (ms || 0) }); return seq; };
+    win.clearTimeout = (tid) => { timers.delete(tid); };
+    clock = {
+      now: () => now,
+      advance(ms) {
+        const end = now + ms;
+        for (;;) {
+          let nextId = null;
+          for (const [tid, tm] of timers) if (tm.at <= end && (nextId === null || tm.at < timers.get(nextId).at)) nextId = tid;
+          if (nextId === null) break;
+          const due = timers.get(nextId);
+          timers.delete(nextId);
+          now = due.at;
+          due.fn();
+        }
+        now = end;
+      }
+    };
+  }
   const requests = [];
+  // When each request started (the page's Date.now()), in the order of `requests`.
+  const startedAt = [];
+  // opts.held: the ids whose answers wait for release(id), not for a delay.
+  const heldAnswers = {};
   const answers = opts.answers || {};
   win.XMLHttpRequest = class {
     open(m, u) { this.url = u; }
@@ -33,17 +63,21 @@ function boot(cfg, opts) {
     send(body) {
       const id = JSON.parse(body).videoId;
       requests.push(id);
+      startedAt.push(win.Date.now());
       const answer = answers[id] || 'plain';
       const delay = opts.delayFor && opts.delayFor[id] !== undefined ? opts.delayFor[id] : (opts.delay || 0);
-      setTimeout(() => {
+      const respond = () => {
         if (answer === 'timeout') { this.ontimeout && this.ontimeout(); return; }
         if (answer === 'network') { this.onerror && this.onerror(); return; }
         this.status = typeof answer === 'number' ? answer : answer === '403' || answer === '429' || answer === '500' ? Number(answer) : 200;
         this.responseText = answer === 'invalidjson' ? '<html>' : JSON.stringify(answer === 'ai' ? aiBody : plainBody);
         this.onload && this.onload();
-      }, delay);
+      };
+      if (opts.held && opts.held.indexOf(id) !== -1) heldAnswers[id] = respond;
+      else setTimeout(respond, delay);
     }
   };
+  const release = (id) => { const respond = heldAnswers[id]; delete heldAnswers[id]; if (respond) respond(); };
   const NS = win.JSON.stringify;
   win.localStorage.setItem('ytaf-configuration', NS(Object.assign({
     enableAdBlock: true, enableTrackingBlock: false, removeGlobalShorts: false,
@@ -53,6 +87,7 @@ function boot(cfg, opts) {
     enableReturnYouTubeDislike: false, upgradeThumbnails: false
   }, cfg)));
   if (opts.aiStore !== undefined) win.localStorage.setItem('ytaf-ai-videos', opts.aiStore);
+  if (opts.notAiStore !== undefined) win.localStorage.setItem('ytaf-not-ai-videos', opts.notAiStore);
   if (legacy) applyChrome38Downgrade(win);
   win.eval(fs.readFileSync(bundlePath, 'utf8'));
   const doc = win.document;
@@ -79,7 +114,7 @@ function boot(cfg, opts) {
     doc.getElementById('root').appendChild(wrapper);
     return { wrapper, inner };
   };
-  return { win, doc, NS, requests, card, wrapperLockup, close: () => win.close() };
+  return { win, doc, NS, requests, startedAt, release, card, wrapperLockup, clock, close: () => win.close() };
 }
 const id = (n) => 'vid' + String(n).padStart(8, '0');
 const storedIds = (win) => {
@@ -375,6 +410,134 @@ function resultItems(win, out, surface) {
     const valid = storedIds(h.win);
     t('store cap: at most 2000 ids retained', valid.length <= 2000, String(valid.length));
     t('store cap: oldest id evicted', valid.indexOf('saved0') === -1);
+    h.close();
+  }
+
+  // Waits until `check()` holds, at most `ms`; resolves with whether it did.
+  const until = async (check, ms) => {
+    const end = Date.now() + ms;
+    while (!check()) {
+      if (Date.now() > end) return false;
+      await wait(10);
+    }
+    return true;
+  };
+  // A page booted with fakeClock: its clock moved `ms` in five steps, with
+  // the promise jobs and observers between them run, so what a step starts
+  // (a sweep, a lookup) has happened before the next step.
+  const settleClock = async (h, ms) => {
+    for (let i = 0; i < 5; i++) {
+      await new Promise((r) => setImmediate(r));
+      h.clock.advance(ms / 5);
+    }
+    await new Promise((r) => setImmediate(r));
+  };
+
+  // "No AI label" is remembered for a week, so the same videos are not asked
+  // about again at every start of the app.
+  {
+    const h = boot({ markAiVideos: true }, { answers: { [id(20)]: 'plain', [id(21)]: 'ai' } });
+    h.card(id(20));
+    h.card(id(21));
+    // The store writes 3 s after the last answer.
+    await until(() => (h.win.localStorage.getItem('ytaf-not-ai-videos') || '').indexOf(id(20) + ':') !== -1, 10000);
+    const saved = h.win.localStorage.getItem('ytaf-not-ai-videos') || '';
+    t('not AI result: remembered', saved.indexOf(id(20) + ':') === 0, saved);
+    t('AI result: not among the remembered "not AI"', saved.indexOf(id(21)) === -1, saved);
+    h.close();
+
+    const h2 = boot({ markAiVideos: true }, { notAiStore: saved, answers: { [id(20)]: 'ai' } });
+    const again = h2.card(id(20));
+    h2.card(id(22));
+    await wait(400);
+    t('a remembered "not AI" video is not asked about again', h2.requests.indexOf(id(20)) === -1 && h2.requests.indexOf(id(22)) !== -1, h2.requests.join(','));
+    t('a remembered "not AI" video gets no badge', !again.hasAttribute(BADGE));
+    h2.close();
+
+    // Run out, far in the future (a clock set back), or not a day at all: asked again.
+    const today = Math.round(Date.now() / 864e5);
+    const stale = [id(30) + ':' + (today - 1), id(31) + ':' + (today + 400), id(32) + ':x'].join(',');
+    const h3 = boot({ markAiVideos: true }, { notAiStore: stale });
+    h3.card(id(30)); h3.card(id(31)); h3.card(id(32));
+    await wait(400);
+    t('an entry that ran out, or is not to be trusted, is asked about again',
+      [30, 31, 32].every((n) => h3.requests.indexOf(id(n)) !== -1), h3.requests.join(','));
+    h3.close();
+  }
+
+  // No lookups while the arrow keys move: they start once the remote is quiet.
+  {
+    // On the page's own clock, moved by the test (see the case below).
+    const h = boot({ markAiVideos: true }, { fakeClock: true });
+    await settleClock(h, 500);
+    const keyAt = h.clock.now();
+    dispatchTrusted(h.doc.body, new h.win.KeyboardEvent('keydown', { keyCode: 40, bubbles: true }));
+    h.card(id(40));
+    // Just short of the pause's end: nothing yet.
+    await settleClock(h, 345);
+    const held = h.requests.indexOf(id(40)) === -1;
+    // Past it: the lookup starts.
+    await settleClock(h, 100);
+    const offsets = h.startedAt.map((at) => at - keyAt);
+    t('no lookup right after an arrow key, one once it is quiet', held && offsets.length === 1 && offsets[0] >= 350,
+      `held=${held} started at ${offsets.join(', ')} ms from the key`);
+    h.close();
+  }
+
+  // A second arrow key within the pause starts it again for the lookups
+  // already queued: the first key's timer must not let them go 350 ms after
+  // the first key.
+  {
+    // On the page's own clock, moved by the test: no scheduler delay can
+    // make it pass or fail.
+    const h = boot({ markAiVideos: true }, { held: [id(45), id(46)], fakeClock: true });
+    const settle = (ms) => settleClock(h, ms);
+    for (let n = 45; n < 49; n++) h.card(id(n));
+    await settle(500);
+    const started = h.requests.length === 2;
+    const key = () => dispatchTrusted(h.doc.body, new h.win.KeyboardEvent('keydown', { keyCode: 40, bubbles: true }));
+    key();
+    h.release(id(45));
+    h.release(id(46));
+    await settle(200);
+    const secondAt = h.clock.now();
+    key();
+    // Past the first key's deadline (+350), short of the second's.
+    await settle(300);
+    const heldPastFirst = h.requests.length === 2;
+    // Past the second key's deadline.
+    await settle(100);
+    const offsets = h.startedAt.slice(2).map((at) => at - secondAt);
+    t('a second arrow key within the pause holds the queued lookups again',
+      started && heldPastFirst && offsets.length === 2 && offsets.every((ms) => ms >= 350),
+      `started=${started} heldPastFirst=${heldPastFirst} lookups at ${offsets.join(', ')} ms from the second key`);
+    h.close();
+  }
+
+  // Lookups already queued wait for the remote too: two run at a time, and
+  // the third and fourth do not start while the arrows move.
+  {
+    // The first two answer only when let go, so the other two cannot start
+    // before the key; on the page's own clock, moved by the test.
+    const h = boot({ markAiVideos: true }, { held: [id(50), id(51)], fakeClock: true });
+    for (let n = 50; n < 54; n++) h.card(id(n));
+    // The sweep has queued all four, two are running.
+    await settleClock(h, 500);
+    const started = h.requests.length === 2;
+    const keyAt = h.clock.now();
+    dispatchTrusted(h.doc.body, new h.win.KeyboardEvent('keydown', { keyCode: 39, bubbles: true }));
+    // The two running answer now, while the remote is still moving.
+    h.release(id(50));
+    h.release(id(51));
+    // Just short of the pause's end: the third and fourth still wait.
+    await settleClock(h, 345);
+    const held = h.requests.length === 2;
+    await settleClock(h, 100);
+    // The third and fourth: the first two were running before the key.
+    const offsets = h.startedAt.slice(2).map((at) => at - keyAt);
+    t('queued lookups wait while the arrows move, and start once the remote is quiet',
+      started && held && offsets.length === 2 && offsets.every((ms) => ms >= 350),
+      `started=${started} held=${held} started at ${offsets.join(', ')} ms from the key`);
     h.close();
   }
 

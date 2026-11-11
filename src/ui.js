@@ -23,6 +23,7 @@ import { buildAboutPage } from './about.js';
 import { clearQueue, playNextInQueue } from './video-queue.js';
 import { titleFormattingSupported } from './dearrow/index.js';
 import { getSidebarEntries, hiddenIds, SIDEBAR_ENTRIES_EVENT } from './sidebar.js';
+import { onWebClientRefused } from './web-client.js';
 
 // YouTube puts every element that scrolls back to its top (a capture "scroll"
 // listener on window), which pinned the settings pages there: the remote moved
@@ -180,7 +181,8 @@ const ACTION_SCOPES = {
     speed_up: 'VIDEO',
     speed_down: 'VIDEO',
     speed_reset: 'VIDEO',
-    queue_next: 'VIDEO',
+    // From any page: the queue is filled on Home, and can be started there.
+    queue_next: 'GLOBAL',
     queue_clear: 'GLOBAL'
 };
 
@@ -1237,7 +1239,7 @@ function createOptionsPanel() {
       );
     }
     const elDeArrowFallback = createAlignedCycleControl('dearrowThumbnailFallback', dearrowThumbnailFallbacks);
-    const elDeArrowFallbackHelp = createElement('div', { text: 'Random Frame: a frame DeArrow picks from the video. Start, middle and end frames: YouTube\'s own', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } });
+    const elDeArrowFallbackHelp = createElement('div', { text: 'Random Frame: a frame DeArrow picks from the video; for it the id of every video shown is sent to DeArrow\'s servers, with the other choices only of videos that have a crowdsourced thumbnail. Start, middle and end frames: YouTube\'s own', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } });
     const deArrowThumbRows = [createConfigCheckbox('dearrowCrowdThumbnails'), elDeArrowFallback, elDeArrowFallbackHelp];
     pageUITweaks.appendChild(createSection('DeArrow', [
       createConfigCheckbox('enableDeArrow'),
@@ -1608,6 +1610,10 @@ function handleSeekStepKey(evt) {
     }
     return;
   }
+  // A press that is not taken below is YouTube's, and so is its keyup: a
+  // keyup we never got (the panel opened meanwhile) must not leave the next
+  // one of this key swallowed.
+  seekStepKeyCode = null;
   const step = Number(configRead('seekStep')) || 0;
   if (!step || optionsPanelVisible || !isWatchPage() || isShortsPage()) return;
   if (isTextBox(document.activeElement) || playerControlsShown() || isEngagementPanelVisible()) return;
@@ -1965,6 +1971,10 @@ function handleShortcutAction(action) {
       clearQueue();
       return;
   }
+  if (action === 'queue_next') {
+      playNextInQueue();
+      return;
+  }
   if (action === 'refresh_page') {
       if (isWatchPage() || isShortsPage()) {
           showNotification('Cannot refresh on player pages');
@@ -1999,10 +2009,6 @@ function handleShortcutAction(action) {
         break;
     case 'jump_to_live':
         jumpToLiveLogic(video);
-        break;
-
-    case 'queue_next':
-        playNextInQueue();
         break;
 
     case 'speed_up':
@@ -2628,6 +2634,10 @@ window.addEventListener('ytaf-page-update', (evt) => {
   if (evt.detail.isWatch || evt.detail.isShorts) hidePointerButton();
 });
 configAddChangeListener('pointerSettingsButton', (evt) => { if (!evt.detail.newValue) hidePointerButton(); });
+
+// The AI label and Most Replayed lookups ask as YouTube's web client, whose
+// version YouTube may stop taking (web-client.js).
+onWebClientRefused(() => showNotification('YouTube refused the AI label and Most Replayed lookups: the app needs an update', 8000));
 
 // Apply initial states on boot
 syncUiBrightness();
