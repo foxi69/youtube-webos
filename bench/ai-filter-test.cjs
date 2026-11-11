@@ -422,9 +422,16 @@ function resultItems(win, out, surface) {
     }
     return true;
   };
-  // The start times of the requests that began at `keyAt` or later, as
-  // offsets from it: the hold is 350 ms from the key, so none may be below.
-  const startsAfter = (h, keyAt) => h.startedAt.filter((at) => at >= keyAt).map((at) => at - keyAt);
+  // A page booted with fakeClock: its clock moved `ms` in five steps, with
+  // the promise jobs and observers between them run, so what a step starts
+  // (a sweep, a lookup) has happened before the next step.
+  const settleClock = async (h, ms) => {
+    for (let i = 0; i < 5; i++) {
+      await new Promise((r) => setImmediate(r));
+      h.clock.advance(ms / 5);
+    }
+    await new Promise((r) => setImmediate(r));
+  };
 
   // "No AI label" is remembered for a week, so the same videos are not asked
   // about again at every start of the app.
@@ -460,19 +467,20 @@ function resultItems(win, out, surface) {
 
   // No lookups while the arrow keys move: they start once the remote is quiet.
   {
-    const h = boot({ markAiVideos: true }, {});
-    await wait(100);
-    // Taken where the key is handled (the window's capture runs before the
-    // filter's), not before it is sent: a pause in between cannot help.
-    let keyAt = 0;
-    h.win.addEventListener('keydown', () => { keyAt = Date.now(); }, true);
+    // On the page's own clock, moved by the test (see the case below).
+    const h = boot({ markAiVideos: true }, { fakeClock: true });
+    await settleClock(h, 500);
+    const keyAt = h.clock.now();
     dispatchTrusted(h.doc.body, new h.win.KeyboardEvent('keydown', { keyCode: 40, bubbles: true }));
     h.card(id(40));
-    const after = await until(() => h.requests.indexOf(id(40)) !== -1, 5000);
-    // The pause is 350 ms from the key: measured where the request started.
-    const offsets = startsAfter(h, keyAt);
-    t('no lookup right after an arrow key, one once it is quiet', after && offsets.length === 1 && offsets[0] >= 349,
-      `after=${after} started at +${offsets.join(', +')} ms`);
+    // Just short of the pause's end: nothing yet.
+    await settleClock(h, 345);
+    const held = h.requests.indexOf(id(40)) === -1;
+    // Past it: the lookup starts.
+    await settleClock(h, 100);
+    const offsets = h.startedAt.map((at) => at - keyAt);
+    t('no lookup right after an arrow key, one once it is quiet', held && offsets.length === 1 && offsets[0] >= 350,
+      `held=${held} started at ${offsets.join(', ')} ms from the key`);
     h.close();
   }
 
@@ -483,7 +491,7 @@ function resultItems(win, out, surface) {
     // On the page's own clock, moved by the test: no scheduler delay can
     // make it pass or fail.
     const h = boot({ markAiVideos: true }, { held: [id(45), id(46)], fakeClock: true });
-    const settle = async (ms) => { for (let i = 0; i < 5; i++) { await new Promise((r) => setImmediate(r)); h.clock.advance(ms / 5); } };
+    const settle = (ms) => settleClock(h, ms);
     for (let n = 45; n < 49; n++) h.card(id(n));
     await settle(500);
     const started = h.requests.length === 2;
@@ -510,23 +518,26 @@ function resultItems(win, out, surface) {
   // the third and fourth do not start while the arrows move.
   {
     // The first two answer only when let go, so the other two cannot start
-    // before the key, however slow the machine.
-    const h = boot({ markAiVideos: true }, { held: [id(50), id(51)] });
+    // before the key; on the page's own clock, moved by the test.
+    const h = boot({ markAiVideos: true }, { held: [id(50), id(51)], fakeClock: true });
     for (let n = 50; n < 54; n++) h.card(id(n));
     // The sweep has queued all four, two are running.
-    const started = await until(() => h.requests.length === 2, 5000);
-    let keyAt = 0;
-    h.win.addEventListener('keydown', () => { keyAt = Date.now(); }, true);
+    await settleClock(h, 500);
+    const started = h.requests.length === 2;
+    const keyAt = h.clock.now();
     dispatchTrusted(h.doc.body, new h.win.KeyboardEvent('keydown', { keyCode: 39, bubbles: true }));
     // The two running answer now, while the remote is still moving.
     h.release(id(50));
     h.release(id(51));
-    const after = await until(() => h.requests.length === 4, 5000);
+    // Just short of the pause's end: the third and fourth still wait.
+    await settleClock(h, 345);
+    const held = h.requests.length === 2;
+    await settleClock(h, 100);
     // The third and fourth: the first two were running before the key.
     const offsets = h.startedAt.slice(2).map((at) => at - keyAt);
     t('queued lookups wait while the arrows move, and start once the remote is quiet',
-      started && after && offsets.length === 2 && offsets.every((ms) => ms >= 349),
-      `started=${started} after=${after} started at +${offsets.join(', +')} ms`);
+      started && held && offsets.length === 2 && offsets.every((ms) => ms >= 350),
+      `started=${started} held=${held} started at ${offsets.join(', ')} ms from the key`);
     h.close();
   }
 

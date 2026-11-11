@@ -235,14 +235,17 @@ function openVideo(win) {
       { html: '<body class="WEB_PAGE_TYPE_WATCH"></body>', url: 'https://www.youtube.com/tv#/watch?v=' + VIDEO, speed: 20 });
     const player = makePlayer(win, -1);
     let quality = 'hd1440';
+    // What YouTube's menu leaves when a level is picked there ('byHand').
+    let preference = variant === 'byHand' ? 'hd720' : 'auto';
+    // How often the levels were asked for: the quality handler ran.
+    let levelsAsked = 0;
     // Every setPlaybackQualityRange call; with 'throws', the first one fails.
     const ranges = [];
     Object.assign(player.el, {
-      getAvailableQualityLevels: () => ['hd1440', 'hd1080', 'hd720', 'auto'],
+      getAvailableQualityLevels: () => { levelsAsked++; return ['hd1440', 'hd1080', 'hd720', 'auto']; },
       getPlaybackQuality: () => quality,
       getPlaybackQualityLabel: () => quality,
-      // What YouTube's menu leaves when a level is picked there.
-      getUserPlaybackQualityPreference: () => (variant === 'byHand' ? 'hd720' : 'auto'),
+      getUserPlaybackQualityPreference: () => preference,
       setPlaybackQualityRange: (min) => {
         ranges.push(min);
         if ((variant === 'throws' && ranges.length === 1) || variant === 'alwaysThrows') throw new Error('player busy');
@@ -257,7 +260,11 @@ function openVideo(win) {
     t(`Force Max Quality (${variant}): the player is attached`, attached, `listeners=${player.listeners.length}`);
     if (!attached) { win.close(); continue; }
     player.emit(1);
+    // The handler looked at the levels (and found the best one playing):
+    // without that, "no range" below would prove nothing.
+    const handled = await until(() => levelsAsked > 0, 3000);
     await sleep(100);
+    t(`Force Max Quality (${variant}): the quality handler ran on PLAYING`, handled, `levelsAsked=${levelsAsked}`);
     const video = player.el.querySelector('video');
     const fall = async (to) => { quality = to; video.dispatchEvent(new win.Event('resize')); await sleep(50); };
     if (variant === 'falls') {
@@ -269,6 +276,11 @@ function openVideo(win) {
     } else if (variant === 'byHand') {
       await fall('hd720');
       t('Force Max Quality: a level picked by hand in the menu is left as it is', ranges.length === 0, ranges.join());
+      // The same video once the menu is back on auto: put back up, so the
+      // case above was left alone for the preference, not for want of a handler.
+      preference = 'auto';
+      await fall('hd1080');
+      t('Force Max Quality: back on auto, the same video is put back up', ranges.join() === 'highres', ranges.join());
     } else if (variant === 'alwaysThrows') {
       // Every try fails before the range is set: two tries, then no more.
       const counts = [];
