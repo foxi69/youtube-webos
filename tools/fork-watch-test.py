@@ -76,6 +76,10 @@ check('esc: no #12 reference left', '#12' not in out, out)
 check('esc: table cell, brackets, backticks and HTML escaped',
       '\\|' in out and '\\[docs\\]' in out and '\\`code\\`' in out and '&lt;b>' in out, out)
 check('esc: a lone # is left as it is', fw.esc('a # b') == 'a # b', fw.esc('a # b'))
+out = fw.esc('Fix GH-123 and gh-7, see https://github.com/up/youtube-webos/issues/9')
+check('esc: no GH-123 reference left', 'GH-123' not in out and 'gh-7' not in out, out)
+check('esc: an issue address in a title goes through redirect.github.com',
+      'https://github.com/' not in out and 'https://redirect.github.com/up/youtube-webos/issues/9' in out, out)
 check('code: a branch with a backtick stays one code span', fw.code('a`b') == '``a`b``', fw.code('a`b'))
 
 # --- the report: upstream pull requests and issues linked without a backlink ---
@@ -94,19 +98,30 @@ check('report: no github.com issue or pull request link left',
 check('report: a title\'s @mention and #3 are neutralised', '@bob' not in report and '#3' not in report, report)
 
 # --- compare(): a branch over 100 commits ahead is read to its newest commit ---
-many = [commit(f'{i:040x}', f'Commit {i}') for i in range(260)]
+def paged(n):
+    many = [commit(f'{i:040x}', f'Commit {i}') for i in range(n)]
+
+    def answer(params):
+        page = params.get('page', 1)
+        per = params.get('per_page', 250)
+        return {'ahead_by': n, 'total_commits': n, 'commits': many[(page - 1) * per:page * per]}
+    return many, answer
 
 
-def paged(params):
-    page = params.get('page', 1)
-    per = params.get('per_page', 250)
-    return {'ahead_by': 260, 'total_commits': 260, 'commits': many[(page - 1) * per:page * per]}
-
-
-fw.request = Api({'/repos/me/youtube-webos/compare/main...dev:long': paged})
+many, answer = paged(260)
+fw.request = Api({'/repos/me/youtube-webos/compare/main...dev:long': answer})
 cmp = fw.compare('dev:long')
 check('compare: every commit of a 260-commit branch', len(cmp['commits']) == 260, len(cmp['commits']))
 check('compare: the newest commit is there', cmp['commits'][-1]['sha'] == many[-1]['sha'])
+
+# Over the cap: the newest are read, not the oldest (a compare lists the oldest first).
+many, answer = paged(1150)
+fw.request = Api({'/repos/me/youtube-webos/compare/main...dev:huge': answer})
+cmp = fw.compare('dev:huge')
+got = [c['commit']['message'] for c in cmp['commits']]
+# Whole pages of 100: the last ten of twelve, commits 200 to 1149.
+check('compare: over the cap, the newest pages in order, the oldest left out',
+      got == [c['commit']['message'] for c in many[200:]], f'{len(got)} commits: {got[:1]} .. {got[-1:]}')
 
 # --- new_commits(): one branch GitHub cannot compare does not stop the others ---
 api = Api({
@@ -123,6 +138,25 @@ try:
           found and found[0]['url'] == 'https://github.com/dev/youtube-webos/commit/' + 'a' * 40, found)
 except urllib.error.HTTPError as err:
     check('new_commits: a 502 on one branch skips it', False, f'raised {err.code}')
+
+# --- a fork that could not be read in full is read again in the next run ---
+check('new_commits: the fork with the failed compare is kept for a retry', fw.FAILED == {'dev/youtube-webos'}, fw.FAILED)
+api = Api({('PATCH', '/repos/me/youtube-webos/issues/1'): {}})
+fw.request = api
+fw.save_state(NOW, {'number': 1}, {}, fw.FAILED)
+retry = fw.retry_forks({'body': api.calls[-1][2]['body']})
+check('save_state: the retry list is stored and read back', retry == {'dev/youtube-webos'}, retry)
+check('retry_forks: none before the first save', fw.retry_forks({'body': 'old state'}) == set())
+fw.request = Api({
+    '/repos/up/youtube-webos': {'full_name': 'up/youtube-webos', 'forks_count': 2, 'pushed_at': None},
+    '/repos/up/youtube-webos/forks': [FORK, dict(FORK, full_name='new/youtube-webos', owner={'login': 'new'},
+                                                 pushed_at='2026-11-11T11:30:00Z')],
+})
+names = [f['full_name'] for f in fw.watched_forks(NOW - dt.timedelta(hours=1), retry)]
+check('watched_forks: a fork to retry is watched though not pushed since',
+      sorted(names) == ['dev/youtube-webos', 'new/youtube-webos'], names)
+names = [f['full_name'] for f in fw.watched_forks(NOW - dt.timedelta(hours=1))]
+check('watched_forks: without a retry, only the forks pushed since', names == ['new/youtube-webos'], names)
 
 # --- request(): reads are asked again on a server error, writes are not ---
 real_urlopen = fw.urllib.request.urlopen
@@ -244,10 +278,15 @@ class FixedNow(dt.datetime):
 
 fw.dt = type('dtmod', (), {'datetime': FixedNow, 'timedelta': dt.timedelta, 'timezone': dt.timezone})
 fw.main()
-posts = [c for c in api.calls if c[0] == 'POST' and c[1] == '/repos/me/youtube-webos/issues']
-check('main: a report from 400 forks is opened', len(posts) >= 1, api.calls[-3:])
+# The state issue is a POST to the same address: only the report counts here.
+posts = [c for c in api.calls if c[0] == 'POST' and c[1] == '/repos/me/youtube-webos/issues'
+         and c[2]['title'].startswith('Fork watch 2026-11-11:')]
+check('main: one report from 400 forks is opened', len(posts) == 1, [c[2].get('title') for c in api.calls if c[2]])
 if posts:
-    check('main: its body fits an issue', len(posts[0][2]['body']) < 65536, len(posts[0][2]['body']))
+    report = posts[0][2]['body']
+    check('main: its body fits an issue, cut and saying so',
+          len(report) < 65536 and '### [dev0/youtube-webos]' in report and report.rstrip().endswith('summary has all of it.'),
+          (len(report), report[-120:]))
 
 print(f'\n{failures} failed' if failures else '\nAll passed')
 sys.exit(1 if failures else 0)

@@ -21,6 +21,12 @@ on:
   schedule:
     - cron: '17 5 * * *'
 
+# One run at a time: another one pushing to the sync branch between the
+# .github/ check below and the dispatch would get its commit tested unread.
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
 permissions:
   contents: write
   pull-requests: write
@@ -134,6 +140,13 @@ jobs:
               echo '```'
               echo "Read them, then start Build & Test on $SYNC_BRANCH from the Actions tab."
             } | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          # The dispatch runs the branch as it is then: only when that is
+          # still the commit checked above (no one pushed to it since).
+          remote="$(git ls-remote origin "refs/heads/$SYNC_BRANCH" | cut -f1)"
+          if [ "$remote" != "$(git rev-parse HEAD)" ]; then
+            echo "### Build & Test not started: $SYNC_BRANCH moved on since the check ($remote)" | tee -a "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           gh workflow run main.yml --ref "$SYNC_BRANCH"

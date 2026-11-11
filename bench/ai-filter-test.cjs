@@ -435,7 +435,10 @@ function resultItems(win, out, surface) {
   {
     const h = boot({ markAiVideos: true }, {});
     await wait(100);
-    const keyAt = Date.now();
+    // Taken where the key is handled (the window's capture runs before the
+    // filter's), not before it is sent: a pause in between cannot help.
+    let keyAt = 0;
+    h.win.addEventListener('keydown', () => { keyAt = Date.now(); }, true);
     dispatchTrusted(h.doc.body, new h.win.KeyboardEvent('keydown', { keyCode: 40, bubbles: true }));
     h.card(id(40));
     const after = await until(() => h.requests.indexOf(id(40)) !== -1, 5000);
@@ -443,6 +446,29 @@ function resultItems(win, out, surface) {
     const offsets = startsAfter(h, keyAt);
     t('no lookup right after an arrow key, one once it is quiet', after && offsets.length === 1 && offsets[0] >= 349,
       `after=${after} started at +${offsets.join(', +')} ms`);
+    h.close();
+  }
+
+  // A second arrow key within the pause starts it again for the lookups
+  // already queued: the first key's timer must not let them go 350 ms after
+  // the first key.
+  {
+    const h = boot({ markAiVideos: true }, { held: [id(45), id(46)] });
+    for (let n = 45; n < 49; n++) h.card(id(n));
+    const started = await until(() => h.requests.length === 2, 5000);
+    let keyAt = 0;
+    h.win.addEventListener('keydown', () => { keyAt = Date.now(); }, true);
+    dispatchTrusted(h.doc.body, new h.win.KeyboardEvent('keydown', { keyCode: 40, bubbles: true }));
+    h.release(id(45));
+    h.release(id(46));
+    await wait(200);
+    dispatchTrusted(h.doc.body, new h.win.KeyboardEvent('keydown', { keyCode: 40, bubbles: true }));
+    const after = await until(() => h.requests.length === 4, 5000);
+    // The third and fourth, from the second key (negative: before it).
+    const offsets = h.startedAt.slice(2).map((at) => at - keyAt);
+    t('a second arrow key within the pause holds the queued lookups again',
+      started && after && offsets.length === 2 && offsets.every((ms) => ms >= 349),
+      `started=${started} after=${after} started at ${offsets.join(', ')} ms from the second key`);
     h.close();
   }
 
@@ -455,7 +481,8 @@ function resultItems(win, out, surface) {
     for (let n = 50; n < 54; n++) h.card(id(n));
     // The sweep has queued all four, two are running.
     const started = await until(() => h.requests.length === 2, 5000);
-    const keyAt = Date.now();
+    let keyAt = 0;
+    h.win.addEventListener('keydown', () => { keyAt = Date.now(); }, true);
     dispatchTrusted(h.doc.body, new h.win.KeyboardEvent('keydown', { keyCode: 39, bubbles: true }));
     // The two running answer now, while the remote is still moving.
     h.release(id(50));

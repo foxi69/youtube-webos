@@ -285,12 +285,16 @@ async function mp4Tests() {
     for (const speed of [0.25, 1.5, 2]) {
       const res = c.rewriteInitTimescale(init, speed);
       const ts = c.findMdhdTimescale(res.data);
-      let changed = 0;
-      for (let i = 0; i < init.length; i++) if (init[i] !== res.data[i]) changed++;
+      const at = c.findMdhdTimescale(init);
+      // The bytes that changed, and which: the timescale's own four only.
+      const outside = [];
+      for (let i = 0; i < init.length; i++) {
+        if (init[i] !== res.data[i] && (i < at.offset || i >= at.offset + 4)) outside.push(i);
+      }
       t(`MP4 mdhd v${version} ${speed}x: timescale x speed, nothing else changed`,
-        ts.timescale === Math.round(MP4_TIMESCALE * speed) && res.data.length === init.length && changed <= 4 &&
-          init[c.findMdhdTimescale(init).offset] !== undefined && c.findMdhdTimescale(init).timescale === MP4_TIMESCALE,
-        `${ts.timescale}, ${changed} bytes changed`);
+        ts.timescale === Math.round(MP4_TIMESCALE * speed) && ts.offset === at.offset &&
+          res.data.length === init.length && outside.length === 0 && at.timescale === MP4_TIMESCALE,
+        `${ts.timescale} at ${ts.offset} (was ${at.offset}), changed outside it: ${outside.join(',')}`);
     }
   }
 
@@ -409,7 +413,12 @@ async function webmTests() {
     t('WebM clusters: the audio frames, their times (negative offsets too) and bytes; blocks in groups too',
       sameFrames(whole.frames, expected) && whole.rest.length === 0,
       `${whole.frames.length} frames: ${whole.frames.map((f) => f.pts).join(', ')}`);
-    t('WebM clusters: a SimpleBlock\'s key flag is read', whole.frames[0].key === true);
+    // One block with the key flag (0x80) and one without: both ways read.
+    const flagged = c.demuxClusters(Uint8Array.from(el(ID.CLUSTER, el(ID.TIMECODE, [0]),
+      el(ID.SIMPLE, block(1, 0, [1, 2], 0x80)), el(ID.SIMPLE, block(1, 10, [3, 4], 0x00)))), info);
+    t('WebM clusters: a SimpleBlock\'s key flag is read, set and clear',
+      flagged.frames.length === 2 && flagged.frames[0].key === true && flagged.frames[1].key === false,
+      flagged.frames.map((f) => f.key).join(','));
     const demux = (u8) => c.demuxClusters(u8, info);
     for (const step of [1, 2, 5, 33]) {
       const { got, rest } = feed(media, step, c.classifyWebm, demux, 'frames');

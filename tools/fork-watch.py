@@ -59,7 +59,8 @@ MAX_FORK_DEPTH = 6
 MAX_COMMITS_SHOWN = 15
 MAX_MAIN_TITLES = 1000
 # A compare lists up to 250 commits unless it is paged; past that many, the
-# newest - the ones that matter - would be cut. Paged up to this many.
+# newest - the ones that matter - would be cut. Paged, the newest this many
+# are read (a compare lists the oldest first).
 MAX_COMPARE_COMMITS = 1000
 # GitHub refuses an issue body over 65,536 characters: the report is cut
 # below it, and the state keeps at most this many commits (about 30
@@ -72,6 +73,10 @@ LABEL = 'fork-watch'
 STATE_TITLE = 'Fork watch state'
 MARKER_RE = re.compile(r'<!-- fork-watch-last-run: (\S+) -->')
 KNOWN_RE = re.compile(r'<!-- fork-watch-known: (\{.*?\}) -->', re.S)
+RETRY_RE = re.compile(r'<!-- fork-watch-retry: (\[.*?\]) -->', re.S)
+# Forks with a branch GitHub could not compare in this run: read again in the
+# next one, pushed since or not, as the last-run marker moves past them.
+FAILED = set()
 
 
 def request(method, path, body=None, params=None):
@@ -175,17 +180,17 @@ def known_commits(state):
 
 
 def compare(head):
-    """Our main compared with `head` (owner:branch): the compare, with every
-    commit ahead (up to MAX_COMPARE_COMMITS, oldest first) in 'commits'."""
+    """Our main compared with `head` (owner:branch): the compare, with the
+    newest MAX_COMPARE_COMMITS commits ahead (oldest first) in 'commits'."""
     path = f'/repos/{REPO}/compare/main...{head}'
     cmp = get(path, {'per_page': 100})
     if not cmp:
         return cmp
-    commits = list(cmp.get('commits') or [])
-    total = min(cmp.get('total_commits') or 0, MAX_COMPARE_COMMITS)
-    page = 1
-    while len(commits) < total:
-        page += 1
+    last = -(-(cmp.get('total_commits') or 0) // 100)
+    first = max(1, last - MAX_COMPARE_COMMITS // 100 + 1)
+    # Past the cap, the first pages hold the oldest: they are left out.
+    commits = list(cmp.get('commits') or []) if first == 1 else []
+    for page in range(max(first, 2), last + 1):
         more = get(path, {'per_page': 100, 'page': page})
         if not more or not more.get('commits'):
             break
@@ -206,8 +211,18 @@ def main_titles():
     return {c['commit']['message'].splitlines()[0] for c in commits if c['commit']['message']}
 
 
-def watched_forks(since):
-    """Every repository in the roots' fork trees (roots included) pushed after `since`."""
+def retry_forks(state):
+    """The forks the last run could not read in full."""
+    m = RETRY_RE.search((state or {}).get('body') or '')
+    try:
+        return set(json.loads(m.group(1))) if m else set()
+    except ValueError:
+        return set()
+
+
+def watched_forks(since, retry=frozenset()):
+    """Every repository in the roots' fork trees (roots included) pushed after
+    `since`, and the ones in `retry` whenever they were pushed."""
     seen = {}
     queue = []
     for root in ROOTS:
@@ -231,7 +246,7 @@ def watched_forks(since):
     for name, info in seen.items():
         if name.lower() == me or not info.get('pushed_at'):
             continue
-        if parse_time(info['pushed_at']) > since:
+        if parse_time(info['pushed_at']) > since or name in retry:
             out.append(info)
     out.sort(key=lambda f: f['pushed_at'], reverse=True)
     return out
@@ -269,6 +284,7 @@ def new_commits(fork, cutoff, seen, known, today, ours):
             # One branch GitHub cannot compare must not stop the whole watch
             # (every later run would fail on it too).
             print(f"{fork['full_name']} {branch['name']}: compare failed ({err.code}), skipped")
+            FAILED.add(fork['full_name'])
             continue
         if not cmp or not cmp.get('ahead_by'):
             continue
@@ -342,6 +358,9 @@ def esc(text):
     for ch in '|[]`':
         text = text.replace(ch, '\\' + ch)
     text = text.replace('<', '&lt;')
+    # GH-123 is a reference too, and so is an issue's github.com address.
+    text = re.sub(r'\b(GH)-(?=\d)', r'\1&#8203;-', text, flags=re.I)
+    text = re.sub(r'https?://github\.com/', 'https://redirect.github.com/', text, flags=re.I)
     return re.sub(r'([@#])(?=\w)', r'\1&#8203;', text)
 
 
@@ -409,7 +428,7 @@ def ensure_label():
             {'name': LABEL, 'color': '0e8a16', 'description': 'New work in the fork network'})
 
 
-def save_state(now, state, known):
+def save_state(now, state, known, retry=()):
     """Moves the last-run marker forward and stores the reported commits in the (closed) state issue."""
     oldest = (now - dt.timedelta(days=KNOWN_KEEP_DAYS)).strftime('%Y-%m-%d')
     kept = {sha: day for sha, day in known.items() if day >= oldest}
@@ -419,7 +438,8 @@ def save_state(now, state, known):
         kept = dict(sorted(kept.items(), key=lambda kv: kv[1], reverse=True)[:MAX_KNOWN])
     body = ('Bookkeeping for the fork watch workflow - safe to ignore.\n\n'
             f'<!-- fork-watch-last-run: {fmt_time(now)} -->\n'
-            f'<!-- fork-watch-known: {json.dumps(kept, separators=(",", ":"), sort_keys=True)} -->')
+            f'<!-- fork-watch-known: {json.dumps(kept, separators=(",", ":"), sort_keys=True)} -->\n'
+            f'<!-- fork-watch-retry: {json.dumps(sorted(retry))} -->')
     if DRY_RUN:
         print('[dry run] state ->', fmt_time(now))
         return
@@ -454,7 +474,7 @@ def main():
     seen, upstream_ahead = upstream_shas()
     ours = main_titles()
     forks = []
-    for fork in watched_forks(since):
+    for fork in watched_forks(since, retry_forks(state)):
         commits = new_commits(fork, cutoff, seen, known, today, ours)
         print(f"{fork['full_name']}: {len(commits)} new commit(s)")
         if commits:
@@ -466,7 +486,7 @@ def main():
 
     if not forks and not pulls and not issues:
         print('Nothing new.')
-        save_state(now, state, known)
+        save_state(now, state, known, FAILED)
         return
 
     title = f"Fork watch {now.strftime('%Y-%m-%d')}: {sum(len(c) for _, c in forks)} commit(s) on {len(forks)} fork(s), {len(pulls)} PR(s), {len(issues)} issue(s)"
@@ -481,7 +501,7 @@ def main():
         return
     request('POST', f'/repos/{REPO}/issues', {'title': title, 'body': cut(body), 'labels': [LABEL]})
     print('Opened issue:', title)
-    save_state(now, state, known)
+    save_state(now, state, known, FAILED)
 
 
 if __name__ == '__main__':

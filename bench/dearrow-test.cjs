@@ -415,9 +415,12 @@ const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-d
     };
     parse(browse([at('first')]));
     const last = parse(browse([at('later')]));
-    await waitFor(() => tileThumb(itemsOf(last)[0]).indexOf('COPY') !== -1, 2000);
+    // Without DeArrow's thumbnail first, the original on the tile would prove nothing.
+    const replaced = await waitFor(() => tileThumb(itemsOf(last)[0]).indexOf('COPY') !== -1, 2000);
     const el = render(win, itemsOf(last)[0]);
     await wait(500);
+    t('newest response: the tile has DeArrow\'s thumbnail before it is turned off',
+      replaced && shownThumb(el).indexOf('COPY') !== -1, shownThumb(el));
     const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
     Object.defineProperty(e, 'keyCode', { get: () => GREEN, configurable: true });
     dispatchTrusted(win.document.body, e);
@@ -431,7 +434,7 @@ const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-d
     }
     await wait(50);
     t('turned off: the tile gets back the thumbnail of the newest response',
-      shownThumb(el) === 'url("https://i.ytimg.com/vi/custom00001/hqdefault.jpg?v=later")', shownThumb(el));
+      !!sw && shownThumb(el) === 'url("https://i.ytimg.com/vi/custom00001/hqdefault.jpg?v=later")', shownThumb(el));
   }
 
   // ---- The old thumbnail switch carries over ----
