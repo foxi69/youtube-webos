@@ -6,6 +6,13 @@
  */
 const mod = require('module');
 
+// Node strips the types on its own from 22.18 (package.json "engines"); an
+// older one could not load the .ts file the test reaches, and failed there.
+if (!process.features || !process.features.typescript) {
+  console.error(`Node ${process.version} cannot load .ts files without a flag: Node 22.18 or newer is needed (package.json "engines").`);
+  process.exit(1);
+}
+
 const RELATIVE = /^\.\.?\//;
 const HAS_EXT = /\.[cm]?[jt]s$/;
 
