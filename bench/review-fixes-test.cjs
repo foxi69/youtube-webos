@@ -230,7 +230,7 @@ function openVideo(win) {
   // ---- Force Max Quality: a stream that falls on its own is put back up ----
   // A video that starts at its best level gets no range (it would reload),
   // and after a seek the stream fell to 1080p by itself (seen on webOS 25).
-  for (const variant of ['falls', 'byHand', 'throws']) {
+  for (const variant of ['falls', 'byHand', 'throws', 'throwsAfter']) {
     const win = await boot({ forceHighResVideo: true },
       { html: '<body class="WEB_PAGE_TYPE_WATCH"></body>', url: 'https://www.youtube.com/tv#/watch?v=' + VIDEO, speed: 20 });
     const player = makePlayer(win, -1);
@@ -247,7 +247,9 @@ function openVideo(win) {
         ranges.push(min);
         if (variant === 'throws' && ranges.length === 1) throw new Error('player busy');
         quality = 'hd1440';
-      }
+      },
+      // With 'throwsAfter', the range goes through and the call after it fails.
+      setPlaybackQuality() { if (variant === 'throwsAfter') throw new Error('player busy'); }
     });
     win.document.body.appendChild(player.el);
     // Without the player attached, no case below would test anything.
@@ -267,10 +269,15 @@ function openVideo(win) {
     } else if (variant === 'byHand') {
       await fall('hd720');
       t('Force Max Quality: a level picked by hand in the menu is left as it is', ranges.length === 0, ranges.join());
+    } else if (variant === 'throwsAfter') {
+      await fall('hd1080');
+      await fall('hd1080');
+      t('Force Max Quality: a failure after the range was set is not tried again (no second reload)',
+        ranges.length === 1, ranges.join());
     } else {
       await fall('hd1080');
       await fall('hd1080');
-      t('Force Max Quality: a call that failed gets one more try', ranges.length === 2 && quality === 'hd1440', ranges.join());
+      t('Force Max Quality: a call that failed before the range was set gets one more try', ranges.length === 2 && quality === 'hd1440', ranges.join());
       await fall('hd1080');
       await fall('hd1080');
       t('Force Max Quality: and no more after that', ranges.length === 2, ranges.join());

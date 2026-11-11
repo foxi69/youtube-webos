@@ -274,9 +274,12 @@ function setQualityOnPlayer() {
     return { success: false, upgraded: false };
   }
   
+  // Whether the range call went through: a failure after it (in the calls
+  // that follow) leaves the range set, and the video reloading.
+  let rangeSet = false;
   try {
     if (!player.setPlaybackQualityRange) {
-      return { success: false, upgraded: false };
+      return { success: false, upgraded: false, rangeSet };
     }
     
     if (isQualityAlreadyMax()) {
@@ -287,6 +290,7 @@ function setQualityOnPlayer() {
     DEBUG && console.log('[VideoQuality] Upgrading quality from:', previousQuality);
 
     player.setPlaybackQualityRange('highres', 'highres');
+    rangeSet = true;
     player.setPlaybackQuality?.('highres');
     restorePositionAfterReload();
     
@@ -304,7 +308,7 @@ function setQualityOnPlayer() {
     
   } catch (e) {
     DEBUG && console.warn('[VideoQuality] Error setting quality:', e);
-    return { success: false, upgraded: false };
+    return { success: false, upgraded: false, rangeSet };
   }
 }
 
@@ -367,7 +371,8 @@ function interceptAndUpgradeQuality(videoId) {
 // one reloads the video on webOS 25), and the adaptive stream then fell to
 // 1080p for half a minute after a seek; one that got the range fell too
 // once. When the picture gets smaller below the best level, the range is set
-// again, once per video (a call that failed gets one more try). Not over a
+// again, once per video (one that failed before the range was set gets one
+// more try). Not over a
 // level picked by hand in YouTube's menu: the player's preference is then
 // that level, not 'auto' or 'highres'.
 // ponytail: once per video; a stream that falls again stays down, a timed
@@ -385,9 +390,10 @@ function onVideoResize(evt) {
     relockTries.set(videoId, tries + 1);
     DEBUG && console.info('[VideoQuality] Fell to', player.getPlaybackQuality?.(), '- setting the range again');
     const result = setQualityOnPlayer();
-    // Set: no more for this video. Failed (a player call threw): one more try
-    // on a later resize, not one on every resize.
-    if (result.success) relockTries.set(videoId, MAX_RELOCK_TRIES);
+    // The range set (a later call may still have thrown): no more for this
+    // video, another try would only reload it again. Failed before the range
+    // was set: one more try on a later resize, not one on every resize.
+    if (result.success || result.rangeSet) relockTries.set(videoId, MAX_RELOCK_TRIES);
     notifyIfUpgraded(result);
   } catch { /* the next resize */ }
 }
