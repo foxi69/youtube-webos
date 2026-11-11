@@ -23,6 +23,10 @@ function boot(cfg, opts) {
   setUserAgent(win, legacy ? UA.webos3 : UA.webos23);
   win.launchParams = '{}';
   const requests = [];
+  // When each request started (Date.now()), in the order of `requests`.
+  const startedAt = [];
+  // opts.held: the ids whose answers wait for release(id), not for a delay.
+  const heldAnswers = {};
   const answers = opts.answers || {};
   win.XMLHttpRequest = class {
     open(m, u) { this.url = u; }
@@ -32,17 +36,21 @@ function boot(cfg, opts) {
     send(body) {
       const id = JSON.parse(body).videoId;
       requests.push(id);
+      startedAt.push(Date.now());
       const answer = answers[id] || 'plain';
       const delay = opts.delayFor && opts.delayFor[id] !== undefined ? opts.delayFor[id] : (opts.delay || 0);
-      setTimeout(() => {
+      const respond = () => {
         if (answer === 'timeout') { this.ontimeout && this.ontimeout(); return; }
         if (answer === 'network') { this.onerror && this.onerror(); return; }
         this.status = typeof answer === 'number' ? answer : answer === '403' || answer === '429' || answer === '500' ? Number(answer) : 200;
         this.responseText = answer === 'invalidjson' ? '<html>' : JSON.stringify(answer === 'ai' ? aiBody : plainBody);
         this.onload && this.onload();
-      }, delay);
+      };
+      if (opts.held && opts.held.indexOf(id) !== -1) heldAnswers[id] = respond;
+      else setTimeout(respond, delay);
     }
   };
+  const release = (id) => { const respond = heldAnswers[id]; delete heldAnswers[id]; if (respond) respond(); };
   const NS = win.JSON.stringify;
   win.localStorage.setItem('ytaf-configuration', NS(Object.assign({
     enableAdBlock: true, enableTrackingBlock: false, removeGlobalShorts: false,
@@ -79,7 +87,7 @@ function boot(cfg, opts) {
     doc.getElementById('root').appendChild(wrapper);
     return { wrapper, inner };
   };
-  return { win, doc, NS, requests, card, wrapperLockup, close: () => win.close() };
+  return { win, doc, NS, requests, startedAt, release, card, wrapperLockup, close: () => win.close() };
 }
 const id = (n) => 'vid' + String(n).padStart(8, '0');
 const storedIds = (win) => {
@@ -387,18 +395,9 @@ function resultItems(win, out, surface) {
     }
     return true;
   };
-  // Whether no lookup started in the first `ms` after `keyAt`, sampled until
-  // then: a lookup read as started before the clock is read started before
-  // that time, so a slow machine cannot make this fail, only see less.
-  const noneWithin = async (count, keyAt, ms) => {
-    for (;;) {
-      const seen = count();
-      const at = Date.now();
-      if (at - keyAt >= ms) return true;
-      if (seen) return false;
-      await wait(10);
-    }
-  };
+  // The start times of the requests that began at `keyAt` or later, as
+  // offsets from it: the hold is 350 ms from the key, so none may be below.
+  const startsAfter = (h, keyAt) => h.startedAt.filter((at) => at >= keyAt).map((at) => at - keyAt);
 
   // "No AI label" is remembered for a week, so the same videos are not asked
   // about again at every start of the app.
@@ -439,27 +438,34 @@ function resultItems(win, out, surface) {
     const keyAt = Date.now();
     dispatchTrusted(h.doc.body, new h.win.KeyboardEvent('keydown', { keyCode: 40, bubbles: true }));
     h.card(id(40));
-    // The pause is 350 ms from the key.
-    const quiet = await noneWithin(() => h.requests.indexOf(id(40)) !== -1, keyAt, 300);
     const after = await until(() => h.requests.indexOf(id(40)) !== -1, 5000);
-    t('no lookup right after an arrow key, one once it is quiet', quiet && after, `quiet=${quiet} ${h.requests.join(',')}`);
+    // The pause is 350 ms from the key: measured where the request started.
+    const offsets = startsAfter(h, keyAt);
+    t('no lookup right after an arrow key, one once it is quiet', after && offsets.length === 1 && offsets[0] >= 349,
+      `after=${after} started at +${offsets.join(', +')} ms`);
     h.close();
   }
 
   // Lookups already queued wait for the remote too: two run at a time, and
   // the third and fourth do not start while the arrows move.
   {
-    const h = boot({ markAiVideos: true }, { delay: 100 });
+    // The first two answer only when let go, so the other two cannot start
+    // before the key, however slow the machine.
+    const h = boot({ markAiVideos: true }, { held: [id(50), id(51)] });
     for (let n = 50; n < 54; n++) h.card(id(n));
     // The sweep has queued all four, two are running.
     const started = await until(() => h.requests.length === 2, 5000);
     const keyAt = Date.now();
     dispatchTrusted(h.doc.body, new h.win.KeyboardEvent('keydown', { keyCode: 39, bubbles: true }));
-    // The two running answer 100 ms in; the other two wait out the pause.
-    const quiet = await noneWithin(() => h.requests.length > 2, keyAt, 300);
+    // The two running answer now, while the remote is still moving.
+    h.release(id(50));
+    h.release(id(51));
     const after = await until(() => h.requests.length === 4, 5000);
+    // The third and fourth: the first two were running before the key.
+    const offsets = h.startedAt.slice(2).map((at) => at - keyAt);
     t('queued lookups wait while the arrows move, and start once the remote is quiet',
-      started && quiet && after, `started=${started} quiet=${quiet} requests=${h.requests.length}`);
+      started && after && offsets.length === 2 && offsets.every((ms) => ms >= 349),
+      `started=${started} after=${after} started at +${offsets.join(', +')} ms`);
     h.close();
   }
 

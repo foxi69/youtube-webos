@@ -38,7 +38,8 @@ const hook: ResolveCommandHook = function (resolveCommand, payload, extra) {
     return passthrough();
 
   const idx = setClientSettingEndpoint.settingDatas.findIndex(
-    (setting) => setting.clientSettingEnum?.item === 'I18N_LANGUAGE'
+    // An entry may be null: YouTube's data shapes change without notice.
+    (setting) => setting?.clientSettingEnum?.item === 'I18N_LANGUAGE'
   );
 
   if (idx === -1) return resolveCommand(payload, extra);

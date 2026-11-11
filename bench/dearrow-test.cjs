@@ -403,6 +403,37 @@ const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-d
       shownThumb(el) === `url("https://i.ytimg.com/vi/custom00001/${shipped}.jpg")`, shownThumb(el));
   }
 
+  // ---- Off: the thumbnail of the newest response, not the first one's ----
+  // Without Max Thumbnail Quality, so nothing rewrites the address: the tile
+  // gets back what YouTube sent last, when it sent another one since.
+  {
+    const { win, parse, pump } = boot({});
+    const at = (v) => {
+      const item = tile('custom00001', 'Clickbait title');
+      item.tileRenderer.header.tileHeaderRenderer.thumbnail.thumbnails[0].url = `https://i.ytimg.com/vi/custom00001/hqdefault.jpg?v=${v}`;
+      return item;
+    };
+    parse(browse([at('first')]));
+    const last = parse(browse([at('later')]));
+    await waitFor(() => tileThumb(itemsOf(last)[0]).indexOf('COPY') !== -1, 2000);
+    const el = render(win, itemsOf(last)[0]);
+    await wait(500);
+    const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
+    Object.defineProperty(e, 'keyCode', { get: () => GREEN, configurable: true });
+    dispatchTrusted(win.document.body, e);
+    for (let i = 0; i < 20; i++) pump();
+    const sw = Array.from(win.document.querySelectorAll('#ytaf-page-ui-tweaks label'))
+      .find((l) => l.querySelector('.label-text')?.textContent === 'DeArrow');
+    if (sw) {
+      const input = sw.querySelector('input');
+      input.checked = false;
+      input.dispatchEvent(new win.Event('change'));
+    }
+    await wait(50);
+    t('turned off: the tile gets back the thumbnail of the newest response',
+      shownThumb(el) === 'url("https://i.ytimg.com/vi/custom00001/hqdefault.jpg?v=later")', shownThumb(el));
+  }
+
   // ---- The old thumbnail switch carries over ----
   {
     const old = boot({ enableDeArrowThumbnails: false });

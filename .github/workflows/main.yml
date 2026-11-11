@@ -9,21 +9,19 @@ on:
   # opens with GITHUB_TOKEN starts no pull_request run of its own.
   workflow_dispatch:
 
-# Checkout and the artifact upload are all this needs; the artifact upload
-# uses the Actions runtime token, not GITHUB_TOKEN. The build job adds
-# actions: write for its artifact cleanup.
+# Read-only by default. Only the cleanup job, which runs none of the
+# repository's code, may write to Actions (delete artifacts): the build job
+# runs the branch's own package scripts, on the upstream sync branch code
+# nobody has reviewed yet, and its token must not reach that far.
 permissions:
   contents: read
 
 jobs:
-  build:
+  cleanup:
     runs-on: ubuntu-latest
-
-    # actions: write for the artifact cleanup below.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     permissions:
-      contents: read
       actions: write
-
     steps:
       # The artifact storage is finite: adding up the sizes of the artifacts
       # that have not expired, newest first, it deletes the ones above the
@@ -32,7 +30,6 @@ jobs:
       # artifacts. A pull request from a fork gets a read-only token, so it is
       # skipped there. The same step as in foxi69/MultiUploader's build.
       - name: Delete the oldest artifacts above the budget
-        if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ARTIFACT_BUDGET_MB: 400
@@ -50,6 +47,16 @@ jobs:
                 fi
               done
 
+  build:
+    runs-on: ubuntu-latest
+    # After the cleanup, so the new artifacts fit the budget; also when it was
+    # skipped (a manual run, a fork's pull request).
+    needs: cleanup
+    if: ${{ !cancelled() && (needs.cleanup.result == 'success' || needs.cleanup.result == 'skipped') }}
+    permissions:
+      contents: read
+
+    steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false

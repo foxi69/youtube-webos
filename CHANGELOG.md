@@ -30,6 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Fixes
 
++ Language setting: an empty entry among the settings YouTube sends no longer stops the language change.
 + The first video opened after the app had been on Home for more than a minute with no player yet got no player at all: the attach made at the start gave up and was not made again for that video, so it had no Force Max Quality, no quality toast, no queue, and none of what follows the player's state. It is made again when the video opens. (On a TV where the script runs once the page has loaded.)
 + Show Video Quality on Start and Turn On Translated Subtitles Automatically: until the first video was left, a tile preview playing on Home counted as the video. It got the "Playing in ..." toast on Home and had its subtitles turned on, and the video then opened got neither, its one try used up. Both now wait for the watch page; a video opened from its preview gets them there.
 + Turn On Translated Subtitles Automatically: the one try is per viewing, not per session. A video opened a second time (after another video, or after going back to Home) got no subtitles, and with Don't Turn On Subtitles by Themselves on none from YouTube either. Subtitles turned off by hand still stay off while that video is watched; opened again, it gets them again.
@@ -77,6 +78,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Tests
 
++ Build & Test runs read-only: the artifact cleanup, which needs to write, is a job of its own that runs none of the repository's code. The sync branch's tests are started only when upstream left `.github/` as this fork has it, since that run takes the sync branch's own workflow file.
 + Line endings: LF in every file (`.gitattributes`), the Windows `.cmd` files CRLF. The files were half CRLF, half LF, and seven of them ended in a lone carriage return, which made git take them for binary files (no line diffs). Nothing else in them changed.
 + The upstream sync pull request gets Build & Test: "Sync upstream" starts it on its branch. GitHub starts no workflow for what a workflow's own token pushes or opens, so that pull request had no tests until now.
 + Lint in CI (`npm run lint`, the whole repository). Fixed what it found: unused names, invisible characters written as themselves in `adblock.js` (now `\u200B` and the like, the same characters), and in the tests. `src/vendor` (third-party code) is left out, and `var` is allowed in `perf_mon.js` and `hooks/buffer-limit.js`, written that way.

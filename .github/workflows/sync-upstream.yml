@@ -115,8 +115,25 @@ jobs:
       # pull request above), workflow_dispatch excepted: without this the
       # sync pull request had no tests at all. The run's checks show on the
       # pull request, as they are on its head commit.
+      #
+      # It runs the workflow file of the sync branch, so it is started only
+      # when upstream left .github/ as this fork has it: changed there, the
+      # workflow could ask for any permission before anyone has read it.
+      # Build & Test's build job itself is read-only (main.yml).
       - name: Run Build & Test on the sync branch
         if: steps.check.outputs.behind == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh workflow run main.yml --ref "$SYNC_BRANCH"
+        run: |
+          if ! git diff --quiet origin/main "$SYNC_BRANCH" -- .github/; then
+            {
+              echo "### Build & Test not started"
+              echo "Upstream changes files under .github/:"
+              echo '```'
+              git diff --name-only origin/main "$SYNC_BRANCH" -- .github/
+              echo '```'
+              echo "Read them, then start Build & Test on $SYNC_BRANCH from the Actions tab."
+            } | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          gh workflow run main.yml --ref "$SYNC_BRANCH"

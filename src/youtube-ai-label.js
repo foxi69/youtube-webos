@@ -203,8 +203,14 @@ export function holdLookups(until) {
   if (until > heldUntil) heldUntil = until;
 }
 
-/** Starts the queued lookups that a hold kept waiting. */
+/**
+ * Ends the hold and starts the queued lookups it kept waiting. The hold is
+ * lifted here rather than left to run out: a timer can fire a millisecond
+ * before Date.now() reaches its time, and the queue then stayed stuck, with
+ * nothing to start it again.
+ */
 export function resumeLookups() {
+  heldUntil = 0;
   pump();
 }
 
