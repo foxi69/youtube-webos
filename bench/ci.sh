@@ -64,6 +64,7 @@ run most-replayed-test
 run speed-audio-offer-test
 run speed-restore-test
 run speed-legacy-decoder-test
+run speed-core-test
 run speed-legacy-install-test "$B"
 run whats-new-test "$B"
 run guide-fit-test "$B"
