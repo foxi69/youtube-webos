@@ -7,7 +7,7 @@
   <a href="https://github.com/foxi69/youtube-webos/releases"><img src="https://img.shields.io/github/downloads/foxi69/youtube-webos/total?style=for-the-badge&color=2ea44f&label=downloads" alt="Downloads"></a>
   <img src="https://img.shields.io/badge/webOS-3%20%E2%86%92%2025%2B-a50034?style=for-the-badge" alt="webOS 3 to 25+">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-444?style=for-the-badge" alt="License: GPL-3.0"></a>
-  <a href="https://github.com/foxi69/youtube-webos/stargazers"><img src="https://img.shields.io/github/stars/foxi69/youtube-webos?style=for-the-badge&color=f5c518" alt="Stars"></a>
+  <a href="https://github.com/foxi69/youtube-webos"><img src="https://img.shields.io/github/stars/foxi69/youtube-webos?style=for-the-badge&color=f5c518" alt="Stars"></a>
   <a href="https://ko-fi.com/foxi69"><img src="https://img.shields.io/badge/Ko--fi-support-ff5e5b?style=for-the-badge&logo=ko-fi&logoColor=white" alt="Support on Ko-fi"></a>
 </p>
 

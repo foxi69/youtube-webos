@@ -1,7 +1,7 @@
 {
   "id": "youtube.leanback.v4",
   "version": "0.9.0",
-  "vendor": "webosbrew.org",
+  "vendor": "foxi69",
   "type": "web",
   "main": "index.html",
   "bgImage": "9262051282473701_youtube_leanback_preview.png",
