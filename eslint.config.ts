@@ -123,35 +123,6 @@ const configs = [
   },
 
   {
-    // The simulator tests: Node scripts that drive a simulator step by step.
-    files: ['tools/simulator-tests/**'],
-    languageOptions: {
-      globals: {
-        ...globals.node
-      }
-    },
-    rules: {
-      'no-await-in-loop': 'off'
-    }
-  },
-
-  {
-    // Runs inside the simulator's YouTube page, as a plain script.
-    files: ['tools/simulator-tests/effects-page.js'],
-    languageOptions: {
-      sourceType: 'script',
-      globals: {
-        ...globals.browser
-      }
-    },
-    rules: {
-      'no-unused-vars': ['error', { caughtErrors: 'none' }],
-      // Object.hasOwn is Chromium 93+; the webOS 6 simulator is 79.
-      'prefer-object-has-own': 'off'
-    }
-  },
-
-  {
     // Written with `var` throughout: buffer-limit.js in ES5 on purpose (see
     // its header), and perf_mon.js, a dev tool left in the style it was
     // written in.
