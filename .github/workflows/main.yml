@@ -73,6 +73,10 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # tools/fork-watch.py, with GitHub's API faked.
+      - name: Fork watch tests
+        run: python3 tools/fork-watch-test.py
+
       # Builds both packages and runs every bench test (bench/ci.sh).
       - name: Test
         run: npm test

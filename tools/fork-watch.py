@@ -39,6 +39,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -57,6 +58,15 @@ KNOWN_KEEP_DAYS = LOOKBACK_DAYS + 15
 MAX_FORK_DEPTH = 6
 MAX_COMMITS_SHOWN = 15
 MAX_MAIN_TITLES = 1000
+# A compare lists up to 250 commits unless it is paged; past that many, the
+# newest - the ones that matter - would be cut. Paged up to this many.
+MAX_COMPARE_COMMITS = 1000
+# GitHub refuses an issue body over 65,536 characters: the report is cut
+# below it, and the state keeps at most this many commits (about 30
+# characters each).
+MAX_BODY = 60000
+MAX_KNOWN = 1800
+RETRY_DELAY_S = 5
 DRY_RUN = os.environ.get('DRY_RUN') == '1'
 LABEL = 'fork-watch'
 STATE_TITLE = 'Fork watch state'
@@ -76,20 +86,29 @@ def request(method, path, body=None, params=None):
         req.add_header('Authorization', 'Bearer ' + TOKEN)
     if data is not None:
         req.add_header('Content-Type', 'application/json')
-    try:
-        with urllib.request.urlopen(req, timeout=30) as res:
-            text = res.read().decode()
-            link = res.headers.get('Link', '')
-            return (json.loads(text) if text else None), link
-    except urllib.error.HTTPError as err:
-        # 404 (deleted fork/branch), 409 (empty repo), 410 (issues turned
-        # off) and 422 (unrelated histories) are normal in a fork network:
-        # skip, don't fail the run. Reads only: a write that fails (the report
-        # issue, the state) must stop the run, or the state moves on and the
-        # findings are never reported.
-        if method == 'GET' and err.code in (404, 409, 410, 422):
-            return None, ''
-        raise
+    # A read that meets a server or network error (a compare that took too
+    # long, a hiccup) is asked again twice before it fails. Writes are not: a
+    # write that failed may still have been made.
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(req, timeout=30) as res:
+                text = res.read().decode()
+                link = res.headers.get('Link', '')
+                return (json.loads(text) if text else None), link
+        except urllib.error.HTTPError as err:
+            # 404 (deleted fork/branch), 409 (empty repo), 410 (issues turned
+            # off) and 422 (unrelated histories) are normal in a fork network:
+            # skip, don't fail the run. Reads only: a write that fails (the
+            # report issue, the state) must stop the run, or the state moves on
+            # and the findings are never reported.
+            if method == 'GET' and err.code in (404, 409, 410, 422):
+                return None, ''
+            if method != 'GET' or err.code < 500 or attempt == 2:
+                raise
+        except (urllib.error.URLError, TimeoutError):
+            if method != 'GET' or attempt == 2:
+                raise
+        time.sleep(RETRY_DELAY_S * (attempt + 1))
 
 
 def get(path, params=None):
@@ -155,9 +174,29 @@ def known_commits(state):
         return None
 
 
+def compare(head):
+    """Our main compared with `head` (owner:branch): the compare, with every
+    commit ahead (up to MAX_COMPARE_COMMITS, oldest first) in 'commits'."""
+    path = f'/repos/{REPO}/compare/main...{head}'
+    cmp = get(path, {'per_page': 100})
+    if not cmp:
+        return cmp
+    commits = list(cmp.get('commits') or [])
+    total = min(cmp.get('total_commits') or 0, MAX_COMPARE_COMMITS)
+    page = 1
+    while len(commits) < total:
+        page += 1
+        more = get(path, {'per_page': 100, 'page': page})
+        if not more or not more.get('commits'):
+            break
+        commits.extend(more['commits'])
+    cmp['commits'] = commits
+    return cmp
+
+
 def upstream_shas():
     """Commits upstream main has and we don't: the sync workflow's job, not news."""
-    cmp = get(f"/repos/{REPO}/compare/main...{ROOTS[0].split('/')[0]}:main")
+    cmp = compare(f"{ROOTS[0].split('/')[0]}:main")
     return {c['sha'] for c in (cmp or {}).get('commits', [])}, (cmp or {}).get('ahead_by', 0)
 
 
@@ -222,7 +261,15 @@ def new_commits(fork, cutoff, seen, known, today, ours):
     found = {}
     for branch in branches or []:
         head = f"{owner}:{urllib.parse.quote(branch['name'], safe='')}"
-        cmp = get(f'/repos/{REPO}/compare/main...{head}')
+        try:
+            cmp = compare(head)
+        except urllib.error.HTTPError as err:
+            if err.code < 500:
+                raise
+            # One branch GitHub cannot compare must not stop the whole watch
+            # (every later run would fail on it too).
+            print(f"{fork['full_name']} {branch['name']}: compare failed ({err.code}), skipped")
+            continue
         if not cmp or not cmp.get('ahead_by'):
             continue
         for c in cmp.get('commits', []):
@@ -242,7 +289,9 @@ def new_commits(fork, cutoff, seen, known, today, ours):
                 'title': title[:120],
                 'author': (c.get('author') or {}).get('login') or c['commit']['author']['name'],
                 'date': c['commit']['committer']['date'][:10],
-                'url': c['html_url'],
+                # The fork's page of the commit: ours would say it belongs to
+                # no branch of this repository.
+                'url': f"{fork['html_url']}/commit/{c['sha']}",
             }
     return sorted(found.values(), key=lambda c: c['date'], reverse=True)
 
@@ -285,7 +334,37 @@ def new_issues(since):
 
 
 def esc(text):
-    return text.replace('|', '\\|').replace('<', '&lt;')
+    """Text from other people's repositories, made safe for the report: no
+    table cell break, no HTML, no link brackets or code spans broken, and no
+    @mention (it would notify that user) or #123 reference (it would link to
+    our own issue of that number, and put the report on its timeline)."""
+    text = text.replace('\\', '\\\\')
+    for ch in '|[]`':
+        text = text.replace(ch, '\\' + ch)
+    text = text.replace('<', '&lt;')
+    return re.sub(r'([@#])(?=\w)', r'\1&#8203;', text)
+
+
+def code(text):
+    """`text` as a code span, whatever backticks it holds."""
+    fence = '`' * (max((len(m) for m in re.findall('`+', text)), default=0) + 1)
+    pad = ' ' if text.startswith('`') or text.endswith('`') else ''
+    return f'{fence}{pad}{text}{pad}{fence}'
+
+
+def quiet(url):
+    """A link to a pull request or an issue elsewhere that leaves no "mentioned
+    this" entry on its timeline, as Dependabot's do: through redirect.github.com."""
+    return re.sub(r'^https://github\.com/', 'https://redirect.github.com/', url)
+
+
+def cut(body, limit=MAX_BODY):
+    """`body` cut at a line under `limit` characters, saying so."""
+    if len(body) <= limit:
+        return body
+    note = '\n\n... cut here: the report is too long for one issue. The run\'s summary has all of it.\n'
+    end = body.rfind('\n', 0, limit - len(note))
+    return body[:max(end, 0)] + note
 
 
 def build_report(since, forks, pulls, issues, upstream_ahead):
@@ -299,15 +378,15 @@ def build_report(since, forks, pulls, issues, upstream_ahead):
         lines += ['## Pull requests on the upstream repositories', '',
                   '| Repo | PR | Author | State | Updated |', '|---|---|---|---|---|']
         for p in pulls:
-            lines.append(f"| {p['repo']} | [#{p['number']} {esc(p['title'])}]({p['url']}) "
-                         f"| {p['user']} | {p['state']} | {p['updated']} |")
+            lines.append(f"| {p['repo']} | [#{p['number']} {esc(p['title'])}]({quiet(p['url'])}) "
+                         f"| {esc(p['user'])} | {p['state']} | {p['updated']} |")
         lines.append('')
     if issues:
         lines += ['## New issues on the upstream repositories', '',
                   '| Repo | Issue | Author | Labels | Opened |', '|---|---|---|---|---|']
         for i in issues:
-            lines.append(f"| {i['repo']} | [#{i['number']} {esc(i['title'])}]({i['url']}) "
-                         f"| {i['user']} | {esc(i['labels'])} | {i['created']} |")
+            lines.append(f"| {i['repo']} | [#{i['number']} {esc(i['title'])}]({quiet(i['url'])}) "
+                         f"| {esc(i['user'])} | {esc(i['labels'])} | {i['created']} |")
         lines.append('')
     if forks:
         lines += ['## New commits on forks', '']
@@ -316,7 +395,7 @@ def build_report(since, forks, pulls, issues, upstream_ahead):
             lines.append('')
             for c in commits[:MAX_COMMITS_SHOWN]:
                 lines.append(f"- [`{c['sha'][:7]}`]({c['url']}) {esc(c['title'])} "
-                             f"- {c['author']}, {c['date']}, branch `{esc(c['branch'])}`")
+                             f"- {esc(c['author'])}, {c['date']}, branch {code(c['branch'])}")
             if len(commits) > MAX_COMMITS_SHOWN:
                 lines.append(f'- ... and {len(commits) - MAX_COMMITS_SHOWN} more')
             lines.append('')
@@ -334,6 +413,10 @@ def save_state(now, state, known):
     """Moves the last-run marker forward and stores the reported commits in the (closed) state issue."""
     oldest = (now - dt.timedelta(days=KNOWN_KEEP_DAYS)).strftime('%Y-%m-%d')
     kept = {sha: day for sha, day in known.items() if day >= oldest}
+    if len(kept) > MAX_KNOWN:
+        # The newest are kept: an older one forgotten can come back only
+        # while it is still under LOOKBACK_DAYS.
+        kept = dict(sorted(kept.items(), key=lambda kv: kv[1], reverse=True)[:MAX_KNOWN])
     body = ('Bookkeeping for the fork watch workflow - safe to ignore.\n\n'
             f'<!-- fork-watch-last-run: {fmt_time(now)} -->\n'
             f'<!-- fork-watch-known: {json.dumps(kept, separators=(",", ":"), sort_keys=True)} -->')
@@ -396,7 +479,7 @@ def main():
         print(title)
         print(body)
         return
-    request('POST', f'/repos/{REPO}/issues', {'title': title, 'body': body, 'labels': [LABEL]})
+    request('POST', f'/repos/{REPO}/issues', {'title': title, 'body': cut(body), 'labels': [LABEL]})
     print('Opened issue:', title)
     save_state(now, state, known)
 
