@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.9.2] - 2026/11/11
+
+Playback speed on webOS 4-6 and 22, a play queue, new filters (Hide Videos Older Than, Hide Repeated Videos, Remove Mixes), Hide Left Menu Entries, Remove Black Text Boxes, Keep App Open When Paused and Reset All Settings, and the fixes from a review of the whole source: the first video after a minute on Home, previews taken for videos, Start Page on a launch or a cast, SponsorBlock's mute segments, Force Max Quality after a seek, and live streams at 1x. Ships both packages: `_webOS22+.ipk` for webOS 22 and newer, and the legacy `.ipk` for webOS 3-6.
+
 ## Added
 
 + **Playback Speed Control on webOS 4-6 and 22** (#97): these TVs have no WebCodecs, so the audio is decoded with the older Web Audio decodeAudioData() instead, about a second at a time, each piece with 4 AAC frames before and after it so the pieces join without a click. It works with **AAC audio only** (Chromium 53 cannot decode Opus that way): off 1× the player is offered AAC only, and a video without AAC stays at 1×. Not on webOS 3 (Chromium 38). Measured first on a webOS 4 TV with a test app, thanks to John-nata.
@@ -2132,7 +2136,14 @@ SponsorBlock Optimizations:
 
 - Created basic web app which launches YouTube TV.
 
-[Unreleased]: https://github.com/webosbrew/youtube-webos/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/foxi69/youtube-webos/compare/v0.9.2...main
+[0.9.2]: https://github.com/foxi69/youtube-webos/compare/v0.9.1...v0.9.2
+[0.9.1]: https://github.com/foxi69/youtube-webos/compare/v0.9.0...v0.9.1
+[0.9.0]: https://github.com/foxi69/youtube-webos/compare/v0.8.8...v0.9.0
+[0.8.8]: https://github.com/foxi69/youtube-webos/compare/v0.8.7...v0.8.8
+[0.8.7]: https://github.com/foxi69/youtube-webos/compare/v0.8.6...v0.8.7
+[0.8.6]: https://github.com/foxi69/youtube-webos/compare/v0.8.5...v0.8.6
+[0.8.5]: https://github.com/foxi69/youtube-webos/releases/tag/v0.8.5
 [0.3.1]: https://github.com/webosbrew/youtube-webos/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/webosbrew/youtube-webos/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/webosbrew/youtube-webos/compare/v0.2.0...v0.2.1
