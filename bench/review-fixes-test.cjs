@@ -227,6 +227,42 @@ function openVideo(win) {
     win.close();
   }
 
+  // ---- Force Max Quality: a stream that falls on its own is put back up ----
+  // A video that starts at its best level gets no range (it would reload),
+  // and after a seek the stream fell to 1080p by itself (seen on webOS 25).
+  for (const byHand of [false, true]) {
+    const win = await boot({ forceHighResVideo: true },
+      { html: '<body class="WEB_PAGE_TYPE_WATCH"></body>', url: 'https://www.youtube.com/tv#/watch?v=' + VIDEO, speed: 20 });
+    const player = makePlayer(win, -1);
+    let quality = 'hd1440';
+    const ranges = [];
+    Object.assign(player.el, {
+      getAvailableQualityLevels: () => ['hd1440', 'hd1080', 'hd720', 'auto'],
+      getPlaybackQuality: () => quality,
+      getPlaybackQualityLabel: () => quality,
+      // What YouTube's menu leaves when a level is picked there.
+      getUserPlaybackQualityPreference: () => (byHand ? 'hd720' : 'auto'),
+      setPlaybackQualityRange: (min) => { ranges.push(min); quality = 'hd1440'; }
+    });
+    win.document.body.appendChild(player.el);
+    await until(() => player.listeners.length === 1, 3000);
+    player.emit(1);
+    await sleep(100);
+    const video = player.el.querySelector('video');
+    const fall = async (to) => { quality = to; video.dispatchEvent(new win.Event('resize')); await sleep(50); };
+    if (!byHand) {
+      t('Force Max Quality: a video that starts at its best level gets no range', ranges.length === 0, ranges.join());
+      await fall('hd1080');
+      t('Force Max Quality: fallen to 1080p on its own, the range is set again', ranges.join() === 'highres', ranges.join());
+      await fall('hd1080');
+      t('Force Max Quality: put back up once per video, not again', ranges.length === 1, ranges.join());
+    } else {
+      await fall('hd720');
+      t('Force Max Quality: a level picked by hand in the menu is left as it is', ranges.length === 0, ranges.join());
+    }
+    win.close();
+  }
+
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(1); });

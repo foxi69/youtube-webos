@@ -108,6 +108,32 @@ function boot() {
     t('and it reports updateend to its listeners', ended === 1, String(ended));
   }
   if (win.ytafSpeed.releaseAudioSink) win.ytafSpeed.releaseAudioSink();
+
+  // ---- A live stream plays at 1x (faster, it stalls at the live edge) ----
+  {
+    let live = true;
+    const el = win.document.createElement('div');
+    el.id = 'ytlr-player__player-container-player';
+    el.getVideoData = () => ({ video_id: live ? 'livelivelve' : 'abcdefghijk', isLive: live });
+    win.document.body.appendChild(el);
+    t('a speed set before stays 1.5x for the controller, 1x on the live stream',
+      win.ytafSpeed.getSpeed() === 1, String(win.ytafSpeed.getSpeed()));
+    const native = new win.MediaSource().addSourceBuffer('audio/mp4; codecs="mp4a.40.2"');
+    t('the live stream\'s audio SourceBuffer is the native one, not the engine\'s',
+      typeof native.addEventListener !== 'function', Object.keys(native).join());
+    win.ytafSpeed.setSpeed(2);
+    // YouTube's own player object, given a speed from its menu.
+    const rates = win.eval('(function () { var got = []; var api = {}; api.setPlaybackRate = function (r) { got.push(r); };' +
+      ' api.setPlaybackRate(1.5); api.setPlaybackRate(1.03); return got; })()');
+    t('YouTube\'s own rate change to a speed is turned into 1x; a catch-up rate passes',
+      rates.join() === '1,1.03', rates.join());
+    const toasts = Array.from(win.document.querySelectorAll('*'))
+      .filter((n) => n.childElementCount === 0 && /not available on a live stream/.test(n.textContent)).length;
+    t('a speed on a live stream is refused with a notice', toasts >= 1, String(toasts));
+    live = false;
+    t('the next video that is not live gets the speed set before back',
+      win.ytafSpeed.getSpeed() === 1.5, String(win.ytafSpeed.getSpeed()));
+  }
   win.close();
 
   console.log(`\n${pass} passed, ${fail} failed`);

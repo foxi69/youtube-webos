@@ -30,6 +30,8 @@ let videoBeingProcessed = null;
 let kickstartInProgress = false;
 
 const qualitySetForVideo = new Set();
+// Videos whose quality was put back up once after the stream fell on its own.
+const relockedVideos = new Set();
 
 // webOS 25 first video fix
 let hasKickstarted = false;
@@ -359,6 +361,29 @@ function interceptAndUpgradeQuality(videoId) {
   });
 }
 
+// A video that started at its best level is left without a range (setting
+// one reloads the video on webOS 25), and the adaptive stream then fell to
+// 1080p for half a minute after a seek; one that got the range fell too
+// once. When the picture gets smaller below the best level, the range is set
+// again, once per video. Not over a level picked by hand in YouTube's menu:
+// the player's preference is then that level, not 'auto' or 'highres'.
+// ponytail: once per video; a stream that falls again stays down, a timed
+// retry would be the next step if that shows up.
+function onVideoResize(evt) {
+  if (!evt || !evt.target || evt.target.tagName !== 'VIDEO') return;
+  if (!player || isDestroyed || !isForceEnabled() || !isWatchPage() || videoBeingProcessed) return;
+  try {
+    const videoId = player.getVideoData?.()?.video_id;
+    if (!videoId || !qualitySetForVideo.has(videoId) || relockedVideos.has(videoId)) return;
+    const preference = player.getUserPlaybackQualityPreference?.() || 'auto';
+    if (preference !== 'auto' && preference !== 'highres') return;
+    if (!levelsListed() || isQualityAlreadyMax()) return;
+    relockedVideos.add(videoId);
+    DEBUG && console.info('[VideoQuality] Fell to', player.getPlaybackQuality?.(), '- setting the range again');
+    notifyIfUpgraded(setQualityOnPlayer());
+  } catch { /* the next resize */ }
+}
+
 // --- Show Video Quality on Start ---
 // A few seconds after a video starts playing, a toast with the quality it
 // plays in (e.g. 1080p60), once per video (NicholasBly/youtube-webos#72). The
@@ -546,6 +571,7 @@ export function destroyVideoQuality() {
   lastVideoId = null;
   lastKnownState = null;
   qualitySetForVideo.clear();
+  relockedVideos.clear();
   videoBeingProcessed = null;
   _isWatchPageCached = false;
   kickstartInProgress = false;
@@ -660,6 +686,9 @@ function setupListeners() {
         clearLocalStorageQuality();
       }
     });
+
+    // The picture's size changed (a <video> 'resize', caught on its way down).
+    document.addEventListener('resize', onVideoResize, true);
 
     window.addEventListener('yt-navigate-finish', handleNavigation);
 
