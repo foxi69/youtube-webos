@@ -11,6 +11,8 @@ let engineAt = 0;
 let firstSoundAt = 0;
 let starving = 0;
 let stops = 0;
+let inTick = false;
+const causes = { stall: 0, jump: 0, starve: 0, pause: 0, seek: 0, other: 0 };
 const decodes = { n: 0, totalMs: 0, lastMs: 0, maxMs: 0, fail: 0 };
 
 function sec(ms) {
@@ -38,9 +40,22 @@ function vt(e) {
 
 // Every time queued audio is cut: a pause, a seek, a stall or a resync.
 const origStop = AudioEngine.prototype.stopFuture;
+// Why: worked out from the engine's state before the cut changes it.
+function cause(e) {
+  const v = e.video;
+  if (v && v.paused) return 'pause';
+  if (v && v.seeking) return 'seek';
+  if (!inTick) return `other(ready=${v ? v.readyState : '-'})`;
+  if (e.clockTicks >= e.stallTicks()) return 'stall';
+  if (e.nextWhen <= e.ctx.currentTime) return 'starve';
+  return 'jump';
+}
+
 AudioEngine.prototype.stopFuture = function () {
   stops++;
-  log(`cut t=${vt(this)} paused=${this.video && this.video.paused} pcmAhead=${pcmAhead(this).toFixed(2)} decoded=${this.pcm.length}`);
+  const why = cause(this);
+  causes[why.split('(')[0]]++;
+  log(`cut ${why} t=${vt(this)} pcmAhead=${pcmAhead(this).toFixed(2)} decoded=${this.pcm.length}`);
   return origStop.apply(this, arguments);
 };
 
@@ -48,7 +63,13 @@ const origTick = AudioEngine.prototype.tick;
 AudioEngine.prototype.tick = function () {
   if (this.video && !this.video.paused && !this.anchorPending && this.nextWhen <= this.ctx.currentTime) starving++;
   const before = this.sources.size;
-  const r = origTick.apply(this, arguments);
+  inTick = true;
+  let r;
+  try {
+    r = origTick.apply(this, arguments);
+  } finally {
+    inTick = false;
+  }
   if (!firstSoundAt && engine === this && this.sources.size > before) {
     firstSoundAt = Date.now();
     log(`first sound ${sec(firstSoundAt - engineAt)} s after the engine started`);
@@ -106,6 +127,8 @@ function render() {
     lines.push(`decoder=${e.decoder ? e.decoder.state : '-'} failed=${e.failed}`);
   }
   lines.push(`starving ticks=${starving} cuts=${stops}`);
+  lines.push(`  stall ${causes.stall} jump ${causes.jump} starve ${causes.starve} pause ${causes.pause} seek ${causes.seek} other ${causes.other}`);
+  if (e) lines.push(`clock steps ${e.clockGaps.join(',')} ticks, stall after ${e.stallTicks()}`);
   lines.push(`decodes ${decodes.n} last=${decodes.lastMs}ms avg=${decodes.n ? Math.round(decodes.totalMs / decodes.n) : 0}ms max=${decodes.maxMs}ms fail=${decodes.fail}`);
   if (!box && document.body) {
     box = document.createElement('div');
