@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## Fixed
+
++ **Playback Speed Control on webOS 4-6** (#97): the sound cut out for about a second every second or two off 1×, while the picture played on. These TVs move the video's position (`currentTime`) in steps of 0.2-0.5 s instead of every frame, and the speed's audio took each step for a stall and the jump after it for a seek, so it stopped and started again. The position is now carried on by the audio clock between those steps, and a stall counts only when the position stays longer than the TV's usual step (still 0.2 s where it moves every frame). Found with a diagnostic build on a webOS 4 TV, thanks to John-nata.
+
 ## Docs
 
 + README: the SponsorBlock tab lists Intermission/Intro and Endcards/Credits under the names the panel shows, and the fork trail picture's description names no version.
