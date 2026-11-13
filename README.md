@@ -548,14 +548,18 @@ Releases are drafted automatically and published only after a test on the TV:
    install it on the TV.
 3. If it works, open the draft and press **Publish release**. A full release creates the tag and runs
    [Update Homebrew Repository](.github/workflows/build_repo.yml), which points `repo.json` (legacy) and
-   `repo-webos22.json` (webOS 22+) at the new release, so Homebrew Channel offers the update. Tick **Set as a
-   pre-release** first to let testers download it while the Homebrew repository stays on the latest full release.
+   `repo-webos22.json` (webOS 22+) at the new release, so Homebrew Channel offers the update. It also writes the
+   release's version into `package.json`, `package-lock.json` and `assets/appinfo.json` on `main`, so a local build
+   shows it, and moves the version flags of `screenshots/fork-trail.svg` on to the last three releases
+   ([`tools/release-bump.cjs`](tools/release-bump.cjs)). None of them moves back for a release older than what
+   `main` has. Tick **Set as a pre-release** first to let testers download it while the Homebrew repository and
+   `main` stay on the latest full release.
 
 **Version rule:** the draft takes the version in `package.json` while that is not published yet, so raising it by
 hand wins. Otherwise later pushes refresh the highest published release if it is a pre-release, or else the open
-draft; with neither, a new draft starts one patch above the highest published release (0.8.8 -> 0.8.9). The build
-writes the version into `package.json` and `appinfo.json` on the runner only, and nothing is committed. Drafts of
-other versions are deleted. The version flags in `screenshots/fork-trail.svg` are updated by hand for each release.
+draft; with neither, a new draft starts one patch above the highest published release (0.8.8 -> 0.8.9). A draft's
+build writes its version into `package.json` and `appinfo.json` on the runner only; `main` takes it when the release
+is published as a full release (step 3). Drafts of other versions are deleted.
 
 ### Staying up to date with upstream
 

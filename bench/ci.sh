@@ -79,6 +79,7 @@ fork_watch
 build
 run polyfill-conformance
 run launch-test
+run release-bump-test
 run smoke "$B" legacy
 run adblock-test "$B" legacy
 run new-features-test "$B"
