@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Fixes
 
-+ Tile previews play on webOS 25 again (#144, an LG C5; also this fork since 0.7.7). The app tells YouTube it runs on an `O18` chipset again, as it did up to 0.7.6 and as webosbrew/youtube-webos still does: 0.7.7 took the LG Content Store app's user agent, which sends the TV's own chipset, and YouTube turns previews off (`inline_playback`) for the newer chipsets. Measured on youtube.com/tv: with `K24N` (a QNED92) and `O24N`, `O22`, `O20`, `M23` previews are off, with `O18` they are on, and nothing else in the page's settings differs. The Previews With Sound note no longer says webOS 25 shows none.
++ Tile previews play on webOS 25 again (#144, an LG C5; also this fork since 0.7.7). The app tells YouTube it runs on an `O18` chipset again, as it did up to 0.7.6 and as webosbrew/youtube-webos still does: 0.7.7 took the LG Content Store app's user agent, which sends the TV's own chipset, and YouTube turns previews off (`inline_playback`) for the newer chipsets. Measured on youtube.com/tv: with `K24N` (a QNED92) and `O24N`, `O22`, `O20`, `M23` previews are off, with `O18` they are on, and nothing else in the page's settings differs. The Previews With Sound note no longer says webOS 25 shows none. `bench/appinfo-test.cjs` fails the CI run if the packaged user agent loses `O18` again.
 
 ## Docs
 
