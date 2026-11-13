@@ -2,7 +2,7 @@ import { configRead, configAddChangeListener } from './config.js';
 import { showNotification } from './notifications.js';
 import { isWebOS25 } from './webos-utils.js';
 import { sendKey, REMOTE_KEYS, SELECTORS, isWatchPage, getVideo } from './utils.js';
-import { speedCapsQuality } from './playback-speed.js';
+import { speedCapsQuality, speedKeepsQuality, clearSpeedQualityPick } from './playback-speed.js';
 import { QUALITY_KEY, QUALITY_HEIGHTS } from './speed/player-state.js';
 
 const DEBUG = false;
@@ -47,7 +47,8 @@ const STATE_BUFFERING = 3;
 // const STATE_CUED = 5;
 
 function isForceEnabled() {
-  return _shouldForce && (!player?.isInline || !player.isInline()) && !speedCapsQuality();
+  return _shouldForce && (!player?.isInline || !player.isInline()) &&
+    !speedCapsQuality() && !speedKeepsQuality(player);
 }
 
 async function ensurePlaybackStarts() {
@@ -688,6 +689,7 @@ function setupListeners() {
     configAddChangeListener('forceHighResVideo', (evt) => {
       _shouldForce = !!evt.detail.newValue;
       if (_shouldForce) {
+        clearSpeedQualityPick();
         cachedQualitySettings = null;
         setLocalStorageQuality();
         qualitySetForVideo.clear();

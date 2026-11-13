@@ -7,7 +7,6 @@
 // - Quality: the one the viewer picked in YouTube's menu, which YouTube keeps
 //   in the yt-player-quality record (video-quality.js writes its own there).
 
-
 export const QUALITY_KEY = 'yt-player-quality';
 export const QUALITY_HEIGHTS = {
   highres: 4320, hd2880: 2880, hd2160: 2160, hd1440: 1440, hd1080: 1080, hd720: 720,
@@ -45,48 +44,83 @@ export function sameCaptions(a, b) {
     translated(a) === translated(b);
 }
 
-/** Puts `saved` (from readCaptions) back when the player shows something else. */
+/** Puts `saved` back; returns an error only when applying the track failed. */
 export function applyCaptions(player, saved) {
-  if (!saved) return;
+  if (!saved) return null;
   const now = readCaptions(player);
   // Unreadable now: only turning subtitles on is worth a try.
-  if (now ? sameCaptions(now, saved) : !isOn(saved)) return;
+  if (now ? sameCaptions(now, saved) : !isOn(saved)) return null;
   try {
     if (isOn(saved) && typeof player.loadModule === 'function') player.loadModule('captions');
     player.setOption('captions', 'track', isOn(saved) ? saved : {});
-  } catch { /* captions module unavailable */ }
+    return null;
+  } catch (error) {
+    return error;
+  }
 }
 
 /**
- * Puts the subtitles back now and at CAPTION_CHECKS_MS; a key the viewer
- * presses meanwhile (`userKeyAt` after now) ends it, so a change by hand stays.
- * Returns what stops the checks still to come (the next reload calls it).
+ * Restores this reload's subtitles while the module settles. The input
+ * baseline is captured before reloading, not when playback finally resumes.
+ * Another video, viewer input or explicit cancellation ends the cycle.
  */
-export function keepCaptions(win, player, saved, userKeyAt) {
-  if (!saved) return () => {};
-  const startedAt = Date.now();
+export function keepCaptions(win, player, saved, userKeyAt, { videoId, keyAt }) {
+  if (!saved || !videoId) return () => {};
   let stopped = false;
-  const check = () => {
-    if (stopped || userKeyAt() > startedAt || player.isConnected === false) return;
-    applyCaptions(player, saved);
-  };
-  applyCaptions(player, saved);
-  for (const ms of CAPTION_CHECKS_MS) win.setTimeout(check, ms);
-  return () => {
+  const timers = [];
+  const stop = () => {
     stopped = true;
+    timers.forEach((timer) => { win.clearTimeout(timer); });
+    timers.length = 0;
   };
+  const check = (final) => {
+    if (stopped) return;
+    if (userKeyAt() !== keyAt || player.isConnected === false) {
+      stop();
+      return;
+    }
+    let currentId;
+    try { currentId = player.getVideoData()?.video_id; } catch { /* still loading */ }
+    if (currentId && currentId !== videoId) {
+      stop();
+      return;
+    }
+    // An unknown id may already be the next video: never apply the old track.
+    if (!currentId) {
+      if (final) stop();
+      return;
+    }
+    const error = applyCaptions(player, saved);
+    if (final) {
+      const current = readCaptions(player);
+      if (error || (current && !sameCaptions(current, saved))) {
+        console.warn('[PlaybackSpeed] Could not restore subtitles: message: ' +
+          (error?.message || 'the player did not keep the track'));
+      }
+      stop();
+    }
+  };
+  CAPTION_CHECKS_MS.forEach((ms, index) => {
+    timers.push(win.setTimeout(() => check(index === CAPTION_CHECKS_MS.length - 1), ms));
+  });
+  check(false);
+  return stop;
 }
 
 /**
  * The yt-player-quality record: `level` the quality it names ('hd720'...),
  * null for 4320 (Force Max Quality's, video-quality.js, or a range of Max) or
- * a height not known; `at` when it was written. Null without a record or once
- * it expired. YouTube writes it when the viewer picks a quality in its menu,
- * and also on every quality range call (playback-speed.js tells those apart).
+ * a height not known; `at` when it was written. Null without a valid record,
+ * undefined when storage access is denied (the caller keeps its known pick).
+ * YouTube writes this for manual picks and quality range calls alike.
  */
 export function readQualityRecord(storage, now) {
+  if (!storage) return null;
+  let stored;
+  try { stored = storage.getItem(QUALITY_KEY); }
+  catch { return undefined; }
   try {
-    const record = JSON.parse(storage.getItem(QUALITY_KEY));
+    const record = JSON.parse(stored);
     if (!record || !record.data || Number(record.expiration) < now) return null;
     const data = JSON.parse(record.data);
     let level = null;
@@ -97,7 +131,7 @@ export function readQualityRecord(storage, now) {
     }
     return { level, at: Number(record.creation) || 0 };
   } catch {
-    // No storage, or a record of another shape.
+    // A missing, expired or malformed record names no selection.
     return null;
   }
 }

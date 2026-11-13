@@ -153,7 +153,7 @@ const UNKNOWN = 'unknown';
 // the ladder does not know is captured and then left alone (rankOf), and a
 // thumbnail test variant (hqdefault_custom_2) is captured and ranked low.
 const THUMB_URL_RE = /^https?:\/\/i\.ytimg\.com\/vi(?:_webp)?\/([\w-]+)\/(\w+)\.(?:jpg|jpeg|webp|png)/;
-const THUMB_IN_CSS_RE = /i\.ytimg\.com\/vi(?:_webp)?\/([\w-]+)\//;
+const THUMB_IN_CSS_RE = /i\.ytimg\.com\/vi(?:_webp)?\/([\w-]+)\/(\w+)\.(?:jpg|jpeg|webp|png)/;
 
 // A thumbnail test variant ("Test & Compare": hqdefault_custom_1 to _3) only
 // exists at the small signed size the response names (320x180): unsigned, and
@@ -1249,7 +1249,9 @@ function runPromotionSweep() {
     if (!background) continue;
 
     const match = THUMB_IN_CSS_RE.exec(background);
-    if (!match) continue;
+    // Frames (hq1-hq3), Shorts crops and other unmapped names are not rungs
+    // of this ladder. DeArrow may be showing one deliberately.
+    if (!match || rankOf(match[2]) === undefined) continue;
 
     const rank = pendingPromotions.get(match[1]);
     if (rank === undefined) continue;

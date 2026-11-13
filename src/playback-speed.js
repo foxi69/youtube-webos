@@ -199,8 +199,8 @@ const CAP_ABOVE = 1;
 // Below the cap: where YouTube falls by itself at speed.
 const BELOW_1080 = ['hd720', 'large', 'medium', 'small', 'tiny'];
 const ABOVE_1080 = ['highres', 'hd2880', 'hd2160', 'hd1440'];
-// YouTube rewrites yt-player-quality within a few milliseconds of a quality
-// range call (seen on a TV); a record this soon after one of ours is ours.
+// YouTube can write our quality range asynchronously. Only a record of the
+// requested level in this window is ours; a different choice is never hidden.
 const OWN_RECORD_MS = 1000;
 
 export function createSpeedController({ win, getPlayer, notify, configRead, codecs, userKeyAt = () => 0 }) {
@@ -218,7 +218,9 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
   // When this controller last set a quality range, and the viewer's last pick
   // read from YouTube's record (see viewerPick).
   let ownRangeAt = -Infinity;
+  let ownRangeLevel = null;
   let lastPick = null;
+  let qualityPickVideoId = null;
 
   function isSupported() {
     return typeof win.AudioDecoder !== 'undefined' || !!codecs;
@@ -281,18 +283,34 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
   }
 
   // The quality the viewer picked in YouTube's menu (player-state.js), or null.
-  // YouTube rewrites the record on every quality range call, this
-  // controller's too: one written just after a call of ours is not a pick, and
-  // the last pick read stands.
+  // A different level written during the reload is a new manual choice,
+  // even if it arrives within the controller's own-record window.
   function viewerPick() {
-    const record = readQualityRecord(win.localStorage, Date.now());
-    const ours = !!record && record.at >= ownRangeAt && record.at - ownRangeAt < OWN_RECORD_MS;
+    let record;
+    try { record = readQualityRecord(win.localStorage, Date.now()); }
+    catch { return lastPick; }
+    if (record === undefined) return lastPick;
+    const ours = !!record && record.level === ownRangeLevel &&
+      record.at >= ownRangeAt && record.at - ownRangeAt < OWN_RECORD_MS;
     if (!ours) lastPick = record ? record.level : null;
     return lastPick;
   }
 
+  // Only the video whose speed reload kept this pick suppresses quality forcing.
+  function keepsQuality(watched) {
+    if (!lastPick || !qualityPickVideoId || !watched) return false;
+    try { return watched.getVideoData()?.video_id === qualityPickVideoId; }
+    catch { return false; }
+  }
+
+  function clearQualityPick() {
+    lastPick = null;
+    qualityPickVideoId = null;
+  }
+
   function setRange(player, quality) {
     ownRangeAt = Date.now();
+    ownRangeLevel = quality === 'highres' || quality === 'auto' ? null : quality;
     player.setPlaybackQualityRange(quality, quality);
   }
 
@@ -317,8 +335,9 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
     // Read before the quality range below, which can reload the <video> too.
     const reused = !!keptCaptions && !keptCaptions.landed && keptCaptions.videoId === videoId;
     if (!reused) {
-      keptCaptions = { videoId, captions: readCaptions(player), landed: false };
+      keptCaptions = { videoId, captions: readCaptions(player), landed: false, keyAt: userKeyAt() };
     }
+    qualityPickVideoId = viewerPick() ? videoId : null;
     if (currentSpeed > CAP_ABOVE) {
       const cap = capQuality();
       setRange(player, cap);
@@ -348,22 +367,22 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
 
   function restorePosition(player, at, videoId, kept) {
     if (stopPositionWatch) stopPositionWatch();
-    // Read once: isLow runs every tick of the watch.
-    const cap = capQuality();
     const setCap = () => {
       if (currentSpeed > CAP_ABOVE) {
+        const cap = capQuality();
+        qualityPickVideoId = lastPick ? videoId : null;
         setRange(player, cap);
       }
     };
     const onPlaying = () => {
       setCap();
       kept.landed = true;
-      stopCaptions = keepCaptions(win, player, kept.captions, userKeyAt);
+      stopCaptions = keepCaptions(win, player, kept.captions, userKeyAt, kept);
     };
     stopPositionWatch = watchPosition(win, player, at, onPlaying, {
       isLow() {
         // A lower quality the viewer picked is not a fall to fight.
-        if (currentSpeed <= CAP_ABOVE || cap !== 'hd1080') return false;
+        if (currentSpeed <= CAP_ABOVE || capQuality() !== 'hd1080') return false;
         const levels = player.getAvailableQualityLevels ? player.getAvailableQualityLevels() : [];
         return levels.indexOf('hd1080') !== -1 && BELOW_1080.indexOf(player.getPlaybackQuality()) !== -1;
       },
@@ -475,7 +494,9 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
     createAudioSink,
     releaseAudioSink,
     capQuality,
-    setRange
+    setRange,
+    keepsQuality,
+    clearQualityPick
   };
 }
 
@@ -484,6 +505,16 @@ let speedInstance = null;
 /** Whether the speed caps quality at 1080p now (Force Max Quality then waits). */
 export function speedCapsQuality() {
   return !!speedInstance && speedInstance.controller.getSpeed() > CAP_ABOVE;
+}
+
+/** A manual quality retained by a speed reload wins over automatic quality forcing. */
+export function speedKeepsQuality(player) {
+  return !!speedInstance && speedInstance.controller.keepsQuality(player);
+}
+
+/** Explicitly enabling Force Max Quality releases the previously retained pick. */
+export function clearSpeedQualityPick() {
+  if (speedInstance) speedInstance.controller.clearQualityPick();
 }
 
 export function installSpeedFeature(win, { notify, configRead: cfgRead, getPlayer }) {
@@ -498,7 +529,7 @@ export function installSpeedFeature(win, { notify, configRead: cfgRead, getPlaye
   // reload ends putting the old ones back (player-state.js).
   let lastUserKeyAt = 0;
   const onKey = (evt) => {
-    if (evt.isTrusted !== false && !evt[SYNTHETIC_KEY_FLAG]) lastUserKeyAt = Date.now();
+    if (evt.isTrusted !== false && !evt[SYNTHETIC_KEY_FLAG]) lastUserKeyAt++;
   };
   win.addEventListener('keydown', onKey, true);
   const ctrl = createSpeedController({

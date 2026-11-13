@@ -27,6 +27,8 @@ function setup(track) {
   const timers = [];
   const player = {
     track,
+    videoId: 'abcdefghijk',
+    getVideoData() { return { video_id: this.videoId }; },
     sets: [],
     getOption(module, name) {
       if (module !== 'captions' || name !== 'track') throw new Error('unknown option');
@@ -38,11 +40,14 @@ function setup(track) {
     },
     loadModule() {}
   };
-  const win = { setTimeout: (fn, ms) => timers.push({ fn, ms }) };
-  const run = () => {
-    for (const x of timers.sort((a, b) => a.ms - b.ms).splice(0)) x.fn();
+  const win = {
+    setTimeout: (fn, ms) => { const timer = { fn, ms }; timers.push(timer); return timer; },
+    clearTimeout: (timer) => { timer.cancelled = true; }
   };
-  return { player, win, run };
+  const run = () => {
+    for (const x of timers.sort((a, b) => a.ms - b.ms).splice(0)) if (!x.cancelled) x.fn();
+  };
+  return { player, win, run, timers };
 }
 
 /** A yt-player-quality record as YouTube and Force Max Quality write it. */
@@ -57,7 +62,7 @@ import(MODULE).then(({ readCaptions, keepCaptions, readQualityRecord }) => {
     const s = setup({});
     const saved = readCaptions(s.player);
     s.player.track = EN;
-    keepCaptions(s.win, s.player, saved, () => 0);
+    keepCaptions(s.win, s.player, saved, () => 0, { videoId: 'abcdefghijk', keyAt: 0 });
     t('subtitles turned off stay off after the reload', readCaptions(s.player).languageCode === undefined,
       JSON.stringify(s.player.track));
     // The captions module settles and turns them on once more.
@@ -71,7 +76,7 @@ import(MODULE).then(({ readCaptions, keepCaptions, readQualityRecord }) => {
     const s = setup(EN);
     const saved = readCaptions(s.player);
     s.player.track = {};
-    keepCaptions(s.win, s.player, saved, () => 0);
+    keepCaptions(s.win, s.player, saved, () => 0, { videoId: 'abcdefghijk', keyAt: 0 });
     t('subtitles that were on come back with the same track', s.player.track === EN, JSON.stringify(s.player.track));
   }
   {
@@ -79,20 +84,20 @@ import(MODULE).then(({ readCaptions, keepCaptions, readQualityRecord }) => {
     const s = setup(EN);
     const saved = readCaptions(s.player);
     s.player.track = EN_AUTO;
-    keepCaptions(s.win, s.player, saved, () => 0);
+    keepCaptions(s.win, s.player, saved, () => 0, { videoId: 'abcdefghijk', keyAt: 0 });
     t('the auto-generated track is not taken for the chosen one', s.player.track === EN, JSON.stringify(s.player.track));
   }
   {
     // Already right: nothing is set.
     const s = setup({});
-    keepCaptions(s.win, s.player, readCaptions(s.player), () => 0);
+    keepCaptions(s.win, s.player, readCaptions(s.player), () => 0, { videoId: 'abcdefghijk', keyAt: 0 });
     s.run();
     t('nothing is set when the subtitles are already right', s.player.sets.length === 0, s.player.sets.length);
   }
   {
     // The viewer turns them on by hand after the reload.
     const s = setup({});
-    keepCaptions(s.win, s.player, readCaptions(s.player), () => Date.now() + 1);
+    keepCaptions(s.win, s.player, readCaptions(s.player), () => 1, { videoId: 'abcdefghijk', keyAt: 0 });
     s.player.track = EN;
     s.run();
     t('a key pressed after the reload leaves the viewer\'s change alone', s.player.track === EN, JSON.stringify(s.player.track));
@@ -104,7 +109,7 @@ import(MODULE).then(({ readCaptions, keepCaptions, readQualityRecord }) => {
     s.player.getOption = () => { throw new Error('captions module not ready'); };
     const saved = readCaptions(s.player);
     s.player.getOption = getOption;
-    keepCaptions(s.win, s.player, saved, () => 0);
+    keepCaptions(s.win, s.player, saved, () => 0, { videoId: 'abcdefghijk', keyAt: 0 });
     s.run();
     t('unreadable subtitles before the reload are left to the player', saved === null && s.player.sets.length === 0 &&
       s.player.track === EN, JSON.stringify({ saved, sets: s.player.sets }));
@@ -115,9 +120,67 @@ import(MODULE).then(({ readCaptions, keepCaptions, readQualityRecord }) => {
     const s = setup(EN);
     const saved = readCaptions(s.player);
     s.player.getOption = () => { throw new Error('captions module not loaded'); };
-    keepCaptions(s.win, s.player, saved, () => 0);
+    keepCaptions(s.win, s.player, saved, () => 0, { videoId: 'abcdefghijk', keyAt: 0 });
     t('subtitles that were on are turned on while the module still loads', s.player.sets[0] === EN,
       JSON.stringify(s.player.sets));
+  }
+  {
+    const s = setup(EN);
+    keepCaptions(s.win, s.player, {}, () => 2, { videoId: 'abcdefghijk', keyAt: 1 });
+    s.run();
+    t('input during buffering prevents even the first restoration', s.player.track === EN && s.player.sets.length === 0);
+  }
+  {
+    const s = setup({});
+    keepCaptions(s.win, s.player, {}, () => 0, { videoId: 'abcdefghijk', keyAt: 0 });
+    s.player.videoId = 'nextvideo01';
+    s.player.track = EN;
+    s.run();
+    t('autoplay never applies the previous video subtitles', s.player.track === EN && s.player.sets.length === 0);
+  }
+  {
+    const s = setup(EN);
+    const stop = keepCaptions(s.win, s.player, EN, () => 0, { videoId: 'abcdefghijk', keyAt: 0 });
+    stop();
+    const cancelled = s.timers.every((timer) => timer.cancelled);
+    s.player.track = {};
+    s.run();
+    t('cancelled reload frees its caption timers and leaves the new track alone',
+      cancelled && s.player.sets.length === 0);
+  }
+  {
+    const s = setup({});
+    const warnings = [];
+    const warn = console.warn;
+    console.warn = (...args) => warnings.push(args);
+    try {
+      s.player.setOption = () => { throw new Error('captions unavailable'); };
+      keepCaptions(s.win, s.player, EN, () => 0, { videoId: 'abcdefghijk', keyAt: 0 });
+      t('transient caption errors are silent while restoration can retry', warnings.length === 0);
+      s.run();
+      t('a failed caption restoration warns once after the last attempt', warnings.length === 1);
+    } finally { console.warn = warn; }
+  }
+  {
+    const s = setup(EN);
+    s.player.videoId = null;
+    keepCaptions(s.win, s.player, {}, () => 0, { videoId: 'abcdefghijk', keyAt: 0 });
+    s.run();
+    t('an unknown video id never receives the previous video subtitles', s.player.track === EN && s.player.sets.length === 0);
+  }
+  {
+    const s = setup({});
+    const warnings = [];
+    const warn = console.warn;
+    console.warn = (...args) => warnings.push(args);
+    try {
+      const setOption = s.player.setOption;
+      s.player.setOption = () => { throw new Error('still loading'); };
+      keepCaptions(s.win, s.player, EN, () => 0, { videoId: 'abcdefghijk', keyAt: 0 });
+      s.player.setOption = setOption;
+      s.run();
+      t('a transient caption failure that recovers does not warn', s.player.track === EN && warnings.length === 0);
+    } finally { console.warn = warn; }
   }
 
   const level = (s, now = Date.now()) => { const r = readQualityRecord(s, now); return r && r.level; };

@@ -19,7 +19,7 @@
 import { configRead, configAddChangeListener } from '../config.js';
 import { CACHE_LIMIT, DEARROW_CONFIG_KEYS, SWEEP_DELAY } from './constants.js';
 import { videos, nextGeneration } from './state.js';
-import { forgetThumbs, thumbsFull } from './thumbs.js';
+import { forgetThumbs, thumbsFull, prioritizeThumbs } from './thumbs.js';
 import { patchResponseTiles, unpatchResponses, applyToVideo } from './tiles.js';
 import { sweepTiles } from './sweep.js';
 import { queueLookups, lookUpOnScreen, clearQueue, setChangeHandler, wantsLookup } from './lookup.js';
@@ -44,6 +44,7 @@ function scheduleSweep() {
   sweepTimer = setTimeout(() => {
     sweepTimer = null;
     const found = sweepTiles(false);
+    prioritizeThumbs(found.onScreen);
     lookUpOnScreen(found.onScreen);
     if (found.stale.length) queueLookups(found.stale);
   }, SWEEP_DELAY);

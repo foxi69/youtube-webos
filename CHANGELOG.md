@@ -8,9 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Fixes
 
-+ Playback speed: preserve the subtitle track and the quality selected in YouTube's menu across the video reload caused by a speed change. Subtitle restoration stops when the viewer presses a key. A quality below 1080p stays selected above 1×; returning to 1× restores the viewer's selection rather than Auto or Force Max Quality.
-+ DeArrow: settings and account changes are combined into one refresh. Visible tiles are processed first, while other videos are updated when their tiles appear. Thumbnail fallbacks can appear while a slow branding request is still pending.
-
++ Playback speed: preserve the subtitle track and the quality selected in YouTube's menu across a speed-change reload. Subtitle restoration belongs to that video only and stops after viewer input, including input while buffering. A newer manual quality choice during buffering takes precedence over the old cap. A quality below 1080p stays selected above 1×; returning to 1× keeps the selection across Force Max Quality's state and resize handlers. Explicitly enabling Force Max Quality releases that override. Denied storage access no longer interrupts the reload or loses a remembered quality. A failed subtitle restoration warns once after the final attempt, not on every retry.
++ DeArrow: settings and account changes are combined into one refresh. Visible tiles are processed first, including their queued thumbnail downloads; a thumbnail already waiting in the background moves ahead when its video appears. Running downloads finish without being restarted. Other videos are updated when their tiles appear, and thumbnail fallbacks can appear while a slow branding request is still pending. Max Thumbnail Quality no longer covers those fallback frames with an original thumbnail when a delayed probe finishes.
 
 ## [0.9.2] - 2026/11/11
 

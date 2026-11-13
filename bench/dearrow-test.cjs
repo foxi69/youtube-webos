@@ -66,6 +66,9 @@ function boot(cfg, opts = {}) {
   const errors = [];
   const fetched = [];
   const images = [];
+  const pendingBranding = [];
+  const pendingImages = [];
+  const pendingHeads = [];
   const vc = new VirtualConsole();
   vc.on('jsdomError', (e) => errors.push(e.message));
   const dom = new JSDOM('<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app></ytlr-app></body></html>',
@@ -79,7 +82,9 @@ function boot(cfg, opts = {}) {
     open(method) { this._method = method; }
     send() {
       if (!opts.head || this._method !== 'HEAD') return;
-      setTimeout(() => { this.status = 200; if (this.onload) this.onload(); }, opts.head.delay);
+      const finish = () => { this.status = 200; if (this.onload) this.onload(); };
+      if (opts.head.hold) pendingHeads.push(finish);
+      else setTimeout(finish, opts.head.delay);
     }
     setRequestHeader(){}
     getResponseHeader(name) { return opts.head && name === 'Content-Length' ? String(opts.head.length) : null; }
@@ -112,6 +117,7 @@ function boot(cfg, opts = {}) {
     const reply = any
       ? { ok: true, status: 200, json: () => Promise.resolve(JSON.parse(JSON.stringify(answer))) }
       : { ok: false, status: 404, json: () => Promise.reject(new Error('not json')) };
+    if (opts.holdBranding) return new Promise((resolve) => pendingBranding.push(() => resolve(reply)));
     // A slow server, as a TV saw right after the app started (8 s).
     return opts.brandingDelay ? new Promise((r) => setTimeout(() => r(reply), opts.brandingDelay)) : Promise.resolve(reply);
   };
@@ -126,7 +132,9 @@ function boot(cfg, opts = {}) {
       const placeholder = url.indexOf('/vi/livestream1/hq') !== -1;
       this.naturalWidth = placeholder ? 120 : ytimg ? 480 : 1280;
       this.naturalHeight = placeholder ? 90 : ytimg ? 360 : 720;
-      setTimeout(() => (ok ? this.onload && this.onload() : this.onerror && this.onerror()), opts.imageDelay || 0);
+      const finish = () => (ok ? this.onload && this.onload() : this.onerror && this.onerror());
+      if (opts.holdImages) pendingImages.push({ url, finish });
+      else setTimeout(finish, opts.imageDelay || 0);
     }
     get src() { return this._src; }
   };
@@ -156,7 +164,7 @@ function boot(cfg, opts = {}) {
   const parse = (obj) => win.JSON.parse(NS(obj));
   const config = () => JSON.parse(win.localStorage.getItem('ytaf-configuration'));
   const pump = () => { const q = rafQ; rafQ = []; for (const cb of q) cb(Date.now()); };
-  return { win, errors, fetched, images, parse, config, pump };
+  return { win, errors, fetched, images, parse, config, pump, pendingBranding, pendingImages, pendingHeads };
 }
 
 function tile(id, title, { badge } = {}) {
@@ -495,7 +503,7 @@ const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-d
     const extra = { otherclick1: { titles: [{ title: 'Calm other', original: false, votes: 1, locked: false }], thumbnails: [] } };
     const { win, fetched, parse, pump } = boot({}, { extra });
     const shown = tile('custom00001', 'Clickbait title');
-    const el = render(win, shown);
+    const el = render(win, shown, { onScreen: true });
     parse(browse([shown]));
     // Not on screen: only in a stored response.
     const away = parse(browse([tile('otherclick1', 'Loud other')]));
@@ -591,7 +599,7 @@ const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-d
 
   // ---- The fallback frame is fetched alongside the answer, for what is (likely) on screen ----
   {
-    const { win, images, parse } = boot({ dearrowThumbnailFallback: 'start' }, { brandingDelay: 1500 });
+    const { win, images, parse, pendingBranding } = boot({ dearrowThumbnailFallback: 'start' }, { holdBranding: true });
     // The first page, before the app has laid any tile out.
     parse(browse([tile('nosubmit001', 'First row')]));
     await wait(250);
@@ -607,9 +615,62 @@ const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-d
     // Scrolled on screen while its background lookup waits for the answer.
     render(win, tile('bgvideo0001', 'Below'), { onScreen: true });
     win.document.dispatchEvent(new win.KeyboardEvent('keydown', { bubbles: true }));
+    await waitFor(() => images.some((u) => u.indexOf('/vi/bgvideo0001/hq1.jpg') !== -1), 1500);
+    t('scrolled on screen mid-lookup, its frame is fetched while branding remains pending',
+      pendingBranding.length > 0 && images.some((u) => u.indexOf('/vi/bgvideo0001/hq1.jpg') !== -1), images.join(' '));
+    pendingBranding.splice(0).forEach((release) => { release(); });
+    win.close();
+  }
+
+  // ---- A scrolled-in crowdsourced thumbnail overtakes queued background images ----
+  {
+    const ids = [], prefixes = new Set();
+    for (let i = 0; ids.length < 9; i++) {
+      const id = 'pri' + String(i).padStart(8, '0');
+      if (!prefixes.has(prefixOf(id))) { prefixes.add(prefixOf(id)); ids.push(id); }
+    }
+    const extra = {};
+    ids.forEach((id) => { extra[id] = { titles: [], thumbnails: [{ timestamp: 12.5, original: false, votes: 1 }] }; });
+    const { win, parse, images, pendingImages } = boot({}, { extra, holdImages: true });
+    const items = ids.map((id) => tile(id, 'Original ' + id));
+    render(win, items[0], { onScreen: true });
+    parse(browse(items));
+    await waitFor(() => images.length === 4, 1500);
+    const el = render(win, items[8], { onScreen: true });
+    win.document.dispatchEvent(new win.KeyboardEvent('keydown', { bubbles: true }));
     await wait(400);
-    t('scrolled on screen mid-lookup, its frame is fetched before the answer',
-      images.some((u) => u.indexOf('/vi/bgvideo0001/hq1.jpg') !== -1), images.join(' '));
+    pendingImages.shift()?.finish();
+    await waitFor(() => images.length > 4, 1000);
+    t('the next image slot serves a newly visible video before the queued background',
+      images.length === 5 && images[4].includes('videoID=' + ids[8]), images.join(' '));
+    const promoted = pendingImages.find((item) => item.url.includes('videoID=' + ids[8]));
+    if (promoted) promoted.finish();
+    await waitFor(() => shownThumb(el).includes('time=12.5'), 1500);
+    t('the promoted thumbnail reaches the visible tile without downloading the background backlog',
+      shownThumb(el).includes('time=12.5'), shownThumb(el));
+    win.close();
+  }
+
+  // ---- A pending quality correction must not cover DeArrow's raw fallback frame ----
+  {
+    const { win, parse, pendingHeads } = boot({
+      upgradeThumbnails: true, thumbnailQualityMode: 'eager', dearrowThumbnailFallback: 'start'
+    }, { head: { hold: true, length: 1000 } });
+    const r = parse(browse([tile('downvoted01', 'Original')]));
+    await waitFor(() => pendingHeads.length > 0 && tileThumb(itemsOf(r)[0]).includes('/hq1.jpg'), 2000);
+    const el = render(win, itemsOf(r)[0]);
+    const ordinary = win.document.createElement('ytlr-thumbnail-details');
+    ordinary.style.backgroundImage = 'url("https://i.ytimg.com/vi/downvoted01/maxresdefault.jpg")';
+    win.document.body.appendChild(ordinary);
+    // Let DeArrow's initial sweep finish; the HEAD reply remains under test control.
+    await wait(400);
+    pendingHeads.splice(0).forEach((finish) => { finish(); });
+    await waitFor(() => ordinary.style.backgroundImage.includes('/hqdefault.jpg'), 1500);
+    t('a delayed quality probe still corrects an ordinary thumbnail',
+      ordinary.style.backgroundImage.includes('/hqdefault.jpg'), ordinary.style.backgroundImage);
+    t('the same correction does not layer an original thumbnail over the DeArrow Start frame',
+      shownThumb(el) === 'url("https://i.ytimg.com/vi/downvoted01/hq1.jpg")', shownThumb(el));
+    win.close();
   }
 
   // ---- Title formatting (webOS 22+ build only) ----

@@ -27,20 +27,39 @@ let keptWeight = 0;
 // Copies being drawn, and the ones waiting for their turn (MAX_DRAWS).
 let drawing = 0;
 const waitingDraws = [];
+const visibleVideos = new Set();
 
-/** Runs `draw` (resolving with a copy) once fewer than MAX_DRAWS are being drawn; resolves with its copy. */
-function whenDrawSlot(draw) {
+/** The next free slot takes a visible video before any queued background work. */
+function pumpDraws() {
+  while (drawing < MAX_DRAWS && waitingDraws.length) {
+    let at = waitingDraws.findIndex((task) => visibleVideos.has(task.videoId));
+    if (at === -1) at = 0;
+    const task = waitingDraws[at];
+    waitingDraws.splice(at, 1);
+    drawing++;
+    task.start();
+  }
+}
+
+/** Refreshes priority for pending copies, including videos already looked up. */
+export function prioritizeThumbs(ids) {
+  visibleVideos.clear();
+  ids.forEach((id) => { visibleVideos.add(id); });
+}
+
+/** Runs `draw` within the shared bound, with priority decided when its slot opens. */
+function whenDrawSlot(videoId, draw) {
   return new Promise((resolve) => {
     const start = () => {
-      drawing++;
-      draw().then((copy) => {
+      const finish = (copy) => {
         drawing--;
-        if (waitingDraws.length) waitingDraws.shift()();
         resolve(copy);
-      });
+        pumpDraws();
+      };
+      draw().then(finish, () => finish(null));
     };
-    if (drawing < MAX_DRAWS) start();
-    else waitingDraws.push(start);
+    waitingDraws.push({ videoId, start });
+    pumpDraws();
   });
 }
 
@@ -188,7 +207,7 @@ export function loadThumb(url, videoId) {
   if (cached) return Promise.resolve(cached);
   let loading = loadingThumbs.get(key);
   if (!loading) {
-    loading = frame ? checkFrame(url, videoId, key) : whenDrawSlot(() => drawCopy(url, videoId, width, key));
+    loading = frame ? checkFrame(url, videoId, key) : whenDrawSlot(videoId, () => drawCopy(url, videoId, width, key));
     loadingThumbs.set(key, loading);
     loading.then(() => loadingThumbs.delete(key));
   }
