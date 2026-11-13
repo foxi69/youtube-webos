@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## Docs
+
++ README: the SponsorBlock tab lists Intermission/Intro and Endcards/Credits under the names the panel shows, and the fork trail picture's description names no version.
+
 ## Build
 
 + Line endings: `build-local.cmd` and `build-local modern.cmd` are stored with LF like every other file, and still checked out with CRLF. They were stored with CRLF, so a fresh checkout showed both as modified. The files on disk are byte for byte the same.

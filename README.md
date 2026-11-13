@@ -252,7 +252,7 @@ Return YouTube Dislike sends the id of every video you open to returnyoutubedisl
 | Setting | Default |
 |---|---|
 | SponsorBlock | On |
-| Sponsor, Intro, Outro, Interaction Reminder, Self Promotion, Non-Music Section | Auto Skip |
+| Sponsor, Intermission/Intro, Endcards/Credits, Interaction Reminder, Self Promotion, Non-Music Section | Auto Skip |
 | Preview/Recap, Filler/Tangents, Hook/Greetings | Show in Seek Bar |
 | Highlight (Auto Skip to Start, Ask, Show in Seek Bar, Disable) | Show in Seek Bar |
 | Allow segments that mute audio | Off |
@@ -335,7 +335,7 @@ Ko-fi and project pages as QR codes.
 ## 🆕 What this fork adds
 
 <p align="center">
-  <img src="screenshots/fork-trail.svg" alt="Fox paw prints walking from version 0.9.0 to 0.9.1 to 0.9.2" width="100%">
+  <img src="screenshots/fork-trail.svg" alt="Fox paw prints walking through the last three releases" width="100%">
 </p>
 
 Compared to upstream NicholasBly 0.8.4. Taken from webosbrew, NicholasBly's open pull requests and the other forks
