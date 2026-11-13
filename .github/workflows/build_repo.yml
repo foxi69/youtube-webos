@@ -6,10 +6,10 @@ on:
     # a full release, so repo.json would stay on the previous version.
     types: [released]
   workflow_dispatch:
+# contents: write pushes repo.json and the version to main. No Pages, no
+# OIDC: nothing here deploys a site.
 permissions:
   contents: write
-  pages: write
-  id-token: write
 jobs:
   update-repo:
     runs-on: ubuntu-latest
@@ -186,21 +186,32 @@ jobs:
         shell: python
         
       - name: Commit and Push the repository files
+        env:
+          EVENT: ${{ github.event_name }}
+          TAG: ${{ github.event.release.tag_name }}
         run: |
           git config --global user.name 'GitHub Actions'
           git config --global user.email 'actions@github.com'
-          
+
           # Checkout the main branch explicitly
           git fetch origin main
           git checkout main
-          
+
           # Add and commit changes
           git add repo*.json
-          
+
+          # main names the release too: the version a local build shows, and
+          # the flags of the fork trail picture in the README. Only forward:
+          # a fix released on an older line leaves them alone.
+          if [ "$EVENT" = "release" ]; then
+            node tools/release-bump.cjs "$TAG"
+            git add package.json package-lock.json assets/appinfo.json screenshots/fork-trail.svg
+          fi
+
           # Only commit if there are changes
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "Update repo.json for new release"
+            git commit -m "Update repo.json and the version for ${TAG:-the latest release}"
             git push origin main
           fi

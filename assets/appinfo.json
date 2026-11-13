@@ -1,6 +1,6 @@
 {
   "id": "youtube.leanback.v4",
-  "version": "0.9.0",
+  "version": "0.9.2",
   "vendor": "foxi69",
   "type": "web",
   "main": "index.html",
