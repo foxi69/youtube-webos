@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## Build
+
++ Line endings: `build-local.cmd` and `build-local modern.cmd` are stored with LF like every other file, and still checked out with CRLF. They were stored with CRLF, so a fresh checkout showed both as modified. The files on disk are byte for byte the same.
+
 ## [0.9.2] - 2026/11/11
 
 Playback speed on webOS 4-6 and 22, a play queue, new filters (Hide Videos Older Than, Hide Repeated Videos, Remove Mixes), Hide Left Menu Entries, Remove Black Text Boxes, Keep App Open When Paused and Reset All Settings, and the fixes from a review of the whole source: the first video after a minute on Home, previews taken for videos, Start Page on a launch or a cast, SponsorBlock's mute segments, Force Max Quality after a seek, and live streams at 1x. Ships both packages: `_webOS22+.ipk` for webOS 22 and newer, and the legacy `.ipk` for webOS 3-6.
