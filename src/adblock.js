@@ -95,7 +95,8 @@ const CONFIG_KEYS = {
   ORIGINAL_AUDIO: 'forceOriginalAudio',
   LONG_PRESS: 'extendLongPressMenu',
   DEARROW: 'enableDeArrow',
-  HIDDEN_SIDEBAR: 'hiddenSidebarEntries'
+  HIDDEN_SIDEBAR: 'hiddenSidebarEntries',
+  PREVIEW_HANDOVER: 'continuePreviews'
 };
 
 // A video counts as watched from this much of its red progress bar.
@@ -279,7 +280,9 @@ const cfgFlags = {
   // DeArrow's titles and thumbnails (dearrow/), after the filters.
   deArrow: false,
   // Hide Left Menu Entries (sidebar.js): an entry hidden, or none learnt yet.
-  sidebar: false
+  sidebar: false,
+  // Open Playing Previews Without Reloading (allowPreviewHandover).
+  continuePreviews: false
 };
 
 // Set per response by filterResponse(): the pages that list videos because
@@ -357,6 +360,7 @@ function recomputeFilterFlags() {
   cfgFlags.decorateItems = cfgFlags.extendLongPress;
   // A UI setting, not a filter: on with Ad Blocking off too.
   cfgFlags.sidebar = sidebarHookRequired();
+  cfgFlags.continuePreviews = !!cfgSnapshot[CONFIG_KEYS.PREVIEW_HANDOVER];
 
   anyResponseFilterEnabled = !!(
     cfgFlags.enableAdBlock ||
@@ -380,7 +384,8 @@ function recomputeFilterFlags() {
     cfgFlags.decorateItems ||
     cfgFlags.deArrow
   );
-  anyFilterEnabled = anyResponseFilterEnabled || cfgFlags.loadRowsAhead || cfgFlags.sidebar;
+  anyFilterEnabled = anyResponseFilterEnabled || cfgFlags.loadRowsAhead || cfgFlags.sidebar ||
+    cfgFlags.continuePreviews;
 
   Object.assign(cfgFlagsNoEmoji, cfgFlags);
   cfgFlagsNoEmoji.enableLegacyEmojiFix = false;
@@ -810,6 +815,8 @@ function filterResponse(data, text) {
   if (cfgFlags.loadRowsAhead) raiseRowsAhead(data, responseType);
   // The left menu, whatever else is on.
   if (cfgFlags.sidebar) applySidebar(data);
+  // One native search of the text: only a response with previews has the flag.
+  if (cfgFlags.continuePreviews && BLOCK_ADOPTION_RE.test(text)) allowPreviewHandover(data);
   if (!anyResponseFilterEnabled) return;
 
   // The legacy emoji fix walks every item it filters; a text without an
@@ -1745,6 +1752,37 @@ function keepOriginalAudio(holder) {
   formats.length = w;
 }
 
+// Open Playing Previews Without Reloading. YouTube can hand a tile preview
+// that is playing over to the watch page: the same playback carries on, full
+// screen ("adoption"). It does so only where the preview's data does not say
+// blockAdoption, and the server says it to TVs, so OK on a playing preview
+// stops it and loads the video again. The flag is cleared wherever the
+// response has it, however deep: where it sits is not in any schema here.
+// (From Zucchiniii's fork, fork watch #139.)
+const BLOCK_ADOPTION_RE = /"blockAdoption":\s*true/;
+const HANDOVER_MAX_DEPTH = 40;
+
+function allowPreviewHandover(data) {
+  // Flat queue, as in findObjects: [obj, depth, obj, depth, ...]
+  const queue = [data, 0];
+  let idx = 0;
+  let cleared = 0;
+  while (idx < queue.length) {
+    const obj = queue[idx++];
+    const depth = queue[idx++];
+    if (obj.blockAdoption === true) {
+      obj.blockAdoption = false;
+      cleared++;
+    }
+    if (depth >= HANDOVER_MAX_DEPTH) continue;
+    for (const k in obj) {
+      const val = obj[k];
+      if (val && typeof val === 'object') queue.push(val, depth + 1);
+    }
+  }
+  if (DEBUG && cleared) debugLog(`Preview handover: blockAdoption cleared on ${cleared} preview(s)`);
+}
+
 function findObjects(haystack, needlesArray, maxDepth = 10) {
   if (!haystack || typeof haystack !== 'object' || maxDepth <= 0 || !needlesArray.length) return {};
   const results = {};
@@ -1804,7 +1842,8 @@ export function parseHookRequired() {
     cfgSnapshot[CONFIG_KEYS.LONG_PRESS] ||
     cfgSnapshot[CONFIG_KEYS.DEARROW] ||
     thumbnailHookRequired() ||
-    sidebarHookRequired()
+    sidebarHookRequired() ||
+    cfgSnapshot[CONFIG_KEYS.PREVIEW_HANDOVER]
   );
 }
 

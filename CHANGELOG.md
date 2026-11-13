@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## Added
+
++ **Open Playing Previews Without Reloading** (UI Tweaks, off by default, experimental): OK on a tile whose preview is already playing carries that playback on, full screen, instead of stopping it and loading the video again. YouTube hands a playing preview over to the watch page this way by itself after a few seconds; for OK the server forbids it on TVs with a flag on the preview's data (`blockAdoption`), which is cleared in the response. Should YouTube rename the flag, the switch does nothing and videos open as they do today. From Zucchiniii's fork (fork watch #139), where it was measured on an LG C5.
+
 ## Docs
 
 + README: the SponsorBlock tab lists Intermission/Intro and Endcards/Credits under the names the panel shows, and the fork trail picture's description names no version.

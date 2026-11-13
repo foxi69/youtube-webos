@@ -297,6 +297,8 @@ const configOptions = new Map([
   ['removeBlackBorders', { default: false, desc: 'New Liquid Glass UI' }],
   ['forcePreviews', { default: 'disabled', desc: 'Previews With Sound' }],
   ['mutePreviews', { default: false, desc: 'Mute Video Previews' }],
+  // OK on a playing preview carries it on instead of loading the video again (adblock.js).
+  ['continuePreviews', { default: false, desc: 'Open Playing Previews Without Reloading' }],
   // webOS 3-6 only (preview-fix.js, #67).
   ['fixBlackPreviews', { default: true, desc: 'Fix Black Tile Previews' }],
   // About tab (about.js).
