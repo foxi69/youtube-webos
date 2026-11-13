@@ -17,7 +17,7 @@ import logoDarkUrl from './icons/logo-dark.png';
 import { getWebOSVersion, isWebOS25, isLegacyWebOS } from './webos-utils.js';
 import { subtitleTranslateLanguages } from './subtitle-translate.js';
 import { showNotification, setNotificationOled, setNotificationTheme } from './notifications.js';
-import { blockChannel } from './long-press-menu.js';
+import { blockChannel, openFocusedLongPressMenu } from './long-press-menu.js';
 import { VERSION_LABEL } from './version.js';
 import { buildAboutPage } from './about.js';
 import { clearQueue, playNextInQueue } from './video-queue.js';
@@ -183,7 +183,9 @@ const ACTION_SCOPES = {
     speed_reset: 'VIDEO',
     // From any page: the queue is filled on Home, and can be started there.
     queue_next: 'GLOBAL',
-    queue_clear: 'GLOBAL'
+    queue_clear: 'GLOBAL',
+    // Tiles are on the browse pages and below the player too.
+    long_press_menu: 'GLOBAL'
 };
 
 function updateShortcutCache(key) {
@@ -1973,6 +1975,10 @@ function handleShortcutAction(action) {
   }
   if (action === 'queue_next') {
       playNextInQueue();
+      return;
+  }
+  if (action === 'long_press_menu') {
+      openFocusedLongPressMenu();
       return;
   }
   if (action === 'refresh_page') {
