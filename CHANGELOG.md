@@ -14,6 +14,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## Build
 
 + A full release writes its version back to `main`: `package.json`, `package-lock.json` and `assets/appinfo.json`, so a local build shows the latest release rather than 0.9.0, and the version flags of the README's fork trail picture, which were updated by hand. [Update Homebrew Repository](.github/workflows/build_repo.yml) does it with `tools/release-bump.cjs`, in the commit that updates `repo.json`. A release older than what `main` has, a fix on an older line, moves nothing back. Tested in `bench/release-bump-test.cjs`.
++ That step cannot stop the Homebrew update: if `release-bump` fails (a tag like `v1.0.0-beta`, a fork trail without three flags), the run shows a warning, undoes what it wrote, and still commits `repo.json`. Before, the failure ended the step before the commit, so Homebrew Channel would not have offered the release.
++ CI: the job summary of every Build & Test run failed to upload ("supports content up to a size of 1024k, got 1271k"), twice a run. `tools/fork-watch-test.py` runs the fork watch on 400 test forks, and its ~1.3 MB report went into the real job summary. The test now writes it to a file of its own, and checks that the whole report is there, past where the issue is cut.
 + Line endings: `build-local.cmd` and `build-local modern.cmd` are stored with LF like every other file, and still checked out with CRLF. They were stored with CRLF, so a fresh checkout showed both as modified. The files on disk are byte for byte the same.
 
 ## [0.9.2] - 2026/11/11

@@ -202,10 +202,18 @@ jobs:
 
           # main names the release too: the version a local build shows, and
           # the flags of the fork trail picture in the README. Only forward:
-          # a fix released on an older line leaves them alone.
+          # a fix released on an older line leaves them alone. Its failure (a
+          # tag like v1.0.0-beta, a trail without three flags) must not stop
+          # repo.json, which Homebrew Channel offers the update from: it is a
+          # warning, and whatever it wrote half-way is undone.
           if [ "$EVENT" = "release" ]; then
-            node tools/release-bump.cjs "$TAG"
-            git add package.json package-lock.json assets/appinfo.json screenshots/fork-trail.svg
+            BUMPED="package.json package-lock.json assets/appinfo.json screenshots/fork-trail.svg"
+            if node tools/release-bump.cjs "$TAG"; then
+              git add $BUMPED
+            else
+              echo "::warning::release-bump failed for $TAG: the version on main and the fork trail stay as they are; repo.json is updated all the same."
+              git checkout -- $BUMPED
+            fi
           fi
 
           # Only commit if there are changes
