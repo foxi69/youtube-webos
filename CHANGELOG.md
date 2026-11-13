@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## Fixes
+
++ Playback speed: preserve the subtitle track and the quality selected in YouTube's menu across the video reload caused by a speed change. Subtitle restoration stops when the viewer presses a key. A quality below 1080p stays selected above 1×; returning to 1× restores the viewer's selection rather than Auto or Force Max Quality.
++ DeArrow: settings and account changes are combined into one refresh. Visible tiles are processed first, while other videos are updated when their tiles appear. Thumbnail fallbacks can appear while a slow branding request is still pending.
+
+
 ## [0.9.2] - 2026/11/11
 
 Playback speed on webOS 4-6 and 22, a play queue, new filters (Hide Videos Older Than, Hide Repeated Videos, Remove Mixes), Hide Left Menu Entries, Remove Black Text Boxes, Keep App Open When Paused and Reset All Settings, and the fixes from a review of the whole source: the first video after a minute on Home, previews taken for videos, Start Page on a launch or a cast, SponsorBlock's mute segments, Force Max Quality after a seek, and live streams at 1x. Ships both packages: `_webOS22+.ipk` for webOS 22 and newer, and the legacy `.ipk` for webOS 3-6.

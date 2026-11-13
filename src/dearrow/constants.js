@@ -8,10 +8,22 @@ export const BRANDING_API = 'https://sponsor.ajay.app/api/branding';
 export const THUMBNAIL_API = 'https://dearrow-thumb.ajay.app/api/v1/getThumbnail';
 // A branding answer that takes longer is dropped (the original stays).
 export const FETCH_TIMEOUT_MS = 8000;
-// Lookups at a time; the rest wait in the queue, in screen order.
+// Lookups at a time. The videos with a tile on screen go first and may take
+// them all; the rest of the page is looked up in the background on at most
+// BACKGROUND_SLOTS of them, so the others stay free for what scrolling brings
+// on screen.
 export const MAX_CONCURRENT = 4;
+export const BACKGROUND_SLOTS = 2;
+// A video still without an answer this long after its lookup started shows
+// its fallback frame (Start, Middle or End, or the random frame's stand-in)
+// meanwhile; a crowdsourced thumbnail replaces it when the answer brings one.
+// The server took 8 s right after a TV started the app.
+export const EARLY_FRAME_MS = 1500;
+// Copies drawn at a time (canvas and its encoding, on the page's own thread):
+// the bound the lookups' slots used to set before thumbnails left them.
+export const MAX_DRAWS = 4;
 // An image that neither loads nor fails by then counts as failed, so a stalled
-// download cannot hold a lookup's place for good.
+// download cannot keep its tile waiting for good.
 export const IMAGE_TIMEOUT_MS = 15000;
 
 // Videos (and thumbnail copies) remembered before everything is dropped and
@@ -69,7 +81,8 @@ export const SELECTORS = {
   THUMBNAIL: 'ytlr-thumbnail-details'
 };
 
-// Every setting the feature reads: a change of any re-resolves what is shown.
+// Every setting the feature reads: a change of any decides again what is on
+// screen (index.js; the badge alone only redraws).
 export const DEARROW_CONFIG_KEYS = [
   'enableDeArrow',
   'dearrowCrowdTitles',

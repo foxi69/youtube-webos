@@ -3,11 +3,11 @@ import { showNotification } from './notifications.js';
 import { isWebOS25 } from './webos-utils.js';
 import { sendKey, REMOTE_KEYS, SELECTORS, isWatchPage, getVideo } from './utils.js';
 import { speedCapsQuality } from './playback-speed.js';
+import { QUALITY_KEY, QUALITY_HEIGHTS } from './speed/player-state.js';
 
 const DEBUG = false;
 
 const IS_WEBOS_25 = isWebOS25();
-const QUALITY_KEY = 'yt-player-quality';
 const ONE_YEAR_MS = 31536000000; // 365 * 24 * 60 * 60 * 1000
 // The record is rewritten this long before it expires, so Force Max Quality
 // does not quietly stop working a year after it was first switched on.
@@ -402,10 +402,6 @@ function onVideoResize(evt) {
 // plays in (e.g. 1080p60), once per video (NicholasBly/youtube-webos#72). The
 // delay lets the adaptive stream (and Force Max Quality) settle first.
 const QUALITY_TOAST_DELAY_MS = 4000;
-const QUALITY_HEIGHTS = {
-  highres: 4320, hd2160: 2160, hd1440: 1440, hd1080: 1080, hd720: 720,
-  large: 480, medium: 360, small: 240, tiny: 144
-};
 let qualityToastVideoId = null;
 let qualityToastTimer = null;
 
