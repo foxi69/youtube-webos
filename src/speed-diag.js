@@ -115,6 +115,11 @@ AudioEngine.prototype.reportError = (function (orig) {
   };
 })(AudioEngine.prototype.reportError);
 
+// The controller's own onError, which the MSE hook calls directly.
+window.__ytafSpeedDiag = (e) => {
+  log(`speed error: ${e && e.name}: ${e && e.message}`);
+};
+
 let ctrlHooked = null;
 function hookController(ctrl) {
   if (!ctrl || ctrlHooked === ctrl) return;
@@ -134,6 +139,7 @@ let lastSpeed = null;
 let lastReload = 0;
 let lastRate = null;
 let hookedPlayer = null;
+let lastQuality = null;
 function watchState(ctrl) {
   const speed = ctrl.getSpeed();
   if (lastSpeed !== null && speed !== lastSpeed) log(`speed ${lastSpeed} -> ${speed}`);
@@ -150,8 +156,22 @@ function watchState(ctrl) {
   } catch {
     // no rate yet
   }
+  try {
+    const q = player.getPlaybackQuality();
+    if (q !== lastQuality) log(`quality ${lastQuality} -> ${q}`);
+    lastQuality = q;
+  } catch {
+    // no quality yet
+  }
   if (hookedPlayer !== player && typeof player.seekTo === 'function') {
     hookedPlayer = player;
+    if (typeof player.setPlaybackQualityRange === 'function') {
+      const setRange = player.setPlaybackQualityRange;
+      player.setPlaybackQualityRange = function (a, b) {
+        log(`setPlaybackQualityRange(${a}, ${b})`);
+        return setRange.apply(this, arguments);
+      };
+    }
     const seekTo = player.seekTo;
     player.seekTo = function (to) {
       log(`player.seekTo(${Number(to).toFixed(2)})`);
