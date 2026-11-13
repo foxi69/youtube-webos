@@ -1759,7 +1759,7 @@ function keepOriginalAudio(holder) {
 // stops it and loads the video again. The flag is cleared wherever the
 // response has it, however deep: where it sits is not in any schema here.
 // (From Zucchiniii's fork, fork watch #139.)
-const BLOCK_ADOPTION_RE = /"blockAdoption":\s*true/;
+const BLOCK_ADOPTION_RE = /"blockAdoption"\s*:\s*true/;
 const HANDOVER_MAX_DEPTH = 40;
 
 function allowPreviewHandover(data) {

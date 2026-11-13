@@ -107,11 +107,17 @@ function panelSwitch(win) {
     const spaced = win.JSON.parse(JSON.stringify(browse(true), null, 1));
     t('a response written with spaces is cleared too', flags(spaced).every((f) => f === false), JSON.stringify(flags(spaced)));
 
+    const colon = win.JSON.parse(JSON.stringify(browse(true)).split('"blockAdoption":').join('"blockAdoption" : '));
+    t('a space before the colon is cleared too', flags(colon).length === 4 && flags(colon).every((f) => f === false), JSON.stringify(flags(colon)));
+
+    // The true flag is what gets the response walked at all: without it the
+    // other values would pass untouched whatever the walk did.
     const others = win.JSON.parse(JSON.stringify({
       responseContext: { _pad: pad },
-      a: { blockAdoption: false }, b: { blockAdoption: 'true' }, c: { blockAdoption: null }, d: { blockAdoption: 1 }
+      a: { blockAdoption: false }, b: { blockAdoption: 'true' }, c: { blockAdoption: null }, d: { blockAdoption: 1 },
+      e: { blockAdoption: true }
     }));
-    t('only a true flag is touched', JSON.stringify(flags(others)) === '[false,"true",null,1]', JSON.stringify(flags(others)));
+    t('only a true flag is touched', JSON.stringify(flags(others)) === '[false,"true",null,1,false]', JSON.stringify(flags(others)));
 
     const cont = win.JSON.parse(JSON.stringify({
       continuationContents: { horizontalListContinuation: { items: [tile('aaaaaaaaaa4', true, 2)] } }, _pad: pad
