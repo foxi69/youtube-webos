@@ -3,9 +3,13 @@ import { installMseHook, isSupportedSpeed, SUPPORTED_SPEEDS } from './speed/mse-
 import { keepStretchableAudio, allowSpeedMenuOnSurround, LEGACY_STRETCHABLE_AUDIO_RE } from './speed/containers.js';
 import { legacyAudioCodecs } from './speed/legacy-decoder.js';
 import { watchPosition } from './speed/position-watch.js';
+import { readCaptions, keepCaptions, readQualityRecord } from './speed/player-state.js';
+import {
+  diag, diagMark, diagId, describeTrack, captionsInfo, qualityInfo, storageInfo, logPlayerMethods, watchAfterReload
+} from './speed/diag.js';
 import { showNotification } from './notifications.js';
 import { configRead, configAddChangeListener } from './config.js';
-import { SELECTORS } from './utils.js';
+import { SELECTORS, SYNTHETIC_KEY_FLAG } from './utils.js';
 
 export const SPEED_BUTTON_TYPE = 'TRANSPORT_CONTROLS_BUTTON_TYPE_SPEED_BUTTON';
 export const SPEED_OVERLAY_TYPE = 'CLIENT_OVERLAY_TYPE_VIDEO_PLAYBACK_SPEED';
@@ -198,13 +202,26 @@ const CAP_ABOVE = 1;
 // Below the cap: where YouTube falls by itself at speed.
 const BELOW_1080 = ['hd720', 'large', 'medium', 'small', 'tiny'];
 const ABOVE_1080 = ['highres', 'hd2880', 'hd2160', 'hd1440'];
+// YouTube rewrites yt-player-quality within a few milliseconds of a quality
+// range call (seen on a TV); a record this soon after one of ours is ours.
+const OWN_RECORD_MS = 1000;
 
-export function createSpeedController({ win, getPlayer, notify, configRead, codecs }) {
+export function createSpeedController({ win, getPlayer, notify, configRead, codecs, userKeyAt = () => 0 }) {
   let currentSpeed = 1;
   let activeSink = null;
   let pending = null;
   let lastReloadAt = 0;
   let stopPositionWatch = null;
+  // The subtitles to put back after a reload: { videoId, captions, landed }.
+  // Kept until the reload plays, so a second speed change meanwhile does not
+  // read the subtitles YouTube put on the half-loaded video.
+  let keptCaptions = null;
+  // Stops the caption checks of the last reload (player-state.js).
+  let stopCaptions = () => {};
+  // When this controller last set a quality range, and the viewer's last pick
+  // read from YouTube's record (see viewerPick).
+  let ownRangeAt = -Infinity;
+  let lastPick = null;
 
   function isSupported() {
     return typeof win.AudioDecoder !== 'undefined' || !!codecs;
@@ -266,6 +283,28 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
     }, RELOAD_DELAY_MS);
   }
 
+  // The quality the viewer picked in YouTube's menu (player-state.js), or null.
+  // YouTube rewrites the record on every quality range call, this
+  // controller's too: one written just after a call of ours is not a pick, and
+  // the last pick read stands.
+  function viewerPick() {
+    const record = readQualityRecord(win.localStorage, Date.now());
+    const ours = !!record && record.at >= ownRangeAt && record.at - ownRangeAt < OWN_RECORD_MS;
+    if (!ours) lastPick = record ? record.level : null;
+    return lastPick;
+  }
+
+  function setRange(player, quality) {
+    ownRangeAt = Date.now();
+    player.setPlaybackQualityRange(quality, quality);
+  }
+
+  // Above CAP_ABOVE: 1080p, or the viewer's own pick when it is lower.
+  function capQuality() {
+    const pick = viewerPick();
+    return pick && BELOW_1080.indexOf(pick) !== -1 ? pick : 'hd1080';
+  }
+
   function applyReload({ position: at, fromSpeed }) {
     // Back where the burst started: the playing MediaSource is already right.
     if (currentSpeed === fromSpeed) return;
@@ -274,17 +313,39 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
     releaseAudioSink();
     const player = getPlayer();
     if (!player) return;
-    if (currentSpeed > CAP_ABOVE) {
-      player.setPlaybackQualityRange('hd1080', 'hd1080');
-    } else if (fromSpeed > CAP_ABOVE) {
-      const quality = configRead('forceHighResVideo') ? 'highres' : 'auto';
-      player.setPlaybackQualityRange(quality, quality);
-    }
+    // The last reload's checks would put back the subtitles from before it.
+    stopCaptions();
     const videoData = player.getVideoData && player.getVideoData();
-    if (!videoData || !videoData.video_id) return;
+    const videoId = videoData && videoData.video_id;
+    // Read before the quality range below, which can reload the <video> too.
+    const reused = !!keptCaptions && !keptCaptions.landed && keptCaptions.videoId === videoId;
+    if (!reused) {
+      keptCaptions = { videoId, captions: readCaptions(player), landed: false };
+    }
+    diagMark();
+    logPlayerMethods(player);
+    diag(`reload: video: ${diagId(videoId)}, from: ${fromSpeed}, to: ${currentSpeed}, at: ${at}, ` +
+      `captions now: ${captionsInfo(player)}, captions kept: ${describeTrack(keptCaptions.captions)}, reused: ${reused}`);
+    diag(`reload: ${qualityInfo(player)}, pick: ${viewerPick()}, cap: ${capQuality()}, ` +
+      `forceHighRes: ${configRead('forceHighResVideo')}, storage: ${storageInfo()}`);
+    if (currentSpeed > CAP_ABOVE) {
+      const cap = capQuality();
+      diag(`reload: setPlaybackQualityRange: ${cap}`);
+      setRange(player, cap);
+    } else if (fromSpeed > CAP_ABOVE) {
+      // A pick in YouTube's menu wins over Force Max Quality.
+      const quality = viewerPick() || (configRead('forceHighResVideo') ? 'highres' : 'auto');
+      diag(`reload: setPlaybackQualityRange: ${quality}`);
+      setRange(player, quality);
+    } else {
+      diag('reload: no quality range set');
+    }
+    if (!videoId) return;
     lastReloadAt = Date.now();
-    player.loadVideoById(videoData.video_id, at);
-    restorePosition(player, at, videoData.video_id);
+    player.loadVideoById(videoId, at);
+    diag(`reload: loadVideoById called, captions: ${captionsInfo(player)}`);
+    watchAfterReload(player);
+    restorePosition(player, at, videoId, keptCaptions);
     // If YouTube's own menu is bound (native-menu.js), keep what it shows in
     // line with the real speed once the reloaded video has started.
     const setRate = player.__ytafOriginalSetPlaybackRate;
@@ -300,14 +361,26 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
     }
   }
 
-  function restorePosition(player, at, videoId) {
+  function restorePosition(player, at, videoId, kept) {
     if (stopPositionWatch) stopPositionWatch();
+    // Read once: isLow runs every tick of the watch.
+    const cap = capQuality();
     const setCap = () => {
-      if (currentSpeed > CAP_ABOVE) player.setPlaybackQualityRange('hd1080', 'hd1080');
+      if (currentSpeed > CAP_ABOVE) {
+        diag(`setCap: setPlaybackQualityRange: ${cap}, before: ${qualityInfo(player)}`);
+        setRange(player, cap);
+      }
     };
-    stopPositionWatch = watchPosition(win, player, at, setCap, {
+    const onPlaying = () => {
+      diag(`playing: captions: ${captionsInfo(player)}, ${qualityInfo(player)}`);
+      setCap();
+      kept.landed = true;
+      stopCaptions = keepCaptions(win, player, kept.captions, userKeyAt);
+    };
+    stopPositionWatch = watchPosition(win, player, at, onPlaying, {
       isLow() {
-        if (currentSpeed <= CAP_ABOVE) return false;
+        // A lower quality the viewer picked is not a fall to fight.
+        if (currentSpeed <= CAP_ABOVE || cap !== 'hd1080') return false;
         const levels = player.getAvailableQualityLevels ? player.getAvailableQualityLevels() : [];
         return levels.indexOf('hd1080') !== -1 && BELOW_1080.indexOf(player.getPlaybackQuality()) !== -1;
       },
@@ -417,7 +490,9 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
     onRateRequest,
     onError,
     createAudioSink,
-    releaseAudioSink
+    releaseAudioSink,
+    capQuality,
+    setRange
   };
 }
 
@@ -436,7 +511,16 @@ export function installSpeedFeature(win, { notify, configRead: cfgRead, getPlaye
   const codecs = typeof win.AudioDecoder === 'undefined' ? legacyAudioCodecs(win) : null;
   if (typeof win.AudioDecoder === 'undefined' && !codecs) return null;
 
-  const ctrl = createSpeedController({ win, getPlayer, notify, configRead: cfgRead, codecs });
+  // The last key the viewer pressed: a change of subtitles by hand after a
+  // reload ends putting the old ones back (player-state.js).
+  let lastUserKeyAt = 0;
+  const onKey = (evt) => {
+    if (evt.isTrusted !== false && !evt[SYNTHETIC_KEY_FLAG]) lastUserKeyAt = Date.now();
+  };
+  win.addEventListener('keydown', onKey, true);
+  const ctrl = createSpeedController({
+    win, getPlayer, notify, configRead: cfgRead, codecs, userKeyAt: () => lastUserKeyAt
+  });
   const mseHook = installMseHook(win, {
     getSpeed: ctrl.getSpeed,
     createAudioSink: ctrl.createAudioSink,
@@ -456,8 +540,8 @@ export function installSpeedFeature(win, { notify, configRead: cfgRead, getPlaye
       ? win.setInterval(() => bindPlayerRate(getPlayer(), ctrl), 1000)
       : null;
 
-  // No key listener of its own: the speed keys go through the button mapping
-  // (speed_up / speed_down / speed_reset), so Yellow keeps YouTube's search.
+  // The speed keys go through the button mapping (speed_up / speed_down /
+  // speed_reset), so Yellow keeps YouTube's search.
   return {
     controller: ctrl,
     uninstall() {
@@ -468,6 +552,7 @@ export function installSpeedFeature(win, { notify, configRead: cfgRead, getPlaye
       restoreButton();
       restoreAudioOffer();
       if (bindTimer !== null) win.clearInterval(bindTimer);
+      win.removeEventListener('keydown', onKey, true);
     }
   };
 }
@@ -493,8 +578,11 @@ export function initPlaybackSpeed() {
       const player =
         document.getElementById(SELECTORS.PLAYER_ID) ||
         document.querySelector('.html5-video-player');
-      if (player && ABOVE_1080.includes(player.getPlaybackQuality()))
-        player.setPlaybackQualityRange('hd1080', 'hd1080');
+      if (player && ABOVE_1080.includes(player.getPlaybackQuality())) {
+        const cap = speedInstance.controller.capQuality();
+        diag(`state-change cap: setPlaybackQualityRange: ${cap}, was: ${player.getPlaybackQuality()}`);
+        speedInstance.controller.setRange(player, cap);
+      }
     });
   }
   return speedInstance;

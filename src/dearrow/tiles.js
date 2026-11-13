@@ -213,7 +213,9 @@ function applyToTile(node, video) {
   }
   if (rec.thumbnail) {
     if (video.thumb) {
-      rec.thumbnail[rec.listKey] = [{ url: video.thumb, width: 1280, height: 720 }];
+      // YouTube's own frames are 480 x 360 (4:3, letterboxed), as its hqdefault is.
+      const own = video.thumb.indexOf('https://i.ytimg.com/') === 0;
+      rec.thumbnail[rec.listKey] = [{ url: video.thumb, width: own ? 480 : 1280, height: own ? 360 : 720 }];
       video.shownThumb = video.thumb;
     } else {
       rec.thumbnail[rec.listKey] = rec.thumbnails;
@@ -307,6 +309,7 @@ export function patchResponseTiles(data, wantsLookup) {
         if (!video) {
           const info = readTile(node);
           video = {
+            id: videoId,
             original: info.original,
             originalThumb: info.originalThumb,
             duration: info.duration,
@@ -320,6 +323,8 @@ export function patchResponseTiles(data, wantsLookup) {
             title: null,
             thumb: null,
             resolved: false,
+            stale: false,
+            thumbDecided: false,
             shownTitle: null,
             shownThumb: null,
             crowdTitle: false,
@@ -332,7 +337,7 @@ export function patchResponseTiles(data, wantsLookup) {
           found.push(videoId);
         }
         remember(video, node);
-        if (video.resolved) applyToTile(node, video);
+        if (video.resolved && !video.stale) applyToTile(node, video);
         continue;
       }
     }

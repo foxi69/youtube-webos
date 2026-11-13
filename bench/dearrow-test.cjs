@@ -109,9 +109,11 @@ function boot(cfg, opts = {}) {
     const all = Object.assign({}, BRANDING, opts.extra || {});
     for (const id of Object.keys(all)) if (prefixOf(id) === prefix) answer[id] = all[id];
     const any = Object.keys(answer).length > 0;
-    return Promise.resolve(any
+    const reply = any
       ? { ok: true, status: 200, json: () => Promise.resolve(JSON.parse(JSON.stringify(answer))) }
-      : { ok: false, status: 404, json: () => Promise.reject(new Error('not json')) });
+      : { ok: false, status: 404, json: () => Promise.reject(new Error('not json')) };
+    // A slow server, as a TV saw right after the app started (8 s).
+    return opts.brandingDelay ? new Promise((r) => setTimeout(() => r(reply), opts.brandingDelay)) : Promise.resolve(reply);
   };
   // Images: submitted frames and YouTube's load; random frames still rendering do not (204).
   win.Image = class {
@@ -124,7 +126,7 @@ function boot(cfg, opts = {}) {
       const placeholder = url.indexOf('/vi/livestream1/hq') !== -1;
       this.naturalWidth = placeholder ? 120 : ytimg ? 480 : 1280;
       this.naturalHeight = placeholder ? 90 : ytimg ? 360 : 720;
-      setTimeout(() => (ok ? this.onload && this.onload() : this.onerror && this.onerror()), 0);
+      setTimeout(() => (ok ? this.onload && this.onload() : this.onerror && this.onerror()), opts.imageDelay || 0);
     }
     get src() { return this._src; }
   };
@@ -146,6 +148,10 @@ function boot(cfg, opts = {}) {
       return 'data:image/jpeg;base64,COPY' + encodeURIComponent(this._src);
     };
   }
+  // jsdom lays nothing out: a tile is on screen only when render() says so.
+  win.HTMLElement.prototype.getBoundingClientRect = function () {
+    return this.__box || { left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 };
+  };
   win.eval(fs.readFileSync(bundlePath, 'utf8'));
   const parse = (obj) => win.JSON.parse(NS(obj));
   const config = () => JSON.parse(win.localStorage.getItem('ytaf-configuration'));
@@ -185,7 +191,7 @@ const tileTitle = (item) => item.tileRenderer.metadata.tileMetadataRenderer.titl
 const tileThumb = (item) => item.tileRenderer.header.tileHeaderRenderer.thumbnail.thumbnails[0].url;
 
 /** Draws a tile the way the TV app does: the thumbnail as a background, the title as text. */
-function render(win, item) {
+function render(win, item, { onScreen = false } = {}) {
   const tr = item.tileRenderer;
   const el = win.document.createElement('ytlr-tile-renderer');
   el.setAttribute('data-id', tr.contentId);
@@ -195,6 +201,7 @@ function render(win, item) {
     '<ytlr-line>Channel</ytlr-line><ytlr-line>1 M views</ytlr-line></ytlr-tile-metadata-renderer>';
   el.querySelector('ytlr-thumbnail-details').style.backgroundImage = `url("${tileThumb(item)}")`;
   el.querySelector('yt-formatted-string').textContent = tileTitle(item);
+  if (onScreen) el.__box = { left: 100, top: 100, right: 400, bottom: 300, width: 300, height: 200 };
   win.document.querySelector('ytlr-app').appendChild(el);
   return el;
 }
@@ -332,7 +339,7 @@ const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-d
   {
     const { fetched, images, parse } = boot({ dearrowThumbnailFallback: 'random' });
     const r = parse(browse([tile('nosubmit001', 'Nothing submitted')]));
-    await waitFor(() => tileThumb(itemsOf(r)[0]).indexOf('COPY') !== -1, 2000);
+    await waitFor(() => tileThumb(itemsOf(r)[0]).indexOf('/vi/nosubmit001/hq1.jpg') !== -1, 2000);
     t('the random time of a video with no submission is asked by id',
       fetched.some((u) => u === 'https://sponsor.ajay.app/api/branding?videoID=nosubmit001'), fetched.join(' '));
     t('the random frame is asked for at randomTime x length', images.some((u) => u.indexOf('videoID=nosubmit001&time=30&generateNow=true') !== -1), images.join(' '));
@@ -481,6 +488,128 @@ const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-d
     t('a big answer does not evict the asked video',
       itemsOf(seen)[0].lockupViewModel.metadata.lockupMetadataViewModel.title.content === 'Calm title' && busy.fetched.length === asked,
       busy.fetched.length - asked);
+  }
+
+  // ---- A settings change: the tiles on screen decided again at once, the others when shown ----
+  {
+    const extra = { otherclick1: { titles: [{ title: 'Calm other', original: false, votes: 1, locked: false }], thumbnails: [] } };
+    const { win, fetched, parse, pump } = boot({}, { extra });
+    const shown = tile('custom00001', 'Clickbait title');
+    const el = render(win, shown);
+    parse(browse([shown]));
+    // Not on screen: only in a stored response.
+    const away = parse(browse([tile('otherclick1', 'Loud other')]));
+    await waitFor(() => shownTitle(el) === 'the iPhone review' && tileTitle(itemsOf(away)[0]) === 'Calm other', 2000);
+    const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
+    Object.defineProperty(e, 'keyCode', { get: () => GREEN, configurable: true });
+    dispatchTrusted(win.document.body, e);
+    for (let i = 0; i < 20; i++) pump();
+    const input = Array.from(win.document.querySelectorAll('#ytaf-page-ui-tweaks label'))
+      .find((l) => l.querySelector('.label-text')?.textContent === 'Crowdsourced Titles')?.querySelector('input');
+    const flip = (on) => { input.checked = on; input.dispatchEvent(new win.Event('change')); };
+    t('the Crowdsourced Titles switch', !!input);
+    if (input) {
+      flip(false);
+      await waitFor(() => shownTitle(el) === 'Clickbait title', 2000);
+      t('the tile on screen is decided again at once', shownTitle(el) === 'Clickbait title', shownTitle(el));
+      t('a video off screen gets YouTube\'s title back in its stored response',
+        tileTitle(itemsOf(away)[0]) === 'Loud other', tileTitle(itemsOf(away)[0]));
+      flip(true);
+      await wait(400);
+      t('off screen, it is not decided again until a tile shows it',
+        tileTitle(itemsOf(away)[0]) === 'Loud other', tileTitle(itemsOf(away)[0]));
+      const asked = fetched.length;
+      const again = parse(browse([tile('otherclick1', 'Loud other')]));
+      await waitFor(() => tileTitle(itemsOf(again)[0]) === 'Calm other', 2000);
+      t('shown again, the video off screen is decided again from the answer it had',
+        tileTitle(itemsOf(again)[0]) === 'Calm other' && fetched.length === asked, `${tileTitle(itemsOf(again)[0])}, requests: ${fetched.length - asked}`);
+    }
+  }
+
+  // ---- The videos on screen go first; the background keeps slots free for them ----
+  {
+    // Eight videos, each under a prefix of its own; only the last has a tile on screen.
+    const ids = [];
+    const prefixes = new Set();
+    for (let i = 0; ids.length < 8; i++) {
+      const id = 'scr' + String(i).padStart(8, '0');
+      if (prefixes.has(prefixOf(id))) continue;
+      prefixes.add(prefixOf(id));
+      ids.push(id);
+    }
+    const { win, fetched, parse } = boot({}, { brandingDelay: 1000 });
+    const items = ids.map((id) => tile(id, 'Title ' + id));
+    render(win, items[7], { onScreen: true });
+    parse(browse(items));
+    await wait(600);
+    const asked = fetched.map((u) => u.split('/').pop());
+    t('the background takes two lookups at most, keeping the others free',
+      asked.indexOf(prefixOf(ids[2])) === -1 && asked.indexOf(prefixOf(ids[3])) === -1, asked.join(' '));
+    t('the video on screen is looked up ahead of the rest of the page',
+      asked.length === 3 && asked[2] === prefixOf(ids[7]), asked.join(' '));
+  }
+
+  // ---- A slow answer: the fallback frame shows meanwhile, a crowdsourced one replaces it ----
+  {
+    const { win, parse } = boot({ dearrowThumbnailFallback: 'start' }, { brandingDelay: 2600 });
+    const plain = tile('nosubmit001', 'Nothing submitted');
+    const crowd = tile('custom00001', 'Clickbait');
+    const plainEl = render(win, plain, { onScreen: true });
+    const r = parse(browse([plain, crowd]));
+    await wait(2200);
+    t('no answer after 2 s: the tile on screen shows the Start frame, YouTube\'s own image as it is',
+      shownThumb(plainEl) === 'url("https://i.ytimg.com/vi/nosubmit001/hq1.jpg")', shownThumb(plainEl));
+    const early = decodeURIComponent(tileThumb(itemsOf(r)[1]));
+    t('no answer yet: a video with a submitted thumbnail shows the Start frame meanwhile',
+      early.indexOf('/vi/custom00001/hq1.jpg') !== -1, early);
+    await waitFor(() => decodeURIComponent(tileThumb(itemsOf(r)[1])).indexOf('time=12.5') !== -1, 2500);
+    const later = decodeURIComponent(tileThumb(itemsOf(r)[1]));
+    t('once the answer comes the submitted thumbnail replaces the Start frame', later.indexOf('time=12.5') !== -1, later);
+  }
+
+  // ---- Titles do not wait for the thumbnails of the videos before them ----
+  {
+    const ids = [];
+    const prefixes = new Set();
+    for (let i = 0; ids.length < 6; i++) {
+      const id = 'ttl' + String(i).padStart(8, '0');
+      if (prefixes.has(prefixOf(id))) continue;
+      prefixes.add(prefixOf(id));
+      ids.push(id);
+    }
+    const extra = {};
+    for (const id of ids) extra[id] = { titles: [{ title: 'Calm ' + id, original: false, votes: 1, locked: false }], thumbnails: [] };
+    // YouTube's frames take 1.5 s to come, as images did while a TV started the app.
+    const { win, parse } = boot({ dearrowThumbnailFallback: 'start' }, { extra, imageDelay: 1500 });
+    const items = ids.map((id) => tile(id, 'Loud ' + id));
+    for (const item of items) render(win, item, { onScreen: true });
+    const r = parse(browse(items));
+    await wait(700);
+    const titles = itemsOf(r).map(tileTitle);
+    t('all six titles are in before the first frame comes', titles.every((x, i) => x === 'Calm ' + ids[i]), titles.join(' | '));
+  }
+
+  // ---- The fallback frame is fetched alongside the answer, for what is (likely) on screen ----
+  {
+    const { win, images, parse } = boot({ dearrowThumbnailFallback: 'start' }, { brandingDelay: 1500 });
+    // The first page, before the app has laid any tile out.
+    parse(browse([tile('nosubmit001', 'First row')]));
+    await wait(250);
+    t('at start, the first video\'s Start frame is fetched while its answer is out',
+      images.some((u) => u.indexOf('/vi/nosubmit001/hq1.jpg') !== -1), images.join(' '));
+    // A tile is now on screen: background videos no longer fetch their frame early.
+    render(win, tile('nosubmit001', 'First row'), { onScreen: true });
+    await wait(400);
+    parse(browse([tile('bgvideo0001', 'Below'), tile('bgvideo0002', 'Further below')]));
+    await wait(300);
+    t('off screen, a video\'s frame waits for its answer',
+      !images.some((u) => u.indexOf('/vi/bgvideo000') !== -1), images.join(' '));
+    // Scrolled on screen while its background lookup waits for the answer.
+    render(win, tile('bgvideo0001', 'Below'), { onScreen: true });
+    win.document.dispatchEvent(new win.KeyboardEvent('keydown', { bubbles: true }));
+    await wait(400);
+    t('scrolled on screen mid-lookup, its frame is fetched before the answer',
+      images.some((u) => u.indexOf('/vi/bgvideo0001/hq1.jpg') !== -1), images.join(' '));
   }
 
   // ---- Title formatting (webOS 22+ build only) ----
