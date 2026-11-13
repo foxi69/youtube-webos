@@ -2,7 +2,8 @@
 // the speed changes, so a photo tells where the sound drops out on webOS 4-6.
 import { AudioEngine } from './speed/audio-engine.js';
 
-const MAX_EVENTS = 12;
+// Enough for a whole speed change: the first reload, its cuts and what ends it.
+const MAX_EVENTS = 30;
 const events = [];
 const t0 = Date.now();
 let box = null;
@@ -104,7 +105,82 @@ function watchVideo(v) {
   });
 }
 
+// Why the speed changes (#97, webOS 5): an engine error, a rate YouTube sets,
+// a key or the menu. Errors from the MSE hook reach the controller directly,
+// so they show through the toast every error raises.
+AudioEngine.prototype.reportError = (function (orig) {
+  return function (e) {
+    log(`engine error: ${e && e.name}: ${e && e.message}`);
+    return orig.apply(this, arguments);
+  };
+})(AudioEngine.prototype.reportError);
+
+let ctrlHooked = null;
+function hookController(ctrl) {
+  if (!ctrl || ctrlHooked === ctrl) return;
+  ctrlHooked = ctrl;
+  ['setSpeed', 'stop', 'reset', 'onError'].forEach((name) => {
+    const orig = ctrl[name];
+    if (typeof orig !== 'function') return;
+    ctrl[name] = function (a, b) {
+      const arg = name === 'onError' ? `${a && a.name}: ${a && a.message}` : a === undefined ? '' : String(a);
+      log(`${name}(${arg}${b && b.immediate ? ', immediate' : ''}) at speed ${ctrl.getSpeed()}`);
+      return orig.apply(this, arguments);
+    };
+  });
+}
+
+let lastSpeed = null;
+let lastReload = 0;
+let lastRate = null;
+let hookedPlayer = null;
+function watchState(ctrl) {
+  const speed = ctrl.getSpeed();
+  if (lastSpeed !== null && speed !== lastSpeed) log(`speed ${lastSpeed} -> ${speed}`);
+  lastSpeed = speed;
+  const reload = ctrl.lastReloadAt ? ctrl.lastReloadAt() : 0;
+  if (reload && reload !== lastReload) log(`reload at ${sec(reload - t0)}`);
+  lastReload = reload;
+  const player = document.querySelector('.html5-video-player');
+  if (!player) return;
+  try {
+    const rate = player.getPlaybackRate();
+    if (lastRate !== null && rate !== lastRate) log(`player rate ${lastRate} -> ${rate}`);
+    lastRate = rate;
+  } catch {
+    // no rate yet
+  }
+  if (hookedPlayer !== player && typeof player.seekTo === 'function') {
+    hookedPlayer = player;
+    const seekTo = player.seekTo;
+    player.seekTo = function (to) {
+      log(`player.seekTo(${Number(to).toFixed(2)})`);
+      return seekTo.apply(this, arguments);
+    };
+  }
+}
+
+let toastObserver = null;
+function watchToasts() {
+  if (toastObserver || !document.body || typeof MutationObserver === 'undefined') return;
+  toastObserver = new MutationObserver((records) => {
+    records.forEach((r) => {
+      r.addedNodes.forEach((n) => {
+        if (n.nodeType !== 1 || !n.closest || !n.closest('.ytaf-notification-container')) return;
+        const text = (n.textContent || '').trim();
+        if (text) log(`toast: ${text}`);
+      });
+    });
+  });
+  toastObserver.observe(document.body, { childList: true, subtree: true });
+}
+
 function render() {
+  if (window.ytafSpeed) {
+    hookController(window.ytafSpeed);
+    watchState(window.ytafSpeed);
+  }
+  watchToasts();
   const ctrl = window.ytafSpeed;
   const e = ctrl && ctrl.activeEngine ? ctrl.activeEngine() : null;
   if (e !== engine) {
@@ -133,7 +209,7 @@ function render() {
   if (!box && document.body) {
     box = document.createElement('div');
     box.style.cssText = 'position:fixed;top:8px;left:8px;width:46%;z-index:2147483647;' +
-      'background:rgba(0,0,0,.82);color:#ff0;font:15px/1.3 monospace;padding:8px;' +
+      'background:rgba(0,0,0,.82);color:#ff0;font:13px/1.25 monospace;padding:8px;' +
       'white-space:pre-wrap;word-break:break-all;pointer-events:none;border:2px solid #f80';
     document.body.appendChild(box);
   }
