@@ -6,10 +6,10 @@ on:
     # a full release, so repo.json would stay on the previous version.
     types: [released]
   workflow_dispatch:
+# contents: write pushes repo.json and the version to main. No Pages, no
+# OIDC: nothing here deploys a site.
 permissions:
   contents: write
-  pages: write
-  id-token: write
 jobs:
   update-repo:
     runs-on: ubuntu-latest
