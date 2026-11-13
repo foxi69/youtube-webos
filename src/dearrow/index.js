@@ -23,7 +23,6 @@ import { forgetThumbs, thumbsFull } from './thumbs.js';
 import { patchResponseTiles, unpatchResponses, applyToVideo } from './tiles.js';
 import { sweepTiles } from './sweep.js';
 import { queueLookups, lookUpOnScreen, clearQueue, setChangeHandler, wantsLookup } from './lookup.js';
-import { diagDeArrow } from '../speed/diag.js';
 
 export { titleFormattingSupported } from './titles.js';
 
@@ -44,10 +43,7 @@ function scheduleSweep() {
   if (sweepTimer || !configRead('enableDeArrow')) return;
   sweepTimer = setTimeout(() => {
     sweepTimer = null;
-    const sweptAt = performance.now();
     const found = sweepTiles(false);
-    diagDeArrow(`sweep: ms: ${Math.round(performance.now() - sweptAt)}, tiles: ${document.querySelectorAll('ytlr-tile-renderer').length}, ` +
-      `on screen: ${found.onScreen.length}, stale off screen: ${found.stale.length}`);
     lookUpOnScreen(found.onScreen);
     if (found.stale.length) queueLookups(found.stale);
   }, SWEEP_DELAY);
@@ -85,7 +81,6 @@ export function applyDeArrow(data, responseType) {
   // this same response was just given.
   if (videos.size >= CACHE_LIMIT || thumbsFull()) wipe();
   const found = patchResponseTiles(data, wantsLookup);
-  diagDeArrow(`response: type: ${responseType}, to look up: ${found.length}, videos known: ${videos.size}`);
   if (found.length) queueLookups(found);
   scheduleSweep();
 }
@@ -128,7 +123,6 @@ function switchOff() {
 function refresh() {
   refreshTimer = null;
   const badgeOnly = changedKeys.size === 1 && changedKeys.has('dearrowShowBadge');
-  diagDeArrow(`settings refresh: keys: ${Array.from(changedKeys).join(', ')}, videos known: ${videos.size}`);
   changedKeys.clear();
   if (configRead('enableDeArrow') && badgeOnly) {
     videos.forEach((video) => {

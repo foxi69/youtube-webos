@@ -7,7 +7,6 @@
 // - Quality: the one the viewer picked in YouTube's menu, which YouTube keeps
 //   in the yt-player-quality record (video-quality.js writes its own there).
 
-import { diag, describeTrack, captionsInfo } from './diag.js';
 
 export const QUALITY_KEY = 'yt-player-quality';
 export const QUALITY_HEIGHTS = {
@@ -48,23 +47,14 @@ export function sameCaptions(a, b) {
 
 /** Puts `saved` (from readCaptions) back when the player shows something else. */
 export function applyCaptions(player, saved) {
-  if (!saved) {
-    diag('captions: nothing kept (unreadable before the reload)');
-    return;
-  }
+  if (!saved) return;
   const now = readCaptions(player);
   // Unreadable now: only turning subtitles on is worth a try.
-  if (now ? sameCaptions(now, saved) : !isOn(saved)) {
-    diag(`captions: left as is, now: ${describeTrack(now)}, kept: ${describeTrack(saved)}`);
-    return;
-  }
+  if (now ? sameCaptions(now, saved) : !isOn(saved)) return;
   try {
     if (isOn(saved) && typeof player.loadModule === 'function') player.loadModule('captions');
     player.setOption('captions', 'track', isOn(saved) ? saved : {});
-    diag(`captions: set ${isOn(saved) ? 'on' : 'off'}, was: ${describeTrack(now)}, after: ${captionsInfo(player)}`);
-  } catch (e) {
-    diag(`captions: setOption failed: ${e && e.message}`);
-  }
+  } catch { /* captions module unavailable */ }
 }
 
 /**
@@ -77,11 +67,7 @@ export function keepCaptions(win, player, saved, userKeyAt) {
   const startedAt = Date.now();
   let stopped = false;
   const check = () => {
-    if (stopped || userKeyAt() > startedAt || player.isConnected === false) {
-      diag(`captions check skipped: stopped: ${stopped}, key pressed: ${userKeyAt() > startedAt}, ` +
-        `connected: ${player.isConnected}`);
-      return;
-    }
+    if (stopped || userKeyAt() > startedAt || player.isConnected === false) return;
     applyCaptions(player, saved);
   };
   applyCaptions(player, saved);

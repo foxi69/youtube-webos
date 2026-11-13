@@ -4,9 +4,6 @@ import { keepStretchableAudio, allowSpeedMenuOnSurround, LEGACY_STRETCHABLE_AUDI
 import { legacyAudioCodecs } from './speed/legacy-decoder.js';
 import { watchPosition } from './speed/position-watch.js';
 import { readCaptions, keepCaptions, readQualityRecord } from './speed/player-state.js';
-import {
-  diag, diagMark, diagId, describeTrack, captionsInfo, qualityInfo, storageInfo, logPlayerMethods, watchAfterReload
-} from './speed/diag.js';
 import { showNotification } from './notifications.js';
 import { configRead, configAddChangeListener } from './config.js';
 import { SELECTORS, SYNTHETIC_KEY_FLAG } from './utils.js';
@@ -322,29 +319,17 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
     if (!reused) {
       keptCaptions = { videoId, captions: readCaptions(player), landed: false };
     }
-    diagMark();
-    logPlayerMethods(player);
-    diag(`reload: video: ${diagId(videoId)}, from: ${fromSpeed}, to: ${currentSpeed}, at: ${at}, ` +
-      `captions now: ${captionsInfo(player)}, captions kept: ${describeTrack(keptCaptions.captions)}, reused: ${reused}`);
-    diag(`reload: ${qualityInfo(player)}, pick: ${viewerPick()}, cap: ${capQuality()}, ` +
-      `forceHighRes: ${configRead('forceHighResVideo')}, storage: ${storageInfo()}`);
     if (currentSpeed > CAP_ABOVE) {
       const cap = capQuality();
-      diag(`reload: setPlaybackQualityRange: ${cap}`);
       setRange(player, cap);
     } else if (fromSpeed > CAP_ABOVE) {
       // A pick in YouTube's menu wins over Force Max Quality.
       const quality = viewerPick() || (configRead('forceHighResVideo') ? 'highres' : 'auto');
-      diag(`reload: setPlaybackQualityRange: ${quality}`);
       setRange(player, quality);
-    } else {
-      diag('reload: no quality range set');
     }
     if (!videoId) return;
     lastReloadAt = Date.now();
     player.loadVideoById(videoId, at);
-    diag(`reload: loadVideoById called, captions: ${captionsInfo(player)}`);
-    watchAfterReload(player);
     restorePosition(player, at, videoId, keptCaptions);
     // If YouTube's own menu is bound (native-menu.js), keep what it shows in
     // line with the real speed once the reloaded video has started.
@@ -367,12 +352,10 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
     const cap = capQuality();
     const setCap = () => {
       if (currentSpeed > CAP_ABOVE) {
-        diag(`setCap: setPlaybackQualityRange: ${cap}, before: ${qualityInfo(player)}`);
         setRange(player, cap);
       }
     };
     const onPlaying = () => {
-      diag(`playing: captions: ${captionsInfo(player)}, ${qualityInfo(player)}`);
       setCap();
       kept.landed = true;
       stopCaptions = keepCaptions(win, player, kept.captions, userKeyAt);
@@ -580,7 +563,6 @@ export function initPlaybackSpeed() {
         document.querySelector('.html5-video-player');
       if (player && ABOVE_1080.includes(player.getPlaybackQuality())) {
         const cap = speedInstance.controller.capQuality();
-        diag(`state-change cap: setPlaybackQualityRange: ${cap}, was: ${player.getPlaybackQuality()}`);
         speedInstance.controller.setRange(player, cap);
       }
     });

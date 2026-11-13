@@ -14,7 +14,6 @@ import {
   IMAGE_TIMEOUT_MS,
   MAX_DRAWS
 } from './constants.js';
-import { diagDeArrow, diagId } from '../speed/diag.js';
 
 // copy width + ' ' + source URL -> the copy's URL
 const copies = new Map();
@@ -81,10 +80,6 @@ export function copyWidth() {
 function drawCopy(url, videoId, width, key) {
   return new Promise((resolve) => {
     let settled = false;
-    // TEMPORARY (speed/diag.js): load and draw times.
-    const startedAt = performance.now();
-    let loadedAt = 0;
-    let size = '';
     const img = new Image();
     /** Resolves once: the image's own outcome or the timeout, whichever comes first. */
     const done = (copy) => {
@@ -102,15 +97,12 @@ function drawCopy(url, videoId, width, key) {
     img.onload = () => {
       const w = img.naturalWidth;
       const h = img.naturalHeight;
-      loadedAt = performance.now();
       if (!w || !h) {
         done(null);
         return;
       }
       /** Remembers the copy and its weight, if there is one, and resolves with it. */
       const finish = (copy, weight) => {
-        diagDeArrow(`copy: id: ${diagId(videoId)}, load: ${Math.round(loadedAt - startedAt)}ms, ` +
-          `draw: ${Math.round(performance.now() - loadedAt)}ms, size: ${size}, bytes: ${weight}, kept: ${!settled && !!copy}`);
         if (settled || !configRead('enableDeArrow')) {
           // Timed out while toBlob ran, or DeArrow switched off meanwhile:
           // nobody takes this copy, and it is not kept.
@@ -130,7 +122,6 @@ function drawCopy(url, videoId, width, key) {
         const cropH = (cropW * 9) / 16;
         const outW = Math.round(Math.min(width, cropW));
         const outH = Math.round((outW * 9) / 16);
-        size = `${w}x${h} -> ${outW}x${outH}`;
         const canvas = document.createElement('canvas');
         canvas.width = outW;
         canvas.height = outH;
@@ -166,7 +157,6 @@ function drawCopy(url, videoId, width, key) {
  */
 function checkFrame(url, videoId, key) {
   return new Promise((resolve) => {
-    const startedAt = performance.now();
     const img = new Image();
     let timer = null;
     /** Resolves once: the image's own outcome or the timeout, whichever comes first. */
@@ -174,8 +164,6 @@ function checkFrame(url, videoId, key) {
       clearTimeout(timer);
       img.onload = img.onerror = null;
       if (frame) copies.set(key, frame);
-      diagDeArrow(`copy: id: ${diagId(videoId)}, load: ${Math.round(performance.now() - startedAt)}ms, ` +
-        `draw: none, size: ${img.naturalWidth}x${img.naturalHeight}, kept: ${!!frame}`);
       resolve(frame);
     };
     timer = setTimeout(() => done(null), IMAGE_TIMEOUT_MS);
