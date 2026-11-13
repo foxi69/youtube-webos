@@ -246,6 +246,16 @@ async function mp4Tests() {
     t('MP4 boxes: a cut header is marked', bh.length === 1 && bh[0].truncated && bh[0].start === 0);
     const tiny = Uint8Array.from(bytes(u32(4), ascii('free')));
     t('MP4 boxes: a size below its header is cut, not looped on', c.parseBoxes(tiny, 0, tiny.length)[0].truncated);
+    // A piece from the middle of a fragment (webOS 5 appends them, #97): bytes
+    // that read as a 64-bit size too big for a number are a cut box, not an error.
+    const huge = Uint8Array.from([0, 0, 0, 1, 0x6d, 0x64, 0x61, 0x74, 0xff, 0xff, 0xff, 0xff, 0, 0, 0, 0, 9, 9]);
+    let hb = null, threw = null;
+    try { hb = c.parseBoxes(huge, 0, huge.length); } catch (e) { threw = e.message; }
+    t('MP4 boxes: a 64-bit size beyond any number is a cut box, not a throw',
+      !threw && hb.length === 1 && hb[0].truncated && hb[0].type === 'mdat', threw || JSON.stringify(hb));
+    let kind = null;
+    try { kind = c.classifyMp4(huge); } catch (e) { kind = 'threw: ' + e.message; }
+    t('MP4: such a piece is not an init', kind === 'unknown', kind);
   }
 
   const aacInit = mp4Init({ entry: audioSampleEntry('mp4a', 2, MP4_TIMESCALE, esds(ASC)) });
@@ -365,6 +375,20 @@ async function webmTests() {
       c.readVint(Uint8Array.from([0xff]), 0).value === -1);
     t('WebM vints: a cut one is null', c.readVint(Uint8Array.from([0x20, 0x01]), 0) === null);
     t('WebM vints: a zero first byte is null', c.readVint(Uint8Array.from([0x00, 1, 2, 3, 4, 5, 6, 7, 8]), 0) === null);
+    // Bytes from inside a SimpleBlock can read as an 8-byte vint above
+    // MAX_SAFE_INTEGER; real WebM never has one. Null, like any unreadable one.
+    let big = 'none', threw = null;
+    try { big = c.readVint(Uint8Array.from([0x01, 0x40, 0, 0, 0, 0, 0, 0]), 0); } catch (e) { threw = e.message; }
+    t('WebM vints: one too big for a number is null, not a throw', !threw && big === null, threw || JSON.stringify(big));
+    t('WebM vints: the largest that fits is still read',
+      (c.readVint(Uint8Array.from([0x01, 0x1f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe]), 0) || {}).value === Number.MAX_SAFE_INTEGER - 1);
+    // A piece from the middle of a cluster (webOS 5 appends them, #97), as an
+    // ID and as a size.
+    for (const [name, piece] of [['an ID', [0x01, 0x40, 0, 0, 0, 0, 0, 0, 0x81, 1]], ['a size', [0x81, 0x01, 0x40, 0, 0, 0, 0, 0, 0, 1]]]) {
+      let kind = null;
+      try { kind = c.classifyWebm(Uint8Array.from(piece)); } catch (e) { kind = 'threw: ' + e.message; }
+      t(`WebM: a mid-cluster piece whose bytes read as too big ${name} is not an init`, kind === 'unknown', kind);
+    }
   }
 
   const init = webmInit({ tcScale: 1000000 });

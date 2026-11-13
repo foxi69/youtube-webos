@@ -34,8 +34,9 @@ export function parseBoxes(u8, start, end) {
       }
       const hi = view.getUint32(i + 8);
       const lo = view.getUint32(i + 12);
-      if (hi > 0x1fffff) throw new Error('Size exceeds MAX_SAFE_INTEGER');
-      size = hi * 0x100000000 + lo;
+      // Beyond any number, and any buffer: bytes from the middle of a
+      // fragment (webOS 5 appends such pieces, #97), so a cut box below.
+      size = hi > 0x1fffff ? Number.MAX_SAFE_INTEGER : hi * 0x100000000 + lo;
       headerSize = 16;
     } else if (size === 0) {
       size = end - i;
@@ -458,8 +459,9 @@ export function readVint(u8, start) {
     value = -1;
   }
 
-  if (value > Number.MAX_SAFE_INTEGER)
-    throw new Error('Vint exceeds MAX_SAFE_INTEGER');
+  // Real WebM never has one this big: bytes from the middle of a cluster
+  // (webOS 5 appends such pieces, #97). Unreadable, like a cut one.
+  if (value > Number.MAX_SAFE_INTEGER) return null;
 
   return { value, length };
 }
