@@ -37,27 +37,29 @@ function advanceTrail(svg, version) {
     .replace(/aria-label="[^"]*"/, `aria-label="Fox paw prints walking from version ${next[0]} to ${next[1]} to ${next[2]}"`);
 }
 
-function editJson(file, edit) {
-  const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-  edit(data);
-  fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
-}
-
 /** Updates the files under root; returns the ones it changed. */
 function bump(version, root) {
   if (!VERSION.test(version)) throw new Error(`not a version: ${version}`);
   const changed = [];
   const at = (name) => path.join(root, name);
 
-  const current = JSON.parse(fs.readFileSync(at('package.json'), 'utf8')).version;
-  if (isNewer(version, current)) {
-    editJson(at('package.json'), (p) => { p.version = version; });
-    editJson(at('package-lock.json'), (l) => {
-      l.version = version;
-      if (l.packages && l.packages['']) l.packages[''].version = version;
-    });
-    editJson(at('assets/appinfo.json'), (a) => { a.version = version; });
-    changed.push('package.json', 'package-lock.json', 'assets/appinfo.json');
+  // Each version field on its own: one raised by hand (package.json, say)
+  // must not keep the others behind, and none is ever lowered. A missing or
+  // malformed one is written.
+  const older = (v) => typeof v !== 'string' || !VERSION.test(v) || isNewer(version, v);
+  const manifests = [
+    ['package.json', (p) => [p]],
+    ['package-lock.json', (l) => [l, l.packages && l.packages['']]],
+    ['assets/appinfo.json', (a) => [a]]
+  ];
+  for (const [name, fields] of manifests) {
+    const file = at(name);
+    const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const stale = fields(data).filter((o) => o && typeof o === 'object' && older(o.version));
+    if (!stale.length) continue;
+    for (const o of stale) o.version = version;
+    fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
+    changed.push(name);
   }
 
   const trailFile = at('screenshots/fork-trail.svg');

@@ -89,6 +89,50 @@ try {
       read(dir, 'screenshots/fork-trail.svg') === svgBefore, changed.join(','));
   }
 
+  // ---- Each version field on its own ----
+  const setJson = (dir, f, edit) => {
+    const data = json(dir, f);
+    edit(data);
+    fs.writeFileSync(path.join(dir, f), `${JSON.stringify(data, null, 2)}\n`);
+  };
+  {
+    // package.json raised by hand to the release, the others left behind.
+    const dir = fixture('0.9.2', ['0.9.1', '0.9.2', '0.9.3']);
+    setJson(dir, 'package.json', (p) => { p.version = '0.9.3'; });
+    const pkgBefore = read(dir, 'package.json');
+    const changed = bump('0.9.3', dir);
+    const lock = json(dir, 'package-lock.json');
+    t('package.json already at the release: the older files still take it',
+      changed.join(',') === 'package-lock.json,assets/appinfo.json' && read(dir, 'package.json') === pkgBefore &&
+      lock.version === '0.9.3' && lock.packages[''].version === '0.9.3' && json(dir, 'assets/appinfo.json').version === '0.9.3',
+      changed.join(','));
+  }
+  {
+    const dir = fixture('0.9.3', ['0.9.1', '0.9.2', '0.9.3']);
+    setJson(dir, 'package-lock.json', (l) => { l.packages[''].version = '0.9.1'; });
+    const changed = bump('0.9.3', dir);
+    const lock = json(dir, 'package-lock.json');
+    t('one lockfile field behind: only it is updated',
+      changed.join(',') === 'package-lock.json' && lock.version === '0.9.3' && lock.packages[''].version === '0.9.3', changed.join(','));
+  }
+  {
+    // appinfo.json ahead of the release (raised by hand): never lowered.
+    const dir = fixture('0.9.2', ['0.9.1', '0.9.2', '0.9.3']);
+    setJson(dir, 'assets/appinfo.json', (a) => { a.version = '0.9.4'; });
+    const appBefore = read(dir, 'assets/appinfo.json');
+    const changed = bump('0.9.3', dir);
+    t('a file ahead of the release is left alone, the others move on',
+      changed.join(',') === 'package.json,package-lock.json' && read(dir, 'assets/appinfo.json') === appBefore &&
+      json(dir, 'package.json').version === '0.9.3', changed.join(','));
+  }
+  {
+    const dir = fixture('0.9.3', ['0.9.1', '0.9.2', '0.9.3']);
+    setJson(dir, 'assets/appinfo.json', (a) => { delete a.version; });
+    const changed = bump('0.9.3', dir);
+    t('a missing version field is written',
+      changed.join(',') === 'assets/appinfo.json' && json(dir, 'assets/appinfo.json').version === '0.9.3', changed.join(','));
+  }
+
   // ---- The same release again, and an older one ----
   for (const [name, version] of [['the same release again', '0.9.3'], ['a fix on an older line', '0.8.9']]) {
     const dir = fixture('0.9.3', ['0.9.1', '0.9.2', '0.9.3']);
