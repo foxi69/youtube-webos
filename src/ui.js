@@ -1198,7 +1198,7 @@ function createOptionsPanel() {
         createOpacityControl('uiBrightness', 10, 40, 100),
         createElement('div', { text: 'Dims the YouTube menus and thumbnails; never the playing video or this panel', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   	  createPreviewControl('forcePreviews'),
-  	  createElement('div', { text: 'Sets YouTube\'s own "previews with sound" setting on app load. No effect where YouTube shows no previews (webOS 25)', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
+  	  createElement('div', { text: 'Sets YouTube\'s own "previews with sound" setting on app load. No effect where YouTube shows no previews', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   	  createConfigCheckbox('mutePreviews'),
   	  ...(isLegacyWebOS() ? [
   	    createConfigCheckbox('fixBlackPreviews'),
