@@ -1203,7 +1203,10 @@ function createOptionsPanel() {
   	  ...(isLegacyWebOS() ? [
   	    createConfigCheckbox('fixBlackPreviews'),
   	    createElement('div', { text: 'Shows the picture of a tile preview that plays its sound over a black tile (webOS 3-6)', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } })
-  	  ] : []),
+  	  ] : [
+  	    createConfigCheckbox('fixBlackPreviews22'),
+  	    createElement('div', { text: 'Turn on only if a tile preview plays its sound over a black tile: previews show their picture on most of these TVs', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } })
+  	  ]),
   	  createConfigCheckbox('fitPageBesideGuide'),
   	  createElement('div', { text: 'Shrinks the page beside the open left menu, instead of pushing its right side off the screen', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   	  createConfigCheckbox('removeLowMemoryStyle'),

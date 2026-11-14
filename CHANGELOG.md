@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## Added
 
 + Shortcuts: a new action, **Open Long-Press Menu**, opens the focused video's long-press menu as a held OK would, with "Add to queue" when More Options in the Long-Press Menu is on. Phone remote apps that use LG's network remote API can only send whole key presses, so they could not open this menu. It is on no key by default. Requested in #143.
++ **Fix Black Tile Previews** is on webOS 22 and newer too, off by default there (UI Tweaks). A webOS 26 TV was reported playing previews with sound over a black tile (NicholasBly/youtube-webos#221), as the webOS 4 TVs did that the setting was made for. Previews show their picture on most of these TVs, so it is for a TV that shows this. On webOS 3-6 it stays on by default.
 
 ## Fixes
 
