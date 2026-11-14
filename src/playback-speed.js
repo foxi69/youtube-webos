@@ -257,9 +257,15 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
     if (getSpeed() === 1 || activeSink || pending) return false;
     const video = win.document && win.document.querySelector('video');
     if (!video || video.paused || video.readyState < 3) return false;
-    const player = getPlayer();
-    const videoData = player && player.getVideoData && player.getVideoData();
-    const id = videoData && videoData.video_id;
+    let id;
+    try {
+      const player = getPlayer();
+      const videoData = player && typeof player.getVideoData === 'function' ? player.getVideoData() : null;
+      id = videoData && videoData.video_id;
+    } catch {
+      // The player between two videos: the next 'playing' tries again.
+      return false;
+    }
     if (!id || id === resumedVideoId) return false;
     resumedVideoId = id;
     scheduleReload(1, true);
@@ -486,6 +492,23 @@ export function installSpeedFeature(win, { notify, configRead: cfgRead, getPlaye
       ? win.setInterval(() => bindPlayerRate(getPlayer(), ctrl), 1000)
       : null;
 
+  // Capture: media events do not bubble. A preview carried on into the watch
+  // page plays on without a new 'playing': the page change, a moment later
+  // (RESUME_AFTER_PAGE_MS), so that a video opened anew has its own
+  // MediaSource at the speed by then.
+  const resume = () => ctrl.resumeOnPlaybackPage();
+  let resumeTimer = null;
+  const onPageUpdate = ({ detail }) => {
+    if (!detail || !(detail.isWatch || detail.isShorts)) return;
+    if (resumeTimer !== null) win.clearTimeout(resumeTimer);
+    resumeTimer = win.setTimeout(() => {
+      resumeTimer = null;
+      resume();
+    }, RESUME_AFTER_PAGE_MS);
+  };
+  if (win.document) win.document.addEventListener('playing', resume, true);
+  win.addEventListener('ytaf-page-update', onPageUpdate);
+
   // No key listener of its own: the speed keys go through the button mapping
   // (speed_up / speed_down / speed_reset), so Yellow keeps YouTube's search.
   return {
@@ -498,6 +521,10 @@ export function installSpeedFeature(win, { notify, configRead: cfgRead, getPlaye
       restoreButton();
       restoreAudioOffer();
       if (bindTimer !== null) win.clearInterval(bindTimer);
+      if (win.document) win.document.removeEventListener('playing', resume, true);
+      win.removeEventListener('ytaf-page-update', onPageUpdate);
+      if (resumeTimer !== null) win.clearTimeout(resumeTimer);
+      resumeTimer = null;
     }
   };
 }
@@ -515,15 +542,6 @@ export function initPlaybackSpeed() {
   if (speedInstance) {
     configAddChangeListener('enablePlaybackSpeed', ({ detail }) => {
       if (!detail.newValue) speedInstance.controller.stop();
-    });
-    // Capture: media events do not bubble. A preview carried on into the watch
-    // page plays on without a new 'playing': the page change, a moment later
-    // (RESUME_AFTER_PAGE_MS), so that a video opened anew has its own
-    // MediaSource at the speed by then.
-    const resume = () => speedInstance.controller.resumeOnPlaybackPage();
-    document.addEventListener('playing', resume, true);
-    window.addEventListener('ytaf-page-update', ({ detail }) => {
-      if (detail && (detail.isWatch || detail.isShorts)) window.setTimeout(resume, RESUME_AFTER_PAGE_MS);
     });
     // The next video (autoplay, a tile) keeps the speed but starts at the
     // quality YouTube picks, 2160p on a 4K TV: cap it once it plays.

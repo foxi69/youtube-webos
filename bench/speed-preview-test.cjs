@@ -123,6 +123,9 @@ const setPage = async (win, cls) => { win.document.body.className = cls; await w
 
   await setPage(win, 'WEB_PAGE_TYPE_WATCH');
   t('back on the watch page: the speed set before is 1.5x again', speed.getSpeed() === 1.5, String(speed.getSpeed()));
+  // The resume these page changes scheduled runs out here, before any player
+  // or video exists, so none of it reaches the cases below.
+  await wait(AFTER_PAGE_MS);
 
   // ---- A preview carried on into the watch page, already playing ----
   const playing = { now: true };
@@ -167,6 +170,32 @@ const setPage = async (win, cls) => { win.document.body.className = cls; await w
   win.document.querySelector('video').dispatchEvent(new win.Event('playing'));
   await wait(50);
   t('...until it plays at 1x on the watch page', player.loads.join() === 'pppppppppp1@12,qqqqqqqqqq1@12', player.loads.join());
+
+  // ---- Shorts: the same, from the page change ----
+  speed.releaseAudioSink();
+  player.getVideoData = () => ({ video_id: 'ssssssssss1', isLive: false });
+  await setPage(win, 'WEB_PAGE_TYPE_BROWSE');
+  await setPage(win, 'WEB_PAGE_TYPE_SHORTS');
+  await wait(AFTER_PAGE_MS);
+  t('carried on into Shorts: loaded again at the speed', player.loads[player.loads.length - 1] === 'ssssssssss1@12',
+    player.loads.join());
+
+  // ---- The player between two videos: getVideoData throws ----
+  speed.releaseAudioSink();
+  const loadsBefore = player.loads.length;
+  player.getVideoData = () => { throw new Error('no video yet'); };
+  await setPage(win, 'WEB_PAGE_TYPE_BROWSE');
+  await setPage(win, 'WEB_PAGE_TYPE_WATCH');
+  await wait(AFTER_PAGE_MS);
+  win.document.querySelector('video').dispatchEvent(new win.Event('playing'));
+  await wait(50);
+  t('getVideoData throwing: no reload and no page error', player.loads.length === loadsBefore && errors.length === 0,
+    player.loads.slice(loadsBefore).join() + ' | ' + errors.join(' | '));
+  player.getVideoData = () => ({ video_id: 'tttttttttt1', isLive: false });
+  win.document.querySelector('video').dispatchEvent(new win.Event('playing'));
+  await wait(50);
+  t('...and the next playing, once the player has its video, reloads', player.loads[player.loads.length - 1] === 'tttttttttt1@12',
+    player.loads.join());
 
   // ---- At 1x nothing is loaded again ----
   speed.releaseAudioSink();
