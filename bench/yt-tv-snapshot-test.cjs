@@ -67,5 +67,62 @@ t('the command at a new place is named', moved.some((c) => /new place: .*lockupV
 const none = diff(base, build(capture('none', undefined)));
 t('no preview command at all is named', none.some((c) => /no preview command/.test(c)), none.join(' | '));
 
-console.log(`\n${pass} passed, ${fail} failed`);
-process.exit(fail ? 1 : 0);
+// ---- watch-code: the daily check of the public bundle, the network stubbed ----
+const { mainBundleUrl, watchCode, codeAnchors } = require('../tools/yt-tv-snapshot.cjs');
+const BASE = '/s/_/kabuki/_/js/k=kabuki.base_cr.en_US.abc.es5.O/am=AAAA/d=1/excm=main/rs=XYZ/m=base';
+const PAGE = '<html><script nonce="n">var a="' + BASE + '";</script>' +
+  '<link href="/s/_/kabuki/_/ss/k\\u003dkabuki.base_cr.W.L.W.O/m\\u003dmain"></html>';
+t('the main bundle\'s URL is the base one with m=main',
+  mainBundleUrl(PAGE) === 'https://www.youtube.com' + BASE.replace(/m=base$/, 'm=main'), String(mainBundleUrl(PAGE)));
+t('a page without a base bundle gives none', mainBundleUrl('<html>nothing</html>') === null);
+
+// The TV capture's own counts, as a real snapshot holds them: --write must not touch these.
+const TV_CODE = { bundle: '_excm_main_m_main.js', bytes: CODE.length, anchors: codeAnchors(CODE) };
+const pad = 'x'.repeat(120000);
+const BUNDLE = pad + CODE;
+function snapshotFile(withPublic) {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yt-snap-watch-')), 'snap.json');
+  const snap = { taken: '2026-11-14', code: TV_CODE };
+  if (withPublic) snap.publicCode = { taken: '2026-11-14', bytes: BUNDLE.length, anchors: codeAnchors(BUNDLE) };
+  fs.writeFileSync(file, JSON.stringify(snap));
+  return file;
+}
+const stub = (page, bundle) => async (url) => (url.indexOf('m=main') !== -1 ? bundle : page);
+
+(async () => {
+  const same = await watchCode(snapshotFile(true), { fetchFn: stub(PAGE, BUNDLE) });
+  t('watch: the same bundle is status 0', same.status === 0 && /No change/.test(same.report), JSON.stringify(same));
+
+  const changedBundle = pad + CODE.replace('blockAdoption', 'disallowAdoption') + 'x.graftPlayback(y);';
+  const changed = await watchCode(snapshotFile(true), { fetchFn: stub(PAGE, changedBundle) });
+  t('watch: a changed bundle is status 1 and names each change', changed.status === 1 &&
+    /"blockAdoption" is gone/.test(changed.report) && /"graftPlayback" found 1 -> 2 times/.test(changed.report),
+    changed.report);
+
+  const down = await watchCode(snapshotFile(true), { fetchFn: async () => { throw new Error('network down'); } });
+  t('watch: a fetch that fails is status 2, not a change', down.status === 2 && /network down/.test(down.report), down.report);
+  const noBundle = await watchCode(snapshotFile(true), { fetchFn: stub('<html></html>', BUNDLE) });
+  t('watch: a page without the bundle is status 2', noBundle.status === 2 && /no base bundle/.test(noBundle.report), noBundle.report);
+  const tiny = await watchCode(snapshotFile(true), { fetchFn: stub(PAGE, 'blocked') });
+  t('watch: a bundle too small to be one (a block page) is status 2', tiny.status === 2 && /only 7 bytes/.test(tiny.report),
+    tiny.report);
+
+  const fresh = snapshotFile(false);
+  const first = await watchCode(fresh, { fetchFn: stub(PAGE, BUNDLE) });
+  t('watch: no stored public bundle yet is status 1', first.status === 1 && /no publicCode/.test(first.report), first.report);
+  const writing = snapshotFile(true);
+  await watchCode(writing, { write: true, fetchFn: stub(PAGE, changedBundle) });
+  const after = await watchCode(writing, { fetchFn: stub(PAGE, changedBundle) });
+  t('watch --write: the new counts are taken, the next check is status 0', after.status === 0, after.report);
+  const kept = JSON.parse(fs.readFileSync(writing, 'utf8')).code;
+  t('watch --write: the TV capture\'s code part is left alone',
+    Object.keys(TV_CODE.anchors).length > 0 && TV_CODE.anchors.blockAdoption.count === 1 &&
+    JSON.stringify(kept) === JSON.stringify(TV_CODE), JSON.stringify(kept).slice(0, 300));
+  const unwritten = snapshotFile(true);
+  const before = fs.readFileSync(unwritten, 'utf8');
+  await watchCode(unwritten, { fetchFn: stub(PAGE, changedBundle) });
+  t('watch without --write leaves the snapshot as it was', fs.readFileSync(unwritten, 'utf8') === before);
+
+  console.log(`\n${pass} passed, ${fail} failed`);
+  process.exit(fail ? 1 : 0);
+})().catch((e) => { console.log('FAIL harness: ' + (e && e.stack || e)); process.exit(1); });
