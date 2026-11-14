@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Added
 
++ **Fix Search Results Font** (UI Tweaks, on by default): the video titles on the search page use the TV's own font, LG Display, like every other page, instead of the Roboto that YouTube TV's CSS gives them there. From NicholasBly 0.8.5.
 + Shortcuts: a new action, **Open Long-Press Menu**, opens the focused video's long-press menu as a held OK would, with "Add to queue" when More Options in the Long-Press Menu is on. Phone remote apps that use LG's network remote API can only send whole key presses, so they could not open this menu. It is on no key by default. Requested in #143.
 
 ## Fixes
