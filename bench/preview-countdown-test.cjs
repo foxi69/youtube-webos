@@ -144,6 +144,22 @@ function addVideo(win, state) {
   video.dispatchEvent(new win.Event('ended'));
   t('a text YouTube wrote meanwhile is not overwritten on restore', badgeOf(fresh) === '4:01', badgeOf(fresh));
 
+  // The same, with a timeupdate between YouTube's write and the end: the
+  // countdown goes on, and YouTube's text, not the first one, comes back.
+  const again = addTile(win, 'gggggggggg1', '5:00');
+  state.id = 'gggggggggg1';
+  state.duration = 300;
+  state.playing = true;
+  again.focus();
+  tick(60);
+  t('precondition: counting on that tile', badgeOf(again) === '4:00', badgeOf(again));
+  again.querySelector('yt-formatted-string').textContent = '5:01';
+  tick(70);
+  t('a timeupdate after YouTube\'s write keeps counting', badgeOf(again) === '3:50', badgeOf(again));
+  state.playing = false;
+  video.dispatchEvent(new win.Event('ended'));
+  t('...and the end brings back YouTube\'s new text, not the first one', badgeOf(again) === '5:01', badgeOf(again));
+
   t('no page errors', errors.length === 0, errors.join(' | '));
   win.close();
   console.log(`\n${pass} passed, ${fail} failed`);

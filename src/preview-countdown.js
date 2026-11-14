@@ -68,6 +68,11 @@ function onTimeUpdate(evt) {
     restore();
     return;
   }
+  // YouTube wrote the badge anew while it counted down: that text is the
+  // tile's own from now on, and is what comes back when the preview stops.
+  if (current && current.badge === badge && current.shown !== null && badge.textContent !== current.shown) {
+    current = null;
+  }
   if (!current || current.badge !== badge) {
     restore();
     const text = (badge.textContent || '').trim();
