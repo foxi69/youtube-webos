@@ -2,7 +2,7 @@ import { configGetAll, configAddChangeListener } from './config';
 import { isShortsPage, isSearchPage } from './utils';
 import { getWebOSVersion } from './webos-utils';
 import { FetchRegistry } from './hooks/fetch';
-import { upgradeResponseThumbnails, thumbnailHookRequired } from './thumbnail-quality.js';
+import { upgradeResponseThumbnails } from './thumbnail-quality.js';
 import { raiseRowsAhead } from './rows-ahead.js';
 import { itemTitle, itemChannel, itemDurationSeconds, itemWatchedPercent, itemAgeDays, keepsWatchedVideos, playingPlaylistId, isMixItem } from './feed-filters.js';
 import { extendLongPressMenu } from './long-press-menu.js';
@@ -237,8 +237,8 @@ const BADGE_MEMBERS = 4;
 
 // configGetAll() returns the live reference, so this binds once at load.
 const cfgSnapshot = configGetAll();
-let anyFilterEnabled = false;
-// The same without Load Rows Ahead, which runs before everything else.
+// The filters that need a setting on; Load Rows Ahead, the left menu and the
+// preview fix run before them.
 let anyResponseFilterEnabled = false;
 let cfgEmojiFixEffective = false;
 
@@ -281,7 +281,7 @@ const cfgFlags = {
   deArrow: false,
   // Hide Left Menu Entries (sidebar.js): an entry hidden, or none learnt yet.
   sidebar: false,
-  // Open Playing Previews Without Reloading (allowPreviewHandover).
+  // Open Playing Previews Without Reloading (fixPreviewCommands).
   continuePreviews: false
 };
 
@@ -384,8 +384,6 @@ function recomputeFilterFlags() {
     cfgFlags.decorateItems ||
     cfgFlags.deArrow
   );
-  anyFilterEnabled = anyResponseFilterEnabled || cfgFlags.loadRowsAhead || cfgFlags.sidebar ||
-    cfgFlags.continuePreviews;
 
   Object.assign(cfgFlagsNoEmoji, cfgFlags);
   cfgFlagsNoEmoji.enableLegacyEmojiFix = false;
@@ -753,7 +751,7 @@ function hookedParse(text, reviver) {
   // (localStorage reads, config, per-tile metadata) and none of them can be a
   // filterable response, so those calls must cost as close to nothing as
   // possible on top of the native parse.
-  if (!isHooked || !anyFilterEnabled || typeof text !== 'string' || text.length < 500) {
+  if (!isHooked || typeof text !== 'string' || text.length < 500) {
     return origParse.call(this, text, reviver);
   }
   return parseAndFilter(this, text, reviver);
@@ -792,7 +790,7 @@ function filterSafely(data, text) {
  * parse. Returns whether the response was filtered.
  */
 export function filterParsedResponse(data) {
-  if (!isHooked || !anyFilterEnabled || !data || typeof data !== 'object') return false;
+  if (!isHooked || !data || typeof data !== 'object') return false;
   if (data.responseContext === undefined && data.continuationContents === undefined) return false;
   if (data.botguardData) return false;
   let text;
@@ -815,8 +813,10 @@ function filterResponse(data, text) {
   if (cfgFlags.loadRowsAhead) raiseRowsAhead(data, responseType);
   // The left menu, whatever else is on.
   if (cfgFlags.sidebar) applySidebar(data);
-  // One native search of the text: only a response with previews has the flag.
-  if (cfgFlags.continuePreviews && BLOCK_ADOPTION_RE.test(text)) allowPreviewHandover(data);
+  // No setting for the auto-open: one native search of the text, only a
+  // response with previews has these.
+  if (text.indexOf(AUTOTRANSITION_KEY) !== -1 || (cfgFlags.continuePreviews && BLOCK_ADOPTION_RE.test(text)))
+    fixPreviewCommands(data, cfgFlags.continuePreviews);
   if (!anyResponseFilterEnabled) return;
 
   // The legacy emoji fix walks every item it filters; a text without an
@@ -1752,6 +1752,14 @@ function keepOriginalAudio(holder) {
   formats.length = w;
 }
 
+// Tile previews never open full screen by themselves. Each preview's command
+// (startInlinePlaybackCommand) carries autotransitionDelayMs, 39000 on a webOS
+// 25 TV: that long after the tile is focused YouTube opens the video, and
+// forceSeamlessAutotransition lets the preview carry on as it. -1 is YouTube's
+// own "no timer"; without the seamless flag the preview fades out and stops at
+// its durationMs (40 s), as YouTube's previews without it do. Searched by name
+// through the whole response: where it sits is not in any schema here.
+//
 // Open Playing Previews Without Reloading. YouTube can hand a tile preview
 // that is playing over to the watch page: the same playback carries on, full
 // screen ("adoption"). It does so only where the preview's data does not say
@@ -1759,28 +1767,28 @@ function keepOriginalAudio(holder) {
 // stops it and loads the video again. The flag is cleared wherever the
 // response has it, however deep: where it sits is not in any schema here.
 // (From Zucchiniii's fork, fork watch #139.)
+const AUTOTRANSITION_KEY = '"autotransitionDelayMs"';
 const BLOCK_ADOPTION_RE = /"blockAdoption"\s*:\s*true/;
-const HANDOVER_MAX_DEPTH = 40;
+const PREVIEW_MAX_DEPTH = 40;
 
-function allowPreviewHandover(data) {
+function fixPreviewCommands(data, allowHandover) {
   // Flat queue, as in findObjects: [obj, depth, obj, depth, ...]
   const queue = [data, 0];
   let idx = 0;
-  let cleared = 0;
   while (idx < queue.length) {
     const obj = queue[idx++];
     const depth = queue[idx++];
-    if (obj.blockAdoption === true) {
-      obj.blockAdoption = false;
-      cleared++;
+    if (allowHandover && obj.blockAdoption === true) obj.blockAdoption = false;
+    if (obj.autotransitionDelayMs !== undefined) {
+      obj.autotransitionDelayMs = -1;
+      if (obj.forceSeamlessAutotransition) obj.forceSeamlessAutotransition = false;
     }
-    if (depth >= HANDOVER_MAX_DEPTH) continue;
+    if (depth >= PREVIEW_MAX_DEPTH) continue;
     for (const k in obj) {
       const val = obj[k];
       if (val && typeof val === 'object') queue.push(val, depth + 1);
     }
   }
-  if (DEBUG && cleared) debugLog(`Preview handover: blockAdoption cleared on ${cleared} preview(s)`);
 }
 
 function findObjects(haystack, needlesArray, maxDepth = 10) {
@@ -1822,29 +1830,12 @@ function findObjects(haystack, needlesArray, maxDepth = 10) {
 }
 
 /**
- * Is the JSON.parse hook needed at all?
- *
- * It carries independent things: the response filters (ads, Shorts, guest
- * prompts, trackingParams - all of them Ad Blocking's), the endcards and the
- * legacy emoji rewrite. Ad Blocking being off must not take the emoji fix down
- * with it - on webOS 3 and 4 that is what stops titles rendering as tofu
- * boxes, and it has its own setting. Load Rows Ahead is on the same hook.
+ * Is the JSON.parse hook needed? Always: besides the filters that have a
+ * setting it keeps tile previews from opening by themselves
+ * (fixPreviewCommands), which has none.
  */
 export function parseHookRequired() {
-  return !!(
-    cfgSnapshot[CONFIG_KEYS.ADBLOCK] ||
-    cfgSnapshot[CONFIG_KEYS.ENDCARDS] ||
-    cfgEmojiFixEffective ||
-    cfgSnapshot[CONFIG_KEYS.ROWS_AHEAD] ||
-    cfgSnapshot[CONFIG_KEYS.NAG_SCREENS] ||
-    cfgSnapshot[CONFIG_KEYS.AUTO_CAPTIONS] ||
-    cfgSnapshot[CONFIG_KEYS.ORIGINAL_AUDIO] ||
-    cfgSnapshot[CONFIG_KEYS.LONG_PRESS] ||
-    cfgSnapshot[CONFIG_KEYS.DEARROW] ||
-    thumbnailHookRequired() ||
-    sidebarHookRequired() ||
-    cfgSnapshot[CONFIG_KEYS.PREVIEW_HANDOVER]
-  );
+  return true;
 }
 
 /** Install or remove the JSON.parse hook to match the current settings. */
