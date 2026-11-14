@@ -290,7 +290,6 @@ const configOptions = new Map([
   ['enableOledCareMode', { default: false, desc: 'OLED-Care Mode (True Black UI)' }],
   ['videoShelfOpacity', { default: 100, desc: 'Video shelf opacity' }],
   ['fixMultilineTitles', { default: true, desc: 'Fix Multiline Titles' }],
-  ['fixSearchFont', { default: true, desc: 'Fix Search Results Font' }],
   // Takes YouTube's low-memory class off <body> (app-quality-fix.js).
   ['removeLowMemoryStyle', { default: true, desc: 'Remove Black Text Boxes' }],
   ['loadRowsAhead', { default: true, desc: 'Load Rows Ahead' }],
@@ -309,6 +308,8 @@ const configOptions = new Map([
   ['fitPageBesideGuide', { default: false, desc: 'Fit Page Beside Open Menu' }],
   // Left menu entries taken out, by browse id (sidebar.js).
   ['hiddenSidebarEntries', { default: [], desc: 'Hidden Left Menu Entries' }],
+  // webOS 3-4 only (emoji-font.js, adblock.js). No switch in the panel: on
+  // by default, and nothing is gained by turning it off.
   ['enableLegacyEmojiFix', { default: true, desc: 'Emoji + Characters Fix' }],
   ['hideGuestSignInPrompts', { default: false, desc: 'Guest Mode: Hide Sign-in Buttons' }],
   ['forceHighResVideo', { default: false, desc: 'Force Max Quality' }],

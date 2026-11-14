@@ -8,10 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Added
 
-+ **Fix Search Results Font** (UI Tweaks, on by default): the video titles on the search page use the TV's own font, LG Display, like every other page, instead of the Roboto that YouTube TV's CSS gives them there. From NicholasBly 0.8.5.
++ The video titles on the search page use the TV's own font, LG Display, like every other page, instead of the Roboto that YouTube TV's CSS gives them there. No setting: off an LG TV the font is missing and Roboto stays. From NicholasBly 0.8.5.
 + Tile previews count down: while a preview plays, the time on its tile shows what is left of the video, as on YouTube's web pages; YouTube TV left it at the full length. The tile's own time comes back when the preview stops, the focus moves on or the video opens. A live badge stays as it is.
 + Shortcuts: a new action, **Open Long-Press Menu**, opens the focused video's long-press menu as a held OK would, with "Add to queue" when More Options in the Long-Press Menu is on. Phone remote apps that use LG's network remote API can only send whole key presses, so they could not open this menu. It is on no key by default. Requested in #143.
 + **Open Playing Previews Without Reloading** (UI Tweaks, off by default, experimental): OK on a tile whose preview is already playing carries that playback on, full screen, instead of stopping it and loading the video again. YouTube hands a playing preview over to the watch page this way by itself after a few seconds; for OK the server forbids it on TVs with a flag on the preview's data (`blockAdoption`), which is cleared in the response, and YouTube's player resize animation is switched on, so the preview grows into the watch page. With Force Max Quality on, that setting no longer forces the top quality on a preview carried over this way (which loaded it again and undid the hand-over): YouTube raises its quality by itself, without a reload, about 25 s in. On a webOS 25 TV OK handed the preview over in 8 of 8 tries, with Force Max Quality on and off. Should YouTube rename the flag, the switch does nothing and videos open as they do today. From Zucchiniii's fork (fork watch #139), where it was measured on an LG C5.
+
+## Changed
+
++ The Emoji + Characters Fix switch is gone from UI Tweaks on webOS 3-4: the fix is on, as it was by default, and switching it off gained nothing. A TV where it had been switched off keeps it off until Reset All Settings.
 
 ## Fixes
 
