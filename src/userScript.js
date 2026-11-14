@@ -8,7 +8,6 @@ import './perf_mon.js';
 import './polyfills.js';
 import 'whatwg-fetch';
 import './playback-speed.js';
-import './speed-diag.js';
 import './adblock.js';
 import './hooks/json-stringify';
 import './force-codec.js';

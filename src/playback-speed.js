@@ -373,8 +373,6 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
     function onRateRequest() {}
 
   function onError(_err) {
-    // Diagnostic build only (#97): the MSE hook holds this function itself.
-    if (typeof win.__ytafSpeedDiag === 'function') win.__ytafSpeedDiag(_err);
     if (currentSpeed !== 1) {
       const previousSpeed = currentSpeed;
       currentSpeed = 1;
