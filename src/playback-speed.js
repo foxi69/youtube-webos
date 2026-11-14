@@ -191,6 +191,8 @@ export const SPEEDS = [1, 1.25, 1.5, 1.75, 2];
 
 export const RELOAD_DELAY_MS = 800;
 
+export const RESUME_AFTER_PAGE_MS = 1000;
+
 // Seconds of audio queued ahead on a TV without WebCodecs (webOS 4-6 and 22).
 // Its main thread can stay busy past the engine's 0.4 s (about every 5 s on a
 // webOS 5 TV), and the queue then ran out and clicked (#97). A/V sync reads
@@ -240,8 +242,41 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
     liveNoticeAt = Date.now();
   }
 
-    function getSpeed() {
-    return enabled() && isSupported() && !isLive() ? currentSpeed : 1;
+  // A tile preview (Home, a channel, a list) plays at 1x: the speed belongs to
+  // the watch page and Shorts, and is kept for the next video opened there.
+  // The page is read now, not from the page-update event, which comes later.
+  function onPlaybackPage() {
+    const body = win.document && win.document.body;
+    if (!body) return true;
+    const cl = body.classList;
+    return cl.contains(SELECTORS.WATCH_PAGE_CLASS) || cl.contains(SELECTORS.SHORTS_PAGE_CLASS);
+  }
+
+  function getSpeed() {
+    return enabled() && isSupported() && !isLive() && onPlaybackPage() ? currentSpeed : 1;
+  }
+
+  // A playback set up at 1x that goes on in the watch page: a preview YouTube
+  // carries on there, or a MediaSource made before the page turned. Loaded
+  // again at the speed once it plays, at most once per video.
+  let resumedVideoId = null;
+  function resumeOnPlaybackPage() {
+    if (getSpeed() === 1 || activeSink || pending) return false;
+    const video = win.document && win.document.querySelector('video');
+    if (!video || video.paused || video.readyState < 3) return false;
+    let id;
+    try {
+      const player = getPlayer();
+      const videoData = player && typeof player.getVideoData === 'function' ? player.getVideoData() : null;
+      id = videoData && videoData.video_id;
+    } catch {
+      // The player between two videos: the next 'playing' tries again.
+      return false;
+    }
+    if (!id || id === resumedVideoId) return false;
+    resumedVideoId = id;
+    scheduleReload(1, true);
+    return true;
   }
 
     function position(player) {
@@ -416,6 +451,7 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
     isSupported,
     isLive,
     getSpeed,
+    resumeOnPlaybackPage,
     setSpeed,
     cycle,
     step,
@@ -463,6 +499,23 @@ export function installSpeedFeature(win, { notify, configRead: cfgRead, getPlaye
       ? win.setInterval(() => bindPlayerRate(getPlayer(), ctrl), 1000)
       : null;
 
+  // Capture: media events do not bubble. A preview carried on into the watch
+  // page plays on without a new 'playing': the page change, a moment later
+  // (RESUME_AFTER_PAGE_MS), so that a video opened anew has its own
+  // MediaSource at the speed by then.
+  const resume = () => ctrl.resumeOnPlaybackPage();
+  let resumeTimer = null;
+  const onPageUpdate = ({ detail }) => {
+    if (!detail || !(detail.isWatch || detail.isShorts)) return;
+    if (resumeTimer !== null) win.clearTimeout(resumeTimer);
+    resumeTimer = win.setTimeout(() => {
+      resumeTimer = null;
+      resume();
+    }, RESUME_AFTER_PAGE_MS);
+  };
+  if (win.document) win.document.addEventListener('playing', resume, true);
+  win.addEventListener('ytaf-page-update', onPageUpdate);
+
   // No key listener of its own: the speed keys go through the button mapping
   // (speed_up / speed_down / speed_reset), so Yellow keeps YouTube's search.
   return {
@@ -475,6 +528,10 @@ export function installSpeedFeature(win, { notify, configRead: cfgRead, getPlaye
       restoreButton();
       restoreAudioOffer();
       if (bindTimer !== null) win.clearInterval(bindTimer);
+      if (win.document) win.document.removeEventListener('playing', resume, true);
+      win.removeEventListener('ytaf-page-update', onPageUpdate);
+      if (resumeTimer !== null) win.clearTimeout(resumeTimer);
+      resumeTimer = null;
     }
   };
 }

@@ -339,8 +339,11 @@ Ko-fi and project pages as QR codes.
   <img src="screenshots/fork-trail.svg" alt="Fox paw prints walking through the last three releases" width="100%">
 </p>
 
-Compared to upstream NicholasBly 0.8.4. Taken from webosbrew, NicholasBly's open pull requests and the other forks
-of the project; credits are in [CHANGELOG.md](CHANGELOG.md).
+Compared to upstream NicholasBly 0.8.5 (2026-11-13). Much of 0.8.5 came from mirijanristic's fork, as this fork's
+0.8.6 did, so what both now have is left out here: Load Rows Ahead, Smooth (SD) thumbnails, DeArrow, the date in
+the clock, Back closing the settings, and most fixes to SponsorBlock, Force Max Quality, Max Thumbnail Quality and
+Ad Blocking. Taken from webosbrew, NicholasBly's open pull requests and the other forks of the project; credits are
+in [CHANGELOG.md](CHANGELOG.md).
 
 **New**
 - Auto-Translate Subtitles to a language of your choice.
@@ -350,19 +353,19 @@ of the project; credits are in [CHANGELOG.md](CHANGELOG.md).
 - Bindable yellow button, Sleep Timer and Audio-Only Mode.
 - Magic Remote scroll-wheel seeking.
 - SponsorBlock picks up segments submitted while you watch: re-checked during playback.
-- Block webOS Cast Service toggle.
-- *0.8.6:* Remove Upcoming / Members-Only Videos filters, Load Rows Ahead, Smooth (SD) thumbnails, Turn On
-  Translated Subtitles Automatically, typing in search with a USB/Bluetooth keyboard, Jump to Live, Show Video
-  Quality on Start, a pointer button for the settings, Disable Animations and UI Brightness.
-- *0.8.7:* no "Are you still watching?" pause, no paid-promotion banner, a clock with the date that can stay on
-  during playback, remaining time and end time, Mute Video Previews and Don't Turn On Subtitles by Themselves;
-  about 5.6 KB smaller packages.
+- Block webOS Cast Service as a switch (upstream blocks it with none).
+- *0.8.6:* Remove Upcoming / Members-Only Videos filters, Turn On Translated Subtitles Automatically, typing in
+  search with a USB/Bluetooth keyboard, Jump to Live, Show Video Quality on Start, a pointer button for the
+  settings, Disable Animations and UI Brightness.
+- *0.8.7:* no "Are you still watching?" pause, no paid-promotion banner, a clock that can stay on during playback,
+  remaining time and end time, Mute Video Previews and Don't Turn On Subtitles by Themselves.
 - *0.8.8:* from MickLesk's fork, Prefer Original Audio over Dubbed, Feed Filters (watched videos, short
   videos, blocked channels, title keywords), "Block channel" / "Not interested" / "Don't recommend channel" in the
-  long-press menu, Start Page, a Left/Right seek step and DeArrow; from Dazzyelv's fork, Fit Page Beside Open Menu.
+  long-press menu, Start Page and a Left/Right seek step; from Dazzyelv's fork, Fit Page Beside Open Menu.
   The app waits for the network at launch instead of stopping on YouTube's error page.
-- *0.9.0:* Playback Speed Control, Show Video Quality Next to the Title, Show Watch Time With the Clock, Remove AI
-  Videos and Mark AI Videos, Hide Recommended Videos Under the Player, Search: Upload Date.
+- *0.9.0:* Playback Speed Control, on by default (upstream 0.8.5 has it as an experiment, off by default, on
+  webOS 23 and newer), Show Video Quality Next to the Title, Show Watch Time With the Clock, Remove AI Videos and
+  Mark AI Videos, Hide Recommended Videos Under the Player, Search: Upload Date.
 - *0.9.1:* the name YouTube Foxtended, the About tab with an update check and What's New, Show Most Replayed Graph
   Above the Seek Bar.
 - *0.9.2:* Reset All Settings, and a video queue from the long-press menu: queued videos play one after another,
@@ -376,23 +379,10 @@ of the project; credits are in [CHANGELOG.md](CHANGELOG.md).
 - Ad blocking holds up against YouTube's "property locker"; previously playback could stall a few seconds in.
 - webOS 25: the webOS Cast service is no longer blocked when a cast starts the app. Casting can still fail while
   the app is open; see *Known issues* in [CHANGELOG.md](CHANGELOG.md).
-- SponsorBlock: Non-Music segments are actually fetched; muted segments now mute; failed requests are retried.
-- Back closes the settings panel, and colour-button seeks no longer fire twice.
+- Colour-button seeks no longer fire twice.
 - The OLED overlay no longer hides the notifications.
-- Return YouTube Dislike no longer shows "1000k".
-- Force Max Quality no longer expires after a year, and resets when switched off.
-- 2026+ TVs are no longer detected as a simulator.
-- Fixes for the legacy build (webOS 3-6).
-- *0.8.6:* about 30 more, most of them from mirijanristic's fork:
-  - SponsorBlock: overlapping and nested segments, a stalled server blocking the fallback, segments cut short
-    by an early video length, the start-of-video chain, a late player, progress-bar watchers;
-  - Ad Blocking: continuations and action lists beside the main content, bare search results, expanded
-    shelves, filters that ran with Ad Blocking off;
-  - thumbnails stuck at low quality after a network error, held keys, burst seeks, Shorts hiding the
-    controls, the screensaver fix, Force Max Quality switched off from the home screen;
-  - the settings panel: the SponsorBlock switch could not be reached with the arrows; it is about 16 KiB
-    lighter without the spatial-navigation polyfill;
-  - webOS 3/4: focus highlight, emoji sequences; webOS 22+: "fancy font" channel names.
+- *0.8.6:* Ad Blocking on expanded shelves, held keys, Force Max Quality switched off from the home screen, and
+  "fancy font" channel names on webOS 22+.
 - *0.8.8:* about 20 more, found in a full test on a webOS 25 TV:
   - Force Max Quality stuck at 720p, and a pinned codec dropping every 60 fps format;
   - webOS 25: scroll-wheel seeking, Toggle Comments in other languages, Hide Sign-in Buttons in guest mode,
@@ -400,16 +390,13 @@ of the project; credits are in [CHANGELOG.md](CHANGELOG.md).
   - Shorts left in search results, the History page left unfiltered, DeArrow titles that never showed,
     the Highlight jump undone on a partly watched video;
   - opening the running app again no longer reloads it and jumps to Home.
-- *0.9.0:* the first home screen after a fresh start is filtered too; a channel tab on Subscriptions no longer
-  shows another channel's videos with Reduce Telemetry & Tracking on; no frozen picture after a video screensaver;
-  long settings pages scroll with the remote; playback speed keeps only the last 60 s of audio in memory.
+- *0.9.0:* the first home screen after a fresh start is filtered too; long settings pages scroll with the remote;
+  playback speed keeps only the last 60 s of audio in memory.
 - *0.9.1:* tile previews show their picture on webOS 3-6; playback speed on Dolby and surround videos, and at 1.25×
   on 2160p60; Force Max Quality on a video resumed part-way on webOS 25; DeArrow on live streams and its logo on
   every tile that needs it; Up and Down in the settings panel and in What's New.
-- *0.9.2:* SponsorBlock's switch applies at once; Auto Login no longer presses OK in the profile picker later on;
-  the settings open over the OLED blackout; the clock after standby; thumbnail tests; chapter skip on a bar without
-  chapters; AI, Shorts and live filters beside the player; the Premium logo stays after a resume; DeArrow frees its
-  thumbnail copies when switched off; a notification no longer shows twice.
+- *0.9.2:* the clock after standby; chapter skip on a bar without chapters; AI, Shorts and live filters beside the
+  player; DeArrow frees its thumbnail copies when switched off; a notification no longer shows twice.
 </details>
 
 <details>
