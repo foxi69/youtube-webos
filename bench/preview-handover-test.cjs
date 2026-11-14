@@ -30,7 +30,8 @@ const ALL_OFF = {
 };
 const LEARNT = { 'ytaf-sidebar-entries': JSON.stringify([{ id: 'FEtopics_music', title: 'Music' }]) };
 
-function boot(cfg, storage = {}) {
+// `tectonic`: YouTube's player config as the page had it before the bundle ran.
+function boot(cfg, storage = {}, tectonic) {
   const errors = [];
   const virtualConsole = new VirtualConsole();
   virtualConsole.on('jsdomError', (e) => errors.push(String(e && e.message)));
@@ -47,6 +48,7 @@ function boot(cfg, storage = {}) {
   win.localStorage.setItem('ytaf-configuration', win.JSON.stringify(cfg));
   for (const k of Object.keys(storage)) win.localStorage.setItem(k, storage[k]);
   applyChrome38Downgrade(win);
+  if (tectonic) win.tectonicConfig = tectonic;
   win.eval(fs.readFileSync(bundlePath, 'utf8'));
   return { win, errors };
 }
@@ -152,6 +154,42 @@ function panelSwitch(win) {
       box.click();
       const off = flags(win.JSON.parse(JSON.stringify(browse(true))));
       t('switched off again: the flag stays', off.every((f) => f === true), JSON.stringify(off));
+    }
+    t('no page errors', errors.length === 0, errors.join(' | '));
+  }
+
+  // ---- The player resize animation (player-animation.js) ----
+  {
+    const { win, errors } = boot({ continuePreviews: true }, {},
+      { featureSwitches: { supportsPlayerResizeAnimation: false, otherSwitch: 7 } });
+    const sw = () => win.tectonicConfig.featureSwitches;
+    t('animation, on: the page\'s config gets the switch', sw().supportsPlayerResizeAnimation === true, JSON.stringify(sw()));
+    t('animation, on: the other switches are kept', sw().otherSwitch === 7, JSON.stringify(sw()));
+    win.tectonicConfig = { featureSwitches: { supportsPlayerResizeAnimation: false } };
+    t('animation, on: a config YouTube puts in its place gets it too', sw().supportsPlayerResizeAnimation === true, JSON.stringify(sw()));
+    win.tectonicConfig = {};
+    t('animation, on: a config without featureSwitches gets them', !!win.tectonicConfig.featureSwitches &&
+      win.tectonicConfig.featureSwitches.supportsPlayerResizeAnimation === true, JSON.stringify(win.tectonicConfig));
+    t('no page errors', errors.length === 0, errors.join(' | '));
+  }
+  {
+    const { win } = boot({}, {}, { featureSwitches: { supportsPlayerResizeAnimation: false } });
+    t('animation, off: the page\'s value stays', win.tectonicConfig.featureSwitches.supportsPlayerResizeAnimation === false);
+    win.tectonicConfig = { featureSwitches: {} };
+    t('animation, off: a new config is left without the switch',
+      !('supportsPlayerResizeAnimation' in win.tectonicConfig.featureSwitches), JSON.stringify(win.tectonicConfig));
+  }
+  {
+    const { win, errors } = boot(ALL_OFF, LEARNT, { featureSwitches: {} });
+    const box = panelSwitch(win);
+    t('animation: precondition, the switch is in the panel, off', !!box && box.checked === false &&
+      !('supportsPlayerResizeAnimation' in win.tectonicConfig.featureSwitches));
+    if (box) {
+      box.click();
+      t('animation: switched on in the panel, on at once', win.tectonicConfig.featureSwitches.supportsPlayerResizeAnimation === true);
+      box.click();
+      t('animation: switched off, YouTube\'s config is as it was (no switch)',
+        !('supportsPlayerResizeAnimation' in win.tectonicConfig.featureSwitches), JSON.stringify(win.tectonicConfig));
     }
     t('no page errors', errors.length === 0, errors.join(' | '));
   }
