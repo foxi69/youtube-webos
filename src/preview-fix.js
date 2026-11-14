@@ -120,16 +120,23 @@ function stop() {
   unclear();
 }
 
-// A preview starting: clear at once, then keep up with YouTube's re-renders.
-function onPlaying(evt) {
-  if (!(evt.target instanceof HTMLVideoElement) || !enabled() || !isPreviewPage()) return;
+// A preview playing: clear at once, then keep up with YouTube's re-renders.
+function start() {
   tick();
   if (!timer) timer = setInterval(tick, TICK_MS);
 }
 
+function onPlaying(evt) {
+  if (!(evt.target instanceof HTMLVideoElement) || !enabled() || !isPreviewPage()) return;
+  start();
+}
+
+// Switched on, or back on a page with previews, while one is already playing:
+// clear it now, not at the next 'playing'.
 function sync() {
   document.documentElement.classList.toggle(ON_CLASS, enabled());
   if (!enabled() || !isPreviewPage()) stop();
+  else if (playingVideo()) start();
 }
 
 export function initPreviewFix() {

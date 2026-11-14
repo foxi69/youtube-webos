@@ -91,14 +91,18 @@ function panelSwitch(win) {
     const boxes = panelSwitch(b.win);
     t('webOS 23: one switch in the panel, off', boxes.length === 1 && boxes[0].checked === false, String(boxes.length));
     if (boxes.length === 1) {
+      // A preview already playing while it is off: switching on clears it
+      // without waiting for another 'playing'.
+      t('webOS 23, off: a playing preview is left as it is', !(await preview(b)));
       boxes[0].click();
       await wait(20);
       t('webOS 23: switched on in the panel, on at once', on(b.win));
+      t('...and the preview already playing is cleared at once', b.cover.classList.contains('ytaf-pfix-cleared'));
       await wait(400);
       t('...and stored under its own key', JSON.parse(b.win.localStorage.getItem('ytaf-configuration')).fixBlackPreviews22 === true);
       boxes[0].click();
       await wait(20);
-      t('webOS 23: switched off again', !on(b.win));
+      t('webOS 23: switched off again', !on(b.win) && !b.cover.classList.contains('ytaf-pfix-cleared'));
     }
   }
   // ---- webOS 3-6 ----
