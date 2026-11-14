@@ -9,6 +9,7 @@ import './polyfills.js';
 import 'whatwg-fetch';
 import './playback-speed.js';
 import './adblock.js';
+import './player-animation.js';
 import './hooks/json-stringify';
 import './force-codec.js';
 import './subtitle-translate.js';
