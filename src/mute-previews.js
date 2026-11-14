@@ -30,12 +30,15 @@ function update(video) {
   }
 }
 
-// Capture: media events do not bubble.
+// Capture: media events do not bubble. volumechange too: YouTube writes its own
+// unmuted state back on a volume change, at the start of a preview and on each
+// step of its fade-out at the end, and the preview was heard each time.
 const onPlay = (evt) => {
   if (evt.target instanceof HTMLVideoElement) update(evt.target);
 };
 document.addEventListener('play', onPlay, true);
 document.addEventListener('playing', onPlay, true);
+document.addEventListener('volumechange', onPlay, true);
 
 window.addEventListener('ytaf-page-update', () => update(getVideo()));
 configAddChangeListener('mutePreviews', () => update(isPreview() ? getVideo() : null));

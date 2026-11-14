@@ -104,7 +104,8 @@ export const shortcutActions = {
   speed_down: 'Playback Speed -',
   speed_reset: 'Playback Speed Reset (1x)',
   queue_next: 'Play Next in Queue',
-  queue_clear: 'Clear Queue'
+  queue_clear: 'Clear Queue',
+  long_press_menu: 'Open Long-Press Menu'
 };
 
 

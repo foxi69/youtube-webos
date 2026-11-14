@@ -800,11 +800,6 @@ export function settledThumbnailUrl(url) {
   return buildUrl(match[1], QUALITY_NAMES[settled], settled <= GUARANTEED_RANK);
 }
 
-/** Whether adblock.js needs to keep its JSON.parse hook installed for us. */
-export function thumbnailHookRequired() {
-  return enabled;
-}
-
 // --- Verification ---------------------------------------------------------
 
 /**
