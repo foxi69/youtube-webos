@@ -219,6 +219,18 @@ const mdhdTimescale = (u8) => {
     t('video: an init split across appends is reported and appended unchanged',
       env.errors.length === 2 && /split/.test(env.errors[0].message) && /mdhd/.test(env.errors[1].message) &&
         v.appends[2].length === 20 && v.appends[3].length === 30, env.errors.map((e) => e.message).join(' | '));
+    // webOS 5 (#97): a piece from the middle of a WebM cluster or an MP4
+    // fragment, whose bytes read as an element or box too big for a number.
+    // Media to append unchanged, not an error that drops the speed to 1x.
+    env.errors.length = 0;
+    const midWebm = Uint8Array.from([0x01, 0x40, 0, 0, 0, 0, 0, 0, 0x81, 1, 2, 3]);
+    webm.appendBuffer(midWebm);
+    const midMp4 = Uint8Array.from([0, 0, 0, 1, 0x6d, 0x64, 0x61, 0x74, 0xff, 0xff, 0xff, 0xff, 0, 0, 0, 0, 9, 9]);
+    v.appendBuffer(midMp4);
+    t('video: a mid-segment piece is appended unchanged, with no error',
+      env.errors.length === 0 && webm.appends[1].length === midWebm.length && webm.appends[1].every((b, i) => b === midWebm[i]) &&
+        v.appends[4].length === midMp4.length && v.appends[4].every((b, i) => b === midMp4[i]),
+      env.errors.map((e) => e.message).join(' | '));
     v.timestampOffset = 15;
     t('video: timestampOffset in content time (15 s is 10 s of element time)', v._tso === 10 && v.timestampOffset === 15);
     v.appendWindowEnd = Infinity;
