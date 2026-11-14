@@ -298,7 +298,6 @@ The actions each key can take are listed under [Remote control](#-remote-control
 | Fit Page Beside Open Menu | Off |
 | Remove Black Text Boxes | On |
 | Fix Multiline Titles | On |
-| Fix Search Results Font (video titles on the search page in the TV's font) | On |
 | New Liquid Glass UI | Off |
 | Start Page (Home, Subscriptions, Library, History) | Home |
 | More Options in the Long-Press Menu | Off |
