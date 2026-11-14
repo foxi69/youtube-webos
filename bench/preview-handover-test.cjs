@@ -201,7 +201,8 @@ function panelSwitch(win) {
       win.tectonicConfig.featureSwitches.supportsPlayerResizeAnimation === false);
     if (box) {
       box.click();
-      win.tectonicConfig = win.tectonicConfig;
+      const same = win.tectonicConfig;
+      win.tectonicConfig = same;
       t('animation, same config given back: still on', win.tectonicConfig.featureSwitches.supportsPlayerResizeAnimation === true);
       box.click();
       t('animation, same config given back, switched off: YouTube\'s false is back',
