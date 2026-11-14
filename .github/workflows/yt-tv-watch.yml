@@ -42,8 +42,9 @@ jobs:
           cat report.md >> "$GITHUB_STEP_SUMMARY"
           echo "status=$status" >> "$GITHUB_OUTPUT"
           echo "report=$(base64 -w0 report.md)" >> "$GITHUB_OUTPUT"
-          # Not fetched: a red run, no issue (YouTube may have turned the runner away).
-          if [ "$status" = 2 ]; then exit 1; fi
+          # 0 no change, 1 changed. Anything else (2 not fetched, a crash, a kill):
+          # a red run, no issue (YouTube may have turned the runner away).
+          if [ "$status" != 0 ] && [ "$status" != 1 ]; then exit 1; fi
 
   report:
     needs: check

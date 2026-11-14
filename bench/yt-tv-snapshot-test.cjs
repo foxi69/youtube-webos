@@ -76,11 +76,13 @@ t('the main bundle\'s URL is the base one with m=main',
   mainBundleUrl(PAGE) === 'https://www.youtube.com' + BASE.replace(/m=base$/, 'm=main'), String(mainBundleUrl(PAGE)));
 t('a page without a base bundle gives none', mainBundleUrl('<html>nothing</html>') === null);
 
+// The TV capture's own counts, as a real snapshot holds them: --write must not touch these.
+const TV_CODE = { bundle: '_excm_main_m_main.js', bytes: CODE.length, anchors: codeAnchors(CODE) };
 const pad = 'x'.repeat(120000);
 const BUNDLE = pad + CODE;
 function snapshotFile(withPublic) {
   const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yt-snap-watch-')), 'snap.json');
-  const snap = { taken: '2026-11-14', code: { anchors: {} } };
+  const snap = { taken: '2026-11-14', code: TV_CODE };
   if (withPublic) snap.publicCode = { taken: '2026-11-14', bytes: BUNDLE.length, anchors: codeAnchors(BUNDLE) };
   fs.writeFileSync(file, JSON.stringify(snap));
   return file;
@@ -112,8 +114,10 @@ const stub = (page, bundle) => async (url) => (url.indexOf('m=main') !== -1 ? bu
   await watchCode(writing, { write: true, fetchFn: stub(PAGE, changedBundle) });
   const after = await watchCode(writing, { fetchFn: stub(PAGE, changedBundle) });
   t('watch --write: the new counts are taken, the next check is status 0', after.status === 0, after.report);
+  const kept = JSON.parse(fs.readFileSync(writing, 'utf8')).code;
   t('watch --write: the TV capture\'s code part is left alone',
-    JSON.stringify(JSON.parse(fs.readFileSync(writing, 'utf8')).code) === '{"anchors":{}}');
+    Object.keys(TV_CODE.anchors).length > 0 && TV_CODE.anchors.blockAdoption.count === 1 &&
+    JSON.stringify(kept) === JSON.stringify(TV_CODE), JSON.stringify(kept).slice(0, 300));
   const unwritten = snapshotFile(true);
   const before = fs.readFileSync(unwritten, 'utf8');
   await watchCode(unwritten, { fetchFn: stub(PAGE, changedBundle) });
