@@ -3,7 +3,8 @@ import { isWatchPage, isShortsPage } from './utils.js';
 import { isLegacyWebOS } from './webos-utils.js';
 
 /**
- * Fix Black Tile Previews (webOS 3-6, #67).
+ * Fix Black Tile Previews (#67): on by default on webOS 3-6, off on webOS 22
+ * and newer, where it is a switch of its own (fixBlackPreviews22).
  *
  * A tile preview does not play inside the tile: YouTube's one full-screen
  * player is scaled down onto it, under the browse page. On webOS the video is
@@ -17,6 +18,10 @@ import { isLegacyWebOS } from './webos-utils.js';
  * that draw anything of their own (a background colour or image, a shadow, an
  * image) lose it; when it stops or the page changes, they get it back. On the
  * C9 that is the one surface page; nothing else on the tile changes.
+ *
+ * On webOS 22 and newer previews show their picture (a webOS 25 TV), but a
+ * webOS 26 OLED C4 was reported with the sound only (NicholasBly#221): the
+ * switch is there for such a TV.
  */
 
 const CLEAR_CLASS = 'ytaf-pfix-cleared';
@@ -28,7 +33,7 @@ let timer = null;
 let cleared = [];
 
 const isPreviewPage = () => !isWatchPage() && !isShortsPage();
-const enabled = () => legacy && !!configRead('fixBlackPreviews');
+const enabled = () => !!configRead(legacy ? 'fixBlackPreviews' : 'fixBlackPreviews22');
 
 function playingVideo() {
   const videos = document.querySelectorAll('video');
@@ -129,9 +134,8 @@ function sync() {
 
 export function initPreviewFix() {
   legacy = isLegacyWebOS();
-  if (!legacy) return;
   document.addEventListener('playing', onPlaying, true);
   window.addEventListener('ytaf-page-update', sync);
-  configAddChangeListener('fixBlackPreviews', sync);
+  configAddChangeListener(legacy ? 'fixBlackPreviews' : 'fixBlackPreviews22', sync);
   sync();
 }
