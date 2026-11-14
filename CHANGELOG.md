@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## Added
 
 + Shortcuts: a new action, **Open Long-Press Menu**, opens the focused video's long-press menu as a held OK would, with "Add to queue" when More Options in the Long-Press Menu is on. Phone remote apps that use LG's network remote API can only send whole key presses, so they could not open this menu. It is on no key by default. Requested in #143.
++ **Open Playing Previews Without Reloading** (UI Tweaks, off by default, experimental): OK on a tile whose preview is already playing carries that playback on, full screen, instead of stopping it and loading the video again. YouTube hands a playing preview over to the watch page this way by itself after a few seconds; for OK the server forbids it on TVs with a flag on the preview's data (`blockAdoption`), which is cleared in the response, and YouTube's player resize animation is switched on, so the preview grows into the watch page. With Force Max Quality on, that setting no longer forces the top quality on a preview carried over this way (which loaded it again and undid the hand-over): YouTube raises its quality by itself, without a reload, about 25 s in. On a webOS 25 TV OK handed the preview over in 8 of 8 tries, with Force Max Quality on and off. Should YouTube rename the flag, the switch does nothing and videos open as they do today. From Zucchiniii's fork (fork watch #139), where it was measured on an LG C5.
 
 ## Fixes
 

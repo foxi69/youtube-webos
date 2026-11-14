@@ -1200,6 +1200,8 @@ function createOptionsPanel() {
   	  createPreviewControl('forcePreviews'),
   	  createElement('div', { text: 'Sets YouTube\'s own "previews with sound" setting on app load. No effect where YouTube shows no previews', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   	  createConfigCheckbox('mutePreviews'),
+  	  createConfigCheckbox('continuePreviews'),
+  	  createElement('div', { text: 'OK on a tile whose preview is playing carries that playback on, full screen, instead of loading the video again', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   	  ...(isLegacyWebOS() ? [
   	    createConfigCheckbox('fixBlackPreviews'),
   	    createElement('div', { text: 'Shows the picture of a tile preview that plays its sound over a black tile (webOS 3-6)', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } })
@@ -2525,6 +2527,8 @@ configAddChangeListener('disableAutoCaptions', () => syncAdblockHook());
 configAddChangeListener('forceOriginalAudio', () => syncAdblockHook());
 configAddChangeListener('extendLongPressMenu', () => syncAdblockHook());
 configAddChangeListener('enableDeArrow', () => syncAdblockHook());
+// Open Playing Previews Without Reloading clears a flag in the same hook.
+configAddChangeListener('continuePreviews', () => syncAdblockHook());
 
 configAddChangeListener('videoShelfOpacity', () => {
   // Cheap update — rewrites the one-rule opacity <style> and toggles the

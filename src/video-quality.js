@@ -46,8 +46,26 @@ const STATE_PLAYING = 1;
 const STATE_BUFFERING = 3;
 // const STATE_CUED = 5;
 
+// A tile preview the watch page carries on (Open Playing Previews Without
+// Reloading) keeps playing; forcing the top quality on it would load the
+// video again, the very reload the hand-over saves. YouTube raises its quality
+// by itself, without a reload (on a webOS 25 TV: from the preview's 1080p to
+// 2160p about 25 s in). The next video loaded is forced as before.
+let previewSrc = '';
+let carriedOver = false;
+document.addEventListener('playing', (evt) => {
+  const video = evt.target;
+  if (video instanceof HTMLVideoElement && !isWatchPage()) previewSrc = video.currentSrc;
+}, true);
+// A new source on the element: whatever plays next was loaded, not carried over.
+document.addEventListener('emptied', () => { carriedOver = false; }, true);
+window.addEventListener('ytaf-page-update', ({ detail }) => {
+  const video = detail && detail.isWatch ? getVideo() : null;
+  carriedOver = !!(video && !video.paused && previewSrc && video.currentSrc === previewSrc);
+});
+
 function isForceEnabled() {
-  return _shouldForce && (!player?.isInline || !player.isInline()) && !speedCapsQuality();
+  return _shouldForce && !carriedOver && (!player?.isInline || !player.isInline()) && !speedCapsQuality();
 }
 
 async function ensurePlaybackStarts() {

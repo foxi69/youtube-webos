@@ -95,7 +95,8 @@ const CONFIG_KEYS = {
   ORIGINAL_AUDIO: 'forceOriginalAudio',
   LONG_PRESS: 'extendLongPressMenu',
   DEARROW: 'enableDeArrow',
-  HIDDEN_SIDEBAR: 'hiddenSidebarEntries'
+  HIDDEN_SIDEBAR: 'hiddenSidebarEntries',
+  PREVIEW_HANDOVER: 'continuePreviews'
 };
 
 // A video counts as watched from this much of its red progress bar.
@@ -279,7 +280,9 @@ const cfgFlags = {
   // DeArrow's titles and thumbnails (dearrow/), after the filters.
   deArrow: false,
   // Hide Left Menu Entries (sidebar.js): an entry hidden, or none learnt yet.
-  sidebar: false
+  sidebar: false,
+  // Open Playing Previews Without Reloading (fixPreviewCommands).
+  continuePreviews: false
 };
 
 // Set per response by filterResponse(): the pages that list videos because
@@ -357,6 +360,7 @@ function recomputeFilterFlags() {
   cfgFlags.decorateItems = cfgFlags.extendLongPress;
   // A UI setting, not a filter: on with Ad Blocking off too.
   cfgFlags.sidebar = sidebarHookRequired();
+  cfgFlags.continuePreviews = !!cfgSnapshot[CONFIG_KEYS.PREVIEW_HANDOVER];
 
   anyResponseFilterEnabled = !!(
     cfgFlags.enableAdBlock ||
@@ -809,8 +813,10 @@ function filterResponse(data, text) {
   if (cfgFlags.loadRowsAhead) raiseRowsAhead(data, responseType);
   // The left menu, whatever else is on.
   if (cfgFlags.sidebar) applySidebar(data);
-  // No setting: one native search of the text, only a response with previews has it.
-  if (text.indexOf(AUTOTRANSITION_KEY) !== -1) stopPreviewAutoOpen(data);
+  // No setting for the auto-open: one native search of the text, only a
+  // response with previews has these.
+  if (text.indexOf(AUTOTRANSITION_KEY) !== -1 || (cfgFlags.continuePreviews && BLOCK_ADOPTION_RE.test(text)))
+    fixPreviewCommands(data, cfgFlags.continuePreviews);
   if (!anyResponseFilterEnabled) return;
 
   // The legacy emoji fix walks every item it filters; a text without an
@@ -1753,16 +1759,26 @@ function keepOriginalAudio(holder) {
 // own "no timer"; without the seamless flag the preview fades out and stops at
 // its durationMs (40 s), as YouTube's previews without it do. Searched by name
 // through the whole response: where it sits is not in any schema here.
+//
+// Open Playing Previews Without Reloading. YouTube can hand a tile preview
+// that is playing over to the watch page: the same playback carries on, full
+// screen ("adoption"). It does so only where the preview's data does not say
+// blockAdoption, and the server says it to TVs, so OK on a playing preview
+// stops it and loads the video again. The flag is cleared wherever the
+// response has it, however deep: where it sits is not in any schema here.
+// (From Zucchiniii's fork, fork watch #139.)
 const AUTOTRANSITION_KEY = '"autotransitionDelayMs"';
+const BLOCK_ADOPTION_RE = /"blockAdoption"\s*:\s*true/;
 const PREVIEW_MAX_DEPTH = 40;
 
-function stopPreviewAutoOpen(data) {
+function fixPreviewCommands(data, allowHandover) {
   // Flat queue, as in findObjects: [obj, depth, obj, depth, ...]
   const queue = [data, 0];
   let idx = 0;
   while (idx < queue.length) {
     const obj = queue[idx++];
     const depth = queue[idx++];
+    if (allowHandover && obj.blockAdoption === true) obj.blockAdoption = false;
     if (obj.autotransitionDelayMs !== undefined) {
       obj.autotransitionDelayMs = -1;
       if (obj.forceSeamlessAutotransition) obj.forceSeamlessAutotransition = false;
@@ -1816,7 +1832,7 @@ function findObjects(haystack, needlesArray, maxDepth = 10) {
 /**
  * Is the JSON.parse hook needed? Always: besides the filters that have a
  * setting it keeps tile previews from opening by themselves
- * (stopPreviewAutoOpen), which has none.
+ * (fixPreviewCommands), which has none.
  */
 export function parseHookRequired() {
   return true;
