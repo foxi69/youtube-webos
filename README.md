@@ -293,10 +293,12 @@ The actions each key can take are listed under [Remote control](#-remote-control
 | UI Brightness (dims menus and thumbnails, never the video) | 100% |
 | Previews With Sound (Disabled, Force On, Force Off; sets YouTube's own setting) | Disabled |
 | Mute Video Previews | Off |
+| Open Playing Previews Without Reloading (OK on a playing preview carries it on, full screen) | Off |
 | Fix Black Tile Previews (webOS 22 and newer: turn on only for a preview with sound over a black tile) | On on webOS 3-6, Off on webOS 22 and newer |
 | Fit Page Beside Open Menu | Off |
 | Remove Black Text Boxes | On |
 | Fix Multiline Titles | On |
+| Fix Search Results Font (video titles on the search page in the TV's font) | On |
 | New Liquid Glass UI | Off |
 | Emoji + Characters Fix (webOS 3-4 only) | On |
 | Start Page (Home, Subscriptions, Library, History) | Home |

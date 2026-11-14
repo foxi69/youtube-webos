@@ -135,5 +135,63 @@
     "contentId,customData,header,metadata,onFirstVisibleCommand,onFocusCommand,onLongPressCommand,onSelectCommand,style,trackingParams": 2,
     "contentId,contentType,header,metadata,onFocusCommand,onSelectCommand,style,trackingParams": 1,
     "contentId,contentType,header,metadata,onSelectCommand,style,trackingParams": 1
+  },
+  "publicCode": {
+    "taken": "2026-11-14",
+    "bytes": 2005334,
+    "anchors": {
+      "blockAdoption": {
+        "count": 5,
+        "snippet": "o().getState().playback,c,d,e,f,g,h,k,l;return!((c=a.onMountBehavior)==null?0:c.blockAdoption)&&b.isPlaying&&_.iM(_.E((d=b.config)==null?void 0:(e=d.Ip)==null?void 0:e.playbackEndpoint,_.Xi),_.E(a.playbackEndpoint,_.Xi),!0)&&(((f=b.config)="
+      },
+      "blockAdoptionFromWatch": {
+        "count": 1,
+        "snippet": "a}))}; lsb=function(a,b,c){if(_.H(\"disableInlineAdoption\",!1)||_.Orb(b,a.Oa)||b.blockAdoptionFromWatch||!a.J.isPlaying||a.qa.xd!==null||a.isActive()||a.F.kC!==3)return!1;var d;if(_.tr(_.E((d=a.ra)==null?void 0:d.command,_.Ro))&&c&&c===\"back"
+      },
+      "forceSeamlessAutotransition": {
+        "count": 3,
+        "snippet": "DumpException(e)} try{ var rM,Qrb;_.Orb=function(a,b){return(b===void 0?0:b)&&a.forceSeamlessAutotransition?!1:!!a.blockAdoption};_.pM=function(a){if(a)return a=a.getBoundingClientRect(),{left:a.left,top:a.top,width:a.width,height:a.height}"
+      },
+      "autotransitionDelayMs": {
+        "count": 4,
+        "snippet": ";l=_.H(\"supportsPlayerResizeAnimation\",!1);_.vM(this,{y3:l,gba:_.tr(d)});c=c&&a.autotransitionDelayMs!==void 0&&a.autotransitionDelayMs!==-1?Rrb:void 0;this.ba=fsb(this,a,d,b,c);this.na=fsb(this,a,d,b,c);a={Rc:this.A.F,Xd:\"contain\",transiti"
+      },
+      "disableInlineAdoption": {
+        "count": 2,
+        "snippet": "ugSettingsMetadata:zz,disableDialWatchDeeplink:Az,disableForceVoiceIncapable:Bo,disableInlineAdoption:Tv,disableLifecycleLogging:Bz,disableLogEventSliHoldback:Uv,disableMdxFlowLogging:Dm,disablePrettyPrintInnertubeResponses:ZF,disableServic"
+      },
+      "restartPlaybackBeforeSeconds": {
+        "count": 1,
+        "snippet": "eo&&e&&_.op()===(e== null?void 0:e.videoId)){g=e.startTimeSeconds||0;var h=g+(a.restartPlaybackBeforeSeconds||-Infinity);h=this.J.isLive||this.B&&this.J.getCurrentTime()<h;var k=Math.max(this.J.getCurrentTime(),this.kb,g);e.startTimeSeconds"
+      },
+      "supportsPlayerResizeAnimation": {
+        "count": 5,
+        "snippet": "pan_tracing_snapshot_interval_ms),spanTracingTechnique:m.span_tracing_technique,supportsPlayerResizeAnimation:xk&&!!m.supports_player_resize_animation,tokenRefreshUrl:m.token_refresh_url,topicPageAutoOpenBounceThresholdSeconds:js(m.topic_pa"
+      },
+      "setInlineAutotransitionTime": {
+        "count": 3,
+        "snippet": "on(a){var b=this;return(0,_.Bp)().then(function(c){b.LA=a;c.setInline(a)})};_.n.setInlineAutotransitionTime=function(a,b){return(0,_.Bp)().then(function(c){var d;(d=c.setInlineAutotransitionTime)==null||d.call(c,a,b)})};_.n.setMinimized=fun"
+      },
+      "startInlinePlaybackCommand": {
+        "count": 5,
+        "snippet": "ommand\");var aCa=new _.V(\"showPinPairingChallengeOverlayCommand\");_.Wt=new _.V(\"startInlinePlaybackCommand\");var LCa=new _.V(\"startPlaybackPreviewCommand\");var nCa=new _.V(\"submitPurchaseCommand\");var $Ca=new _.V(\"submitYouthPageFormDataCom"
+      },
+      "graftPlayback": {
+        "count": 6,
+        "snippet": "ion(k){return b.Sz(k)});this.oQ(a);this.lk.reset();this.YB.set(null);a.ys||this.graftPlayback();var h=_.Gw([c,d,e,_.Ip().j.getFlag(_.APa)&&_.rk(this.Ia),g]);this.tn=h;return h.then(function(k){b.Re=a;var l=k[0],m=k[1],p=k[2];k=_.lE(a,m,p?p."
+      },
+      "preloadWatchPageFromPreviewDelayMs": {
+        "count": 3,
+        "snippet": "_phase_3, playbackPreviewDetachOnUnmount:!!e.playback_preview_detach_on_unmount,preloadWatchPageFromPreviewDelayMs:Jr(e.preload_watch_page_from_preview_delay_ms),preventOverscanZeroSizeItems:!!e.prevent_overscan_zero_size_items,renderShorts"
+      },
+      "fadeoutDurationMs": {
+        "count": 3,
+        "snippet": "ateChange(function(g){g===1&&(g=a.J.isLive?a.J.getCurrentTime():0,_.csb(a,c+g,b.fadeoutDurationMs,f),e&&e>0&&(a.P=setTimeout(function(){a.J.stop();a.P=0;_.uM(a)},e)),a.ya())}):(_.csb(a,c,b.fadeoutDurationMs,f),e&&e>0&&(a.P=setTimeout(functi"
+      },
+      "inline_playback": {
+        "count": 1,
+        "snippet": "o\"&&(c.rco=\"1\");a.eventLabel&&(c.el=a.eventLabel);a.isInlinePlaybackNoAd&&(c.is_inline_playback_no_ad=\"1\");a.isLivingRoomDeeplink&&(c.is_living_room_deeplink=!0);a.Vf&&(c.pause_at_start=!0);_.H(\"enableHighQualityItag141AudioFormat\",!1)&&(c."
+      }
+    }
   }
 }

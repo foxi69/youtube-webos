@@ -290,6 +290,7 @@ const configOptions = new Map([
   ['enableOledCareMode', { default: false, desc: 'OLED-Care Mode (True Black UI)' }],
   ['videoShelfOpacity', { default: 100, desc: 'Video shelf opacity' }],
   ['fixMultilineTitles', { default: true, desc: 'Fix Multiline Titles' }],
+  ['fixSearchFont', { default: true, desc: 'Fix Search Results Font' }],
   // Takes YouTube's low-memory class off <body> (app-quality-fix.js).
   ['removeLowMemoryStyle', { default: true, desc: 'Remove Black Text Boxes' }],
   ['loadRowsAhead', { default: true, desc: 'Load Rows Ahead' }],
@@ -298,6 +299,8 @@ const configOptions = new Map([
   ['removeBlackBorders', { default: false, desc: 'New Liquid Glass UI' }],
   ['forcePreviews', { default: 'disabled', desc: 'Previews With Sound' }],
   ['mutePreviews', { default: false, desc: 'Mute Video Previews' }],
+  // OK on a playing preview carries it on instead of loading the video again (adblock.js).
+  ['continuePreviews', { default: false, desc: 'Open Playing Previews Without Reloading' }],
   // webOS 3-6 only (preview-fix.js, #67).
   ['fixBlackPreviews', { default: true, desc: 'Fix Black Tile Previews' }],
   // The same on webOS 22 and newer, where it is off by default: a key of its

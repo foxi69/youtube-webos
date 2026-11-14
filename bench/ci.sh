@@ -94,6 +94,7 @@ run feed-features-test "$B"
 run pivot-filters-test "$B"
 run settings-reset-test "$B"
 run upstream-fixes-test "$B"
+run preview-handover-test "$B"
 run dearrow-test "$B" legacy
 run ai-label-test
 run most-replayed-test
@@ -119,6 +120,7 @@ run search-filter-test "$B"
 run sponsorblock-labels-test "$B"
 run low-memory-style-test "$B"
 run review-fixes-test "$B"
+run search-font-test "$B"
 run preview-autoopen-test "$B"
 run black-previews-test "$B"
 
@@ -131,6 +133,7 @@ if [ ${#env[@]} -eq 0 ]; then
   run dearrow-test "$B" modern
   run ai-filter-test "$B" modern
   run quality-reload-test "$B"
+  run handover-quality-test "$B"
 
   # perf_mon is a dev tool, not part of the app.
   build --env perf
