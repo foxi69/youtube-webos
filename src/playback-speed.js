@@ -193,6 +193,13 @@ export const RELOAD_DELAY_MS = 800;
 
 export const RESUME_AFTER_PAGE_MS = 1000;
 
+// Seconds of audio queued ahead on a TV without WebCodecs (webOS 4-6 and 22).
+// Its main thread can stay busy past the engine's 0.4 s (about every 5 s on a
+// webOS 5 TV), and the queue then ran out and clicked (#97). A/V sync reads
+// the scheduled times, not the queue's length; a pause or a seek still stops
+// the queued audio at once. Small drift corrections are heard later.
+const LEGACY_LEAD_S = 1;
+
 // Above this speed the video plays at 1080p at most: the TV cannot decode
 // 2160p fast enough (at 1.5x it dropped 85% of the frames and reached 1.43x; at
 // 1.25x YouTube fell to 480p and it reached 1.17x).
@@ -423,7 +430,7 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
   function createAudioSink({ speed, element }) {
     releaseAudioSink();
 
-    const engine = new AudioEngine({ win, speed, onError, codecs });
+    const engine = new AudioEngine({ win, speed, onError, codecs, leadS: codecs ? LEGACY_LEAD_S : undefined });
     if (element) {
       engine.attachVideo(element);
       engine.setVolume(element.volume, element.muted);

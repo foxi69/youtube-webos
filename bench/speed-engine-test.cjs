@@ -134,7 +134,29 @@ function setup(AudioEngine, { speed = 1.5, start = 0, videoRate = 1, errors = []
     }
   };
 
-  return { engine, ctx, video, push, run, decoded, decoders, errors, win, cleared: () => cleared };
+  /**
+   * Like run(), but currentTime shows the video's position only every few
+   * ticks (`steps`, used in turn), as on webOS 4-6 (#97): in between it stays
+   * on the last value while the picture plays on. Start it on a fresh setup.
+   */
+  let trueT = start;
+  let sinceShown = 0;
+  let step = 0;
+  const runSteps = (seconds, steps, { frozen = false } = {}) => {
+    const n = Math.round(seconds / TICK_S);
+    for (let i = 0; i < n; i++) {
+      ctx.currentTime += TICK_S;
+      if (!video.paused && !frozen) trueT += TICK_S * speed;
+      if (++sinceShown >= steps[step % steps.length]) {
+        video.currentTime = trueT;
+        sinceShown = 0;
+        step++;
+      }
+      tickFn();
+    }
+  };
+
+  return { engine, ctx, video, push, run, runSteps, trueTime: () => trueT, decoded, decoders, errors, win, cleared: () => cleared };
 }
 
 /** The live queue: sources not stopped, by start time. */
@@ -268,6 +290,69 @@ const within = (off, limit) => off.length > 0 && max(off) < limit;
     t('stall: the queue stops instead of running ahead of a frozen picture', stopped);
     t('stall: the audio comes back in step when the picture moves', q.length > 5 && within(off, 0.12),
       `max ${max(off).toFixed(3)} s`);
+    env.engine.destroy();
+  }
+
+  // ---- A video clock that moves in steps (webOS 4-6, #97) ----
+  // currentTime changes every 4 to 9 ticks (0.2-0.45 s), as photographed on a
+  // webOS 4 TV: that is no stall and no jump, the audio must play on.
+  const STEPS = [4, 7, 5, 9, 6, 8];
+  for (const speed of [1.25, 1.5]) {
+    const env = setup(AudioEngine, { speed });
+    env.engine.configure(CFG);
+    await tick();
+    env.push(0, 30);
+    const c0 = env.ctx.currentTime;
+    const v0 = env.trueTime();
+    env.runSteps(10, STEPS);
+    const q = env.ctx.sources;
+    const stops = q.filter((s) => s.stoppedAt !== undefined).length;
+    t(`steps ${speed}x: the engine saw the clock's steps`, env.engine.clockGaps.length > 0 &&
+      env.engine.clockGaps.every((g) => STEPS.includes(g)), env.engine.clockGaps.join());
+    t(`steps ${speed}x: audio is queued`, q.length > 50, q.length);
+    t(`steps ${speed}x: nothing is cut`, stops === 0, `${stops} buffers stopped`);
+    const off = offsets(q, (T) => v0 + (T - c0) * speed);
+    t(`steps ${speed}x: every queued sample is the content the picture shows then (within 60 ms)`,
+      off.length > 1000 && within(off, 0.06), `max ${max(off).toFixed(3)} s over ${off.length}`);
+    env.engine.destroy();
+  }
+  {
+    // How long a frozen clock may last: from the median of its last steps.
+    const env = setup(AudioEngine);
+    const limit = (gaps) => {
+      env.engine.clockGaps = gaps;
+      return env.engine.stallTicks();
+    };
+    t('stall limit: 20 ticks (1 s) until 3 steps are seen', limit([]) === 20 && limit([1, 1]) === 20, limit([1, 1]));
+    t('stall limit: 4 ticks (0.2 s) on a clock that moves every tick', limit([1, 1, 1]) === 4 && limit([1, 2, 1]) === 4,
+      limit([1, 2, 1]));
+    t('stall limit: 3 times the median step', limit([6, 7, 30]) === 21 && limit([4, 9, 5, 9, 6]) === 18,
+      `${limit([6, 7, 30])} ${limit([4, 9, 5, 9, 6])}`);
+    t('stall limit: never more than 40 ticks (2 s)', limit([14, 14, 30]) === 40 && limit([13, 13, 30]) === 39,
+      `${limit([14, 14, 30])} ${limit([13, 13, 30])}`);
+    env.engine.destroy();
+  }
+  {
+    // The control: on that clock a real stall still stops the audio, later.
+    const env = setup(AudioEngine);
+    env.engine.configure(CFG);
+    await tick();
+    env.push(0, 30);
+    env.runSteps(4, STEPS);
+    const before = env.ctx.sources.filter((s) => s.stoppedAt !== undefined).length;
+    env.runSteps(0.5, STEPS, { frozen: true });
+    const early = stoppedNow(env.ctx);
+    env.runSteps(1.5, STEPS, { frozen: true });
+    const stopped = stoppedNow(env.ctx);
+    const c0 = env.ctx.currentTime;
+    const v0 = env.trueTime();
+    env.runSteps(3, STEPS);
+    const q = live(env.ctx).filter((s) => s.when >= c0);
+    const off = offsets(q, (T) => v0 + (T - c0) * 1.5);
+    t('steps stall: playing in steps cut nothing before it', before === 0, `${before} stopped`);
+    t('steps stall: a freeze as long as a few steps is not cut yet', !early);
+    t('steps stall: a freeze of 2 s is', stopped);
+    t('steps stall: the audio comes back in step', q.length > 5 && within(off, 0.12), `max ${max(off).toFixed(3)} s`);
     env.engine.destroy();
   }
 
