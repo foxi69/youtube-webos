@@ -121,7 +121,8 @@ function addVideo(win, state) {
   // A live badge or any other text stays.
   const live = addTile(win, 'llllllllll1', 'ÉLŐ');
   state.id = 'llllllllll1';
-  state.duration = 0;
+  // A real duration: only the badge text, not a missing duration, keeps it from counting.
+  state.duration = 300;
   live.focus();
   tick(30);
   t('a live badge stays', badgeOf(live) === 'ÉLŐ', badgeOf(live));
