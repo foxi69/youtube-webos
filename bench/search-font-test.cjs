@@ -52,7 +52,11 @@ function panelLabels(win) {
 {
   const { win, errors } = boot({}, 'WEB_PAGE_TYPE_SEARCH');
   t('search page: the titles get the TV\'s font first', /^"?LG Display-Regular"?/.test(fontOf(win)), fontOf(win));
-  t('no switch for it in the panel', !panelLabels(win).some((l) => /Search Results Font/.test(l)));
+  // The panel must have opened: a UI Tweaks switch that stays is there first.
+  const labels = panelLabels(win);
+  t('precondition: the panel is open, with Fix Multiline Titles on UI Tweaks',
+    labels.some((l) => /Fix Multiline Titles/.test(l)), labels.length + ' labels');
+  t('no switch for the search font in it', !labels.some((l) => /Search Results Font/.test(l)));
   t('no page errors', errors.length === 0, errors.join(' | '));
 }
 {
