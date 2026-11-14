@@ -689,6 +689,87 @@ const ids = (r) => itemsOf(r).map((i) => (i.tileRenderer || i.lockupViewModel).c
     t('seek step off: Right is left to YouTube', !e.defaultPrevented);
   }
 
+  // ---- Open Long-Press Menu shortcut (#143) ----
+  {
+    const resolved = [];
+    let refuse = false;
+    const yttv = () => ({ resolver: Object.assign(function Resolver() {}, { instance: { resolveCommand: (cmd) => {
+      if (refuse) throw new Error('refused');
+      resolved.push(cmd);
+      return 'original';
+    } } }) });
+    const html = '<ytlr-tile-renderer id="tile"><div id="inner" tabindex="0"></div></ytlr-tile-renderer>' +
+      '<yt-lockup-view-model id="lockup"></yt-lockup-view-model>' +
+      '<ytlr-playlist-panel-video-wrapper-renderer id="row"></ytlr-playlist-panel-video-wrapper-renderer>' +
+      '<ytlr-tile-renderer id="bare"><div id="bareInner" tabindex="0"></div></ytlr-tile-renderer>' +
+      '<div id="elsewhere" tabindex="0"></div>';
+    // Two keys on the action, pressed in turn: the same key twice within the
+    // debounce window would count as one press.
+    const { win, parse } = boot({ extendLongPressMenu: true, shortcut_key_2: 'long_press_menu', shortcut_key_3: 'long_press_menu' }, { yttv, html });
+    await wait(50);
+    const doc = win.document;
+    const menu = () => ({ showMenuCommand: { menu: { menuRenderer: { items: [{ menuServiceItemRenderer: { text: { runs: [{ text: 'Save' }] } } }] } } } });
+    const [tileItem, lockItem, rowItem] = itemsOf(parse(browse([
+      tile('tilefocus01', { longPress: menu() }),
+      lockup('lockmarked1', { longPress: { innertubeCommand: menu() } }),
+      lockup('rowlockup01', { longPress: { innertubeCommand: menu() } })
+    ])));
+    const setData = (id, data) => { doc.getElementById(id).__instance = { props: { data } }; };
+    setData('tile', tileItem.tileRenderer);
+    setData('lockup', lockItem.lockupViewModel);
+    setData('row', { primaryRenderer: rowItem });
+    setData('bare', tile('nolongpress').tileRenderer);
+    const texts = (cmd) => (cmd && cmd.showMenuCommand ? cmd.showMenuCommand.menu.menuRenderer.items : [])
+      .map((i) => i.menuServiceItemRenderer.text.runs[0].text).join('|');
+    const toasts = () => { const c = doc.querySelector('.ytaf-notification-container'); return c ? c.textContent : ''; };
+    let press = 0;
+    const pressKey = async () => { key(win, press++ % 2 ? 51 : 50); await wait(0); };
+
+    doc.getElementById('inner').focus();
+    await pressKey();
+    t('long-press key: the focused tile\'s menu is opened, with our entries',
+      resolved.length === 1 && resolved[0] === tileItem.tileRenderer.onLongPressCommand &&
+      texts(resolved[0]) === 'Save|Add to queue|Block channel: Some Channel', texts(resolved[0]));
+
+    doc.getElementById('elsewhere').focus();
+    doc.getElementById('lockup').className = 'zylon-focus';
+    await pressKey();
+    t('long-press key: a lockup YouTube marks focused opens its menu, out of its wrapper',
+      resolved.length === 2 && resolved[1] === lockItem.lockupViewModel.rendererContext.commandContext.onLongPress.innertubeCommand,
+      JSON.stringify(resolved[1]));
+    doc.getElementById('lockup').className = '';
+
+    doc.getElementById('row').className = 'zylon-focus';
+    await pressKey();
+    t('long-press key: a playlist row opens the menu of the video it holds',
+      resolved.length === 3 && resolved[2] === rowItem.lockupViewModel.rendererContext.commandContext.onLongPress.innertubeCommand,
+      JSON.stringify(resolved[2]));
+    doc.getElementById('row').className = '';
+
+    await pressKey();
+    t('long-press key: with no tile focused nothing is opened, and that is told',
+      resolved.length === 3 && /No video tile focused/.test(toasts()), toasts());
+
+    doc.getElementById('bareInner').focus();
+    await pressKey();
+    t('long-press key: a tile without a long-press menu opens nothing, and that is told',
+      resolved.length === 3 && /This tile has no long-press menu/.test(toasts()), toasts());
+
+    doc.getElementById('inner').focus();
+    refuse = true;
+    await pressKey();
+    refuse = false;
+    t('long-press key: a menu YouTube refuses is reported',
+      resolved.length === 3 && /Could not open the menu/.test(toasts()), toasts());
+
+    win.location.hash = '#/watch?v=current0001';
+    doc.body.className = 'WEB_PAGE_TYPE_WATCH';
+    await wait(50);
+    await pressKey();
+    t('long-press key: works on the watch page too',
+      resolved.length === 4 && resolved[3] === tileItem.tileRenderer.onLongPressCommand, String(resolved.length));
+  }
+
   // ---- Language setting (lang-settings-fix.ts) ----
   {
     const resolved = [];

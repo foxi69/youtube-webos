@@ -17,7 +17,7 @@ import logoDarkUrl from './icons/logo-dark.png';
 import { getWebOSVersion, isWebOS25, isLegacyWebOS } from './webos-utils.js';
 import { subtitleTranslateLanguages } from './subtitle-translate.js';
 import { showNotification, setNotificationOled, setNotificationTheme } from './notifications.js';
-import { blockChannel } from './long-press-menu.js';
+import { blockChannel, openFocusedLongPressMenu } from './long-press-menu.js';
 import { VERSION_LABEL } from './version.js';
 import { buildAboutPage } from './about.js';
 import { clearQueue, playNextInQueue } from './video-queue.js';
@@ -183,7 +183,9 @@ const ACTION_SCOPES = {
     speed_reset: 'VIDEO',
     // From any page: the queue is filled on Home, and can be started there.
     queue_next: 'GLOBAL',
-    queue_clear: 'GLOBAL'
+    queue_clear: 'GLOBAL',
+    // Tiles are on the browse pages and below the player too.
+    long_press_menu: 'GLOBAL'
 };
 
 function updateShortcutCache(key) {
@@ -1196,7 +1198,7 @@ function createOptionsPanel() {
         createOpacityControl('uiBrightness', 10, 40, 100),
         createElement('div', { text: 'Dims the YouTube menus and thumbnails; never the playing video or this panel', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   	  createPreviewControl('forcePreviews'),
-  	  createElement('div', { text: 'Sets YouTube\'s own "previews with sound" setting on app load. No effect where YouTube shows no previews (webOS 25)', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
+  	  createElement('div', { text: 'Sets YouTube\'s own "previews with sound" setting on app load. No effect where YouTube shows no previews', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   	  createConfigCheckbox('mutePreviews'),
   	  createConfigCheckbox('continuePreviews'),
   	  createElement('div', { text: 'OK on a tile whose preview is playing carries that playback on, full screen, instead of loading the video again', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
@@ -1975,6 +1977,10 @@ function handleShortcutAction(action) {
   }
   if (action === 'queue_next') {
       playNextInQueue();
+      return;
+  }
+  if (action === 'long_press_menu') {
+      openFocusedLongPressMenu();
       return;
   }
   if (action === 'refresh_page') {

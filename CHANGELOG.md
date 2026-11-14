@@ -8,7 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Added
 
++ Shortcuts: a new action, **Open Long-Press Menu**, opens the focused video's long-press menu as a held OK would, with "Add to queue" when More Options in the Long-Press Menu is on. Phone remote apps that use LG's network remote API can only send whole key presses, so they could not open this menu. It is on no key by default. Requested in #143.
 + **Open Playing Previews Without Reloading** (UI Tweaks, off by default, experimental): OK on a tile whose preview is already playing carries that playback on, full screen, instead of stopping it and loading the video again. YouTube hands a playing preview over to the watch page this way by itself after a few seconds; for OK the server forbids it on TVs with a flag on the preview's data (`blockAdoption`), which is cleared in the response. Should YouTube rename the flag, the switch does nothing and videos open as they do today. From Zucchiniii's fork (fork watch #139), where it was measured on an LG C5.
+
+## Fixes
+
++ Tile previews play again on TVs that had none since 0.7.7 (#144, an LG C5 on webOS 25). The app tells YouTube it runs on an `O18` chipset again, as it did up to 0.7.6 and as webosbrew/youtube-webos still does: 0.7.7 took the LG Content Store app's user agent, which sends the TV's own chipset, and youtube.com/tv turns previews on (`inline_playback`) only for `O18`, `LM18A`, `M16P` and `M16PP`, whatever the webOS version. Of the 37 chipsets measured, the other 33 got none, among them `K24N` (a QNED92 on webOS 25), `O24N`, `O22`, `O20`, `K8HPP` and `M23`; TVs with one of the four kept their previews. So on most newer TVs, webOS 22 to 25 among them, the Home page plays previews again, with sound where Previews With Sound is on. Left alone on a tile, a preview opens full screen by itself after about 38 s, with sound, and goes on where it was (measured on webOS 25; nothing in the app does this, it comes with YouTube's previews). On a signed-in account that playback can land in the watch history. The Previews With Sound note no longer says webOS 25 shows none. `bench/appinfo-test.cjs` fails the CI run if the packaged user agent loses `O18` again.
 
 ## Docs
 

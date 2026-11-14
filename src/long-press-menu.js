@@ -179,6 +179,70 @@ export function extendLongPressMenu(item) {
   info.holder[info.holderKey] = info.holderKey === 'onLongPress' ? { innertubeCommand: menu } : menu;
 }
 
+/* --- The long-press menu from a key ----------------------------------- */
+
+const PLAYLIST_ROW = 'YTLR-PLAYLIST-PANEL-VIDEO-WRAPPER-RENDERER';
+
+/** A tile's or a lockup's long-press command, or null for anything else. */
+function longPressOf(node) {
+  const name = node.nodeName;
+  const instance = node.__instance;
+  let data = instance && instance.props && instance.props.data;
+  if (!data || typeof data !== 'object') return null;
+  let kind = name;
+  if (name === PLAYLIST_ROW) {
+    const primary = data.primaryRenderer;
+    if (!primary) return null;
+    data = primary.tileRenderer || primary.lockupViewModel;
+    kind = primary.tileRenderer ? 'YTLR-TILE-RENDERER' : 'YT-LOCKUP-VIEW-MODEL';
+    if (!data) return null;
+  }
+  let raw = null;
+  if (kind === 'YTLR-TILE-RENDERER') raw = data.onLongPressCommand;
+  else if (kind === 'YT-LOCKUP-VIEW-MODEL') raw = data.rendererContext?.commandContext?.onLongPress;
+  if (!raw || typeof raw !== 'object') return null;
+  return raw.innertubeCommand && typeof raw.innertubeCommand === 'object' ? raw.innertubeCommand : raw;
+}
+
+function cardOf(node) {
+  for (let n = node; n && n.nodeType === 1; n = n.parentNode) {
+    const name = n.nodeName;
+    if (name === 'YTLR-TILE-RENDERER' || name === 'YT-LOCKUP-VIEW-MODEL' || name === PLAYLIST_ROW) return n;
+  }
+  return null;
+}
+
+/** The focused video card: the one holding the focus, or the one YouTube marks. */
+function focusedCard() {
+  const fromFocus = cardOf(document.activeElement);
+  if (fromFocus) return fromFocus;
+  const marked = document.querySelectorAll('ytlr-tile-renderer.zylon-focus, yt-lockup-view-model.zylon-focus, ytlr-playlist-panel-video-wrapper-renderer.zylon-focus');
+  return marked.length ? marked[marked.length - 1] : null;
+}
+
+/**
+ * Opens the focused tile's long-press menu, as a held OK would: for remotes
+ * that can only send whole key presses (LG's network remote API).
+ */
+export function openFocusedLongPressMenu() {
+  const card = focusedCard();
+  if (!card) {
+    showNotification('No video tile focused');
+    return;
+  }
+  const command = longPressOf(card);
+  if (!command) {
+    showNotification('This tile has no long-press menu');
+    return;
+  }
+  ResolveCommandRegistry.getInstance()
+    .then((registry) => registry.dispatchCommand(command))
+    .catch((err) => {
+      console.warn('[LongPress] Could not open the menu:', err);
+      showNotification('Could not open the menu');
+    });
+}
+
 /* --- The TV client's API, for the feedback ---------------------------- */
 
 function findServiceMap() {

@@ -127,7 +127,8 @@ Every coloured button and number key can be set to any of these actions on the *
 - **Screen:** Toggle OLED Black Overlay, **Toggle Audio-Only Mode** (hides the picture and keeps the sound; ends
   when you leave the video), **Sleep Timer** (each press steps 15/30/60/90/120 min, then off; pauses the video
   when it runs out)
-- **App:** Open/Close Settings, Refresh Page, Play Next in Queue, Clear Queue
+- **App:** Open/Close Settings, Refresh Page, Play Next in Queue, Clear Queue, **Open Long-Press Menu** (the
+  menu a held OK opens on the focused video, for phone remotes that cannot hold a key)
 
 Holding a key that runs a seek keeps seeking; holding any other bound key runs it once and is not passed on
 to YouTube. A USB or Bluetooth keyboard can type in the search page (see *Type in Search with a Keyboard*).

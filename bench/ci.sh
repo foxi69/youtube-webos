@@ -80,6 +80,7 @@ build
 run polyfill-conformance
 run launch-test
 run release-bump-test
+run appinfo-test
 run smoke "$B" legacy
 run adblock-test "$B" legacy
 run new-features-test "$B"
@@ -123,6 +124,7 @@ run review-fixes-test "$B"
 if [ ${#env[@]} -eq 0 ]; then
   build --env modern
   run modern-smoke "$B"
+  run appinfo-test
   run dearrow-test "$B" modern
   run ai-filter-test "$B" modern
   run quality-reload-test "$B"
