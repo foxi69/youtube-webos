@@ -1,0 +1,75 @@
+name: YouTube TV watch
+
+# Once a day, downloads youtube.com/tv's public main bundle (as a TV would)
+# and compares how often it names what the app's preview fixes rely on
+# (blockAdoption, autotransitionDelayMs, supportsPlayerResizeAnimation...)
+# with bench/fixtures/yt-tv-snapshot.json. A change opens one issue (label
+# "yt-tv-watch") or updates the open one; nothing is changed in the repo.
+# The server's data needs a capture from a TV. See tools/yt-tv-snapshot.cjs.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 6 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: yt-tv-watch
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      status: ${{ steps.check.outputs.status }}
+      report: ${{ steps.check.outputs.report }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - name: Compare youtube.com/tv's code with the snapshot
+        id: check
+        run: |
+          set +e
+          node tools/yt-tv-snapshot.cjs watch-code bench/fixtures/yt-tv-snapshot.json > report.md
+          status=$?
+          set -e
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          echo "report=$(base64 -w0 report.md)" >> "$GITHUB_OUTPUT"
+          # 0 no change, 1 changed. Anything else (2 not fetched, a crash, a kill):
+          # a red run, no issue (YouTube may have turned the runner away).
+          if [ "$status" != 0 ] && [ "$status" != 1 ]; then exit 1; fi
+
+  report:
+    needs: check
+    if: needs.check.outputs.status == '1'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Open or update the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          REPORT: ${{ needs.check.outputs.report }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          gh label create yt-tv-watch --color FBCA04 --description "youtube.com/tv changed what the preview fixes rely on" --force
+          {
+            echo "$REPORT" | base64 -d
+            echo
+            echo "Checked $(date -u +%Y-%m-%d) in [this run]($RUN_URL)."
+          } > body.md
+          number=$(gh issue list --label yt-tv-watch --state open --json number --jq '.[0].number // empty')
+          if [ -n "$number" ]; then
+            gh issue edit "$number" --body-file body.md
+          else
+            gh issue create --title "youtube.com/tv changed what the preview fixes rely on" --label yt-tv-watch --body-file body.md
+          fi

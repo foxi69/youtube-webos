@@ -81,6 +81,7 @@ run polyfill-conformance
 run launch-test
 run release-bump-test
 run appinfo-test
+run yt-tv-snapshot-test
 run smoke "$B" legacy
 run adblock-test "$B" legacy
 run new-features-test "$B"
@@ -118,6 +119,7 @@ run search-filter-test "$B"
 run sponsorblock-labels-test "$B"
 run low-memory-style-test "$B"
 run review-fixes-test "$B"
+run search-font-test "$B"
 run preview-autoopen-test "$B"
 run preview-countdown-test "$B"
 
