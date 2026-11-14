@@ -1209,6 +1209,8 @@ function createOptionsPanel() {
   	  createConfigCheckbox('removeLowMemoryStyle'),
   	  createElement('div', { text: 'Takes away the black boxes YouTube puts behind the player\'s titles and timestamps when it saves memory', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   	  createConfigCheckbox('fixMultilineTitles'),
+  	  createConfigCheckbox('fixSearchFont'),
+  	  createElement('div', { text: 'Video titles on the search page in the TV\'s font, like on every other page, not the Roboto YouTube switches to there', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   	  createConfigCheckbox('removeBlackBorders')
     ];
 
@@ -2280,6 +2282,15 @@ function initGlobalStyles() {
             padding-top: 0.37vh !important;
         }
 
+        /* Fix Search Results Font: YouTube TV's CSS gives the search page's
+           video titles (.prqC5c) Roboto, every other page the TV's own font.
+           Off an LG TV the font is missing and Roboto stays. (From NicholasBly
+           0.8.5.) */
+        html.ytaf-fix-search-font body.WEB_PAGE_TYPE_SEARCH .prqC5c {
+            font-family: 'LG Display-Regular', 'LG Display', Roboto, 'Noto Sans CJK ZH-HK', 'Noto Sans Thai', Arial,
+                Helvetica, sans-serif !important;
+        }
+
         html.ytaf-remove-borders yt-formatted-string,
         html.ytaf-remove-borders .style-scope.ytd-rich-grid-media,
         html.ytaf-remove-borders #video-title,
@@ -2361,6 +2372,7 @@ function initGlobalStyles() {
     const syncClass = (cls, key) => document.documentElement.classList.toggle(cls, !!configRead(key));
     const CLASS_KEYS = {
         'ytaf-fix-titles': 'fixMultilineTitles',
+        'ytaf-fix-search-font': 'fixSearchFont',
         'ytaf-remove-borders': 'removeBlackBorders',
         'ytaf-no-animations': 'disableAnimations',
         'ytaf-hide-recommended': 'hideRecommendedVideos'
