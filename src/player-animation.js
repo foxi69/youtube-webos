@@ -40,8 +40,12 @@ try {
     enumerable: true,
     get: () => current,
     set: (value) => {
-      current = value;
-      original = undefined;
+      // The same object given back still holds the patched switch: what
+      // YouTube had is kept, or turning the setting off would leave it on.
+      if (value !== current) {
+        current = value;
+        original = undefined;
+      }
       apply();
     }
   });

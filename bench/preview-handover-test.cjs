@@ -193,6 +193,22 @@ function panelSwitch(win) {
     }
     t('no page errors', errors.length === 0, errors.join(' | '));
   }
+  {
+    // YouTube giving the same config back must not lose what it had.
+    const { win, errors } = boot(ALL_OFF, LEARNT, { featureSwitches: { supportsPlayerResizeAnimation: false } });
+    const box = panelSwitch(win);
+    t('animation, same config: precondition, off with YouTube\'s false', !!box && box.checked === false &&
+      win.tectonicConfig.featureSwitches.supportsPlayerResizeAnimation === false);
+    if (box) {
+      box.click();
+      win.tectonicConfig = win.tectonicConfig;
+      t('animation, same config given back: still on', win.tectonicConfig.featureSwitches.supportsPlayerResizeAnimation === true);
+      box.click();
+      t('animation, same config given back, switched off: YouTube\'s false is back',
+        win.tectonicConfig.featureSwitches.supportsPlayerResizeAnimation === false, JSON.stringify(win.tectonicConfig));
+    }
+    t('no page errors', errors.length === 0, errors.join(' | '));
+  }
 
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
