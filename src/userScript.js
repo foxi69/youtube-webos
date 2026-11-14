@@ -30,6 +30,7 @@ import './app-quality-fix.js';
 import './comments-fix.js';
 import './watch.js';
 import './mute-previews.js';
+import './preview-countdown.js';
 import './guide-fit.js';
 import './start-page.js';
 import './time-remaining.js';
