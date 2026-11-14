@@ -253,7 +253,7 @@ async function mp4Tests() {
     try { hb = c.parseBoxes(huge, 0, huge.length); } catch (e) { threw = e.message; }
     t('MP4 boxes: a 64-bit size beyond any number is a cut box, not a throw',
       !threw && hb.length === 1 && hb[0].truncated && hb[0].type === 'mdat', threw || JSON.stringify(hb));
-    let kind = null;
+    let kind;
     try { kind = c.classifyMp4(huge); } catch (e) { kind = 'threw: ' + e.message; }
     t('MP4: such a piece is not an init', kind === 'unknown', kind);
   }
@@ -385,7 +385,7 @@ async function webmTests() {
     // A piece from the middle of a cluster (webOS 5 appends them, #97), as an
     // ID and as a size.
     for (const [name, piece] of [['an ID', [0x01, 0x40, 0, 0, 0, 0, 0, 0, 0x81, 1]], ['a size', [0x81, 0x01, 0x40, 0, 0, 0, 0, 0, 0, 1]]]) {
-      let kind = null;
+      let kind;
       try { kind = c.classifyWebm(Uint8Array.from(piece)); } catch (e) { kind = 'threw: ' + e.message; }
       t(`WebM: a mid-cluster piece whose bytes read as too big ${name} is not an init`, kind === 'unknown', kind);
     }
