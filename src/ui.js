@@ -14,7 +14,7 @@ import logoOrangeUrl from './icons/logo-orange.png';
 import logoBlueUrl from './icons/logo-blue.png';
 import logoRedUrl from './icons/logo-red.png';
 import logoDarkUrl from './icons/logo-dark.png';
-import { getWebOSVersion, isWebOS25, isLegacyWebOS } from './webos-utils.js';
+import { isWebOS25, isLegacyWebOS } from './webos-utils.js';
 import { subtitleTranslateLanguages } from './subtitle-translate.js';
 import { showNotification, setNotificationOled, setNotificationTheme } from './notifications.js';
 import { blockChannel, openFocusedLongPressMenu } from './long-press-menu.js';
@@ -1215,10 +1215,6 @@ function createOptionsPanel() {
   	  createElement('div', { text: 'Video titles on the search page in the TV\'s font, like on every other page, not the Roboto YouTube switches to there', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   	  createConfigCheckbox('removeBlackBorders')
     ];
-
-    if (getWebOSVersion() <= 4) {
-        playerUITweaks.push(createConfigCheckbox('enableLegacyEmojiFix'));
-    }
 
     pageUITweaks.appendChild(createSection('Player UI Tweaks', playerUITweaks));
 
