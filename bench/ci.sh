@@ -129,6 +129,7 @@ if [ ${#env[@]} -eq 0 ]; then
   run dearrow-test "$B" modern
   run ai-filter-test "$B" modern
   run quality-reload-test "$B"
+  run handover-quality-test "$B"
 
   # perf_mon is a dev tool, not part of the app.
   build --env perf
