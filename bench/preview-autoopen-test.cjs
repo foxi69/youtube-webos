@@ -26,6 +26,10 @@ const ALL_OFF = {
   disableAutoCaptions: false, forceOriginalAudio: false, extendLongPressMenu: false,
   enableDeArrow: false, hiddenSidebarEntries: [], mutePreviews: false
 };
+// The left menu's entries already learnt: until then the left menu keeps the
+// hook installed by itself (sidebarHookRequired), which would hide the hook
+// staying for the previews alone.
+const LEARNT_SIDEBAR = JSON.stringify([{ id: 'FEtopics_music', title: 'Music' }]);
 
 const pad = 'z'.repeat(600);
 
@@ -80,6 +84,7 @@ function boot(cfg, early) {
   win.requestAnimationFrame = () => 0;
   win.cancelAnimationFrame = () => {};
   win.localStorage.setItem('ytaf-configuration', win.JSON.stringify(cfg));
+  win.localStorage.setItem('ytaf-sidebar-entries', LEARNT_SIDEBAR);
   // The first home screen, parsed by YouTube's page before the userScript ran.
   if (early) win.pendingEarlyBrowse = win.Promise.resolve({ response: win.JSON.parse(win.JSON.stringify(early)) });
   applyChrome38Downgrade(win);
