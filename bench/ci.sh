@@ -122,6 +122,7 @@ run low-memory-style-test "$B"
 run review-fixes-test "$B"
 run search-font-test "$B"
 run preview-autoopen-test "$B"
+run preview-countdown-test "$B"
 
 # Coverage stops here: c8 reads the bundle on disk when it reports, so that
 # must still be the build the tests ran (the modern build reuses the path).
