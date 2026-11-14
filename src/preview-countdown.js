@@ -17,12 +17,14 @@ const BADGE = 'ytlr-thumbnail-overlay-time-status-renderer yt-formatted-string';
 // The badge being counted down and the text it had.
 let current = null;
 
-function format(seconds) {
+// h:mm:ss for a video of an hour or more, all the way down (0:59:59), so the
+// layout does not change partway; m:ss for a shorter one.
+function format(seconds, withHours) {
   const s = Math.max(0, Math.floor(seconds));
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
   const pad = (n) => (n < 10 ? '0' : '') + n;
-  return (h ? h + ':' + pad(m) : String(m)) + ':' + pad(s % 60);
+  return (withHours || h ? h + ':' + pad(m) : String(m)) + ':' + pad(s % 60);
 }
 
 function restore() {
@@ -87,7 +89,7 @@ function onTimeUpdate(evt) {
   }
   if (!(duration > 0)) duration = video.duration;
   if (!(duration > 0) || !isFinite(duration)) return;
-  const shown = format(duration - video.currentTime);
+  const shown = format(duration - video.currentTime, duration >= 3600);
   if (current.badge.textContent !== shown) current.badge.textContent = shown;
   current.shown = shown;
 }

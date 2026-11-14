@@ -108,6 +108,13 @@ function addVideo(win, state) {
   state.duration = 3725;
   tick(0);
   t('a video over an hour: 1:02:05', badgeOf(tileB) === '1:02:05', badgeOf(tileB));
+  tick(126);
+  t('...under an hour left of it keeps the hours: 0:59:59, not 59:59', badgeOf(tileB) === '0:59:59', badgeOf(tileB));
+  state.duration = 3599;
+  tick(0);
+  t('a video just under an hour stays m:ss: 59:59', badgeOf(tileB) === '59:59', badgeOf(tileB));
+  state.duration = 3725;
+  tick(0);
 
   // The watch page opens: the tile's own text back, nothing written there.
   win.document.body.className = 'WEB_PAGE_TYPE_WATCH';
