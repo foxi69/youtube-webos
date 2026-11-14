@@ -104,6 +104,7 @@ run speed-engine-test
 run speed-mse-test
 run buffer-limit-test
 run speed-legacy-install-test "$B"
+run speed-preview-test "$B"
 run whats-new-test "$B"
 run guide-fit-test "$B"
 run keyboard-search-test "$B"

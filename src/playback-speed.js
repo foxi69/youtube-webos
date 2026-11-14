@@ -191,6 +191,8 @@ export const SPEEDS = [1, 1.25, 1.5, 1.75, 2];
 
 export const RELOAD_DELAY_MS = 800;
 
+export const RESUME_AFTER_PAGE_MS = 1000;
+
 // Above this speed the video plays at 1080p at most: the TV cannot decode
 // 2160p fast enough (at 1.5x it dropped 85% of the frames and reached 1.43x; at
 // 1.25x YouTube fell to 480p and it reached 1.17x).
@@ -233,8 +235,35 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
     liveNoticeAt = Date.now();
   }
 
-    function getSpeed() {
-    return enabled() && isSupported() && !isLive() ? currentSpeed : 1;
+  // A tile preview (Home, a channel, a list) plays at 1x: the speed belongs to
+  // the watch page and Shorts, and is kept for the next video opened there.
+  // The page is read now, not from the page-update event, which comes later.
+  function onPlaybackPage() {
+    const body = win.document && win.document.body;
+    if (!body) return true;
+    const cl = body.classList;
+    return cl.contains(SELECTORS.WATCH_PAGE_CLASS) || cl.contains(SELECTORS.SHORTS_PAGE_CLASS);
+  }
+
+  function getSpeed() {
+    return enabled() && isSupported() && !isLive() && onPlaybackPage() ? currentSpeed : 1;
+  }
+
+  // A playback set up at 1x that goes on in the watch page: a preview YouTube
+  // carries on there, or a MediaSource made before the page turned. Loaded
+  // again at the speed once it plays, at most once per video.
+  let resumedVideoId = null;
+  function resumeOnPlaybackPage() {
+    if (getSpeed() === 1 || activeSink || pending) return false;
+    const video = win.document && win.document.querySelector('video');
+    if (!video || video.paused || video.readyState < 3) return false;
+    const player = getPlayer();
+    const videoData = player && player.getVideoData && player.getVideoData();
+    const id = videoData && videoData.video_id;
+    if (!id || id === resumedVideoId) return false;
+    resumedVideoId = id;
+    scheduleReload(1, true);
+    return true;
   }
 
     function position(player) {
@@ -409,6 +438,7 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
     isSupported,
     isLive,
     getSpeed,
+    resumeOnPlaybackPage,
     setSpeed,
     cycle,
     step,
@@ -485,6 +515,15 @@ export function initPlaybackSpeed() {
   if (speedInstance) {
     configAddChangeListener('enablePlaybackSpeed', ({ detail }) => {
       if (!detail.newValue) speedInstance.controller.stop();
+    });
+    // Capture: media events do not bubble. A preview carried on into the watch
+    // page plays on without a new 'playing': the page change, a moment later
+    // (RESUME_AFTER_PAGE_MS), so that a video opened anew has its own
+    // MediaSource at the speed by then.
+    const resume = () => speedInstance.controller.resumeOnPlaybackPage();
+    document.addEventListener('playing', resume, true);
+    window.addEventListener('ytaf-page-update', ({ detail }) => {
+      if (detail && (detail.isWatch || detail.isShorts)) window.setTimeout(resume, RESUME_AFTER_PAGE_MS);
     });
     // The next video (autoplay, a tile) keeps the speed but starts at the
     // quality YouTube picks, 2160p on a 4K TV: cap it once it plays.
