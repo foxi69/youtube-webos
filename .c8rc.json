@@ -13,6 +13,7 @@
   "temp-directory": "coverage/tmp",
   "include": [
     "dist/webOSUserScripts/userScript.js",
+    "dist-modern/webOSUserScripts/userScript.js",
     "src/**"
   ]
 }

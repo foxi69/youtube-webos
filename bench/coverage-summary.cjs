@@ -82,7 +82,7 @@ const total = (m) => {
   return all ? `${Math.round((covered / all) * 1000) / 10}%` : '-';
 };
 
-console.log('## Test coverage (legacy build)\n');
+console.log('## Test coverage (legacy and modern builds)\n');
 console.log(`Lines **${total('lines')}** · functions **${total('functions')}** · branches **${total('branches')}** (${rows.length} files in src/)\n`);
 console.log('| File | Lines | Functions | Branches |');
 console.log('|---|---|---|---|');

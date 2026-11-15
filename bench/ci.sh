@@ -4,7 +4,8 @@
 #
 #   npm test            release builds (minified)
 #   npm run coverage    the same under c8, with unminified, source-mapped builds,
-#                       and with the page already loaded when the bundle runs (--late)
+#                       and with the page already loaded when the bundle runs (--late);
+#                       the modern build goes to dist-modern/, so both are measured
 #
 # Also tools/fork-watch-test.py (Python; skipped without it, outside CI).
 #
@@ -126,31 +127,38 @@ run search-font-test "$B"
 run preview-autoopen-test "$B"
 run preview-countdown-test "$B"
 
-# Coverage stops here: c8 reads the bundle on disk when it reports, so that
-# must still be the build the tests ran (the modern build reuses the path).
+# The modern build. In a coverage run it goes to dist-modern/: c8 reads each
+# bundle on disk when it reports, so the legacy one must stay where its tests
+# ran it.
+M="$B"
 if [ ${#env[@]} -eq 0 ]; then
   build --env modern
-  run modern-smoke "$B"
-  run webos-version-test "$B" modern
-  run appinfo-test
-  # The modern build has its own code paths (no polyfills.js, emoji-font.js or
-  # buffer-limit; ES2020 output), so the bundle tests run on it too, in a
-  # Chrome 87 environment (webOS 22). Left out: dependency-test (the emoji
-  # fix), speed-legacy-install-test and emoji-loop-test, legacy-only modules.
-  for t in smoke adblock-test panel-test module-behaviour-test upstream-fixes-test \
-    new-features-test feed-features-test dislike-timing-test per-account-test \
-    pivot-filters-test settings-reset-test preview-handover-test speed-preview-test \
-    whats-new-test guide-fit-test keyboard-search-test screensaver-test quality-tag-test \
-    watch-time-test search-filter-test low-memory-style-test review-fixes-test \
-    search-font-test preview-autoopen-test preview-countdown-test sponsorblock-skip-test; do
-    run "$t" "$B" modern
-  done
-  run dearrow-test "$B" modern
-  run ai-filter-test "$B" modern
-  run quality-reload-test "$B"
-  run handover-quality-test "$B"
+else
+  build --env modern --output-path dist-modern
+  M=dist-modern/webOSUserScripts/userScript.js
+fi
+run modern-smoke "$M"
+run webos-version-test "$M" modern
+run appinfo-test
+# The modern build has its own code paths (no polyfills.js, emoji-font.js or
+# buffer-limit; ES2020 output), so the bundle tests run on it too, in a
+# Chrome 87 environment (webOS 22). Left out: dependency-test (the emoji
+# fix), speed-legacy-install-test and emoji-loop-test, legacy-only modules.
+for t in smoke adblock-test panel-test module-behaviour-test upstream-fixes-test \
+  new-features-test feed-features-test dislike-timing-test per-account-test \
+  pivot-filters-test settings-reset-test preview-handover-test speed-preview-test \
+  whats-new-test guide-fit-test keyboard-search-test screensaver-test quality-tag-test \
+  watch-time-test search-filter-test low-memory-style-test review-fixes-test \
+  search-font-test preview-autoopen-test preview-countdown-test sponsorblock-skip-test; do
+  run "$t" "$M" modern
+done
+run dearrow-test "$M" modern
+run ai-filter-test "$M" modern
+run quality-reload-test "$M"
+run handover-quality-test "$M"
 
-  # perf_mon is a dev tool, not part of the app.
+# perf_mon is a dev tool, not part of the app, and not measured.
+if [ ${#env[@]} -eq 0 ]; then
   build --env perf
   run perfmon-test "$B" legacy
 fi
