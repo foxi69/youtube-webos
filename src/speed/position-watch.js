@@ -10,8 +10,9 @@
 //   when it lasts, a few times at most (on a slow line it may be right to fall).
 // - Setting the cap can reload the video again, and a reload sometimes leaves
 //   the <video> waiting at 0 while the player buffers at its position, and
-//   stays so. So the check goes on after the video has played, and seeks to the
-//   player's position (which starts it) when that lasts.
+//   stays so. So the check goes on after the video has played, and seeks to
+//   just before the player's position when that lasts: a seek to the position
+//   itself left it waiting (5 of 5 on webOS 25), 0.5 s before started it.
 // - It is about the video the speed changed on: another one opened within
 //   those 25 s ends it, so nothing seeks or caps that one. The video is named
 //   by the caller (the player may name none yet right after the reload), and
@@ -24,6 +25,7 @@ const MAX_SEEKS = 2;
 const LOW_TICKS = 8; // 2 s
 const MAX_CAPS = 3;
 const OFF_BY_S = 2;
+const STALL_BACK_S = 0.5;
 
 /**
  * @param {Window} win
@@ -99,7 +101,7 @@ export function watchPosition(win, player, at, onPlaying, quality, targetId) {
       if (stalled >= STALL_TICKS && seeks < MAX_SEEKS) {
         stalled = 0;
         seeks++;
-        player.seekTo(now, true);
+        player.seekTo(now - STALL_BACK_S, true);
       }
     }
 

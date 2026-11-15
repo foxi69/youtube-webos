@@ -205,8 +205,10 @@ const LEGACY_LEAD_S = 1;
 // 2160p fast enough (at 1.5x it dropped 85% of the frames and reached 1.43x; at
 // 1.25x YouTube fell to 480p and it reached 1.17x).
 const CAP_ABOVE = 1;
+const WATCH_MS = 25000; // position-watch.js's check
 // Below the cap: where YouTube falls by itself at speed.
 const BELOW_1080 = ['hd720', 'large', 'medium', 'small', 'tiny'];
+const LEVELS_DOWN = ['hd1080', ...BELOW_1080];
 const ABOVE_1080 = ['highres', 'hd2880', 'hd2160', 'hd1440'];
 // YouTube can write our quality range asynchronously. Only a record of the
 // requested level, made within this long of a call, is ours; a different
@@ -219,6 +221,8 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
   let pending = null;
   let lastReloadAt = 0;
   let stopPositionWatch = null;
+  // The video the position watch is on, until the watch's own 25 s end.
+  let watchedVideo = { id: null, until: 0 };
   // The subtitles to put back after a reload: { videoId, captions, landed }.
   // Kept until the reload plays, so a second speed change meanwhile does not
   // read the subtitles YouTube put on the half-loaded video.
@@ -434,6 +438,7 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
       kept.landed = true;
       stopCaptions = keepCaptions(win, player, kept.captions, userKeyAt, kept);
     };
+    watchedVideo = { id: videoId, until: Date.now() + WATCH_MS };
     stopPositionWatch = watchPosition(win, player, at, onPlaying, {
       isLow() {
         // A lower quality the viewer picked is not a fall to fight.
@@ -442,6 +447,40 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
         return levels.indexOf('hd1080') !== -1 && BELOW_1080.indexOf(player.getPlaybackQuality()) !== -1;
       },
       setCap
+    }, videoId);
+  }
+
+  // The cap, or the highest level the video has below it.
+  function capFor(player) {
+    const cap = capQuality();
+    const levels = player.getAvailableQualityLevels ? player.getAvailableQualityLevels() : [];
+    return LEVELS_DOWN.slice(LEVELS_DOWN.indexOf(cap)).find((q) => levels.includes(q)) || null;
+  }
+
+  function belowCap(player) {
+    const target = capFor(player);
+    return !!target && LEVELS_DOWN.indexOf(player.getPlaybackQuality()) > LEVELS_DOWN.indexOf(target);
+  }
+
+  // A next video (autoplay, a tile) playing below the cap above 1x: on webOS
+  // 25 YouTube starts a 60 fps video at 480p30 there, counting the frames a
+  // 60 Hz screen cannot show as dropped, though 1080p60 keeps 1.5x and shows
+  // 60 fps (480p30: 45). Raised as it starts, the <video> stayed at 0 (8 of 8
+  // times); raised once it has played (the watch's 2 s), it did not. A watch
+  // already on this video (its speed reload) is left to do it.
+  function capNext(player) {
+    if (!belowCap(player)) return;
+    let videoId = null;
+    try { videoId = player.getVideoData().video_id; } catch { /* checked by the watch */ }
+    if (watchedVideo.id === videoId && Date.now() < watchedVideo.until) return;
+    if (stopPositionWatch) stopPositionWatch();
+    watchedVideo = { id: videoId, until: Date.now() + WATCH_MS };
+    stopPositionWatch = watchPosition(win, player, player.getCurrentTime(), () => {}, {
+      isLow: () => currentSpeed > CAP_ABOVE && belowCap(player),
+      setCap() {
+        const target = capFor(player);
+        if (target) setRange(player, target);
+      }
     }, videoId);
   }
 
@@ -551,6 +590,7 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
     releaseAudioSink,
     capQuality,
     setRange,
+    capNext,
     keepsQuality,
     clearQualityPick
   };
@@ -663,15 +703,18 @@ export function initPlaybackSpeed() {
       if (!detail.newValue) speedInstance.controller.stop();
     });
     // The next video (autoplay, a tile) keeps the speed but starts at the
-    // quality YouTube picks, 2160p on a 4K TV: cap it once it plays.
+    // quality YouTube picks: 2160p on a 4K TV, capped once it plays, or one
+    // below the cap (capNext).
     window.addEventListener('yt-player-state-change', ({ detail }) => {
       if (!detail || detail.state !== 1 || !speedCapsQuality()) return;
       const player =
         document.getElementById(SELECTORS.PLAYER_ID) ||
         document.querySelector('.html5-video-player');
-      if (player && ABOVE_1080.includes(player.getPlaybackQuality())) {
-        const cap = speedInstance.controller.capQuality();
-        speedInstance.controller.setRange(player, cap);
+      if (!player) return;
+      if (ABOVE_1080.includes(player.getPlaybackQuality())) {
+        speedInstance.controller.setRange(player, speedInstance.controller.capQuality());
+      } else {
+        speedInstance.controller.capNext(player);
       }
     });
   }

@@ -65,7 +65,8 @@ import(MODULE).then(({ watchPosition }) => {
     s.run(2000);
     t('not at once: the player may still seek by itself', s.player.seeks.length === 0, s.player.seeks.join());
     s.run(2000);
-    t('stuck at 0: seeks to the player\'s position', s.player.seeks.join() === '11.2', s.player.seeks.join());
+    // Just before: a seek to the position itself left it waiting on a TV.
+    t('stuck at 0: seeks to just before the player\'s position', s.player.seeks.join() === '10.7', s.player.seeks.join());
     s.video.currentTime = AT;
     s.player.state = 1;
     s.run(30000);
@@ -82,7 +83,7 @@ import(MODULE).then(({ watchPosition }) => {
     s.player.state = 3;
     s.video.currentTime = 0;
     s.run(4000);
-    t('stuck after the cap\'s reload: seeks too', s.player.seeks.join() === '11.2', s.player.seeks.join());
+    t('stuck after the cap\'s reload: seeks too', s.player.seeks.join() === '10.7', s.player.seeks.join());
     t('the cap is not set again', caps === 1, caps);
   }
   {

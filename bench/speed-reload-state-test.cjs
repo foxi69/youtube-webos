@@ -101,7 +101,9 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
   });
   return {
     win, p, log, speed: win.ytafSpeed, pump,
-    emit(next) { state = next; if (onStateChange) onStateChange(next); }
+    emit(next) { state = next; if (onStateChange) onStateChange(next); },
+    // YouTube's own choice, with no record written (no range call).
+    setQuality(q) { quality = q; }
   };
 }
 
@@ -280,6 +282,79 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
     emit(3); pump(); pump();
     t('explicitly enabling Force Max Quality releases the retained manual choice',
       log.ranges.includes('highres'), log.ranges.join());
+    win.close();
+  }
+  {
+    // A 720p pick at 1.5x; on a TV the next video then started at 480p, though YouTube holds 720p at 1x.
+    const { win, p, speed, log, emit, pump, setQuality } = boot(720);
+    speed.setSpeed(1.5, { immediate: true });
+    await sleep(900);
+    p.videoId = 'nextvideo01';
+    setQuality('large');
+    log.ranges.length = 0;
+    emit(-1); emit(3); emit(1); pump(); pump();
+    // Raised as it started, the <video> stayed at 0 on a TV: only once it has played.
+    t('a next video below the pick is not raised as it starts', log.ranges.length === 0, log.ranges.join());
+    await sleep(2600);
+    t('a next video that plays below the 720p pick above 1x gets the pick',
+      log.ranges.join() === 'hd720' && p.getPlaybackQuality() === 'hd720', log.ranges.join());
+    // The viewer picks 480p on that video: it is theirs.
+    await sleep(1100);
+    writeQuality(win, 480, 2160);
+    setQuality('large');
+    log.ranges.length = 0;
+    emit(2); emit(1); pump(); pump();
+    await sleep(2600);
+    t('a 480p pick made on the next video is left alone', log.ranges.length === 0, log.ranges.join());
+    win.close();
+  }
+  {
+    // No pick: a 60 fps video started at 1.5x came at 480p30 on a TV, where 1080p60 played 1.5x at 60 fps.
+    const { win, p, speed, log, emit, pump, setQuality } = boot(0);
+    speed.setSpeed(1.5, { immediate: true });
+    await sleep(900);
+    p.videoId = 'nextvideo01';
+    setQuality('large');
+    log.ranges.length = 0;
+    emit(-1); emit(3); emit(1); pump(); pump();
+    await sleep(2600);
+    t('without a pick a next video at 480p above 1x gets the 1080p cap',
+      log.ranges.join() === 'hd1080' && p.getPlaybackQuality() === 'hd1080', log.ranges.join());
+    // A video whose top is 720p gets that, not a 1080p it does not have.
+    p.videoId = 'nextvideo02';
+    p.getAvailableQualityLevels = () => ['hd720', 'large', 'auto'];
+    setQuality('large');
+    log.ranges.length = 0;
+    emit(-1); emit(3); emit(1); pump(); pump();
+    await sleep(2600);
+    t('a next video with 720p at most gets 720p', log.ranges.join() === 'hd720', log.ranges.join());
+    win.close();
+  }
+  {
+    // A raise can still leave the <video> at 0 while the player buffers at its position.
+    const { win, p, speed, emit, pump, setQuality } = boot(0);
+    speed.setSpeed(1.5, { immediate: true });
+    await sleep(900);
+    const seeks = [];
+    p.seekTo = (s) => { seeks.push(s); };
+    p.videoId = 'nextvideo01';
+    setQuality('large');
+    emit(-1); emit(3); emit(1); pump(); pump();
+    await sleep(2600);
+    emit(3);
+    await sleep(3600);
+    t('a next video left at 0 after the raise is moved to just before the player position', seeks.join() === '49.5', seeks.join());
+    win.close();
+  }
+  {
+    // The speed reload's own first play below the cap: its watch (subtitles back) is not cut short.
+    const { p, win, speed, emit, pump, setQuality } = boot(0);
+    p.track = EN;
+    speed.setSpeed(1.5, { immediate: true });
+    setQuality('large');
+    emit(1); pump(); pump();
+    await sleep(900);
+    t('a raise on the reloaded video keeps the reload restoring the subtitles', p.track === EN, JSON.stringify(p.track));
     win.close();
   }
   console.log(`\n${pass} passed, ${fail} failed`);
