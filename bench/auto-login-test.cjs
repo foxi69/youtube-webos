@@ -10,7 +10,8 @@
  *     namespace, seeded on a fresh install and reset when turned off.
  *   - The selector: Enter pressed for the viewer (Down, Enter for a guest),
  *     the page hidden meanwhile; nothing when the option goes off in between.
- *   - Previews With Sound: YouTube's inline playback record forced on or off.
+ *   - Previews With Sound: YouTube's inline playback record forced on or off,
+ *     and given back as it was on Disabled.
  *   - Bypass Nag Screens off: nothing of the above.
  *
  * upstream-fixes-test covers the selector's time window and the relaunch;
@@ -359,12 +360,36 @@ async function boot(cfg, opts = {}) {
     t(n('previews set to Force On in the panel: written at once'), shown === 'Force On' &&
       JSON.stringify(env.read(INLINE)) === '{"data":true}', `${shown} ${env.store.getItem(INLINE)}`);
     const back = env.cycle(LABEL_PREVIEWS, true);
-    t(n('...back to Disabled: the record is left as it was'), back === 'Disabled' &&
-      JSON.stringify(env.read(INLINE)) === '{"data":true}', `${back} ${env.store.getItem(INLINE)}`);
+    t(n('...back to Disabled: YouTube\'s own record given back (there was none)'), back === 'Disabled' &&
+      env.read(INLINE) === null, `${back} ${env.store.getItem(INLINE)}`);
     const off = env.cycle(LABEL_PREVIEWS, true);
     t(n('...Force Off: written off'), off === 'Force Off' && JSON.stringify(env.read(INLINE)) === '{"data":false}',
       `${off} ${env.store.getItem(INLINE)}`);
     t(n('previews: no page errors'), env.errors.length === 0, env.errors.join(' | '));
+    env.win.close();
+  }
+  {
+    // YouTube's own setting, as it stores it: forced on and off, then
+    // Disabled gives back what it was before the first force.
+    const own = { data: false, expiration: 9e12, creation: 7 };
+    const env = await boot({ enableAutoLogin: false, forcePreviews: 'force_on' }, { storage: { [INLINE]: own } });
+    await pageMs(3000);
+    t(n('previews forced on over YouTube\'s own record'), JSON.stringify(env.read(INLINE)) === '{"data":true}',
+      env.store.getItem(INLINE));
+    env.pressGreen();
+    await wait(20);
+    await env.openTab(5);   // UI Tweaks
+    const off = env.cycle(LABEL_PREVIEWS);
+    t(n('...then Force Off'), off === 'Force Off' && JSON.stringify(env.read(INLINE)) === '{"data":false}',
+      `${off} ${env.store.getItem(INLINE)}`);
+    const disabled = env.cycle(LABEL_PREVIEWS);
+    t(n('...Disabled: YouTube\'s own record as it was before the first force'), disabled === 'Disabled' &&
+      JSON.stringify(env.read(INLINE)) === JSON.stringify(own), `${disabled} ${env.store.getItem(INLINE)}`);
+    const on = env.cycle(LABEL_PREVIEWS);
+    const again = env.cycle(LABEL_PREVIEWS, true);
+    t(n('...and so again after another force'), on === 'Force On' && again === 'Disabled' &&
+      JSON.stringify(env.read(INLINE)) === JSON.stringify(own), `${on} ${again} ${env.store.getItem(INLINE)}`);
+    t(n('previews given back: no page errors'), env.errors.length === 0, env.errors.join(' | '));
     env.win.close();
   }
 

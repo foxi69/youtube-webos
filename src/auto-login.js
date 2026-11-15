@@ -169,12 +169,42 @@ function disablePromoUpsell(enable = true) {
   }
 }
 
+const INLINE_PLAYBACK_KEY = 'yt.leanback.default::inline-playback-enabled';
+// YouTube's own record as it was before Previews With Sound first forced it
+// ({ value: the raw record, or null for none}), put back on Disabled.
+const INLINE_PLAYBACK_SAVED_KEY = 'ytaf-inline-playback-saved';
+
+function restoreInlinePlayback() {
+  try {
+    const saved = localStorage.getItem(INLINE_PLAYBACK_SAVED_KEY);
+    if (saved === null) return;
+    localStorage.removeItem(INLINE_PLAYBACK_SAVED_KEY);
+    let value = null;
+    try {
+      value = JSON.parse(saved).value;
+    } catch {
+      value = null;
+    }
+    if (typeof value === 'string') localStorage.setItem(INLINE_PLAYBACK_KEY, value);
+    else localStorage.removeItem(INLINE_PLAYBACK_KEY);
+    console.info('[Auto Login] Inline playback (previews) given back to YouTube\'s own setting');
+  } catch (error) {
+    console.error('[Auto Login] Failed to restore inline playback setting:', error);
+  }
+}
+
 export function setInlinePlayback(mode) {
-  if (mode === 'disabled') return;
-  
+  if (mode === 'disabled') {
+    restoreInlinePlayback();
+    return;
+  }
+
   const isEnabled = mode === 'force_on';
   try {
-    localStorage.setItem('yt.leanback.default::inline-playback-enabled', JSON.stringify({ data: isEnabled }));
+    if (localStorage.getItem(INLINE_PLAYBACK_SAVED_KEY) === null) {
+      localStorage.setItem(INLINE_PLAYBACK_SAVED_KEY, JSON.stringify({ value: localStorage.getItem(INLINE_PLAYBACK_KEY) }));
+    }
+    localStorage.setItem(INLINE_PLAYBACK_KEY, JSON.stringify({ data: isEnabled }));
     console.info(`[Auto Login] Inline playback (previews) forced to: ${isEnabled}`);
   } catch (error) {
     console.error('[Auto Login] Failed to update inline playback setting:', error);
