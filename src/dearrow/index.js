@@ -19,10 +19,10 @@
 import { configRead, configAddChangeListener } from '../config.js';
 import { CACHE_LIMIT, DEARROW_CONFIG_KEYS, SWEEP_DELAY } from './constants.js';
 import { videos, nextGeneration } from './state.js';
-import { forgetThumbs, thumbsFull } from './thumbs.js';
+import { forgetThumbs, thumbsFull, prioritizeThumbs } from './thumbs.js';
 import { patchResponseTiles, unpatchResponses, applyToVideo } from './tiles.js';
 import { sweepTiles } from './sweep.js';
-import { queueLookups, clearQueue, setChangeHandler, wantsLookup } from './lookup.js';
+import { queueLookups, lookUpOnScreen, clearQueue, setChangeHandler, wantsLookup } from './lookup.js';
 
 export { titleFormattingSupported } from './titles.js';
 
@@ -34,12 +34,19 @@ function cancelSweep() {
   sweepTimer = null;
 }
 
-/** Sweeps the rendered tiles SWEEP_DELAY from now, once however often it is asked. */
+/**
+ * Sweeps the rendered tiles SWEEP_DELAY from now, once however often it is
+ * asked. The videos with a tile on screen are then looked up ahead of the
+ * rest; the other rendered ones decided under old settings in the background.
+ */
 function scheduleSweep() {
   if (sweepTimer || !configRead('enableDeArrow')) return;
   sweepTimer = setTimeout(() => {
     sweepTimer = null;
-    sweepTiles(false);
+    const found = sweepTiles(false);
+    prioritizeThumbs(found.onScreen);
+    lookUpOnScreen(found.onScreen);
+    if (found.stale.length) queueLookups(found.stale);
   }, SWEEP_DELAY);
 }
 
@@ -79,6 +86,16 @@ export function applyDeArrow(data, responseType) {
   scheduleSweep();
 }
 
+// The settings changed since the last refresh: switching accounts changes
+// several at once (config.js), which is one refresh.
+const changedKeys = new Set();
+let refreshTimer = null;
+
+function onSettingsChange({ detail }) {
+  changedKeys.add(detail.key);
+  if (!refreshTimer) refreshTimer = setTimeout(refresh, 0);
+}
+
 /**
  * Switched off: YouTube's titles and thumbnails back everywhere, then the
  * thumbnail copies freed, with what pointed at them: they would otherwise
@@ -98,24 +115,36 @@ function switchOff() {
 }
 
 /**
- * A DeArrow setting changed: everything is decided again (answers already
- * fetched are reused), newest first, since those are the videos likely on
- * screen; turned off, YouTube's own come back everywhere (switchOff).
+ * The settings changed: turned off, YouTube's own come back everywhere
+ * (switchOff). Only the badge: the decided videos get or lose it, nothing is
+ * decided again. Otherwise every video is decided again, at once only the
+ * ones with a tile drawn now (the sweep finds them, in or out of view); the
+ * others when a tile shows them again, from answers already fetched.
  */
-function onSettingsChange() {
+function refresh() {
+  refreshTimer = null;
+  const badgeOnly = changedKeys.size === 1 && changedKeys.has('dearrowShowBadge');
+  changedKeys.clear();
+  if (configRead('enableDeArrow') && badgeOnly) {
+    videos.forEach((video) => {
+      if (video.resolved && !video.stale) applyToVideo(video);
+    });
+    scheduleSweep();
+    return;
+  }
   nextGeneration();
-  // Stored responses get the new output as they are parsed again.
+  // Stored responses get the new output when a tile shows the video again.
   unpatchResponses();
   clearQueue();
   if (!configRead('enableDeArrow')) {
     switchOff();
     return;
   }
-  const ids = [];
-  videos.forEach((video, videoId) => {
-    ids.push(videoId);
+  videos.forEach((video) => {
+    video.stale = true;
   });
-  queueLookups(ids.reverse());
+  cancelSweep();
+  scheduleSweep();
 }
 
 // A video decided: the tiles of the stored responses get it now, for the next

@@ -4,6 +4,7 @@
 
 /**
  * videoId -> {
+ *   id                                  the video id
  *   original, originalThumb, duration   what YouTube sent: for formatting,
  *                                       random frames and putting it back
  *   raw                                 the branding answer (null: none)
@@ -12,6 +13,10 @@
  *   title, thumb                        what to show (null: YouTube's own)
  *   crowdTitle, crowdThumb              whether those are crowdsourced (the badge)
  *   resolved                            title and thumbnail decided
+ *   thumbDecided                        the thumbnail decided from the answer
+ *                                       (an early fallback frame is not)
+ *   stale                               decided under settings since changed:
+ *                                       decided again once a tile shows it
  *   shownTitle, shownThumb              what the tiles were last given
  *   tiles                               its tiles in the stored responses (tiles.js)
  * }

@@ -117,12 +117,23 @@ function sweepBadges(tile, hide) {
   }
 }
 
+/** Whether any part of a rendered tile is inside the screen (rows slide by transform, so the box tells). */
+function onScreen(tile) {
+  const box = tile.getBoundingClientRect();
+  return box.width > 0 && box.right > 0 && box.bottom > 0 &&
+    box.left < window.innerWidth && box.top < window.innerHeight;
+}
+
 /**
  * Brings every rendered tile in line with what is decided for its video; with
  * `restoreAll`, puts back every original this feature replaced (DeArrow off).
+ * Returns, in screen order, the videos with a tile on screen (`onScreen`: to
+ * look up first) and those of the other rendered tiles that were decided under
+ * old settings (`stale`: to decide again in the background).
  */
 export function sweepTiles(restoreAll) {
-  if (videos.size === 0) return;
+  const found = { onScreen: [], stale: [] };
+  if (videos.size === 0) return found;
   const tiles = document.querySelectorAll(SELECTORS.TILE);
   const hideBadges = restoreAll || !configRead('dearrowShowBadge');
   for (let i = 0; i < tiles.length; i++) {
@@ -131,8 +142,13 @@ export function sweepTiles(restoreAll) {
     const video = tileVideo(thumbEl);
     sweepLineLogo(tiles[i], !hideBadges && !!video && showsCrowdsourced(video));
     if (!video) continue;
+    if (!restoreAll) {
+      if (onScreen(tiles[i])) found.onScreen.push(video.id);
+      else if (video.stale) found.stale.push(video.id);
+    }
     sweepThumb(thumbEl, video, restoreAll ? null : video.thumb);
     const titleEl = tiles[i].querySelector(SELECTORS.TILE_TITLE);
     if (titleEl) sweepTitle(titleEl, video, restoreAll ? null : video.title);
   }
+  return found;
 }
