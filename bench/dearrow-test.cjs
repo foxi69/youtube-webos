@@ -673,6 +673,84 @@ const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-d
     win.close();
   }
 
+  // ---- Thumbnails waiting for a draw slot when the settings change or everything is wiped ----
+  {
+    /** Nine videos with a crowdsourced thumbnail each, under prefixes of their own. */
+    const crowdIds = (tag) => {
+      const ids = [], prefixes = new Set();
+      for (let i = 0; ids.length < 9; i++) {
+        const id = tag + String(i).padStart(8, '0');
+        if (!prefixes.has(prefixOf(id))) { prefixes.add(prefixOf(id)); ids.push(id); }
+      }
+      return ids;
+    };
+    const crowdExtra = (ids) => {
+      const extra = {};
+      ids.forEach((id) => { extra[id] = { titles: [{ title: 'Calm ' + id, original: false, votes: 1 }],
+        thumbnails: [{ timestamp: 12.5, original: false, votes: 1 }] }; });
+      return extra;
+    };
+    /** Flips a switch on the UI Tweaks page. */
+    const flip = (win, pump, label, on) => {
+      if (!win.document.querySelector('#ytaf-page-ui-tweaks')) {
+        const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
+        Object.defineProperty(e, 'keyCode', { get: () => GREEN, configurable: true });
+        dispatchTrusted(win.document.body, e);
+        for (let i = 0; i < 20; i++) pump();
+      }
+      const input = Array.from(win.document.querySelectorAll('#ytaf-page-ui-tweaks label'))
+        .find((l) => l.querySelector('.label-text')?.textContent === label)?.querySelector('input');
+      if (!input) throw new Error(label + ' switch missing');
+      input.checked = on;
+      input.dispatchEvent(new win.Event('change'));
+    };
+    const downloads = (images, ids) => images.filter((u) => ids.some((id) => u.includes('videoID=' + id))).length;
+
+    for (const change of ['DeArrow switched off', 'Crowdsourced Titles switched off']) {
+      const ids = crowdIds(change[0] === 'D' ? 'off' : 'set');
+      const { win, parse, pump, images, pendingImages } = boot({}, { extra: crowdExtra(ids), holdImages: true });
+      parse(browse(ids.map((id) => tile(id, 'Original ' + id))));
+      await waitFor(() => downloads(images, ids) === 4, 1500);
+      t(`${change}: four thumbnails download, five wait for a slot`, downloads(images, ids) === 4, images.join(' '));
+      flip(win, pump, change.split(' switched')[0], false);
+      await wait(50);
+      pendingImages.splice(0).forEach((item) => { item.finish(); });
+      await wait(300);
+      t(`${change}: the thumbnails that waited are not downloaded after it`, downloads(images, ids) === 4,
+        `${downloads(images, ids)} downloads`);
+      win.close();
+    }
+
+    // Too many videos remembered: everything is wiped (DeArrow stays on).
+    {
+      const ids = crowdIds('wip');
+      const { win, parse, images, pendingImages } = boot({}, { extra: crowdExtra(ids), holdImages: true });
+      const made = [];
+      const revoked = [];
+      if (modern) {
+        const make = win.URL.createObjectURL;
+        win.URL.createObjectURL = (b) => { const url = make(b); made.push(url); return url; };
+        win.URL.revokeObjectURL = (u) => { revoked.push(u); };
+      }
+      parse(browse(ids.map((id) => tile(id, 'Original ' + id))));
+      await waitFor(() => downloads(images, ids) === 4, 1500);
+      const filler = [];
+      for (let i = 0; i < 1000; i++) filler.push(tile('fil' + String(i).padStart(8, '0'), 'Filler ' + i));
+      parse(browse(filler));
+      // The next response finds 1000 videos remembered and wipes them all first.
+      parse(browse([tile('afterwipe01', 'After the wipe')]));
+      pendingImages.splice(0).forEach((item) => { item.finish(); });
+      await wait(300);
+      t('wiped: the thumbnails that waited for a slot are not downloaded after it', downloads(images, ids) === 4,
+        `${downloads(images, ids)} downloads`);
+      if (modern) {
+        t('wiped: a copy drawn for a video from before the wipe is freed, not kept',
+          made.length > 0 && made.every((u) => revoked.includes(u)), `made ${made.length}, revoked ${revoked.length}`);
+      }
+      win.close();
+    }
+  }
+
   // ---- Title formatting (webOS 22+ build only) ----
   {
     const f = boot({ dearrowTitleFormatting: 'sentence_case', dearrowCleanEmojis: true });

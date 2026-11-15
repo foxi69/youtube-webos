@@ -5,6 +5,7 @@
 // Middle and End) are used as they are, like the hqdefault YouTube's tiles
 // already show: drawing them took up to 2 s while a TV started the app.
 import { configRead } from '../config.js';
+import { currentGeneration } from './state.js';
 import {
   COPY_WIDTHS,
   DATA_URL_WIDTH,
@@ -24,13 +25,30 @@ const thumbOwners = new Map();
 const loadingThumbs = new Map();
 // What the kept copies weigh: blob bytes, or data URL characters.
 let keptWeight = 0;
-// Copies being drawn, and the ones waiting for their turn (MAX_DRAWS).
+// Copies being drawn, and the ones waiting for their turn (MAX_DRAWS), each
+// with the generation (state.js) that last asked for it.
 let drawing = 0;
 const waitingDraws = [];
 const visibleVideos = new Set();
+// Bumped by forgetThumbs: a copy drawn for before it is not kept.
+let epoch = 0;
 
-/** The next free slot takes a visible video before any queued background work. */
+/** Resolves a waiting draw with no copy, without drawing it. */
+function dropDraw(task) {
+  if (loadingThumbs.get(task.key) === task.promise) loadingThumbs.delete(task.key);
+  task.resolve(null);
+}
+
+/**
+ * The next free slot takes a visible video before any queued background work.
+ * A draw nobody asked for since the settings changed (an older generation) is
+ * dropped: its output would be thrown away.
+ */
 function pumpDraws() {
+  const gen = currentGeneration();
+  for (let i = waitingDraws.length - 1; i >= 0; i--) {
+    if (waitingDraws[i].gen !== gen) dropDraw(waitingDraws.splice(i, 1)[0]);
+  }
   while (drawing < MAX_DRAWS && waitingDraws.length) {
     let at = waitingDraws.findIndex((task) => visibleVideos.has(task.videoId));
     if (at === -1) at = 0;
@@ -47,10 +65,12 @@ export function prioritizeThumbs(ids) {
   ids.forEach((id) => { visibleVideos.add(id); });
 }
 
-/** Runs `draw` within the shared bound, with priority decided when its slot opens. */
-function whenDrawSlot(videoId, draw) {
-  return new Promise((resolve) => {
-    const start = () => {
+/** Runs `draw` (the copy under `key`) within the shared bound, with priority decided when its slot opens. */
+function whenDrawSlot(key, videoId, draw) {
+  const task = { key, videoId, gen: currentGeneration(), start: null, resolve: null, promise: null };
+  task.promise = new Promise((resolve) => {
+    task.resolve = resolve;
+    task.start = () => {
       const finish = (copy) => {
         drawing--;
         resolve(copy);
@@ -58,9 +78,10 @@ function whenDrawSlot(videoId, draw) {
       };
       draw().then(finish, () => finish(null));
     };
-    waitingDraws.push({ videoId, start });
-    pumpDraws();
   });
+  waitingDraws.push(task);
+  // Set by the caller after this returns: pumpDraws runs once it is.
+  return task;
 }
 
 /** Whether canvas can make blobs here (Chrome 50+); webOS 3 and 4 make data URLs. */
@@ -97,6 +118,7 @@ export function copyWidth() {
  * IMAGE_TIMEOUT_MS, or cannot be drawn.
  */
 function drawCopy(url, videoId, width, key) {
+  const drawnFor = epoch;
   return new Promise((resolve) => {
     let settled = false;
     const img = new Image();
@@ -122,9 +144,9 @@ function drawCopy(url, videoId, width, key) {
       }
       /** Remembers the copy and its weight, if there is one, and resolves with it. */
       const finish = (copy, weight) => {
-        if (settled || !configRead('enableDeArrow')) {
-          // Timed out while toBlob ran, or DeArrow switched off meanwhile:
-          // nobody takes this copy, and it is not kept.
+        if (settled || !configRead('enableDeArrow') || drawnFor !== epoch) {
+          // Timed out while toBlob ran, or DeArrow switched off or every copy
+          // dropped meanwhile: nobody takes this copy, and it is not kept.
           if (copy && copy.indexOf('blob:') === 0) URL.revokeObjectURL(copy);
           if (!settled) done(null);
           return;
@@ -175,6 +197,7 @@ function drawCopy(url, videoId, width, key) {
  * not have, which an image loads like any other picture).
  */
 function checkFrame(url, videoId, key) {
+  const checkedFor = epoch;
   return new Promise((resolve) => {
     const img = new Image();
     let timer = null;
@@ -182,7 +205,7 @@ function checkFrame(url, videoId, key) {
     const done = (frame) => {
       clearTimeout(timer);
       img.onload = img.onerror = null;
-      if (frame) copies.set(key, frame);
+      if (frame && checkedFor === epoch) copies.set(key, frame);
       resolve(frame);
     };
     timer = setTimeout(() => done(null), IMAGE_TIMEOUT_MS);
@@ -205,17 +228,32 @@ export function loadThumb(url, videoId) {
   const key = frame ? url : width + ' ' + url;
   const cached = copies.get(key);
   if (cached) return Promise.resolve(cached);
-  let loading = loadingThumbs.get(key);
-  if (!loading) {
-    loading = frame ? checkFrame(url, videoId, key) : whenDrawSlot(videoId, () => drawCopy(url, videoId, width, key));
-    loadingThumbs.set(key, loading);
-    loading.then(() => loadingThumbs.delete(key));
+  const loading = loadingThumbs.get(key);
+  if (loading) {
+    // Asked for again: wanted in this generation too, if it still waits.
+    const task = waitingDraws.find((waiting) => waiting.promise === loading);
+    if (task) task.gen = currentGeneration();
+    return loading;
   }
-  return loading;
+  const task = frame ? null : whenDrawSlot(key, videoId, () => drawCopy(url, videoId, width, key));
+  const started = task ? task.promise : checkFrame(url, videoId, key);
+  loadingThumbs.set(key, started);
+  const settle = () => {
+    if (loadingThumbs.get(key) === started) loadingThumbs.delete(key);
+  };
+  started.then(settle, settle);
+  if (task) pumpDraws();
+  return started;
 }
 
-/** Drops every copy, freeing the blobs. */
+/**
+ * Drops every copy, freeing the blobs, and the draws still waiting for a slot;
+ * a copy being drawn now is freed when it is done.
+ */
 export function forgetThumbs() {
+  epoch++;
+  waitingDraws.splice(0).forEach(dropDraw);
+  loadingThumbs.clear();
   copies.forEach((copy) => {
     if (copy.indexOf('blob:') === 0) URL.revokeObjectURL(copy);
   });
