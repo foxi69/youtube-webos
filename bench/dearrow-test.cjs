@@ -721,6 +721,29 @@ const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-d
       win.close();
     }
 
+    // The same tiles shown again after the change ask for their thumbnails again: the draws still waiting
+    // belong to the new generation then, and are downloaded when a slot opens rather than dropped.
+    {
+      const ids = crowdIds('ask');
+      const { win, parse, pump, images, pendingImages } = boot({}, { extra: crowdExtra(ids), holdImages: true });
+      const page = () => browse(ids.map((id) => tile(id, 'Original ' + id)));
+      parse(page());
+      await waitFor(() => downloads(images, ids) === 4, 1500);
+      flip(win, pump, 'Crowdsourced Titles', false);
+      // The settings refresh (a new generation, every video to decide again) runs a tick after the change.
+      await wait(50);
+      parse(page());
+      await wait(300);
+      for (let i = 0; i < 4 && downloads(images, ids) < 9; i++) {
+        pendingImages.splice(0).forEach((item) => { item.finish(); });
+        await waitFor(() => pendingImages.length > 0 || downloads(images, ids) === 9, 500);
+      }
+      t('shown again after the change: the thumbnails that waited for a slot are downloaded',
+        downloads(images, ids) === 9, `${downloads(images, ids)} downloads`);
+      pendingImages.splice(0).forEach((item) => { item.finish(); });
+      win.close();
+    }
+
     // Too many videos remembered: everything is wiped (DeArrow stays on).
     {
       const ids = crowdIds('wip');
