@@ -209,7 +209,8 @@ const CAP_ABOVE = 1;
 const BELOW_1080 = ['hd720', 'large', 'medium', 'small', 'tiny'];
 const ABOVE_1080 = ['highres', 'hd2880', 'hd2160', 'hd1440'];
 // YouTube can write our quality range asynchronously. Only a record of the
-// requested level in this window is ours; a different choice is never hidden.
+// requested level, made within this long of a call, is ours; a different
+// choice is never hidden.
 const OWN_RECORD_MS = 1000;
 
 export function createSpeedController({ win, getPlayer, notify, configRead, codecs, userKeyAt = () => 0 }) {
@@ -224,10 +225,11 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
   let keptCaptions = null;
   // Stops the caption checks of the last reload (player-state.js).
   let stopCaptions = () => {};
-  // When this controller last set a quality range, and the viewer's last pick
-  // read from YouTube's record (see viewerPick).
-  let ownRangeAt = -Infinity;
-  let ownRangeLevel = null;
+  // When this controller asked for each quality level ({ from, until } by
+  // level), the level it asked for last, and the viewer's last pick read from
+  // YouTube's record (see viewerPick).
+  const ownRanges = new Map();
+  let ownRangeLevel;
   let lastPick = null;
   let qualityPickVideoId = null;
 
@@ -332,8 +334,8 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
     try { record = readQualityRecord(win.localStorage, Date.now()); }
     catch { return lastPick; }
     if (record === undefined) return lastPick;
-    const ours = !!record && record.level === ownRangeLevel &&
-      record.at >= ownRangeAt && record.at - ownRangeAt < OWN_RECORD_MS;
+    const own = record ? ownRanges.get(record.level) : null;
+    const ours = !!own && record.at >= own.from && record.at < own.until;
     if (!ours) lastPick = record ? record.level : null;
     return lastPick;
   }
@@ -350,9 +352,15 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
     qualityPickVideoId = null;
   }
 
+  // The same level asked again (the cap, once the reload plays) keeps the
+  // first call's start: its record can still be the newest when the next read
+  // comes, and it is no pick of the viewer's.
   function setRange(player, quality) {
-    ownRangeAt = Date.now();
-    ownRangeLevel = quality === 'highres' || quality === 'auto' ? null : quality;
+    const level = quality === 'highres' || quality === 'auto' ? null : quality;
+    const now = Date.now();
+    const own = level === ownRangeLevel ? ownRanges.get(level) : null;
+    ownRanges.set(level, { from: own ? own.from : now, until: now + OWN_RECORD_MS });
+    ownRangeLevel = level;
     player.setPlaybackQualityRange(quality, quality);
   }
 

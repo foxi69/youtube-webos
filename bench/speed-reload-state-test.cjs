@@ -31,7 +31,7 @@ const writeQuality = (win, height, previous) => win.localStorage.setItem('yt-pla
   creation: Date.now(), expiration: Date.now() + 1e9
 }));
 
-function boot(pickHeight, { force = false, manualPlayback = false } = {}) {
+function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = false } = {}) {
   const dom = new JSDOM('<body class="WEB_PAGE_TYPE_WATCH"><div id="ytlr-player__player-container-player"><video></video></div></body>',
     { runScripts: 'outside-only', url: 'https://www.youtube.com/tv#/watch?v=abcdefghijk',
       virtualConsole: new VirtualConsole(), pretendToBeVisual: true });
@@ -79,7 +79,11 @@ function boot(pickHeight, { force = false, manualPlayback = false } = {}) {
     setPlaybackQualityRange(a) {
       log.ranges.push(a);
       quality = a === 'highres' ? 'hd2160' : a === 'auto' ? 'hd720' : a;
-      try { if (HEIGHTS[a]) writeQuality(win, HEIGHTS[a], 2160); } catch { /* storage denied */ }
+      const write = () => {
+        try { if (HEIGHTS[a]) writeQuality(win, HEIGHTS[a], 2160); } catch { /* storage denied */ }
+      };
+      // On a TV the record follows the call a moment later.
+      if (lateRecord) win.setTimeout(write, 50); else write();
     },
     getPlaybackQuality: () => quality,
     getAvailableQualityLevels: () => ['hd2160', 'hd1080', 'hd720', 'auto'],
@@ -207,10 +211,24 @@ function boot(pickHeight, { force = false, manualPlayback = false } = {}) {
     emit(1);
     await sleep(650);
     t('a new 480p choice during buffering is not overwritten by the old 720p cap',
-      p.getPlaybackQuality() === 'large' && !log.ranges.includes('hd720'), log.ranges.join());
+      p.getPlaybackQuality() === 'large' && log.ranges.includes('large') && !log.ranges.includes('hd720'),
+      log.ranges.join());
     speed.setSpeed(1, { immediate: true });
     t('the newer buffering-time choice is also restored at 1x',
       log.ranges[log.ranges.length - 1] === 'large', log.ranges.join());
+    win.close();
+  }
+  {
+    // A 2160p pick; YouTube writes each range call's record a moment after it.
+    // The cap set again when the reload plays is then still unrecorded: the
+    // first cap's record is the controller's too, not a 1080p pick.
+    const { win, speed, log } = boot(2160, { lateRecord: true });
+    speed.setSpeed(1.5, { immediate: true });
+    await sleep(900);
+    t('the cap is set again once the reload plays', log.ranges.join() === 'hd1080,hd1080', log.ranges.join());
+    log.ranges.length = 0;
+    speed.setSpeed(1, { immediate: true });
+    t('back at 1x a 2160p pick returns, not the cap recorded late', log.ranges.join() === 'hd2160', log.ranges.join());
     win.close();
   }
   {
