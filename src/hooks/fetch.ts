@@ -54,11 +54,13 @@ export class FetchRegistry extends CustomEventTarget<EventMap> {
   }
 
   static async #dumpBody(resource: Request | Response) {
-    if (
-      !resource?.constructor?.name ||
-      !['Request', 'Response'].includes(resource.constructor.name)
-    )
-      return null;
+    // By instanceof, not the constructor's name: the legacy bundle minifies
+    // the names of the fetch polyfill's Request and Response.
+    const isRequest =
+      typeof Request === 'function' && resource instanceof Request;
+    const isResponse =
+      typeof Response === 'function' && resource instanceof Response;
+    if (!isRequest && !isResponse) return null;
 
     const blob = await resource.clone().blob();
     if (!blob.size) return null;
@@ -103,10 +105,12 @@ export class FetchRegistry extends CustomEventTarget<EventMap> {
 
     let reqAllowed = true;
     if (this.#listeners.request.size > 0) {
-      const url =
-        resource instanceof Request
-          ? new URL(resource.url)
-          : new URL(resource.toString(), document.location.href);
+      // Against the page: the fetch polyfill (webOS 3) keeps a Request's
+      // relative URL as it was given.
+      const url = new URL(
+        resource instanceof Request ? resource.url : resource.toString(),
+        document.location.href
+      );
 
       reqAllowed = this.dispatchEvent(
         new TypedCustomEvent('request', {

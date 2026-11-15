@@ -386,24 +386,39 @@ async function webos3() {
   let r = await call(win, '/youtubei/v1/log_event?alt=json', { method: 'POST', body: '{}' });
   t(n('a telemetry request is cancelled: TypeError "Failed to fetch"'), isFailedToFetch(win, r), describe(r));
   t(n('...and no XMLHttpRequest is sent for it'), sent('log_event') === 0);
-  // An absolute URL: the polyfill keeps a relative one as it is, which the
-  // registry cannot read (new URL() without a base).
   r = await call(win, new win.Request(ORIGIN + '/ptracking?x=1'));
   t(n('a telemetry Request object is cancelled too'), isFailedToFetch(win, r) && sent('ptracking') === 0, describe(r));
+  // The polyfill's Request keeps a relative URL as it was given: read against
+  // the page, as the TV's own fetch would.
+  r = await call(win, new win.Request('/api/stats/qoe?docid=y'));
+  t(n('a telemetry Request with a relative URL is cancelled too'), isFailedToFetch(win, r) && sent('qoe') === 0, describe(r));
+  r = await call(win, new win.Request('/youtubei/v1/guide', { method: 'POST', body: 'g' }));
+  t(n('any other Request with a relative URL is sent'), !r.error && r.res.status === 200 &&
+    r.body === '{"path":"/youtubei/v1/guide"}' && sent('/youtubei/v1/guide') === 1, describe(r));
   r = await call(win, '/youtubei/v1/browse', { method: 'POST', body: 'b' });
   const x = xhrs.find((q) => q.url.indexOf('/youtubei/v1/browse') !== -1);
   t(n('any other request is sent, method and body intact'), !!x && x.method === 'POST' && x.body === 'b');
   t(n('...and the caller reads its answer'), !r.error && r.res.status === 200 && r.body === '{"path":"/youtubei/v1/browse"}', describe(r));
 
-  // The dumps themselves are left out here: #dumpBody goes by the
-  // constructor's name, and the minified polyfill's Request and Response are
-  // not called that.
   win.__ytaf_debug__ = true;
   env.debug.length = 0;
   r = await call(win, '/youtubei/v1/next');
   t(n('debug: request and response logged'), lastRequestNo(env.debug) >= 0 &&
     env.debug.some((a) => /^Response \d+:$/.test(String(a[0]))), env.debug.map((a) => a[0]).join(' | '));
   t(n('debug: the caller still reads the body'), r.body === '{"path":"/youtubei/v1/next"}', describe(r));
+  // The bodies too, with the polyfill's Request and Response (their names
+  // are minified away in the legacy bundle).
+  env.debug.length = 0;
+  r = await call(win, new win.Request(ORIGIN + '/youtubei/v1/log', { method: 'POST', body: 'hello' }));
+  const no = lastRequestNo(env.debug);
+  const reqBody = debugLine(env.debug, `Request Body ${no}:`);
+  t(n('debug: the polyfill\'s request body is logged, as a data: URL'),
+    !!reqBody && /^data:[^,]*;base64,/.test(reqBody[1]) && reqBody[1].split(',')[1] === b64('hello'), reqBody && reqBody[1]);
+  const resBody = debugLine(env.debug, `Response Body ${no}:`);
+  t(n('debug: the polyfill\'s response body is logged, as a data: URL'),
+    !!resBody && /^data:[^,]*;base64,/.test(resBody[1]) && resBody[1].split(',')[1] === b64('{"path":"/youtubei/v1/log"}'),
+    resBody && resBody[1]);
+  t(n('...and the caller still reads it'), r.body === '{"path":"/youtubei/v1/log"}', describe(r));
   win.__ytaf_debug__ = false;
 
   t(n('the Tracking Block switched off in the panel'), toggleTrackingBlock(win) === false);
