@@ -33,17 +33,43 @@ for arg in "$@"; do
 done
 
 build() { echo "=== build $*"; npx webpack --mode=production --stats errors-warnings "${env[@]}" "$@"; }
-# The last line of each test; on a failure its FAIL lines too, with the line
-# under each, so the CI log says which case failed.
-run() {
-  echo "--- $1"
-  local out status=0
-  out="$(node "bench/$1.cjs" "${@:2}" 2>&1)" || status=$?
-  printf '%s\n' "$out" | grep -v '^[[:space:]]*$' | tail -n 1
-  if [ "$status" -ne 0 ]; then
-    printf '%s\n' "$out" | grep -A1 '^FAIL' || printf '%s\n' "$out" | tail -n 20
-    return "$status"
-  fi
+# The tests run side by side, CI_JOBS at a time (the number of CPUs by
+# default; CI_JOBS=1 runs them one after another): `run` queues one, `flush`
+# runs the queue and waits, before each build replaces the bundle the queued
+# tests read. Each test's last line is printed in queue order, with its time;
+# on a failure its FAIL lines too, with the line under each, so the CI log
+# says which case failed.
+JOBS="${CI_JOBS:-$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)}"
+queue=()
+run() { queue+=("$*"); }
+flush() {
+  [ ${#queue[@]} -eq 0 ] && return 0
+  local dir i status=0
+  dir="$(mktemp -d)"
+  for i in "${!queue[@]}"; do
+    while [ "$(jobs -rp | wc -l)" -ge "$JOBS" ]; do wait -n || true; done
+    (
+      set +e
+      read -r -a args <<< "${queue[$i]}"
+      start=$SECONDS
+      node "bench/${args[0]}.cjs" "${args[@]:1}" > "$dir/$i.out" 2>&1
+      echo "$? $((SECONDS - start))" > "$dir/$i.rc"
+    ) &
+  done
+  wait
+  for i in "${!queue[@]}"; do
+    local name="${queue[$i]%% *}" rc secs
+    read -r rc secs < "$dir/$i.rc"
+    echo "--- $name (${secs}s)"
+    grep -v '^[[:space:]]*$' "$dir/$i.out" | tail -n 1
+    if [ "$rc" -ne 0 ]; then
+      grep -A1 '^FAIL' "$dir/$i.out" || tail -n 20 "$dir/$i.out"
+      status=1
+    fi
+  done
+  rm -rf "$dir"
+  queue=()
+  return "$status"
 }
 
 # tools/fork-watch.py with GitHub's API faked. It needs Python 3: without it
@@ -150,6 +176,7 @@ run preview-countdown-test "$B"
 # The modern build. In a coverage run it goes to dist-modern/: c8 reads each
 # bundle on disk when it reports, so the legacy one must stay where its tests
 # ran it.
+flush
 M="$B"
 if [ ${#env[@]} -eq 0 ]; then
   build --env modern
@@ -183,10 +210,12 @@ run quality-reload-test "$M"
 run speed-reload-state-test "$M" modern
 run handover-quality-test "$M"
 
+flush
 # perf_mon is a dev tool, not part of the app, and not measured.
 if [ ${#env[@]} -eq 0 ]; then
   build --env perf
   run perfmon-test "$B" legacy
+  flush
 fi
 
 echo "=== all tests passed"
