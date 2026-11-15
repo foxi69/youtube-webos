@@ -372,11 +372,21 @@ export function createSpeedController({
     return lastPick;
   }
 
-  // Only the video whose speed reload kept this pick suppresses quality forcing.
+  // Only the video whose speed reload kept this pick suppresses quality forcing,
+  // while it plays: another video, or the same one opened again later, is
+  // forced as any other.
   function keepsQuality(watched) {
     if (!lastPick || !qualityPickVideoId || !watched) return false;
-    try { return watched.getVideoData()?.video_id === qualityPickVideoId; }
+    let id;
+    try { id = watched.getVideoData()?.video_id; }
     catch { return false; }
+    if (id && id !== qualityPickVideoId) qualityPickVideoId = null;
+    return !!id && id === qualityPickVideoId;
+  }
+
+  /** The video was left (another page than the watch page or Shorts). */
+  function leaveVideo() {
+    qualityPickVideoId = null;
   }
 
   function clearQualityPick() {
@@ -595,7 +605,8 @@ export function createSpeedController({
     capQuality,
     setRange,
     keepsQuality,
-    clearQualityPick
+    clearQualityPick,
+    leaveVideo
   };
 }
 
@@ -667,7 +678,11 @@ export function installSpeedFeature(win, { notify, configRead: cfgRead, getPlaye
   const resume = () => ctrl.resumeOnPlaybackPage();
   let resumeTimer = null;
   const onPageUpdate = ({ detail }) => {
-    if (!detail || !(detail.isWatch || detail.isShorts)) return;
+    if (!detail) return;
+    if (!(detail.isWatch || detail.isShorts)) {
+      ctrl.leaveVideo();
+      return;
+    }
     if (resumeTimer !== null) win.clearTimeout(resumeTimer);
     resumeTimer = win.setTimeout(() => {
       resumeTimer = null;

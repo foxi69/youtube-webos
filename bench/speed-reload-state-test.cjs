@@ -412,6 +412,24 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
     t('fallen below the cap, the cap is set again', log.ranges.join() === 'hd1080', log.ranges.join());
     win.close();
   }
+  {
+    // A 480p pick kept by a speed change holds Force Max Quality off for that
+    // video while it plays. Left for Home and opened again later, the video is
+    // forced as any other.
+    const { win, log, speed, emit, pump } = boot(480, { force: true });
+    speed.setSpeed(1.5, { immediate: true });
+    speed.setSpeed(1, { immediate: true });
+    await sleep(900);
+    win.document.body.className = 'WEB_PAGE_TYPE_BROWSE';
+    await sleep(50);
+    win.document.body.className = 'WEB_PAGE_TYPE_WATCH';
+    await sleep(50);
+    log.ranges.length = 0;
+    emit(-1); emit(3); emit(1); pump(); pump();
+    t('the same video opened again after leaving it gets Force Max Quality', log.ranges.includes('highres'),
+      log.ranges.join());
+    win.close();
+  }
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })();
