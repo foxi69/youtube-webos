@@ -315,12 +315,25 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
     // A 720p pick; the reloaded video plays, then falls to 480p while its watch runs.
     const { win, speed, log, setQuality } = boot(720);
     speed.setSpeed(1.5, { immediate: true });
-    await sleep(900);
+    // The reload's own caps first (at the reload, then as it plays), so the
+    // hd720 after the fall can only come from the watch.
+    for (let i = 0; i < 40 && log.ranges.length < 2; i++) await sleep(50);
+    t('the reload is capped at the 720p pick as it plays', log.ranges.join() === 'hd720,hd720', log.ranges.join());
     log.ranges.length = 0;
     setQuality('large');
     await sleep(2600);
     t('a reload fallen below the 720p pick gets the pick again', log.ranges.join() === 'hd720', log.ranges.join());
     win.close();
+    // A level list that is not a list: no throw while it plays, the cap falls back to the pick.
+    const b = boot(720);
+    b.p.getAvailableQualityLevels = () => ({});
+    const errors = [];
+    b.win.addEventListener('error', (e) => errors.push(e.message));
+    b.speed.setSpeed(1.5, { immediate: true });
+    await sleep(900);
+    t('a level list that is not an array: capped at the pick, nothing thrown', b.log.ranges.join() === 'hd720,hd720' && !errors.length,
+      `${b.log.ranges.join()} ${errors.join()}`);
+    b.win.close();
   }
   {
     // No pick: a 60 fps video started at 1.5x came at 480p30 on a TV, where 1080p60 played 1.5x at 60 fps.

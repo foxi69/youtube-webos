@@ -450,7 +450,9 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
   // The cap, or the highest level the video has below it.
   function capFor(player) {
     const cap = capQuality();
-    const levels = (player.getAvailableQualityLevels && player.getAvailableQualityLevels()) || [];
+    // Anything but a list (none yet, say) is no levels: no target, the caller falls back.
+    let levels = player.getAvailableQualityLevels && player.getAvailableQualityLevels();
+    if (!Array.isArray(levels)) levels = [];
     return LEVELS_DOWN.slice(LEVELS_DOWN.indexOf(cap)).find((q) => levels.includes(q)) || null;
   }
 
