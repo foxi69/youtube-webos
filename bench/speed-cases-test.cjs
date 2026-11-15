@@ -37,6 +37,21 @@ const t = (name, ok, extra) => {
   if (ok) { pass++; console.log('PASS ' + name); }
   else { fail++; console.log('FAIL ' + name + (extra !== undefined ? '\n     ' + extra : '')); }
 };
+// One remote press: keydown then keyup of each code (a colour button sends two
+// at once). Says whether the page kept the key from YouTube.
+const press = async (win, ...codes) => {
+  let held = false;
+  for (const type of ['keydown', 'keyup']) {
+    for (const keyCode of codes) {
+      const e = new win.KeyboardEvent(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(e, 'keyCode', { get: () => keyCode, configurable: true });
+      dispatchTrusted(win.document.activeElement || win.document.body, e);
+      held = held || e.defaultPrevented;
+    }
+  }
+  await wait(450);
+  return held;
+};
 // Every boot's jsdomErrors (a script error on the page), checked at the end.
 const allErrors = [];
 
@@ -210,22 +225,37 @@ function boot(cfg = {}, { live = false, page = 'WEB_PAGE_TYPE_WATCH' } = {}) {
   // ---- The remote's keys mapped to the speed ----
   {
     const { win, speed, toasts } = boot({ shortcut_key_1: 'speed_up', shortcut_key_2: 'speed_down', shortcut_key_3: 'speed_reset' });
-    const press = async (keyCode) => {
-      for (const type of ['keydown', 'keyup']) {
-        const e = new win.KeyboardEvent(type, { bubbles: true, cancelable: true });
-        Object.defineProperty(e, 'keyCode', { get: () => keyCode, configurable: true });
-        dispatchTrusted(win.document.activeElement || win.document.body, e);
-      }
-      await wait(450);
-    };
     await wait(600);
-    await press(49);
-    await press(49);
+    await press(win, 49);
+    await press(win, 49);
     t('Playback Speed + twice: 1.5x', speed.getSpeed() === 1.5, `${speed.getSpeed()} ${toasts().join(' | ')}`);
-    await press(50);
+    await press(win, 50);
     t('Playback Speed -: 1.25x', speed.getSpeed() === 1.25, String(speed.getSpeed()));
-    await press(51);
+    await press(win, 51);
     t('Playback Speed Reset: 1x', speed.getSpeed() === 1, String(speed.getSpeed()));
+    speed.setSpeed(2, { immediate: true });
+    await press(win, 49);
+    t('Playback Speed + at 2x: stays 2x', speed.getSpeed() === 2, String(speed.getSpeed()));
+    speed.setSpeed(0.25, { immediate: true });
+    await press(win, 50);
+    t('Playback Speed - at 0.25x: stays 0.25x', speed.getSpeed() === 0.25, String(speed.getSpeed()));
+    win.close();
+  }
+  {
+    // Red sends 403 and 166 for one press: one step, not two.
+    const { win, speed } = boot({ shortcut_key_red: 'speed_up' });
+    await wait(600);
+    await press(win, 403, 166);
+    t('Red mapped to Playback Speed +: one press, one step (1.25x)', speed.getSpeed() === 1.25, String(speed.getSpeed()));
+    win.close();
+  }
+  {
+    // The speed keys are VIDEO scope: on a browse page they change nothing.
+    const { win, speed } = boot({ shortcut_key_1: 'speed_up' }, { page: 'WEB_PAGE_TYPE_BROWSE' });
+    await wait(600);
+    const held = await press(win, 49);
+    t('Playback Speed + on a browse page: still 1x', speed.getSpeed() === 1, String(speed.getSpeed()));
+    t('and the key goes on to YouTube', !held);
     win.close();
   }
 
