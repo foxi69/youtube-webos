@@ -43,7 +43,7 @@ export function buildTagCss(label) {
 }
 
 function update() {
-  if (!/^(title|both)$/.test(configRead('showVideoQuality')) || !isWatchPage()) {
+  if (!/^(?:title|both)$/.test(configRead('showVideoQuality')) || !isWatchPage()) {
     write('');
     return;
   }
