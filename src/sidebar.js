@@ -87,6 +87,16 @@ function saveEntries(list) {
   }
 }
 
+/**
+ * An entry's name for the panel, in English whatever language YouTube's menu
+ * comes in: its id is English words (FEtopics_gaming -> Gaming, search ->
+ * Search). YouTube's own title only when the id gives none.
+ */
+export function entryName(entry) {
+  const words = entry.id.replace(/^FE(topics_)?/, '').replace(/_/g, ' ');
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : entry.title;
+}
+
 export function hiddenIds() {
   const value = configRead('hiddenSidebarEntries');
   return Array.isArray(value) ? value : [];
