@@ -137,7 +137,7 @@ function boot(cfg, opts = {}) {
   const badged = (el) => el.hasAttribute(BADGE);
   const jump = (ms) => { offset += ms; };
   const count = (id) => requests.filter((r) => r === id).length;
-  const release = () => { holding = false; held.splice(0).forEach((finish) => finish()); };
+  const release = () => { holding = false; held.splice(0).forEach((finish) => { finish(); }); };
   return { win, doc, errors, requests, count, card, recycle, badged, jump, ranWithoutBody, late, root, held, release };
 }
 

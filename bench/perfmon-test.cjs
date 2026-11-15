@@ -150,7 +150,7 @@ setTimeout(async () => {
   });
   await new Promise((r) => setTimeout(r, 2100));
   const previews = win.__PERF.features().filter((f) => f.key === 'videoPreviews')[0];
-  cfgKeys.forEach((k, i) => win.localStorage.setItem(k, storedCfgs[i]));
+  cfgKeys.forEach((k, i) => { win.localStorage.setItem(k, storedCfgs[i]); });
   t('Video Previews: the old Force Off is read as Off', !!previews && /Mode: off/.test(previews.detail),
     previews ? previews.state + ': ' + previews.detail : 'not listed');
 
