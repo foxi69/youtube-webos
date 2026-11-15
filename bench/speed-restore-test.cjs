@@ -148,10 +148,11 @@ import(MODULE).then(({ watchPosition }) => {
     s.run(3000);
     t('at the cap: nothing to do', caps === 0, caps);
     isLow = true;
-    s.run(1500);
-    t('a short dip is left alone', caps === 0, caps);
-    s.run(1000);
-    t('it lasts: the cap is set again', caps === 1, caps);
+    // Exactly 2 s: 7 low ticks of 250 ms are not enough, the 8th sets it.
+    s.run(1750);
+    t('a short dip (7 ticks, 1.75 s) is left alone', caps === 0, caps);
+    s.run(250);
+    t('it lasts 2 s (the 8th tick): the cap is set again', caps === 1, caps);
     isLow = false;
     s.run(5000);
     t('back up: no more', caps === 1, caps);
