@@ -13,7 +13,7 @@
  */
 const fs = require('fs');
 const { JSDOM, VirtualConsole } = require('jsdom');
-const { UA, setUserAgent, applyChrome87Downgrade } = require('./chrome38-env.cjs');
+const { UA, setUserAgent, applyChrome38Downgrade, applyChrome87Downgrade } = require('./chrome38-env.cjs');
 
 const bundlePath = process.argv[2] || 'dist/webOSUserScripts/userScript.js';
 // `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
@@ -38,8 +38,9 @@ function boot() {
   const dom = new JSDOM('<!doctype html><html><body class="WEB_PAGE_TYPE_WATCH"><ytlr-app></ytlr-app></body></html>',
     { runScripts: 'outside-only', url: 'https://www.youtube.com/tv#/watch?v=aaaaaaaaaaa', virtualConsole: vc, pretendToBeVisual: true });
   const win = dom.window;
-  setUserAgent(win, UA.webos23);
-  if (modern) applyChrome87Downgrade(win);
+  setUserAgent(win, modern ? UA.webos23 : UA.webos3);
+  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
+  win.Element.prototype.remove = function remove() { if (this.parentNode) this.parentNode.removeChild(this); };
   win.launchParams = '{}';
   win.XMLHttpRequest = class { open(){} send(){} setRequestHeader(){} getResponseHeader(){return null;} addEventListener(){} };
   win.fetch = () => new Promise(() => {});

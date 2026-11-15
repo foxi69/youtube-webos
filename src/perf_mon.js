@@ -1856,6 +1856,13 @@ export {};
     for (var k in parsed) {
       if (Object.prototype.hasOwnProperty.call(parsed, k)) merged[k] = parsed[k];
     }
+    // A set stored before Video Previews still has the two settings it
+    // replaced; config.js migrateStored reads them so: keep in sync.
+    if (parsed && !('videoPreviews' in parsed) && ('forcePreviews' in parsed || 'mutePreviews' in parsed)) {
+      merged.videoPreviews = parsed.forcePreviews === 'force_off' ? 'off'
+        : parsed.mutePreviews ? 'muted'
+          : parsed.forcePreviews === 'force_on' ? 'sound' : 'default';
+    }
   }
 
   function cfg() {

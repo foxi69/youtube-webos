@@ -213,13 +213,15 @@ export function setInlinePlayback(mode) {
 }
 
 export function initPreviews() {
-  const mode = configRead('videoPreviews');
-  if (mode === 'default') return;
+  if (configRead('videoPreviews') === 'default') return;
 
-  // Delay by 2.5 seconds to ensure it applies after YouTube's initial load overrides
+  // Delay by 2.5 seconds to ensure it applies after YouTube's initial load
+  // overrides. The setting is read again then: a change meanwhile (Default
+  // included) was applied by the change listener and must stand.
   setTimeout(() => {
-    setInlinePlayback(mode);
-  }, 2500); 
+    const mode = configRead('videoPreviews');
+    if (mode !== 'default') setInlinePlayback(mode);
+  }, 2500);
 }
 
 // CSS rules live in auto-login.css and are scoped by body.ytaf-bypassing-login,

@@ -68,15 +68,22 @@ function boot(cfg, start) {
   }, cfg)));
 
   const RealDate = win.Date;
-  const clock = { offset: start ? start.getTime() - RealDate.now() : 0 };
+  // The page's time stands still at `start` while the bundle loads, so a slow
+  // start (CI, coverage) does not carry it past the minute the test is about.
+  const clock = { offset: 0, held: start ? start.getTime() : null };
+  const pageNow = () => (clock.held !== null ? clock.held : RealDate.now() + clock.offset);
   class FakeDate extends RealDate {
-    constructor(...args) { if (args.length) super(...args); else super(RealDate.now() + clock.offset); }
-    static now() { return RealDate.now() + clock.offset; }
+    constructor(...args) { if (args.length) super(...args); else super(pageNow()); }
+    static now() { return pageNow(); }
   }
   win.Date = FakeDate;
   if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
   win.Element.prototype.remove = function remove() { if (this.parentNode) this.parentNode.removeChild(this); };
   win.eval(code);
+  if (clock.held !== null) {
+    clock.offset = clock.held - RealDate.now();
+    clock.held = null;
+  }
 
   const doc = win.document;
   const now = () => new RealDate(RealDate.now() + clock.offset);

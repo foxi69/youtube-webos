@@ -350,6 +350,18 @@ async function boot(cfg, opts = {}) {
     env.win.close();
   }
   {
+    // Set back to Default before the delayed start-up write: that write must not force the old mode.
+    const env = await boot({ enableAutoLogin: false, videoPreviews: 'sound' });
+    env.pressGreen();
+    await wait(20);
+    await env.openTab(5);   // UI Tweaks
+    const back = env.cycle(LABEL_PREVIEWS);
+    await pageMs(3000);
+    t(n('previews With sound, set to Default before the start-up write: not forced on'),
+      back === 'Default' && env.read(INLINE) === null, `${back} ${env.store.getItem(INLINE)}`);
+    env.win.close();
+  }
+  {
     const env = await boot({ enableAutoLogin: false, videoPreviews: 'default' });
     await pageMs(3000);
     t(n('previews default: the record is not written'), env.read(INLINE) === null, env.store.getItem(INLINE));

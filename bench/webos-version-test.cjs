@@ -123,9 +123,9 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
     t(n + 'loads without throwing', !threw, threw && String(threw.stack || threw).split('\n').slice(0, 3).join(' | '));
     const via = entry.via || 'platform year';
-    const detected = via === 'simulator'
-      ? /\(simulator mode\)/
-      : new RegExp(`Detected webOS ${v} via ${via === 'firmware' ? 'firmware version' : 'platform year'}`);
+    // The log names the version the detection returned, after it is set.
+    const detected = new RegExp(`Detected webOS ${v} via ${via === 'simulator' ? 'Chrome version: \\d+ \\(simulator mode\\)'
+      : via === 'firmware' ? 'firmware version' : 'platform year'}`);
     t(n + `detected as webOS ${v} by ${via}`, info.some((l) => detected.test(l)),
       info.filter((l) => /WebOSUtils/.test(l)).join(' | ') || '(no detection logged)');
 

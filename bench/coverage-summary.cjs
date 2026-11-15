@@ -81,6 +81,12 @@ const rows = (fs.existsSync(detailFile)
   : rowsFromSummary(summary)
 ).sort((a, b) => a.lines.pct - b.lines.pct || a.name.localeCompare(b.name));
 
+// An empty report (no src/ file measured) would read as 100% and pass any floor.
+if (!rows.length || !rows.some((r) => r.lines.total > 0)) {
+  console.error('coverage-summary: no src/ file with executable lines in the report');
+  process.exit(1);
+}
+
 const share = (m) => {
   let covered = 0, all = 0;
   for (const r of rows) { covered += r[m].covered; all += r[m].total; }

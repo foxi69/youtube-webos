@@ -265,8 +265,10 @@ async function boot(yt = {}, cfg = {}) {
     await until(() => b.query() === 'ok');
     t(n('instance-only keys: the third way works, both letters typed'),
       b.query() === 'ok' && b.state.presses.join() === 'o:click,o:pointer,o:click,o:instance,k:instance', b.state.presses.join());
-    b.press('!');   // no such key on this keyboard
-    t(n('a character with no on-screen key is let through'), b.query() === 'ok');
+    b.state.ytSaw.length = 0;
+    const through = b.press('!');   // no such key on this keyboard
+    t(n('a character with no on-screen key is let through to YouTube'),
+      through === true && b.state.ytSaw.join() === '!' && b.query() === 'ok', `${through} ${b.state.ytSaw.join()} ${b.query()}`);
   }
 
   // ---- YouTube types by itself ----
