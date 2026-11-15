@@ -751,6 +751,44 @@ const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-d
     }
   }
 
+  // ---- The sweep reads where every tile is before it writes any ----
+  // A tile's box (getBoundingClientRect) read after a write to another tile
+  // makes the browser lay the page out again, once per tile.
+  {
+    const ids = ['custom00001', 'swpcrowd001', 'swpcrowd002', 'swpcrowd003'];
+    const extra = {};
+    ids.slice(1).forEach((id) => { extra[id] = { titles: [{ title: 'Calm ' + id, original: false, votes: 1 }], thumbnails: [] }; });
+    const { win, parse, errors } = boot({}, { extra });
+    const items = ids.map((id) => tile(id, 'Loud ' + id));
+    const els = items.map((item) => render(win, item, { onScreen: true }));
+    const observer = new win.MutationObserver(() => {});
+    observer.observe(win.document.querySelector('ytlr-app'), { attributes: true, childList: true, characterData: true, subtree: true });
+    let reads = 0;
+    let afterWrite = 0;
+    let sweeping = false;
+    const box = win.HTMLElement.prototype.getBoundingClientRect;
+    win.HTMLElement.prototype.getBoundingClientRect = function () {
+      reads++;
+      const written = observer.takeRecords().length > 0;
+      if (!sweeping) {
+        // The first read of a sweep: what was written before it is not the sweep's.
+        sweeping = true;
+        Promise.resolve().then(() => { sweeping = false; });
+      } else if (written) {
+        afterWrite++;
+      }
+      return box.call(this);
+    };
+    parse(browse(items));
+    await waitFor(() => els.every((el, i) => shownTitle(el) === (i ? 'Calm ' + ids[i] : 'the iPhone review')), 2000);
+    t('the sweep gives every tile on screen its title', els.every((el, i) => shownTitle(el) === (i ? 'Calm ' + ids[i] : 'the iPhone review')),
+      els.map(shownTitle).join(' | '));
+    t('the sweep reads no tile\'s box after writing to another', reads >= ids.length && afterWrite === 0,
+      `${reads} reads, ${afterWrite} after a write`);
+    t('no jsdomError (sweep)', errors.length === 0, errors[0]);
+    win.close();
+  }
+
   // ---- Title formatting (webOS 22+ build only) ----
   {
     const f = boot({ dearrowTitleFormatting: 'sentence_case', dearrowCleanEmojis: true });

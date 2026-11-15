@@ -136,17 +136,25 @@ export function sweepTiles(restoreAll) {
   if (videos.size === 0) return found;
   const tiles = document.querySelectorAll(SELECTORS.TILE);
   const hideBadges = restoreAll || !configRead('dearrowShowBadge');
+  // Every tile's video and box first, then the writes: a box read after a
+  // write lays the page out again, which per tile is a layout per tile.
+  const thumbEls = [];
+  const tileVideos = [];
   for (let i = 0; i < tiles.length; i++) {
-    sweepBadges(tiles[i], hideBadges);
     const thumbEl = tiles[i].querySelector(SELECTORS.THUMBNAIL);
     const video = tileVideo(thumbEl);
+    thumbEls.push(thumbEl);
+    tileVideos.push(video);
+    if (!video || restoreAll) continue;
+    if (onScreen(tiles[i])) found.onScreen.push(video.id);
+    else if (video.stale) found.stale.push(video.id);
+  }
+  for (let i = 0; i < tiles.length; i++) {
+    const video = tileVideos[i];
+    sweepBadges(tiles[i], hideBadges);
     sweepLineLogo(tiles[i], !hideBadges && !!video && showsCrowdsourced(video));
     if (!video) continue;
-    if (!restoreAll) {
-      if (onScreen(tiles[i])) found.onScreen.push(video.id);
-      else if (video.stale) found.stale.push(video.id);
-    }
-    sweepThumb(thumbEl, video, restoreAll ? null : video.thumb);
+    sweepThumb(thumbEls[i], video, restoreAll ? null : video.thumb);
     const titleEl = tiles[i].querySelector(SELECTORS.TILE_TITLE);
     if (titleEl) sweepTitle(titleEl, video, restoreAll ? null : video.title);
   }
