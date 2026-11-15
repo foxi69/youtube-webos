@@ -809,8 +809,10 @@ class ReturnYouTubeDislike {
     return num.toString();
   }
   
+  // Called once per instance, from init(). There is never one already in:
+  // an instance is only made after cleanup() has destroyed the one before,
+  // and destroy() takes the current instance's styles out.
   injectPersistentStyles() {
-    if (document.getElementById('ryd-persistent-styles')) return;
     const styleElement = document.createElement('style');
     styleElement.id = 'ryd-persistent-styles';
     styleElement.textContent = `
