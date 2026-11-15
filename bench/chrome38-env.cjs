@@ -100,6 +100,19 @@ function applyChrome38Downgrade(win) {
     }
   }
 
+  // Chrome 38 has EventTarget, but `new EventTarget()` only works from Chrome
+  // 64: before that it throws "Illegal constructor", and custom-event-target.ts
+  // falls back to its stand-in. Left constructible here, with Reflect removed
+  // above, Babel's `class extends EventTarget` threw instead, and the Tracking
+  // Block's fetch hook never ran in any legacy test.
+  if (win.EventTarget) {
+    const proto = win.EventTarget.prototype;
+    const Illegal = function EventTarget() { throw new win.TypeError('Illegal constructor'); };
+    Illegal.prototype = proto;
+    win.EventTarget = Illegal;
+    del.push('new EventTarget()');
+  }
+
   // Chrome 38 has Element#webkitMatchesSelector; restore it so polyfills.js can find it.
   if (!win.Element.prototype.matches) {
     win.Element.prototype.webkitMatchesSelector = function (sel) {

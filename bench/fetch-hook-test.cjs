@@ -89,6 +89,7 @@ function boot({ polyfill }) {
   if (!win.requestAnimationFrame) win.requestAnimationFrame = (cb) => win.setTimeout(() => cb(Date.now()), 16);
   if (!win.cancelAnimationFrame) win.cancelAnimationFrame = (id) => win.clearTimeout(id);
   const reflect = win.Reflect;
+  const eventTarget = win.EventTarget;
   if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
   // Chrome 23 has it; the Chrome 38 environment takes it away all the same.
   win.Element.prototype.remove = function remove() { if (this.parentNode) this.parentNode.removeChild(this); };
@@ -128,7 +129,12 @@ function boot({ polyfill }) {
     // `class extends EventTarget` constructs the real one through it, and
     // without it fails ("Class constructor EventTarget cannot be invoked
     // without 'new'"), which no TV does.
-    if (!modern) win.Reflect = reflect;
+    if (!modern) {
+      win.Reflect = reflect;
+      // ...and a constructible EventTarget (Chrome 64 and newer), which the
+      // Chrome 38 environment takes away.
+      win.EventTarget = eventTarget;
+    }
     win.Request = Request;
     win.Response = Response;
     win.Headers = Headers;
