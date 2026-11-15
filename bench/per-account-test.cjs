@@ -33,8 +33,8 @@ function boot(shared, identity, extraStorage = {}) {
   win.requestAnimationFrame = (cb) => { rafQ.push(cb); return rafQ.length; };
   win.cancelAnimationFrame = () => {};
   const NS = win.JSON.stringify;
-  // A string is stored as it is (a broken set).
-  win.localStorage.setItem(CONFIG_KEY, typeof shared === 'string' ? shared : NS(Object.assign({
+  // A string is stored as it is (a broken set); null stores nothing (a first start).
+  if (shared !== null) win.localStorage.setItem(CONFIG_KEY, typeof shared === 'string' ? shared : NS(Object.assign({
     enableAdBlock: true, enableLegacyEmojiFix: false, enableSponsorBlock: false,
     enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false
   }, shared)));
@@ -266,7 +266,13 @@ const ACCOUNT_B = { identityType: 'SIGNED_IN', obfuscatedGaiaId: '2222', accessT
   // ---- A stored set that is not JSON ----
   {
     // Cut off mid-write: the app starts on the defaults, and the next change
-    // writes a whole set over it.
+    // writes a whole set over it - the same set a first start writes for the
+    // same change.
+    const fresh = boot(null, ACCOUNT_A);
+    key(fresh.win, GREEN);
+    toggle(fresh.win, checkbox(fresh.win, RYD));
+    await wait(300);
+    const want = read(fresh.win, CONFIG_KEY);
     const { win, errors } = boot('{"enableAdBlock":true,"enableSponsor', ACCOUNT_A);
     key(win, GREEN);
     const box = checkbox(win, RYD);
@@ -275,8 +281,12 @@ const ACCOUNT_B = { identityType: 'SIGNED_IN', obfuscatedGaiaId: '2222', accessT
     await wait(300);
     let saved;
     try { saved = read(win, CONFIG_KEY); } catch { saved = null; }
+    const keys = (o) => Object.keys(o).sort().join();
     t('broken stored set: the panel opens on the defaults', shownDefault);
-    t('broken stored set: the next change writes a whole set', !!saved && saved.enableReturnYouTubeDislike === true,
+    t('precondition: a first start writes a whole set with the change', !!want && want.enableReturnYouTubeDislike === true &&
+      Object.keys(want).length > 50, want && Object.keys(want).length);
+    t('broken stored set: the next change writes the whole set a first start writes',
+      !!saved && keys(saved) === keys(want) && Object.keys(want).every((k) => JSON.stringify(saved[k]) === JSON.stringify(want[k])),
       win.localStorage.getItem(CONFIG_KEY));
     t('broken stored set: no errors', errors.length === 0, errors.join(' | '));
   }
