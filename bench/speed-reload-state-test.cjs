@@ -339,6 +339,57 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
       p.track === EN, JSON.stringify(p.track));
     win.close();
   }
+  {
+    // The last session ended at 1.5x: its 1080p cap is still recorded when the
+    // app starts. No pick of the viewer's: back at 1x is Auto.
+    const { win, log, speed } = boot(0, { oldRecord: 1080 });
+    speed.setSpeed(1.5, { immediate: true });
+    await sleep(900);
+    log.ranges.length = 0;
+    speed.setSpeed(1, { immediate: true });
+    t('a record from before the app started is no pick: back at 1x is Auto', log.ranges.join() === 'auto',
+      log.ranges.join());
+    win.close();
+  }
+  {
+    // YouTube records the cap more than a second after the call.
+    const { win, log, speed } = boot(0, { lateRecord: 1200 });
+    speed.setSpeed(1.5, { immediate: true });
+    await sleep(2200);
+    log.ranges.length = 0;
+    pressKey(win);
+    speed.setSpeed(1, { immediate: true });
+    t('the cap recorded over a second late is no pick: back at 1x is Auto', log.ranges.join() === 'auto',
+      log.ranges.join());
+    win.close();
+  }
+  {
+    // Force Max Quality on, the cap recorded late: Max back at 1x, and the
+    // next playing state is not held back for this video.
+    const { win, log, speed } = boot(0, { lateRecord: 1200, force: true });
+    speed.setSpeed(1.5, { immediate: true });
+    await sleep(2200);
+    log.ranges.length = 0;
+    pressKey(win);
+    speed.setSpeed(1, { immediate: true });
+    t('Force Max Quality on, the cap recorded late: back at 1x is Max', log.ranges.join() === 'highres',
+      log.ranges.join());
+    win.close();
+  }
+  {
+    // The viewer picks 1080p in the menu (keys pressed) after the cap: that is a pick.
+    const { win, log, speed } = boot(0, { lateRecord: 1200 });
+    speed.setSpeed(1.5, { immediate: true });
+    await sleep(2200);
+    pressKey(win);
+    writeQuality(win, 1080, 2160);
+    await sleep(10);
+    log.ranges.length = 0;
+    speed.setSpeed(1, { immediate: true });
+    t('1080p picked by the viewer after the cap is kept back at 1x', log.ranges.join() === 'hd1080',
+      log.ranges.join());
+    win.close();
+  }
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })();

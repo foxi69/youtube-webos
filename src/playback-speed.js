@@ -3,7 +3,7 @@ import { installMseHook, isSupportedSpeed, SUPPORTED_SPEEDS } from './speed/mse-
 import { keepStretchableAudio, allowSpeedMenuOnSurround, LEGACY_STRETCHABLE_AUDIO_RE } from './speed/containers.js';
 import { legacyAudioCodecs } from './speed/legacy-decoder.js';
 import { watchPosition } from './speed/position-watch.js';
-import { readCaptions, keepCaptions, readQualityRecord } from './speed/player-state.js';
+import { readCaptions, keepCaptions, readQualityRecord, QUALITY_KEY } from './speed/player-state.js';
 import { showNotification } from './notifications.js';
 import { configRead, configAddChangeListener } from './config.js';
 import { SELECTORS, SYNTHETIC_KEY_FLAG } from './utils.js';
@@ -208,12 +208,23 @@ const CAP_ABOVE = 1;
 // Below the cap: where YouTube falls by itself at speed.
 const BELOW_1080 = ['hd720', 'large', 'medium', 'small', 'tiny'];
 const ABOVE_1080 = ['highres', 'hd2880', 'hd2160', 'hd1440'];
-// YouTube can write our quality range asynchronously. Only a record of the
-// requested level, made within this long of a call, is ours; a different
-// choice is never hidden.
+// YouTube can write our quality range asynchronously, at times more than a
+// second later. A record of a level this controller asked for is ours unless
+// the viewer pressed a key between our last call and the record (a pick in
+// the menu); within this long of the call it is ours either way. A different
+// level is always the viewer's choice.
 const OWN_RECORD_MS = 1000;
+// The viewer's last key presses remembered for that (installSpeedFeature).
+const KEY_TIMES = 16;
 
-export function createSpeedController({ win, getPlayer, notify, configRead, codecs, userKeyAt = () => 0 }) {
+/**
+ * userKeyAt: a count of the viewer's key presses; keyPressedBetween(from, to):
+ * whether the viewer pressed a key after `from` and at or before `to`
+ * (Date.now() times). Without it only the time window tells our records.
+ */
+export function createSpeedController({
+  win, getPlayer, notify, configRead, codecs, userKeyAt = () => 0, keyPressedBetween = () => true
+}) {
   let currentSpeed = 1;
   let activeSink = null;
   let pending = null;
@@ -226,12 +237,17 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
   let keptCaptions = null;
   // Stops the caption checks of the last reload (player-state.js).
   let stopCaptions = () => {};
-  // When this controller asked for each quality level ({ from, until } by
-  // level), the level it asked for last, and the viewer's last pick read from
-  // YouTube's record (see viewerPick).
+  // When this controller asked for each quality level ({ from, last, until }
+  // by level), the level it asked for last, and the viewer's last pick read
+  // from YouTube's record (see viewerPick), with the record it was read from.
   const ownRanges = new Map();
   let ownRangeLevel;
   let lastPick = null;
+  let seenRaw;
+  let seenRecord = null;
+  // A record older than this controller is from an earlier run of the app (the
+  // cap of a session that ended above 1x, say): no pick made now.
+  const startedAt = Date.now();
   let qualityPickVideoId = null;
 
   function isSupported() {
@@ -329,15 +345,30 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
 
   // The quality the viewer picked in YouTube's menu (player-state.js), or null.
   // A different level written during the reload is a new manual choice,
-  // even if it arrives within the controller's own-record window.
+  // even if it arrives within the controller's own-record window. A record is
+  // judged once: read again unchanged, the pick stays what it was.
   function viewerPick() {
-    let record;
-    try { record = readQualityRecord(win.localStorage, Date.now()); }
-    catch { return lastPick; }
-    if (record === undefined) return lastPick;
-    const own = record ? ownRanges.get(record.level) : null;
-    const ours = !!own && record.at >= own.from && record.at < own.until;
-    if (!ours) lastPick = record ? record.level : null;
+    const now = Date.now();
+    let raw;
+    try {
+      const storage = win.localStorage;
+      raw = storage ? storage.getItem(QUALITY_KEY) : null;
+    } catch {
+      // Storage denied: the pick known so far.
+      return lastPick;
+    }
+    if (raw === seenRaw && !(seenRecord && seenRecord.expires < now)) return lastPick;
+    seenRaw = raw;
+    seenRecord = readQualityRecord({ getItem: () => raw }, now);
+    const record = seenRecord;
+    if (!record || record.at < startedAt) {
+      lastPick = null;
+      return lastPick;
+    }
+    const own = ownRanges.get(record.level);
+    const ours = !!own && record.at >= own.from &&
+      (record.at < own.until || !keyPressedBetween(own.last, record.at));
+    if (!ours) lastPick = record.level;
     return lastPick;
   }
 
@@ -360,7 +391,7 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
     const level = quality === 'highres' || quality === 'auto' ? null : quality;
     const now = Date.now();
     const own = level === ownRangeLevel ? ownRanges.get(level) : null;
-    ownRanges.set(level, { from: own ? own.from : now, until: now + OWN_RECORD_MS });
+    ownRanges.set(level, { from: own ? own.from : now, last: now, until: now + OWN_RECORD_MS });
     ownRangeLevel = level;
     player.setPlaybackQualityRange(quality, quality);
   }
@@ -590,15 +621,22 @@ export function installSpeedFeature(win, { notify, configRead: cfgRead, getPlaye
   const codecs = typeof win.AudioDecoder === 'undefined' ? legacyAudioCodecs(win) : null;
   if (typeof win.AudioDecoder === 'undefined' && !codecs) return null;
 
-  // The last key the viewer pressed: a change of subtitles by hand after a
-  // reload ends putting the old ones back (player-state.js).
+  // The keys the viewer pressed: a change of subtitles by hand after a reload
+  // ends putting the old ones back (player-state.js), and a quality record
+  // written after a key press is a pick in the menu (viewerPick). The times are
+  // the last few, newest last.
   let lastUserKeyAt = 0;
+  const keyTimes = [];
   const onKey = (evt) => {
-    if (evt.isTrusted !== false && !evt[SYNTHETIC_KEY_FLAG]) lastUserKeyAt++;
+    if (evt.isTrusted === false || evt[SYNTHETIC_KEY_FLAG]) return;
+    lastUserKeyAt++;
+    keyTimes.push(Date.now());
+    if (keyTimes.length > KEY_TIMES) keyTimes.shift();
   };
   win.addEventListener('keydown', onKey, true);
   const ctrl = createSpeedController({
-    win, getPlayer, notify, configRead: cfgRead, codecs, userKeyAt: () => lastUserKeyAt
+    win, getPlayer, notify, configRead: cfgRead, codecs, userKeyAt: () => lastUserKeyAt,
+    keyPressedBetween: (from, to) => keyTimes.some((at) => at > from && at <= to)
   });
   const mseHook = installMseHook(win, {
     getSpeed: ctrl.getSpeed,
