@@ -843,6 +843,19 @@ const ids = (r) => itemsOf(r).map((i) => (i.tileRenderer || i.lockupViewModel).c
     b = boot({ startPage: 'home' }, { url: 'https://www.youtube.com/tv#/' });
     await wait(20);
     t('Start Page Home changes nothing', b.win.location.hash === '#/', b.win.location.hash);
+    // The viewer moves before Home is up (still on "Who's watching", say), then comes back to Home:
+    // Home showing up after that is no plain start any more.
+    b = boot({ startPage: 'subscriptions' }, { bodyClass: 'WEB_PAGE_TYPE_ACCOUNT_SELECTOR', url: 'https://www.youtube.com/tv#/?env_forceFullAnimation=1' });
+    await wait(20);
+    t('Start Page waits while Home is not up yet', b.win.location.hash === '#/?env_forceFullAnimation=1', b.win.location.hash);
+    b.win.location.hash = '#/search';
+    await wait(20);
+    b.win.location.hash = '#/';
+    await wait(20);
+    b.win.document.body.className = 'WEB_PAGE_TYPE_BROWSE';
+    await wait(20);
+    t('Start Page leaves a viewer who went somewhere before Home was up where they are',
+      b.win.location.hash === '#/', b.win.location.hash);
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);
