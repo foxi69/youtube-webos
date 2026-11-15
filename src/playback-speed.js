@@ -389,7 +389,11 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
     const videoId = videoData && videoData.video_id;
     // Read before the quality range below, which can reload the <video> too.
     const reused = !!keptCaptions && !keptCaptions.landed && keptCaptions.videoId === videoId;
-    if (!reused) {
+    if (reused) {
+      // The keys pressed since the first reload include this speed change:
+      // only a key after this reload is the viewer's own choice of subtitles.
+      keptCaptions.keyAt = userKeyAt();
+    } else {
       keptCaptions = { videoId, captions: readCaptions(player), landed: false, keyAt: userKeyAt() };
     }
     qualityPickVideoId = viewerPick() ? videoId : null;

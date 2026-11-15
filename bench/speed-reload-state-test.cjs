@@ -34,7 +34,14 @@ const writeQuality = (win, height, previous) => win.localStorage.setItem('yt-pla
   creation: Date.now(), expiration: Date.now() + 1e9
 }));
 
-function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = false } = {}) {
+// A trusted key press, as the remote sends: the speed keys too.
+const pressKey = (win) => dispatchTrusted(win.document.body, new win.KeyboardEvent('keydown', { bubbles: true }));
+
+// lateRecord: the record follows each range call by 50 ms (true) or that many ms.
+// reloadTrack: the subtitles YouTube's reload turns on (else it toggles them).
+// oldRecord: a height already recorded a minute before the app started (the
+// last session's speed cap, say).
+function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = false, reloadTrack, oldRecord } = {}) {
   const dom = new JSDOM('<body class="WEB_PAGE_TYPE_WATCH"><div id="ytlr-player__player-container-player"><video></video></div></body>',
     { runScripts: 'outside-only', url: 'https://www.youtube.com/tv#/watch?v=abcdefghijk',
       virtualConsole: new VirtualConsole(), pretendToBeVisual: true });
@@ -59,6 +66,12 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
     enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
     upgradeThumbnails: false, enableAutoLogin: false, forceHighResVideo: force
   }));
+  if (oldRecord) {
+    win.localStorage.setItem('yt-player-quality', JSON.stringify({
+      data: JSON.stringify({ quality: oldRecord, previousQuality: 2160 }),
+      creation: Date.now() - 60000, expiration: Date.now() + 1e9
+    }));
+  }
   win.eval(bundle);
   // The viewer's pick in YouTube's menu, made after the app started (Force Max
   // Quality writes its own record at start).
@@ -72,6 +85,7 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
   const addEventListener = p.addEventListener.bind(p);
   Object.assign(p, {
     track: {},
+    reloadTrack,
     videoId: 'abcdefghijk',
     addEventListener(type, callback, ...args) {
       if (type === 'onStateChange') onStateChange = callback;
@@ -87,7 +101,7 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
         try { if (HEIGHTS[a]) writeQuality(win, HEIGHTS[a], 2160); } catch { /* storage denied */ }
       };
       // On a TV the record follows the call a moment later.
-      if (lateRecord) win.setTimeout(write, 50); else write();
+      if (lateRecord) win.setTimeout(write, lateRecord === true ? 50 : lateRecord); else write();
     },
     getPlaybackQuality: () => quality,
     getAvailableQualityLevels: () => ['hd2160', 'hd1080', 'hd720', 'auto'],
@@ -99,7 +113,8 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
       log.reloads++;
       // YouTube starts the reloaded video with its own subtitles choice.
       state = 3;
-      this.track = EN === this.track ? {} : EN;
+      if (this.reloadTrack !== undefined) this.track = this.reloadTrack;
+      else this.track = EN === this.track ? {} : EN;
       if (!manualPlayback) win.setTimeout(() => { state = 1; }, 300);
     }
   });
@@ -284,6 +299,21 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
     emit(3); pump(); pump();
     t('explicitly enabling Force Max Quality releases the retained manual choice',
       log.ranges.includes('highres'), log.ranges.join());
+    win.close();
+  }
+  {
+    // Subtitles off; YouTube's reload turns its default ones on. A second
+    // speed key while the first reload still buffers: once the video plays,
+    // the subtitles from before the first reload are put back.
+    const { win, p, speed, emit } = boot(0, { manualPlayback: true, reloadTrack: EN });
+    pressKey(win);
+    speed.setSpeed(1.5, { immediate: true });
+    pressKey(win);
+    speed.setSpeed(2, { immediate: true });
+    emit(1);
+    await sleep(600);
+    t('a second speed change while the first reload buffers still keeps the subtitles off',
+      !p.track.languageCode, JSON.stringify(p.track));
     win.close();
   }
   console.log(`\n${pass} passed, ${fail} failed`);
