@@ -50,13 +50,9 @@ export class ResolveCommandRegistry {
     return this.#originalFn(command, extra);
   };
 
+  // Only getInstance() constructs, with a key getHookTarget() has just
+  // checked.
   private constructor(hookTargetName: string) {
-    if (!ResolveCommandRegistry.checkHookTarget(hookTargetName)) {
-      throw new Error(
-        `Hook target "${hookTargetName}" not found in window._yttv`
-      );
-    }
-
     const hookTarget = window._yttv![hookTargetName] as {
       instance: { resolveCommand: ResolveCommand };
     };
@@ -137,10 +133,6 @@ export class ResolveCommandRegistry {
 
   setHook(command: string, fn: ResolveCommandHook) {
     this.#cmds.set(command, fn);
-  }
-
-  removeHook(command: string) {
-    this.#cmds.delete(command);
   }
 
   dispatchCommand(payload: ResolveCommandPayload, extra?: unknown) {
