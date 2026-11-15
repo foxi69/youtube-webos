@@ -463,6 +463,34 @@ const within = (off, limit) => off.length > 0 && max(off) < limit;
     t('destroy: the timer and the audio context are closed', env.cleared() && env.ctx.state === 'closed');
   }
 
+  // ---- A jump without a seek event ----
+  // The video is somewhere else from one reading to the next, with no
+  // 'seeking' (a reload, a skip YouTube makes itself): one reading beyond
+  // 0.5 s, or two in a row beyond 0.25 s on the same side, stops the queue and
+  // starts the audio again at the new position. A soft correction would take
+  // seconds to get there.
+  for (const jump of [3, 0.35]) {
+    const env = setup(AudioEngine);
+    env.engine.configure(CFG);
+    await tick();
+    env.push(0, 30);
+    env.run(2);
+    const stoppedBefore = env.ctx.sources.filter((s) => s.stoppedAt !== undefined).length;
+    env.video.currentTime += jump;
+    env.run(0.1);   // two readings
+    const stopped = env.ctx.sources.filter((s) => s.stoppedAt !== undefined).length > stoppedBefore;
+    const c0 = env.ctx.currentTime;
+    const v0 = env.video.currentTime;
+    env.run(2);
+    const q = live(env.ctx).filter((s) => s.when >= c0);
+    const off = offsets(q, (T) => v0 + (T - c0) * 1.5);
+    t(`a ${jump} s jump without an event: the queued audio stops`, stopped);
+    t(`a ${jump} s jump without an event: the audio is back in step at once`, q.length > 5 && within(off, 0.06),
+      `max ${max(off).toFixed(3)} s`);
+    t(`a ${jump} s jump without an event: no error`, env.errors.length === 0, env.errors.map(String).join());
+    env.engine.destroy();
+  }
+
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);
 })().catch((e) => {
