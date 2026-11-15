@@ -83,6 +83,7 @@ run release-bump-test
 run appinfo-test
 run yt-tv-snapshot-test
 run smoke "$B" legacy
+run webos-version-test "$B" legacy
 run adblock-test "$B" legacy
 run new-features-test "$B"
 run dependency-test "$B"
@@ -129,7 +130,18 @@ run preview-countdown-test "$B"
 if [ ${#env[@]} -eq 0 ]; then
   build --env modern
   run modern-smoke "$B"
+  run webos-version-test "$B" modern
   run appinfo-test
+  # The modern build has its own code paths (no polyfills.js, emoji-font.js or
+  # buffer-limit; ES2020 output): the tests of what most TVs run, on it too.
+  run smoke "$B" modern
+  run adblock-test "$B" modern
+  run panel-test "$B" modern
+  run module-behaviour-test "$B" modern
+  run upstream-fixes-test "$B" modern
+  run new-features-test "$B" modern
+  run feed-features-test "$B" modern
+  run dislike-timing-test "$B" modern
   run dearrow-test "$B" modern
   run ai-filter-test "$B" modern
   run quality-reload-test "$B"

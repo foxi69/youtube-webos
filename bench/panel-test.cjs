@@ -12,6 +12,9 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 const { applyChrome38Downgrade, UA, setUserAgent, dispatchTrusted } = require('./chrome38-env.cjs');
 
 const bundlePath = process.argv[2] || 'dist/webOSUserScripts/userScript.js';
+// `modern`: the modern bundle (webOS 22 and newer), in jsdom's own engine with a
+// webOS 23 user agent, instead of the legacy one in a Chrome 38 environment.
+const modern = process.argv[3] === 'modern';
 const GREEN = 404;
 
 function boot(bodyClass = 'WEB_PAGE_TYPE_BROWSE', extraHtml = '', setup = null) {
@@ -21,7 +24,7 @@ function boot(bodyClass = 'WEB_PAGE_TYPE_BROWSE', extraHtml = '', setup = null) 
   const dom = new JSDOM('<!doctype html><html><body class="' + bodyClass + '"><ytlr-app></ytlr-app>' + extraHtml + '</body></html>',
     { runScripts: 'outside-only', url: 'https://www.youtube.com/tv', virtualConsole: vc, pretendToBeVisual: true });
   const win = dom.window;
-  setUserAgent(win, UA.webos3);
+  setUserAgent(win, modern ? UA.webos23 : UA.webos3);
   win.launchParams = '{}';
   win.XMLHttpRequest = class { open(){} send(){} setRequestHeader(){} getResponseHeader(){return null;} addEventListener(){} };
   let rafQ = [];
@@ -33,7 +36,7 @@ function boot(bodyClass = 'WEB_PAGE_TYPE_BROWSE', extraHtml = '', setup = null) 
     enableScrollSeek: true, showTimeRemaining: true, logoStyle: 'premium'
   }));
   if (setup) setup(win);
-  applyChrome38Downgrade(win);
+  if (!modern) applyChrome38Downgrade(win);
   win.eval(fs.readFileSync(bundlePath, 'utf8'));
   return { win, errors, pump: () => { const q = rafQ; rafQ = []; for (const cb of q) cb(Date.now()); } };
 }

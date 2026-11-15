@@ -12,6 +12,9 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 const { applyChrome38Downgrade, UA, setUserAgent, dispatchTrusted } = require('./chrome38-env.cjs');
 
 const bundlePath = process.argv[2] || 'dist/webOSUserScripts/userScript.js';
+// `modern`: the modern bundle (webOS 22 and newer), in jsdom's own engine with a
+// webOS 23 user agent, instead of the legacy one in a Chrome 38 environment.
+const modern = process.argv[3] === 'modern';
 const GREEN = 404;
 const ENTER = 13;
 const RIGHT = 39;
@@ -39,7 +42,7 @@ function boot(cfg, opts = {}) {
     enableAdBlock: true, enableLegacyEmojiFix: false, enableSponsorBlock: false,
     enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false
   }, cfg)));
-  applyChrome38Downgrade(win);
+  if (!modern) applyChrome38Downgrade(win);
   // After the downgrade, which takes fetch away (Chrome 38 had none): the
   // bundle's polyfill then leaves this one in place.
   win.fetch = opts.fetch || (() => Promise.reject(new Error('offline')));

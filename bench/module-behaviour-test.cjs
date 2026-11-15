@@ -10,13 +10,16 @@ const { applyChrome38Downgrade, UA, setUserAgent } = require('./chrome38-env.cjs
 
 const ROOT = path.resolve(__dirname, '..');
 const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
+// `modern`: the modern bundle (webOS 22 and newer), in jsdom's own engine with a
+// webOS 23 user agent, instead of the legacy one in a Chrome 38 environment.
+const modern = process.argv[3] === 'modern';
 
 function boot(cfg, html, url) {
   const dom = new JSDOM(html, { runScripts: 'outside-only',
     url: url || 'https://www.youtube.com/tv', virtualConsole: new VirtualConsole(),
     pretendToBeVisual: true });
   const win = dom.window;
-  setUserAgent(win, UA.webos3);
+  setUserAgent(win, modern ? UA.webos23 : UA.webos3);
   win.launchParams = '{}';
   const probed = [];
   win.XMLHttpRequest = class {
@@ -41,7 +44,7 @@ function boot(cfg, html, url) {
     enableAdBlock: true, enableLegacyEmojiFix: false, enableSponsorBlock: false,
     enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false
   }, cfg)));
-  applyChrome38Downgrade(win);
+  if (!modern) applyChrome38Downgrade(win);
   win.eval(fs.readFileSync(bundlePath, 'utf8'));
   return { win, probed, pump: () => { const q = rafQ; rafQ = []; for (const cb of q) cb(0); } };
 }

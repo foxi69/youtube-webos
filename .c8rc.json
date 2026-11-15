@@ -6,7 +6,8 @@
   "reporter": [
     "text",
     "html",
-    "json-summary"
+    "json-summary",
+    "json"
   ],
   "reports-dir": "coverage",
   "temp-directory": "coverage/tmp",

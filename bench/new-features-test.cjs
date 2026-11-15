@@ -10,6 +10,9 @@ const { applyChrome38Downgrade, UA, setUserAgent, dispatchTrusted } = require('.
 
 const ROOT = path.resolve(__dirname, '..');
 const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
+// `modern`: the modern bundle (webOS 22 and newer), in jsdom's own engine with a
+// webOS 23 user agent, instead of the legacy one in a Chrome 38 environment.
+const modern = process.argv[3] === 'modern';
 
 const PREMIUM_URL = 'https://www.gstatic.com/youtube/img/branding/livingroom/premium/wordmark_truncated/fullcolor_white_57_2x_v2.png';
 const DEFAULT_URL = 'https://www.gstatic.com/youtube/img/branding/livingroom/youtube/wordmark/fullcolor_white_57_2x_v2.png';
@@ -42,7 +45,7 @@ function boot(cfg, extraHtml = '', storage = {}, before) {
     upgradeThumbnails: false, enableAutoLogin: false, logoStyle: 'default'
   }, cfg)));
   for (const k in storage) win.localStorage.setItem(k, storage[k]);
-  applyChrome38Downgrade(win);
+  if (!modern) applyChrome38Downgrade(win);
   if (before) before(win);
   win.eval(fs.readFileSync(bundlePath, 'utf8'));
   return { win, NS, pump: () => { const q = rafQ; rafQ = []; for (const cb of q) cb(0); } };
