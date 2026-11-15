@@ -119,6 +119,7 @@ run quality-tag-test "$B"
 run watch-time-test "$B"
 run search-filter-test "$B"
 run sponsorblock-labels-test "$B"
+run sponsorblock-skip-test "$B" legacy
 run low-memory-style-test "$B"
 run review-fixes-test "$B"
 run search-font-test "$B"
@@ -141,7 +142,7 @@ if [ ${#env[@]} -eq 0 ]; then
     pivot-filters-test settings-reset-test preview-handover-test speed-preview-test \
     whats-new-test guide-fit-test keyboard-search-test screensaver-test quality-tag-test \
     watch-time-test search-filter-test low-memory-style-test review-fixes-test \
-    search-font-test preview-autoopen-test preview-countdown-test; do
+    search-font-test preview-autoopen-test preview-countdown-test sponsorblock-skip-test; do
     run "$t" "$B" modern
   done
   run dearrow-test "$B" modern
