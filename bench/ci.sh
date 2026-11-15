@@ -173,6 +173,11 @@ run lang-settings-fix-test "$B" legacy
 run app-quality-fix-test "$B" legacy
 run emoji-font-test "$B" legacy
 run ai-filter-cases-test "$B" legacy
+run speed-uninstall-test
+run speed-cases-test "$B" legacy
+run thumbnail-quality-test "$B" legacy
+run video-quality-cases-test "$B" legacy
+run dearrow-cases-test "$B" legacy
 run low-memory-style-test "$B"
 run review-fixes-test "$B"
 run search-font-test "$B"
@@ -208,7 +213,8 @@ for t in smoke adblock-test panel-test module-behaviour-test upstream-fixes-test
   launch-params-test clock-test sponsorblock-bar-test sponsorblock-lifecycle-test \
   dislike-panel-test keyboard-search-cases-test adblock-cases-test shortcut-actions-test \
   page-bridge-test comments-fix-test rows-ahead-test lang-settings-fix-test app-quality-fix-test \
-  emoji-font-test ai-filter-cases-test; do
+  emoji-font-test ai-filter-cases-test speed-cases-test thumbnail-quality-test \
+  video-quality-cases-test dearrow-cases-test; do
   run "$t" "$M" modern
 done
 run dearrow-test "$M" modern
