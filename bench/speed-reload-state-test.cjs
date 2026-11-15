@@ -295,7 +295,10 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
     emit(-1); emit(3); emit(1); pump(); pump();
     // Raised as it started, the <video> stayed at 0 on a TV: only once it has played.
     t('a next video below the pick is not raised as it starts', log.ranges.length === 0, log.ranges.join());
-    await sleep(2600);
+    // The watch raises it after 2 s of play (8 ticks of 250 ms), not sooner.
+    await sleep(1500);
+    t('nor after 1.5 s of play', log.ranges.length === 0, log.ranges.join());
+    await sleep(1100);
     t('a next video that plays below the 720p pick above 1x gets the pick',
       log.ranges.join() === 'hd720' && p.getPlaybackQuality() === 'hd720', log.ranges.join());
     // The viewer picks 480p on that video: it is theirs.

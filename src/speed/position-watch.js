@@ -34,7 +34,7 @@ const STALL_BACK_S = 0.5;
  * @param {() => void} onPlaying runs once, when the video first plays
  * @param {{isLow: () => boolean, setCap: () => void}} [quality] the speed's quality cap
  * @param {string} [targetId] the video the speed changed on (else the one the player names now)
- * @returns {() => void} stops the check
+ * @returns {(() => void) & {running: () => boolean}} stops the check; running() is false once it ended
  */
 export function watchPosition(win, player, at, onPlaying, quality, targetId) {
   let ticks = 0;
@@ -54,7 +54,9 @@ export function watchPosition(win, player, at, onPlaying, quality, targetId) {
     try { videoId = idOf(); } catch { /* checked on each tick */ }
   }
 
-  const stop = () => win.clearInterval(timer);
+  let running = true;
+  const stop = () => { running = false; win.clearInterval(timer); };
+  stop.running = () => running;
   const timer = win.setInterval(() => {
     let state;
     let now;

@@ -205,7 +205,6 @@ const LEGACY_LEAD_S = 1;
 // 2160p fast enough (at 1.5x it dropped 85% of the frames and reached 1.43x; at
 // 1.25x YouTube fell to 480p and it reached 1.17x).
 const CAP_ABOVE = 1;
-const WATCH_MS = 25000; // position-watch.js's check
 // Below the cap: where YouTube falls by itself at speed.
 const BELOW_1080 = ['hd720', 'large', 'medium', 'small', 'tiny'];
 const LEVELS_DOWN = ['hd1080', ...BELOW_1080];
@@ -221,8 +220,8 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
   let pending = null;
   let lastReloadAt = 0;
   let stopPositionWatch = null;
-  // The video the position watch is on, until the watch's own 25 s end.
-  let watchedVideo = { id: null, until: 0 };
+  // The video the position watch is on (stopPositionWatch.running() says if it still is).
+  let watchedVideoId = null;
   // The subtitles to put back after a reload: { videoId, captions, landed }.
   // Kept until the reload plays, so a second speed change meanwhile does not
   // read the subtitles YouTube put on the half-loaded video.
@@ -438,12 +437,12 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
       kept.landed = true;
       stopCaptions = keepCaptions(win, player, kept.captions, userKeyAt, kept);
     };
-    watchedVideo = { id: videoId, until: Date.now() + WATCH_MS };
+    watchedVideoId = videoId;
     stopPositionWatch = watchPosition(win, player, at, onPlaying, {
       isLow() {
         // A lower quality the viewer picked is not a fall to fight.
         if (currentSpeed <= CAP_ABOVE || capQuality() !== 'hd1080') return false;
-        const levels = player.getAvailableQualityLevels ? player.getAvailableQualityLevels() : [];
+        const levels = (player.getAvailableQualityLevels && player.getAvailableQualityLevels()) || [];
         return levels.indexOf('hd1080') !== -1 && BELOW_1080.indexOf(player.getPlaybackQuality()) !== -1;
       },
       setCap
@@ -453,7 +452,7 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
   // The cap, or the highest level the video has below it.
   function capFor(player) {
     const cap = capQuality();
-    const levels = player.getAvailableQualityLevels ? player.getAvailableQualityLevels() : [];
+    const levels = (player.getAvailableQualityLevels && player.getAvailableQualityLevels()) || [];
     return LEVELS_DOWN.slice(LEVELS_DOWN.indexOf(cap)).find((q) => levels.includes(q)) || null;
   }
 
@@ -471,10 +470,12 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
   function capNext(player) {
     if (!belowCap(player)) return;
     let videoId = null;
-    try { videoId = player.getVideoData().video_id; } catch { /* checked by the watch */ }
-    if (watchedVideo.id === videoId && Date.now() < watchedVideo.until) return;
+    try { videoId = player.getVideoData().video_id; } catch { /* tried again on the next play */ }
+    // Unnamed, it may be the reload's video: the next play tries again.
+    if (!videoId) return;
+    if (stopPositionWatch && stopPositionWatch.running() && watchedVideoId === videoId) return;
     if (stopPositionWatch) stopPositionWatch();
-    watchedVideo = { id: videoId, until: Date.now() + WATCH_MS };
+    watchedVideoId = videoId;
     stopPositionWatch = watchPosition(win, player, player.getCurrentTime(), () => {}, {
       isLow: () => currentSpeed > CAP_ABOVE && belowCap(player),
       setCap() {

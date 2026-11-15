@@ -61,7 +61,8 @@ import(MODULE).then(({ watchPosition }) => {
   {
     // The picture at 0, the player buffering at 11.2 s.
     const s = setup({ state: 3, t: AT, vt: 0 });
-    watchPosition(s.win, s.player, AT, () => {});
+    const watch = watchPosition(s.win, s.player, AT, () => {});
+    t('the check says it runs', watch.running() === true);
     s.run(2000);
     t('not at once: the player may still seek by itself', s.player.seeks.length === 0, s.player.seeks.join());
     s.run(2000);
@@ -71,6 +72,8 @@ import(MODULE).then(({ watchPosition }) => {
     s.player.state = 1;
     s.run(30000);
     t('once it plays it is left alone', s.player.seeks.length === 1, s.player.seeks.join());
+    // A reload's watch is kept by capNext while it runs: it must say when it ended on its own.
+    t('ended on its own after 25 s, it says so', watch.running() === false);
   }
   {
     // Plays first, then the reload of the quality cap leaves the picture at 0.
