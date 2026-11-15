@@ -177,6 +177,16 @@ async function legacyCases() {
     await h.frame();
     t(n('an element emoji are not drawn in is left alone'), own.querySelector('emoji-render') === null);
 
+    // A whole tile added in one go, its title inside an element emoji are
+    // not drawn in: the title is drawn all the same.
+    const tile = h.doc.createElement('ytlr-tile-renderer');
+    const inner = h.doc.createElement('span');
+    inner.textContent = `Tile ${W(GRIN)}`;
+    tile.appendChild(inner);
+    h.app.appendChild(tile);
+    await h.frame();
+    t(n('a tile added whole: the title inside it is drawn'), h.shown(inner) === 'Tile [1f600]', JSON.stringify(h.shown(inner)));
+
     // Gone before the frame (a row scrolled away at once).
     const gone = h.title(`Gone ${W(GRIN)}`);
     await tick();

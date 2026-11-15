@@ -170,9 +170,10 @@ function processTextNode(textNode) {
   }
 }
 
+// Any added element is scanned, whatever its own tag: YouTube adds a tile
+// or a row whole, with the titles inside. queueTextNode keeps only text
+// whose own parent is an element emoji are drawn in.
 function scanElement(el) {
-    if (!ALLOWED_EMOJI_TAGS.has(el.tagName) && el.tagName !== 'BODY' && el.tagName !== 'YTLR-APP') return;
-    
     const textContent = el.textContent;
     if (!textContent || !HAS_WRAPPED_EMOJI_RE.test(textContent)) return;
     try {
