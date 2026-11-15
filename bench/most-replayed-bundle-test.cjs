@@ -197,6 +197,16 @@ function toggleSetting(win) {
     await wait(TICK);
     t(n('the track moves: the graph follows it'),
       rule().indexOf('left:20px;top:9px;width:1680px;height:27px;') !== -1, rule());
+    // The bar's own style, not the rule's: it stays a positioned block on
+    // every redraw (it is still static and inline without the rule).
+    t(n('...and the bar is still made a positioned block'),
+      rule().indexOf(`${HOST}{position:relative!important;display:block!important;}`) === 0, rule().slice(0, 120));
+    box(track, 140, 945, 1640, 8);
+    await wait(TICK);
+    t(n('...and so on the next redraw too'), rule().indexOf('left:40px;top:14px;width:1640px;') !== -1 &&
+      rule().indexOf(`${HOST}{position:relative!important;display:block!important;}`) === 0, rule().slice(0, 120));
+    box(track, 120, 940, 1680, 10);
+    await wait(TICK);
 
     // The controls hidden: the rule stays, it hides with the bar.
     const shown = rule();

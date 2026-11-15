@@ -95,6 +95,26 @@ export function buildCss(selector, graphUri, geo, height, hostStyle) {
 }
 
 let lastSig = '';
+// The host's own position and display, read once per host element.
+let styledHost = null;
+let hostStyle = null;
+
+/**
+ * The host's position and display as the page has them. Read with this
+ * module's rule taken out, which would otherwise answer for itself (a host it
+ * made relative reads as positioned, and the next rule would leave it out).
+ */
+function ownHostStyle(el) {
+  if (el !== styledHost) {
+    const active = !!(css && styleEl && styleEl.isConnected);
+    if (active) styleEl.textContent = '';
+    const cs = window.getComputedStyle(el);
+    hostStyle = { position: cs.position, display: cs.display };
+    if (active) styleEl.textContent = css;
+    styledHost = el;
+  }
+  return hostStyle;
+}
 
 function draw() {
   if (!uri) {
@@ -120,8 +140,7 @@ function draw() {
   const sig = `${host.selector}|${geo.left}|${geo.top}|${geo.width}|${height}|${uri.length}`;
   if (sig === lastSig && css) return;
   lastSig = sig;
-  const cs = window.getComputedStyle(host.el);
-  write(buildCss(host.selector, uri, geo, height, { position: cs.position, display: cs.display }));
+  write(buildCss(host.selector, uri, geo, height, ownHostStyle(host.el)));
 }
 
 function tick() {
@@ -158,6 +177,8 @@ function sync() {
     lookupId = '';
     uri = '';
     lastSig = '';
+    styledHost = null;
+    hostStyle = null;
     write('');
   }
 }
