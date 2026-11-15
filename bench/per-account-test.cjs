@@ -33,7 +33,8 @@ function boot(shared, identity, extraStorage = {}) {
   win.requestAnimationFrame = (cb) => { rafQ.push(cb); return rafQ.length; };
   win.cancelAnimationFrame = () => {};
   const NS = win.JSON.stringify;
-  win.localStorage.setItem(CONFIG_KEY, NS(Object.assign({
+  // A string is stored as it is (a broken set); null stores nothing (a first start).
+  if (shared !== null) win.localStorage.setItem(CONFIG_KEY, typeof shared === 'string' ? shared : NS(Object.assign({
     enableAdBlock: true, enableLegacyEmojiFix: false, enableSponsorBlock: false,
     enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false
   }, shared)));
@@ -229,6 +230,65 @@ const ACCOUNT_B = { identityType: 'SIGNED_IN', obfuscatedGaiaId: '2222', accessT
     t('showWatch off: becomes clockMode off', !('showWatch' in shared) && shared.clockMode === 'off', JSON.stringify(shared));
     t('showWatch off: no clock', !win.document.querySelector('.webOs-watch'));
     t('showWatch off: no errors', errors.length === 0, errors.join(' | '));
+  }
+
+  // ---- DeArrow's old thumbnail switch (enableDeArrowThumbnails) in account sets ----
+  {
+    // An account set saved before the fallbacks, with the thumbnails off:
+    // it keeps YouTube's, though the shared set has no old switch.
+    const first = boot({ perAccountSettings: true }, ACCOUNT_A);
+    await wait(300);
+    const profile = profileKeys(first.win)[0];
+    const { win, errors } = boot({ perAccountSettings: true }, ACCOUNT_A,
+      { [profile]: { enableDeArrowThumbnails: false } });
+    key(win, GREEN);
+    toggle(win, checkbox(win, RYD));
+    await wait(300);
+    const saved = read(win, profile);
+    t('old DeArrow switch in an account set: its thumbnails stay off', saved.dearrowCrowdThumbnails === false &&
+      !('enableDeArrowThumbnails' in saved), JSON.stringify(saved));
+    t('old DeArrow switch in an account set: no errors', errors.length === 0, errors.join(' | '));
+  }
+  {
+    // A new account met after the start, from a shared set with the old switch off.
+    const { win, errors } = boot({ perAccountSettings: true, enableDeArrowThumbnails: false }, ACCOUNT_A);
+    await wait(300);
+    const before = profileKeys(win);
+    await chooseAccount(win, ACCOUNT_B);
+    await wait(300);
+    const added = profileKeys(win).filter((k) => !before.includes(k));
+    const b = added.length === 1 ? read(win, added[0]) : null;
+    t('old shared DeArrow switch: an account met later starts with the thumbnails off',
+      !!b && b.dearrowCrowdThumbnails === false, `${added.join()} ${JSON.stringify(b)}`);
+    t('old shared DeArrow switch: no errors', errors.length === 0, errors.join(' | '));
+  }
+
+  // ---- A stored set that is not JSON ----
+  {
+    // Cut off mid-write: the app starts on the defaults, and the next change
+    // writes a whole set over it - the same set a first start writes for the
+    // same change.
+    const fresh = boot(null, ACCOUNT_A);
+    key(fresh.win, GREEN);
+    toggle(fresh.win, checkbox(fresh.win, RYD));
+    await wait(300);
+    const want = read(fresh.win, CONFIG_KEY);
+    const { win, errors } = boot('{"enableAdBlock":true,"enableSponsor', ACCOUNT_A);
+    key(win, GREEN);
+    const box = checkbox(win, RYD);
+    const shownDefault = !!box && box.checked === false;
+    toggle(win, box);
+    await wait(300);
+    let saved;
+    try { saved = read(win, CONFIG_KEY); } catch { saved = null; }
+    const keys = (o) => Object.keys(o).sort().join();
+    t('broken stored set: the panel opens on the defaults', shownDefault);
+    t('precondition: a first start writes a whole set with the change', !!want && want.enableReturnYouTubeDislike === true &&
+      Object.keys(want).length > 50, want && Object.keys(want).length);
+    t('broken stored set: the next change writes the whole set a first start writes',
+      !!saved && keys(saved) === keys(want) && Object.keys(want).every((k) => JSON.stringify(saved[k]) === JSON.stringify(want[k])),
+      win.localStorage.getItem(CONFIG_KEY));
+    t('broken stored set: no errors', errors.length === 0, errors.join(' | '));
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);
