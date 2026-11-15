@@ -549,26 +549,6 @@ draft; with neither, a new draft starts one patch above the highest published re
 build writes its version into `package.json` and `appinfo.json` on the runner only; `main` takes it when the release
 is published as a full release (step 3). Drafts of other versions are deleted.
 
-### Staying up to date with upstream
-
-The [Sync upstream](.github/workflows/sync-upstream.yml) workflow runs every day, or on demand from
-**Actions → Sync upstream → Run workflow**. When NicholasBly has new commits, it merges them into the
-`upstream-sync` branch and opens a pull request into `main`; your own changes are never overwritten. If the merge
-has conflicts, the run fails and lists the conflicting files; then sync by hand:
-
-```sh
-git remote add upstream https://github.com/NicholasBly/youtube-webos.git   # once
-git fetch upstream
-git checkout main
-git merge upstream/main        # resolve any conflicts, then commit
-npm ci && npm run build:modern && npm run package   # rebuild and test
-git push origin main
-```
-
-One-time setup on GitHub: enable workflows on the **Actions** tab (they are off by default on forks), and under
-**Settings → Actions → General → Workflow permissions** tick *Allow GitHub Actions to create and approve pull
-requests*.
-
 ### New work on other forks
 
 The [Fork watch](.github/workflows/fork-watch.yml) workflow runs every day. It checks the fork tree of

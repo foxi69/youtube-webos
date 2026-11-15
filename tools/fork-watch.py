@@ -22,12 +22,11 @@ one closed issue, "Fork watch state", so no branch or file has to be
 committed for it. Because of that memory, a commit is reported even when it
 was made days before it was pushed (anything up to LOOKBACK_DAYS old), not
 only when its date falls after the last run.
-Commits that NicholasBly's main already has are left out: the Sync upstream
-workflow brings those in, and so are commits whose title is already one of
-our main's: our own work that a fork took in again under another sha
-(squash-merged pull requests, a rebase), and commits made by this
-repository's owner: our own branch commits that a fork took in before we
-squash-merged them under another title. Bot commits (dependabot and the
+Commits whose title is already one of our main's are left out: our own
+work that a fork took in again under another sha (squash-merged pull
+requests, a rebase), and so are commits made by this repository's owner:
+our own branch commits that a fork took in before we squash-merged them
+under another title. Bot commits (dependabot and the
 like) are skipped.
 
 Environment: GITHUB_TOKEN, GITHUB_REPOSITORY (owner/name), optional
@@ -200,12 +199,6 @@ def compare(head):
     return cmp
 
 
-def upstream_shas():
-    """Commits upstream main has and we don't: the sync workflow's job, not news."""
-    cmp = compare(f"{ROOTS[0].split('/')[0]}:main")
-    return {c['sha'] for c in (cmp or {}).get('commits', [])}, (cmp or {}).get('ahead_by', 0)
-
-
 def main_titles():
     """First lines of our main's latest commits, to know our own work again in a fork."""
     commits = get_all(f'/repos/{REPO}/commits', {'sha': 'main'}, limit=MAX_MAIN_TITLES)
@@ -269,9 +262,9 @@ def is_bot(commit):
 
 def new_commits(fork, cutoff, seen, known, today, ours):
     """Commits on the fork's branches that are not in our main, newer than `cutoff`
-    and not reported before. `seen` holds shas handled in this run (upstream's
-    included), shared across forks; `known` holds earlier runs' reports; `ours`
-    holds our main's commit titles."""
+    and not reported before. `seen` holds shas handled in this run, shared
+    across forks; `known` holds earlier runs' reports; `ours` holds our main's
+    commit titles."""
     owner = fork['owner']['login']
     branches = get_all(f"/repos/{fork['full_name']}/branches", limit=MAX_BRANCHES)
     found = {}
@@ -388,13 +381,10 @@ def cut(body, limit=MAX_BODY):
     return body[:max(end, 0)] + note
 
 
-def build_report(since, forks, pulls, issues, upstream_ahead):
+def build_report(since, forks, pulls, issues):
     lines = [f'New work in the youtube-webos fork network since {fmt_time(since)}.',
              '', 'These are suggestions only - nothing has been merged. '
              'Pick what is worth porting and ask for it (or cherry-pick it).', '']
-    if upstream_ahead:
-        lines += [f'**Upstream ({ROOTS[0]})** is {upstream_ahead} commit(s) ahead of main - '
-                  'the Sync upstream workflow opens a pull request for those.', '']
     if pulls:
         lines += ['## Pull requests on the upstream repositories', '',
                   '| Repo | PR | Author | State | Updated |', '|---|---|---|---|---|']
@@ -473,7 +463,7 @@ def main():
     print(f'Looking for work pushed since {fmt_time(since)} in the fork trees of {", ".join(ROOTS)}')
 
     ensure_label()
-    seen, upstream_ahead = upstream_shas()
+    seen = set()
     ours = main_titles()
     forks = []
     for fork in watched_forks(since, retry_forks(state)):
@@ -492,7 +482,7 @@ def main():
         return
 
     title = f"Fork watch {now.strftime('%Y-%m-%d')}: {sum(len(c) for _, c in forks)} commit(s) on {len(forks)} fork(s), {len(pulls)} PR(s), {len(issues)} issue(s)"
-    body = build_report(since, forks, pulls, issues, upstream_ahead)
+    body = build_report(since, forks, pulls, issues)
     summary = os.environ.get('GITHUB_STEP_SUMMARY')
     if summary:
         with open(summary, 'a', encoding='utf-8') as f:
