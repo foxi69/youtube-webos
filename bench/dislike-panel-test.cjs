@@ -577,6 +577,30 @@ function key(win, target, name, code) {
       win.document.activeElement && win.document.activeElement.className);
   }
 
+  // ---- Focus in the panel on no item, none marked: Down to the first ----
+  {
+    const b = await boot(() => 50);
+    const { win } = b;
+    const p = openPanel(win);
+    await wait(700);
+    p.header.setAttribute('tabindex', '0');
+    p.header.focus();   // the header: in the panel, not a menu item
+    await wait(10);
+    t(n('precondition: the panel has the focus, no item marked'), b.ryd().isPanelFocused === true &&
+      !p.panel.querySelector('[role="menuitem"].zylon-focus'));
+    key(win, p.header, 'ArrowDown', 40);
+    t(n('focus on no item: Down goes to the first item'), win.document.activeElement === p.items[0],
+      win.document.activeElement && (win.document.activeElement === p.items[1] ? 'the second item' : win.document.activeElement.className));
+    p.header.focus();
+    await wait(10);
+    b.ryd().lastFocusedElement = null;   // as after YouTube re-rendered the list
+    b.ryd().menuItemsCache = [];
+    p.items[0].classList.remove('zylon-focus');
+    key(win, p.header, 'ArrowUp', 38);
+    t(n('focus on no item: Up goes to the last item'), win.document.activeElement === p.items[4],
+      win.document.activeElement && win.document.activeElement.className);
+  }
+
   // ---- Return YouTube Dislike switched off ----
   {
     const b = await boot(() => 5, { config: { enableReturnYouTubeDislike: false } });

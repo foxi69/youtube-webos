@@ -695,10 +695,14 @@ class ReturnYouTubeDislike {
            if (this.focusedIndex === -1 && document.activeElement) {
                 this.focusedIndex = this.menuItemsMap.get(document.activeElement) ?? -1;
            }
-           if (this.focusedIndex === -1) this.focusedIndex = 0;
       }
 
-      const nextIndex = (this.focusedIndex + (isDown ? 1 : this.menuItemsCache.length - 1)) % this.menuItemsCache.length;
+      // From no item (the focus on something else in the panel): Down goes
+      // to the first item, Up to the last.
+      const count = this.menuItemsCache.length;
+      const nextIndex = this.focusedIndex === -1
+          ? (isDown ? 0 : count - 1)
+          : (this.focusedIndex + (isDown ? 1 : count - 1)) % count;
 
       const nextItem = this.menuItemsCache[nextIndex];
       this.isProgrammaticFocus = true;
@@ -831,7 +835,6 @@ class ReturnYouTubeDislike {
     this.observers.clear();
     
     this.stopBodyPoll();
-    if (this.bodyMutationRaf) cancelAnimationFrame(this.bodyMutationRaf);
     
     if (this.navigationActive) {
         window.removeEventListener('keydown', this.handleNavigation, { capture: true });
