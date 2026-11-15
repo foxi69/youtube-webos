@@ -37,7 +37,7 @@ const seg = (category, start, end, actionType = 'skip') =>
 
 // A <video> whose time, play state and duration the test sets.
 function fakeVideo(win, video, duration) {
-  const state = { time: 0, paused: false, muted: false, seeks: [] };
+  const state = { time: 0, paused: false, muted: false, seeks: [], ready: 4 };
   const fire = (type) => video.dispatchEvent(new win.Event(type));
   Object.defineProperties(video, {
     currentTime: {
@@ -53,7 +53,7 @@ function fakeVideo(win, video, duration) {
     duration: { configurable: true, get: () => duration },
     paused: { configurable: true, get: () => state.paused },
     seeking: { configurable: true, get: () => false },
-    readyState: { configurable: true, get: () => 4 },
+    readyState: { configurable: true, get: () => state.ready },
     muted: { configurable: true, get: () => state.muted, set: (v) => { state.muted = !!v; } },
     play: { configurable: true, value: () => { state.paused = false; fire('playing'); return Promise.resolve(); } },
     pause: { configurable: true, value: () => { state.paused = true; fire('pause'); } }
@@ -104,6 +104,7 @@ async function boot(cfg, segments, opts = {}) {
   const video = win.document.querySelector('video');
   const v = fakeVideo(win, video, opts.duration || 600);
   if (opts.startAt) v.state.time = opts.startAt;
+  if (opts.readyState !== undefined) v.state.ready = opts.readyState;
   win.eval(code);
   // The handler starts a moment after the page (about 0.8 s): wait for its
   // request, then for the answer to be applied.
@@ -147,6 +148,31 @@ async function boot(cfg, segments, opts = {}) {
     const env = await boot({}, [seg('intro', 0, 15), seg('sponsor', 15.1, 40)]);
     t(n('segments from 0:00 on: skipped at once to the end of the chain'), env.state.time === 40,
       env.state.seeks.join(','));
+  }
+
+  // ---- The start chain when the segments come before the video's metadata (common on a TV) ----
+  {
+    const env = await boot({}, [seg('intro', 0, 15), seg('sponsor', 15.1, 40)], { readyState: 0 });
+    t(n('segments before the metadata: no jump yet'), env.state.time === 0 && env.state.seeks.length === 0,
+      env.state.seeks.join(','));
+    env.state.ready = 1;
+    env.video.dispatchEvent(new env.win.Event('loadedmetadata'));
+    await wait(40);
+    t(n('...the chain is skipped once the metadata is in'), env.state.time === 40 && env.state.seeks.length === 1,
+      env.state.seeks.join(','));
+  }
+
+  // ---- Close to a segment: the skip comes at its start, not with the next timeupdate ----
+  {
+    const env = await boot({}, [seg('sponsor', 30, 60)]);
+    await env.playTo(10);
+    await env.playTo(29.5);
+    t(n('half a second before a segment: nothing skipped yet'), env.state.time === 29.5 && env.state.seeks.length === 0);
+    // Playback crosses the start between two timeupdates (they come about every 250 ms).
+    env.state.time = 30.05;
+    await wait(100);
+    t(n('...crossing its start skips it without waiting for a timeupdate'), env.state.time === 60,
+      String(env.state.time));
   }
 
   // ---- What each category's setting does ----
