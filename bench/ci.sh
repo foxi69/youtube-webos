@@ -128,6 +128,9 @@ run preview-fix-test "$B" legacy
 run screensaver-cases-test "$B" legacy
 run subtitle-translate-test "$B" legacy
 run auto-login-test "$B" legacy
+run about-test "$B" legacy
+run launch-params-test "$B" legacy
+run clock-test "$B" legacy
 run low-memory-style-test "$B"
 run review-fixes-test "$B"
 run search-font-test "$B"
@@ -158,7 +161,8 @@ for t in smoke adblock-test panel-test module-behaviour-test upstream-fixes-test
   watch-time-test search-filter-test low-memory-style-test review-fixes-test \
   search-font-test preview-autoopen-test preview-countdown-test sponsorblock-skip-test \
   panel-nav-test fetch-hook-test most-replayed-bundle-test preview-fix-test \
-  screensaver-cases-test subtitle-translate-test auto-login-test; do
+  screensaver-cases-test subtitle-translate-test auto-login-test about-test \
+  launch-params-test clock-test; do
   run "$t" "$M" modern
 done
 run dearrow-test "$M" modern
