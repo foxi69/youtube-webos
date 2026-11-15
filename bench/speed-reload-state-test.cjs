@@ -203,13 +203,19 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
     win.close();
   }
   {
-    // The player between two videos: its metadata read throws.
+    // The player between two videos: the live check reads its metadata, and the
+    // reload's own read then throws.
     const { win, p, speed, log } = boot(720);
-    p.getVideoData = () => { throw new Error('no video data'); };
+    let reads = 0;
+    p.getVideoData = () => {
+      if (++reads > 1) throw new Error('no video data');
+      return { video_id: p.videoId };
+    };
     let error = null;
     try { speed.setSpeed(1.5, { immediate: true }); } catch (err) { error = err; }
     t('a throwing getVideoData skips the reload instead of breaking the speed change',
-      !error && log.reloads === 0, String(error));
+      !error && reads >= 2 && log.ranges.join() === 'hd720' && log.reloads === 0,
+      `${error} reads=${reads} ranges=${log.ranges.join()} reloads=${log.reloads}`);
     win.close();
   }
   {
