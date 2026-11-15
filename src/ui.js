@@ -1201,7 +1201,6 @@ function createOptionsPanel() {
   	  createElement('div', { text: 'Shrinks the page beside the open left menu, instead of pushing its right side off the screen', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   	  createConfigCheckbox('removeLowMemoryStyle'),
   	  createElement('div', { text: 'Takes away the black boxes YouTube puts behind the player\'s titles and timestamps when it saves memory', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
-  	  createConfigCheckbox('fixMultilineTitles'),
   	  createConfigCheckbox('removeBlackBorders')
     ];
 
@@ -2232,7 +2231,7 @@ function initGlobalStyles() {
            Gated on <html> rather than <body> because YouTube's leanback app
            rewrites body.className on tab navigation and panel dialogs, which
            would wipe a body-class gate and silently disable these rules.
-           Same reason ytaf-hide-logo / ytaf-fix-titles / ytaf-remove-borders
+           Same reason ytaf-hide-logo / ytaf-remove-borders
            already live on documentElement.
 
            The shelf backdrop's opacity is a rule of its own in
@@ -2262,8 +2261,10 @@ function initGlobalStyles() {
            black boxes. With Remove Black Text Boxes on (app-quality-fix.js)
            the class is off <body> and the boxes are gone, so they apply only
            with it off. */
-        html.ytaf-fix-titles .app-quality-root .SK1srf .WVWtef,
-        html.ytaf-fix-titles .app-quality-root .SK1srf .niS3yd {
+        /* Titles over more than one line: less space around each line in
+           those boxes. Always on, no setting (it was Fix Multiline Titles). */
+        .app-quality-root .SK1srf .WVWtef,
+        .app-quality-root .SK1srf .niS3yd {
             padding-bottom: 0.37vh !important;
             padding-top: 0.37vh !important;
         }
@@ -2357,7 +2358,6 @@ function initGlobalStyles() {
 
     const syncClass = (cls, key) => document.documentElement.classList.toggle(cls, !!configRead(key));
     const CLASS_KEYS = {
-        'ytaf-fix-titles': 'fixMultilineTitles',
         'ytaf-remove-borders': 'removeBlackBorders',
         'ytaf-no-animations': 'disableAnimations',
         'ytaf-hide-recommended': 'hideRecommendedVideos'

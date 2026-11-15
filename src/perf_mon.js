@@ -308,7 +308,7 @@ export {};
     [/hookedParse|SCHEMA_REGISTRY|walkAndProcess|adPlacements|trackingParams|TRACKING_PARAMS_RE/, 'adblock.js'],
     [/twemoji|EMOJI_RE|processTextNode/, 'emoji-font.js'],
     [/setPlaybackQualityRange|yt-player-quality/, 'video-quality.js'],
-    [/ytaf-hide-logo|ytaf-fix-titles|oled-theme-active|ytaf-remove-borders|configWrite/, 'ui.js'],
+    [/ytaf-hide-logo|oled-theme-active|ytaf-remove-borders|configWrite/, 'ui.js'],
     [/webOs-watch/, 'watch.js'],
     [/whosWatching|identityBypass|attemptActiveBypass/, 'auto-login.js'],
     [/WEB_PAGE_TYPE_|ytaf-page-update/, 'utils.js']
@@ -1791,7 +1791,6 @@ export {};
     clockMode: 'off',
     enableOledCareMode: false,
     videoShelfOpacity: 100,
-    fixMultilineTitles: true,
     removeBlackBorders: false,
     videoPreviews: 'default',
     enableLegacyEmojiFix: true,
@@ -2543,24 +2542,6 @@ export {};
       fns: ['applyLogoStyle'],
       probe: function () {
         var on = hasClass('ytaf-hide-logo');
-        return {
-          state: on ? 'firing' : 'stalled',
-          detail: on ? 'Class applied. No runtime cost.' : 'Class missing from <html>.'
-        };
-      }
-    },
-
-    {
-      key: 'fixMultilineTitles',
-      label: 'Fix Multiline Titles',
-      lamp: 'TITLE',
-      module: 'ui.js',
-      pages: ALL_PAGES,
-      cost: 'free',
-      expect: 'html.ytaf-fix-titles is set. Static CSS only.',
-      fns: ['initGlobalStyles'],
-      probe: function () {
-        var on = hasClass('ytaf-fix-titles');
         return {
           state: on ? 'firing' : 'stalled',
           detail: on ? 'Class applied. No runtime cost.' : 'Class missing from <html>.'

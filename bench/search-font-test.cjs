@@ -1,7 +1,9 @@
 /**
  * Search results font (ui.js): the search page's video titles (.prqC5c,
  * which YouTube TV's CSS sets in Roboto) get the TV's font; other pages are
- * left alone. Always on, with no switch in the panel.
+ * left alone. And titles over more than one line get tighter lines in the
+ * black boxes of YouTube's memory saving. Both always on, with no switch in
+ * the panel.
  */
 const fs = require('fs');
 const path = require('path');
@@ -57,9 +59,10 @@ function panelLabels(win) {
   t('search page: the titles get the TV\'s font first', /^"?LG Display-Regular"?/.test(fontOf(win)), fontOf(win));
   // The panel must have opened: a UI Tweaks switch that stays is there first.
   const labels = panelLabels(win);
-  t('precondition: the panel is open, with Fix Multiline Titles on UI Tweaks',
-    labels.some((l) => /Fix Multiline Titles/.test(l)), labels.length + ' labels');
+  t('precondition: the panel is open, with New Liquid Glass UI on UI Tweaks',
+    labels.some((l) => /New Liquid Glass UI/.test(l)), labels.length + ' labels');
   t('no switch for the search font in it', !labels.some((l) => /Search Results Font/.test(l)));
+  t('no switch for the multiline titles in it', !labels.some((l) => /Multiline Titles/.test(l)));
   t('no page errors', errors.length === 0, errors.join(' | '));
 }
 {
@@ -71,6 +74,26 @@ function panelLabels(win) {
   const { win, errors } = boot({ fixSearchFont: false }, 'WEB_PAGE_TYPE_SEARCH');
   t('an old stored "off": the font all the same', /LG Display/.test(fontOf(win)), fontOf(win));
   t('no page errors', errors.length === 0, errors.join(' | '));
+}
+{
+  // Multiline titles in the black boxes of YouTube's memory saving (kept with
+  // Remove Black Text Boxes off): tighter lines, with no switch, and an old
+  // stored Fix Multiline Titles "off" does not count.
+  const { win, errors } = boot({ removeLowMemoryStyle: false, fixMultilineTitles: false },
+    'WEB_PAGE_TYPE_WATCH app-quality-root');
+  const box = win.document.createElement('div');
+  box.className = 'SK1srf';
+  box.innerHTML = '<div class="WVWtef">A title over</div><div class="niS3yd">two lines</div>';
+  win.document.body.appendChild(box);
+  // 0.37vh, which jsdom gives in pixels.
+  const want = (0.37 * win.innerHeight) / 100;
+  const pads = [...box.children].flatMap((el) => {
+    const cs = win.getComputedStyle(el);
+    return [cs.paddingTop, cs.paddingBottom];
+  });
+  t('multiline titles: tighter lines in the boxes, an old "off" all the same',
+    pads.length === 4 && pads.every((p) => Math.abs(parseFloat(p) - want) < 0.01), pads.join(' | '));
+  t('multiline titles: no page errors', errors.length === 0, errors.join(' | '));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
