@@ -90,7 +90,8 @@ jobs:
           node bench/chromium-smoke.cjs dist/webOSUserScripts/userScript.js legacy
 
       # The same tests under c8: the report goes to the job summary, and the
-      # HTML version is uploaded below.
+      # HTML version is uploaded below. Coverage under the floor in
+      # bench/coverage-summary.cjs fails the step, after the table is written.
       - name: Coverage
         run: |
           npm run coverage

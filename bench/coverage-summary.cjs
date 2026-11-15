@@ -15,6 +15,11 @@ const fs = require('fs');
 const path = require('path');
 
 const DIR = path.resolve(__dirname, '../coverage');
+// The floor: coverage over src/ (both builds) below this fails the run, so a
+// change cannot take tests away, or add untested code, unnoticed. Raise it
+// as coverage grows; it sits a little under the figures it was set at
+// (2026-11: lines 90.9%, functions 89.3%, branches 78.6%).
+const FLOOR = { lines: 90, functions: 88, branches: 77 };
 // Keys look like "youtube-webos/src/ui.js" (the package name, from webpack)
 // or "src/ui.js" (a file a test required itself).
 const srcName = (file) => file.replace(/\\/g, '/').replace(/^[^/]+\/(?=src\/)/, '');
@@ -76,11 +81,12 @@ const rows = (fs.existsSync(detailFile)
   : rowsFromSummary(summary)
 ).sort((a, b) => a.lines.pct - b.lines.pct || a.name.localeCompare(b.name));
 
-const total = (m) => {
+const share = (m) => {
   let covered = 0, all = 0;
   for (const r of rows) { covered += r[m].covered; all += r[m].total; }
-  return all ? `${Math.round((covered / all) * 1000) / 10}%` : '-';
+  return all ? (covered / all) * 100 : 100;
 };
+const total = (m) => `${Math.round(share(m) * 10) / 10}%`;
 
 console.log('## Test coverage (legacy and modern builds)\n');
 console.log(`Lines **${total('lines')}** · functions **${total('functions')}** · branches **${total('branches')}** (${rows.length} files in src/)\n`);
@@ -91,4 +97,10 @@ for (const r of rows) {
 }
 if (rows.some((r) => r.joined)) {
   console.log('\n¹ Loaded by the bundle and by a unit test directly: lines covered by either run, functions and branches from the better one.');
+}
+
+const below = Object.keys(FLOOR).filter((m) => share(m) < FLOOR[m]);
+if (below.length) {
+  console.log(`\n**Below the floor:** ${below.map((m) => `${m} ${total(m)} (floor ${FLOOR[m]}%)`).join(', ')}.`);
+  process.exitCode = 1;
 }
