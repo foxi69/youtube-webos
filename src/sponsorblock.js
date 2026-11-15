@@ -148,6 +148,8 @@ class SponsorBlockHandler {
         this.activeCategories = new Set();
         this.isProcessing = false;
         this.isSkipping = false;
+        // Where the last skip of a segment went (for autoJumpToHighlight).
+        this.ownSkipTarget = null;
         this.isDestroyed = false;
         this.skippedSegmentIndices = new Set();
         this.tempWhitelistIndex = -1; // Whitelist segment when using shortcut
@@ -1607,6 +1609,7 @@ class SponsorBlockHandler {
 
         this.isSkipping = true;
         this._armSkipWatchdog();
+        this.ownSkipTarget = jumpTarget;
         this.video.currentTime = jumpTarget;
 
         if (!this.isLegacyWebOSVer) {
@@ -1635,15 +1638,19 @@ class SponsorBlockHandler {
 
     // Auto Skip to Start: on a partly watched video YouTube's resume seek lands
     // right after a jump made at load and undoes it, so a seek away from the
-    // highlight in the first few seconds is answered with one re-jump.
+    // highlight in the first few seconds is answered with one re-jump. A
+    // segment skipped meanwhile (one right after the highlight) is no such seek.
     autoJumpToHighlight() {
         if (!this.jumpToNextHighlight()) return;
         const video = this.video;
         const target = this.highlightSegment.segment[0];
         const until = Date.now() + 4000;
+        this.ownSkipTarget = null;
         const onSeeked = () => {
             if (Date.now() > until || this.video !== video || this.isDestroyed) {
                 video.removeEventListener('seeked', onSeeked);
+            } else if (this.ownSkipTarget !== null && Math.abs(video.currentTime - this.ownSkipTarget) < 0.5) {
+                this.ownSkipTarget = null;
             } else if (Math.abs(video.currentTime - target) > 2) {
                 video.removeEventListener('seeked', onSeeked);
                 video.currentTime = target;
@@ -1694,6 +1701,7 @@ class SponsorBlockHandler {
             if (this.video) {
                 this.isSkipping = true;
                 this.lastSkipTime = this.video.currentTime;
+                this.ownSkipTarget = this.currentManualSegment.end;
                 this.video.currentTime = this.currentManualSegment.end;
 
                 this.clearManualNotification();

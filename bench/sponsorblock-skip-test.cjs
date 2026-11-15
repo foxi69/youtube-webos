@@ -230,6 +230,26 @@ async function boot(cfg, segments, opts = {}) {
     t(n('...with a toast'), /Jumped to Highlight/.test(env.toasts()), env.toasts());
   }
   {
+    // YouTube's resume seek undoing the jump, a moment after it: jumped again.
+    const env = await boot({ sbMode_highlight: 'auto_skip' }, [seg('poi_highlight', 120, 120, 'poi')]);
+    env.video.currentTime = 45;
+    await wait(40);
+    t(n('highlight: a seek away right after the jump (YouTube resuming) is undone'), env.state.time === 120,
+      env.state.seeks.join(','));
+  }
+  {
+    // A segment that starts right after the highlight: its skip is
+    // SponsorBlock's own, not one to undo.
+    const env = await boot({ sbMode_highlight: 'auto_skip' }, [seg('poi_highlight', 120, 120, 'poi'), seg('sponsor', 122, 140)]);
+    await env.playTo(122.2);
+    await wait(40);
+    t(n('highlight, then a segment right after it: skipped, and not jumped back'), env.state.time === 140 &&
+      env.state.seeks.join() === '120,140', env.state.seeks.join(','));
+    await env.playTo(141);
+    t(n('...and playback goes on after it'), env.state.time === 141 && env.state.seeks.join() === '120,140',
+      env.state.seeks.join(','));
+  }
+  {
     const env = await boot({ sbMode_highlight: 'ask' }, [seg('poi_highlight', 120, 120, 'poi')]);
     t(n('highlight on Ask: offered, not jumped to'), env.state.time === 0 && /Highlight available/.test(env.toasts()),
       env.toasts());
