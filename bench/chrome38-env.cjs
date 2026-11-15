@@ -113,6 +113,59 @@ function applyChrome38Downgrade(win) {
 module.exports = { applyChrome38Downgrade };
 
 /**
+ * Chrome 87 / webOS 22 environment: removes the JS built-ins and DOM APIs
+ * Chromium 87 does not ship, for the modern bundle (the oldest TV it serves
+ * is webOS 22). That build has no polyfills, so a bundle that uses one of
+ * these throws on the TV; without this it passed on Node 22.
+ *
+ * "First Chrome version" from MDN browser-compat-data. Syntax (class static
+ * blocks 94, the RegExp v flag 112, ...) cannot be removed here; babel's
+ * `chrome 87` target lowers it.
+ */
+function applyChrome87Downgrade(win) {
+  const del = [];
+  const rm = (obj, prop, label) => {
+    if (obj && prop in obj) {
+      try { delete obj[prop]; if (!(prop in obj)) del.push(label); } catch { /* non-configurable */ }
+    }
+  };
+  const A = win.Array.prototype;
+  rm(A, 'at', 'Array#at');                                // Chrome 92
+  rm(A, 'findLast', 'Array#findLast');                    // Chrome 97
+  rm(A, 'findLastIndex', 'Array#findLastIndex');          // Chrome 97
+  rm(A, 'toSorted', 'Array#toSorted');                    // Chrome 110
+  rm(A, 'toReversed', 'Array#toReversed');                // Chrome 110
+  rm(A, 'toSpliced', 'Array#toSpliced');                  // Chrome 110
+  rm(A, 'with', 'Array#with');                            // Chrome 110
+  rm(win.Array, 'fromAsync', 'Array.fromAsync');          // Chrome 121
+  rm(win.String.prototype, 'at', 'String#at');            // Chrome 92
+  rm(win.String.prototype, 'isWellFormed', 'String#isWellFormed'); // Chrome 111
+  rm(win.String.prototype, 'toWellFormed', 'String#toWellFormed'); // Chrome 111
+  rm(win.Object, 'hasOwn', 'Object.hasOwn');              // Chrome 93
+  rm(win.Object, 'groupBy', 'Object.groupBy');            // Chrome 117
+  rm(win.Map, 'groupBy', 'Map.groupBy');                  // Chrome 117
+  rm(win.Promise, 'withResolvers', 'Promise.withResolvers'); // Chrome 119
+  for (const m of ['union', 'intersection', 'difference', 'symmetricDifference', 'isSubsetOf', 'isSupersetOf', 'isDisjointFrom']) {
+    rm(win.Set.prototype, m, 'Set#' + m);                 // Chrome 122
+  }
+  const typed = win.Uint8Array && Object.getPrototypeOf(win.Uint8Array.prototype);
+  for (const m of ['at', 'findLast', 'findLastIndex', 'toSorted', 'toReversed', 'with']) {
+    rm(typed, m, 'TypedArray#' + m);                      // Chrome 92-110
+  }
+  rm(win, 'structuredClone', 'structuredClone');          // Chrome 98
+  if (win.AbortSignal) {
+    rm(win.AbortSignal, 'timeout', 'AbortSignal.timeout'); // Chrome 103
+    rm(win.AbortSignal, 'any', 'AbortSignal.any');         // Chrome 116
+    rm(win.AbortSignal.prototype, 'throwIfAborted', 'AbortSignal#throwIfAborted'); // Chrome 100
+  }
+  if (win.crypto) rm(win.crypto, 'randomUUID', 'crypto.randomUUID'); // Chrome 92
+  rm(win.Element.prototype, 'checkVisibility', 'Element#checkVisibility'); // Chrome 105
+  rm(win.HTMLElement.prototype, 'showPopover', 'HTMLElement#showPopover'); // Chrome 114
+  return del;
+}
+module.exports.applyChrome87Downgrade = applyChrome87Downgrade;
+
+/**
  * jsdom 30 removed the top-level `userAgent` constructor option, so setting it
  * there silently does nothing and every "legacy" test would actually run as
  * webOS 6 - skipping the emoji, buffer-limit and legacy-emoji code paths

@@ -11,10 +11,13 @@
 const fs = require('fs');
 const path = require('path');
 const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent } = require('./chrome38-env.cjs');
+const { applyChrome38Downgrade, UA, setUserAgent, applyChrome87Downgrade } = require('./chrome38-env.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
+// `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
+// with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
+const modern = process.argv[3] === 'modern';
 
 // Every setting that once kept the JSON.parse hook installed, off.
 const ALL_OFF = {
@@ -87,7 +90,7 @@ function boot(cfg, early) {
   win.localStorage.setItem('ytaf-sidebar-entries', LEARNT_SIDEBAR);
   // The first home screen, parsed by YouTube's page before the userScript ran.
   if (early) win.pendingEarlyBrowse = win.Promise.resolve({ response: win.JSON.parse(win.JSON.stringify(early)) });
-  applyChrome38Downgrade(win);
+  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
   win.fetch = () => Promise.reject(new Error('offline'));
   const nativeParse = win.JSON.parse;
   win.eval(fs.readFileSync(bundlePath, 'utf8'));

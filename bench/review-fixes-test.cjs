@@ -17,9 +17,12 @@
  */
 const fs = require('fs');
 const { JSDOM, VirtualConsole } = require('jsdom');
-const { UA, setUserAgent, dispatchTrusted } = require('./chrome38-env.cjs');
+const { UA, setUserAgent, dispatchTrusted, applyChrome87Downgrade } = require('./chrome38-env.cjs');
 
 const bundle = fs.readFileSync(process.argv[2] || 'dist/webOSUserScripts/userScript.js', 'utf8');
+// `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
+// with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
+const modern = process.argv[3] === 'modern';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const VIDEO = 'abcdefghijk';
 
@@ -36,6 +39,7 @@ async function boot(cfg, { html, url, speed = 1, fetch, prepare }) {
   const dom = new JSDOM(html, { runScripts: 'outside-only', url, virtualConsole: new VirtualConsole(), pretendToBeVisual: true });
   const win = dom.window;
   setUserAgent(win, UA.webos23);
+  if (modern) applyChrome87Downgrade(win);
   win.launchParams = '{}';
   win.fetch = fetch || (() => Promise.reject(new Error('offline')));
   win.XMLHttpRequest = class { open() {} send() { if (this.onerror) this.onerror(); } setRequestHeader() {} getResponseHeader() { return null; } addEventListener() {} };

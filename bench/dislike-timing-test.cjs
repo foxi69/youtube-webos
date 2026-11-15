@@ -14,7 +14,7 @@
 const fs = require('fs');
 const path = require('path');
 const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent } = require('./chrome38-env.cjs');
+const { applyChrome38Downgrade, UA, setUserAgent, applyChrome87Downgrade } = require('./chrome38-env.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
@@ -37,7 +37,7 @@ function boot(fetchImpl, hl) {
     enableReturnYouTubeDislike: true, enableAdBlock: true, enableSponsorBlock: false,
     enableLegacyEmojiFix: false, upgradeThumbnails: false, enableAutoLogin: false
   }));
-  if (legacy) applyChrome38Downgrade(win);
+  if (legacy) applyChrome38Downgrade(win); else applyChrome87Downgrade(win);
   // AFTER the downgrade: it deletes window.fetch (Chrome 38 has none), which
   // would wipe the mock and hand the request to the whatwg-fetch polyfill.
   win.fetch = fetchImpl;

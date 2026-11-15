@@ -8,12 +8,12 @@
  *
  * No Chromium 38 downgrade here - the point is to exercise the code paths that
  * ONLY run on a modern engine (no polyfills.js, no emoji-font.js, no
- * buffer-limit).
+ * buffer-limit). It runs in a Chrome 87 environment, webOS 22's engine.
  */
 const fs = require('fs');
 const path = require('path');
 const { JSDOM, VirtualConsole } = require('jsdom');
-const { UA, setUserAgent, dispatchTrusted } = require('./chrome38-env.cjs');
+const { UA, setUserAgent, dispatchTrusted, applyChrome87Downgrade } = require('./chrome38-env.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
@@ -31,6 +31,7 @@ const dom = new JSDOM(
     virtualConsole: vc, pretendToBeVisual: true });
 const win = dom.window;
 setUserAgent(win, UA.webos23);   // webOS 23+ -> modern code paths
+applyChrome87Downgrade(win);     // the oldest engine the modern build serves
 win.launchParams = JSON.stringify({});
 win.webOS = { deviceInfo: (cb) => cb({ modelName: 'sim' }), platformBack: () => {} };
 win.XMLHttpRequest = class { open(){} send(){} setRequestHeader(){} getResponseHeader(){return null;} addEventListener(){} };

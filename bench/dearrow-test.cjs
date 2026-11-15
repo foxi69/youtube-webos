@@ -17,7 +17,7 @@
 const fs = require('fs');
 const crypto = require('crypto');
 const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent, dispatchTrusted } = require('./chrome38-env.cjs');
+const { applyChrome38Downgrade, UA, setUserAgent, dispatchTrusted, applyChrome87Downgrade } = require('./chrome38-env.cjs');
 
 const bundlePath = process.argv[2] || 'dist/webOSUserScripts/userScript.js';
 const modern = process.argv[3] === 'modern';
@@ -94,7 +94,7 @@ function boot(cfg, opts = {}) {
     enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false,
     enableDeArrow: true, dearrowTitleFormatting: 'disable', dearrowThumbnailFallback: 'original'
   }, cfg)));
-  if (!modern) applyChrome38Downgrade(win);
+  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
   win.fetch = (url) => {
     url = String(url);
     fetched.push(url);

@@ -10,9 +10,12 @@
  */
 const fs = require('fs');
 const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent } = require('./chrome38-env.cjs');
+const { applyChrome38Downgrade, UA, setUserAgent, applyChrome87Downgrade } = require('./chrome38-env.cjs');
 
 const bundlePath = process.argv[2] || 'dist/webOSUserScripts/userScript.js';
+// `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
+// with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
+const modern = process.argv[3] === 'modern';
 const pad = 'z'.repeat(600);
 
 function boot(cfg, aiIds) {
@@ -34,7 +37,7 @@ function boot(cfg, aiIds) {
   }, cfg)));
   // Videos ai-content-filter.js found labelled "AI" (ai-video-store.js).
   win.localStorage.setItem('ytaf-ai-videos', NS((aiIds || []).map((id) => ({ id, expiresAt: Date.now() + 864e5 }))));
-  applyChrome38Downgrade(win);
+  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
   win.fetch = () => Promise.reject(new Error('offline'));
   win.eval(fs.readFileSync(bundlePath, 'utf8'));
   return { errors, parse: (obj) => win.JSON.parse(NS(obj)) };

@@ -133,15 +133,17 @@ if [ ${#env[@]} -eq 0 ]; then
   run webos-version-test "$B" modern
   run appinfo-test
   # The modern build has its own code paths (no polyfills.js, emoji-font.js or
-  # buffer-limit; ES2020 output): the tests of what most TVs run, on it too.
-  run smoke "$B" modern
-  run adblock-test "$B" modern
-  run panel-test "$B" modern
-  run module-behaviour-test "$B" modern
-  run upstream-fixes-test "$B" modern
-  run new-features-test "$B" modern
-  run feed-features-test "$B" modern
-  run dislike-timing-test "$B" modern
+  # buffer-limit; ES2020 output), so the bundle tests run on it too, in a
+  # Chrome 87 environment (webOS 22). Left out: dependency-test (the emoji
+  # fix), speed-legacy-install-test and emoji-loop-test, legacy-only modules.
+  for t in smoke adblock-test panel-test module-behaviour-test upstream-fixes-test \
+    new-features-test feed-features-test dislike-timing-test per-account-test \
+    pivot-filters-test settings-reset-test preview-handover-test speed-preview-test \
+    whats-new-test guide-fit-test keyboard-search-test screensaver-test quality-tag-test \
+    watch-time-test search-filter-test low-memory-style-test review-fixes-test \
+    search-font-test preview-autoopen-test preview-countdown-test; do
+    run "$t" "$B" modern
+  done
   run dearrow-test "$B" modern
   run ai-filter-test "$B" modern
   run quality-reload-test "$B"

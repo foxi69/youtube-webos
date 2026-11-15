@@ -8,7 +8,7 @@ const fs = require('fs');
 const { JSDOM, VirtualConsole } = require('jsdom');
 const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
-const { applyChrome38Downgrade, UA, setUserAgent } = require('./chrome38-env.cjs');
+const { applyChrome38Downgrade, UA, setUserAgent, applyChrome87Downgrade } = require('./chrome38-env.cjs');
 
 const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
 const legacy = process.argv[3] !== 'modern';
@@ -47,7 +47,7 @@ const earlyBrowse = { response: win.JSON.parse(nativeStringify({
 })) };
 win.pendingEarlyBrowse = win.Promise.resolve(earlyBrowse);
 
-if (legacy) applyChrome38Downgrade(win);
+if (legacy) applyChrome38Downgrade(win); else applyChrome87Downgrade(win);
 win.eval(fs.readFileSync(bundlePath, 'utf8'));
 
 let pass = 0, fail = 0;

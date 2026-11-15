@@ -10,9 +10,12 @@
  */
 const fs = require('fs');
 const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent, dispatchTrusted } = require('./chrome38-env.cjs');
+const { applyChrome38Downgrade, UA, setUserAgent, dispatchTrusted, applyChrome87Downgrade } = require('./chrome38-env.cjs');
 
 const bundlePath = process.argv[2] || 'dist/webOSUserScripts/userScript.js';
+// `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
+// with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
+const modern = process.argv[3] === 'modern';
 const GREEN = 404;
 const CONFIG_KEY = 'ytaf-configuration';
 const IDENTITY_KEY = 'yt.leanback.default::last-identity-used';
@@ -25,7 +28,7 @@ function boot(shared, identity, extraStorage = {}) {
   const dom = new JSDOM('<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app></ytlr-app></body></html>',
     { runScripts: 'outside-only', url: 'https://www.youtube.com/tv', virtualConsole: vc, pretendToBeVisual: true });
   const win = dom.window;
-  setUserAgent(win, UA.webos3);
+  setUserAgent(win, modern ? UA.webos23 : UA.webos3);
   win.launchParams = '{}';
   win.XMLHttpRequest = class { open(){} send(){} setRequestHeader(){} getResponseHeader(){return null;} addEventListener(){} };
   win.fetch = () => Promise.reject(new Error('offline'));
@@ -39,7 +42,7 @@ function boot(shared, identity, extraStorage = {}) {
   }, shared)));
   if (identity) win.localStorage.setItem(IDENTITY_KEY, NS({ data: identity }));
   for (const [k, v] of Object.entries(extraStorage)) win.localStorage.setItem(k, NS(v));
-  applyChrome38Downgrade(win);
+  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
   win.eval(fs.readFileSync(bundlePath, 'utf8'));
   const pump = () => { for (let i = 0; i < 10; i++) { const q = rafQ; rafQ = []; for (const cb of q) cb(Date.now()); } };
   return { win, NS, errors, pump };

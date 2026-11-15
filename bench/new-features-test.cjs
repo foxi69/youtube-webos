@@ -6,7 +6,7 @@
 const fs = require('fs');
 const path = require('path');
 const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent, dispatchTrusted } = require('./chrome38-env.cjs');
+const { applyChrome38Downgrade, UA, setUserAgent, dispatchTrusted, applyChrome87Downgrade } = require('./chrome38-env.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
@@ -45,7 +45,7 @@ function boot(cfg, extraHtml = '', storage = {}, before) {
     upgradeThumbnails: false, enableAutoLogin: false, logoStyle: 'default'
   }, cfg)));
   for (const k in storage) win.localStorage.setItem(k, storage[k]);
-  if (!modern) applyChrome38Downgrade(win);
+  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
   if (before) before(win);
   win.eval(fs.readFileSync(bundlePath, 'utf8'));
   return { win, NS, pump: () => { const q = rafQ; rafQ = []; for (const cb of q) cb(0); } };
