@@ -10,11 +10,19 @@ import importlib.util
 import io
 import json
 import os
+import shutil
 import sys
+import tempfile
 import urllib.error
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 os.environ.pop('DRY_RUN', None)
+# main() appends the whole report to the job summary. In CI that is the real
+# one, and this test's 400-fork report (~1.3 MB) went past its 1 MB limit
+# twice a run (Test and Coverage): it goes to a file of our own, checked below.
+SUMMARY_DIR = tempfile.mkdtemp(prefix='fork-watch-test-')
+SUMMARY = os.path.join(SUMMARY_DIR, 'summary.md')
+os.environ['GITHUB_STEP_SUMMARY'] = SUMMARY
 os.environ['GITHUB_REPOSITORY'] = 'me/youtube-webos'
 os.environ['ROOT_REPOS'] = 'up/youtube-webos'
 spec = importlib.util.spec_from_file_location('fork_watch', os.path.join(HERE, 'fork-watch.py'))
@@ -297,6 +305,14 @@ if posts:
     check('main: its body fits an issue, cut and saying so',
           len(report) < 65536 and '### [dev0/youtube-webos]' in report and report.rstrip().endswith('summary has all of it.'),
           (len(report), report[-120:]))
+    with open(SUMMARY, encoding='utf-8') as f:
+        summary = f.read()
+    check('main: the run summary has the whole report, past where the issue is cut',
+          summary.startswith('# Fork watch 2026-11-11:') and len(summary) > 65536 and
+          '### [dev399/youtube-webos]' in summary and '### [dev399/youtube-webos]' not in report and
+          'cut here' not in summary,
+          (len(summary), summary[:80]))
+shutil.rmtree(SUMMARY_DIR, ignore_errors=True)
 
 print(f'\n{failures} failed' if failures else '\nAll passed')
 sys.exit(1 if failures else 0)

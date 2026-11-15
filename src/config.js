@@ -104,7 +104,8 @@ export const shortcutActions = {
   speed_down: 'Playback Speed -',
   speed_reset: 'Playback Speed Reset (1x)',
   queue_next: 'Play Next in Queue',
-  queue_clear: 'Clear Queue'
+  queue_clear: 'Clear Queue',
+  long_press_menu: 'Open Long-Press Menu'
 };
 
 
@@ -297,6 +298,8 @@ const configOptions = new Map([
   ['removeBlackBorders', { default: false, desc: 'New Liquid Glass UI' }],
   ['forcePreviews', { default: 'disabled', desc: 'Previews With Sound' }],
   ['mutePreviews', { default: false, desc: 'Mute Video Previews' }],
+  // OK on a playing preview carries it on instead of loading the video again (adblock.js).
+  ['continuePreviews', { default: false, desc: 'Open Playing Previews Without Reloading' }],
   // webOS 3-6 only (preview-fix.js, #67).
   ['fixBlackPreviews', { default: true, desc: 'Fix Black Tile Previews' }],
   // About tab (about.js).
@@ -305,6 +308,8 @@ const configOptions = new Map([
   ['fitPageBesideGuide', { default: false, desc: 'Fit Page Beside Open Menu' }],
   // Left menu entries taken out, by browse id (sidebar.js).
   ['hiddenSidebarEntries', { default: [], desc: 'Hidden Left Menu Entries' }],
+  // webOS 3-4 only (emoji-font.js, adblock.js). No switch in the panel: on
+  // by default, and nothing is gained by turning it off.
   ['enableLegacyEmojiFix', { default: true, desc: 'Emoji + Characters Fix' }],
   ['hideGuestSignInPrompts', { default: false, desc: 'Guest Mode: Hide Sign-in Buttons' }],
   ['forceHighResVideo', { default: false, desc: 'Force Max Quality' }],

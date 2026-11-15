@@ -1,6 +1,8 @@
 import { WsolaStretcher } from './wsola.js';
 
 const DRIFT_WINDOW = 30;
+// The last steps of the video's clock that tell its usual step (stallTicks()).
+const CLOCK_GAPS = 9;
 
 export class AudioEngine {
   constructor({
@@ -62,7 +64,14 @@ export class AudioEngine {
 
     this.lastVideoTime = -1;
     this.anchorPending = false;
-    this.stalledTicks = 0;
+    // The video's clock as last seen to change: its time, the audio clock then,
+    // and the ticks since (see tick()). The ticks between its changes are kept
+    // to tell its normal steps from a stall.
+    this.clockT = 0;
+    this.clockAt = 0;
+    this.clockTicks = 0;
+    this.clockGaps = [];
+    this.gapFromHere = false;
 
     this.tickInterval = this.win.setInterval(() => {
       // An error here would otherwise repeat every 50 ms with silent audio;
@@ -80,19 +89,16 @@ export class AudioEngine {
       this.stopFuture();
       this.stretcher = null;
       this.anchorPending = false;
-      this.stalledTicks = 0;
     };
     this.onWaiting = () => {
       this.stopFuture();
       this.stretcher = null;
       this.anchorPending = true;
-      this.stalledTicks = 0;
     };
     this.onSeeking = () => {
       this.stopFuture();
       this.stretcher = null;
       this.anchorPending = false;
-      this.stalledTicks = 0;
       this.decodeGen++;
       this.sentToDecoder.clear();
       if (this.decoder && this.decoder.state === 'configured') {
@@ -103,7 +109,6 @@ export class AudioEngine {
     this.onPlaying = () => {
       this.lastVideoTime = this.video.currentTime;
       this.anchorPending = true;
-      this.stalledTicks = 0;
     };
   }
 
@@ -114,6 +119,8 @@ export class AudioEngine {
     this.video.addEventListener('seeking', this.onSeeking);
     this.video.addEventListener('playing', this.onPlaying);
     this.lastVideoTime = this.video.currentTime;
+    this.clockT = this.video.currentTime;
+    this.clockAt = this.ctx.currentTime;
     if (!this.video.paused) this.anchorPending = true;
   }
 
@@ -375,20 +382,47 @@ export class AudioEngine {
 
     if (this.video.paused) {
       this.lastVideoTime = currT;
-      this.stalledTicks = 0;
+      this.clockT = currT;
+      this.clockAt = nowCtx;
+      this.clockTicks = 0;
+      // The time paused is no step of the clock.
+      this.gapFromHere = false;
       return;
     }
 
     const delta = currT - this.lastVideoTime;
     // Only treat small forward advances as real frame movement; a large jump
     // (0 -> 120s during loadVideoById seek) is a seek, not frames moving yet.
-    const moving = delta > 0 && delta < 0.5 * Math.max(1, this.speed);
+    // A clock that moves in steps (below) moves as far as the time since its
+    // last step, up to a second of it.
+    const moving =
+      delta > 0 &&
+      delta < 0.5 * Math.max(1, this.speed) + Math.min(nowCtx - this.clockAt, 1) * this.speed;
+
+    // webOS 4-6 (#97) update currentTime in steps: it stays the same for
+    // 0.2-0.5 s while the picture plays on, then jumps ahead. Read as it is,
+    // that was a stall, then a jump, and the audio was cut every second or two.
+    // So the video's position is where currentTime last changed to, moved on
+    // by the audio clock since; on a TV whose currentTime moves every tick
+    // that is currentTime itself.
+    if (delta !== 0) {
+      if (this.gapFromHere && delta > 0) {
+        this.clockGaps.push(this.clockTicks + 1);
+        if (this.clockGaps.length > CLOCK_GAPS) this.clockGaps.shift();
+      }
+      this.gapFromHere = true;
+      this.clockT = currT;
+      this.clockAt = nowCtx;
+      this.clockTicks = 0;
+    } else {
+      this.clockTicks++;
+    }
+    const seenT = this.clockT + (nowCtx - this.clockAt) * this.speed;
 
     if (this.anchorPending && moving) {
       this.anchorPending = false;
-      this.stalledTicks = 0;
       this.nextWhen = nowCtx + 0.03;
-      this.outContent = currT + (this.nextWhen - nowCtx) * this.speed;
+      this.outContent = seenT + (this.nextWhen - nowCtx) * this.speed;
       this.inPos = this.outContent;
       this.stretcher = null;
       this.drifts = [];
@@ -400,20 +434,16 @@ export class AudioEngine {
     // If the video clock is frozen (buffering/stalled without firing 'pause'),
     // stop queued audio and re-anchor once frames move again instead of letting
     // drift exceed 0.5s and looping the same ~0.5s audio snippet over and over.
-    if (delta === 0) {
-      this.stalledTicks = (this.stalledTicks || 0) + 1;
-      if (this.stalledTicks >= 4) {
-        this.stopFuture();
-        this.stretcher = null;
-        this.anchorPending = true;
-        this.drifts = [];
-        return;
-      }
-    } else {
-      this.stalledTicks = 0;
+    // Frozen means longer than this TV's clock normally stays on one value.
+    if (this.clockTicks >= this.stallTicks()) {
+      this.stopFuture();
+      this.stretcher = null;
+      this.anchorPending = true;
+      this.drifts = [];
+      return;
     }
 
-    const predictedT = currT + (this.nextWhen - nowCtx) * this.speed;
+    const predictedT = seenT + (this.nextWhen - nowCtx) * this.speed;
     const drift = this.outContent - predictedT;
     const starving = this.nextWhen <= nowCtx;
 
@@ -441,7 +471,7 @@ export class AudioEngine {
       this.stopFuture();
       this.sources.clear();
       this.nextWhen = nowCtx + 0.03;
-      this.outContent = currT + (this.nextWhen - nowCtx) * this.speed;
+      this.outContent = seenT + (this.nextWhen - nowCtx) * this.speed;
       this.inPos = this.outContent;
       this.stretcher = null;
       this.drifts = [];
@@ -527,6 +557,18 @@ export class AudioEngine {
         }
       }
     }
+  }
+
+  /**
+   * Ticks the video's clock may stay on one value before that counts as a
+   * stall: 4 (0.2 s) where it moves every tick, 3 times its usual step where
+   * it moves in steps, never more than 2 s. A second until a few steps are seen.
+   */
+  stallTicks() {
+    const g = this.clockGaps;
+    if (g.length < 3) return 20;
+    const median = g.slice().sort((a, b) => a - b)[g.length >> 1];
+    return Math.min(40, Math.max(4, 3 * median));
   }
 
     prunePcm(beforeT) {

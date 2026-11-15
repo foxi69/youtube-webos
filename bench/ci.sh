@@ -79,6 +79,9 @@ fork_watch
 build
 run polyfill-conformance
 run launch-test
+run release-bump-test
+run appinfo-test
+run yt-tv-snapshot-test
 run smoke "$B" legacy
 run adblock-test "$B" legacy
 run new-features-test "$B"
@@ -91,6 +94,7 @@ run feed-features-test "$B"
 run pivot-filters-test "$B"
 run settings-reset-test "$B"
 run upstream-fixes-test "$B"
+run preview-handover-test "$B"
 run dearrow-test "$B" legacy
 run ai-label-test
 run most-replayed-test
@@ -104,6 +108,7 @@ run speed-engine-test
 run speed-mse-test
 run buffer-limit-test
 run speed-legacy-install-test "$B"
+run speed-preview-test "$B"
 run whats-new-test "$B"
 run guide-fit-test "$B"
 run keyboard-search-test "$B"
@@ -117,16 +122,21 @@ run search-filter-test "$B"
 run sponsorblock-labels-test "$B"
 run low-memory-style-test "$B"
 run review-fixes-test "$B"
+run search-font-test "$B"
+run preview-autoopen-test "$B"
+run preview-countdown-test "$B"
 
 # Coverage stops here: c8 reads the bundle on disk when it reports, so that
 # must still be the build the tests ran (the modern build reuses the path).
 if [ ${#env[@]} -eq 0 ]; then
   build --env modern
   run modern-smoke "$B"
+  run appinfo-test
   run dearrow-test "$B" modern
   run ai-filter-test "$B" modern
   run quality-reload-test "$B"
   run speed-reload-state-test "$B"
+  run handover-quality-test "$B"
 
   # perf_mon is a dev tool, not part of the app.
   build --env perf

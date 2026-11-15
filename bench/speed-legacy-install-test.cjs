@@ -25,7 +25,7 @@ const t = (n, ok, extra) => {
   else { fail++; console.log('FAIL ' + n + (extra ? '\n     ' + extra : '')); }
 };
 
-function boot() {
+function boot({ webCodecs = false } = {}) {
   const errors = [];
   const vc = new VirtualConsole();
   vc.on('jsdomError', (e) => errors.push(e.message));
@@ -49,6 +49,11 @@ function boot() {
   delete win.Object.hasOwn;
   delete win.Array.prototype.flatMap;
   delete win.AudioDecoder;
+  // A newer TV, for comparison: WebCodecs there.
+  if (webCodecs) {
+    win.AudioDecoder = class { static isConfigSupported() { return Promise.resolve({ supported: true }); } configure() {} close() {} };
+    win.EncodedAudioChunk = class {};
+  }
   const Native = win.EventTarget;
   win.EventTarget = function EventTarget() { throw new win.TypeError('Illegal constructor'); };
   win.EventTarget.prototype = Native.prototype;
@@ -107,6 +112,10 @@ function boot() {
     await wait(50);
     t('and it reports updateend to its listeners', ended === 1, String(ended));
   }
+  // The main thread of these TVs can be busy past 0.4 s of queued audio,
+  // which then runs out and clicks (#97, webOS 5): the queue is 1 s there.
+  const engine = win.ytafSpeed.activeEngine();
+  t('without WebCodecs the engine queues 1 s of audio ahead', !!engine && engine.leadS === 1, String(engine && engine.leadS));
   if (win.ytafSpeed.releaseAudioSink) win.ytafSpeed.releaseAudioSink();
 
   // ---- A live stream plays at 1x (faster, it stalls at the live edge) ----
@@ -135,6 +144,17 @@ function boot() {
       win.ytafSpeed.getSpeed() === 1.5, String(win.ytafSpeed.getSpeed()));
   }
   win.close();
+
+  // ---- With WebCodecs (webOS 23 and newer) the queue stays as it was ----
+  {
+    const { win: w } = boot({ webCodecs: true });
+    await wait(100);
+    w.ytafSpeed.setSpeed(1.5);
+    new w.MediaSource().addSourceBuffer('audio/mp4; codecs="mp4a.40.2"');
+    const e = w.ytafSpeed.activeEngine();
+    t('with WebCodecs the engine queues 0.4 s ahead, as before', !!e && e.leadS === 0.4, String(e && e.leadS));
+    w.close();
+  }
 
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);

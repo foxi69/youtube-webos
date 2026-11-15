@@ -14,10 +14,10 @@ import logoOrangeUrl from './icons/logo-orange.png';
 import logoBlueUrl from './icons/logo-blue.png';
 import logoRedUrl from './icons/logo-red.png';
 import logoDarkUrl from './icons/logo-dark.png';
-import { getWebOSVersion, isWebOS25, isLegacyWebOS } from './webos-utils.js';
+import { isWebOS25, isLegacyWebOS } from './webos-utils.js';
 import { subtitleTranslateLanguages } from './subtitle-translate.js';
 import { showNotification, setNotificationOled, setNotificationTheme } from './notifications.js';
-import { blockChannel } from './long-press-menu.js';
+import { blockChannel, openFocusedLongPressMenu } from './long-press-menu.js';
 import { VERSION_LABEL } from './version.js';
 import { buildAboutPage } from './about.js';
 import { clearQueue, playNextInQueue } from './video-queue.js';
@@ -183,7 +183,9 @@ const ACTION_SCOPES = {
     speed_reset: 'VIDEO',
     // From any page: the queue is filled on Home, and can be started there.
     queue_next: 'GLOBAL',
-    queue_clear: 'GLOBAL'
+    queue_clear: 'GLOBAL',
+    // Tiles are on the browse pages and below the player too.
+    long_press_menu: 'GLOBAL'
 };
 
 function updateShortcutCache(key) {
@@ -1196,8 +1198,10 @@ function createOptionsPanel() {
         createOpacityControl('uiBrightness', 10, 40, 100),
         createElement('div', { text: 'Dims the YouTube menus and thumbnails; never the playing video or this panel', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   	  createPreviewControl('forcePreviews'),
-  	  createElement('div', { text: 'Sets YouTube\'s own "previews with sound" setting on app load. No effect where YouTube shows no previews (webOS 25)', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
+  	  createElement('div', { text: 'Sets YouTube\'s own "previews with sound" setting on app load. No effect where YouTube shows no previews', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   	  createConfigCheckbox('mutePreviews'),
+  	  createConfigCheckbox('continuePreviews'),
+  	  createElement('div', { text: 'OK on a tile whose preview is playing carries that playback on, full screen, instead of loading the video again', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   	  ...(isLegacyWebOS() ? [
   	    createConfigCheckbox('fixBlackPreviews'),
   	    createElement('div', { text: 'Shows the picture of a tile preview that plays its sound over a black tile (webOS 3-6)', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } })
@@ -1209,10 +1213,6 @@ function createOptionsPanel() {
   	  createConfigCheckbox('fixMultilineTitles'),
   	  createConfigCheckbox('removeBlackBorders')
     ];
-
-    if (getWebOSVersion() <= 4) {
-        playerUITweaks.push(createConfigCheckbox('enableLegacyEmojiFix'));
-    }
 
     pageUITweaks.appendChild(createSection('Player UI Tweaks', playerUITweaks));
 
@@ -1975,6 +1975,10 @@ function handleShortcutAction(action) {
       playNextInQueue();
       return;
   }
+  if (action === 'long_press_menu') {
+      openFocusedLongPressMenu();
+      return;
+  }
   if (action === 'refresh_page') {
       if (isWatchPage() || isShortsPage()) {
           showNotification('Cannot refresh on player pages');
@@ -2274,6 +2278,15 @@ function initGlobalStyles() {
             padding-top: 0.37vh !important;
         }
 
+        /* Search results font: YouTube TV's CSS gives the search page's video
+           titles (.prqC5c) Roboto, every other page the TV's own font. Always
+           on, no setting: off an LG TV the font is missing and Roboto stays.
+           (From NicholasBly 0.8.5.) */
+        body.WEB_PAGE_TYPE_SEARCH .prqC5c {
+            font-family: 'LG Display-Regular', 'LG Display', Roboto, 'Noto Sans CJK ZH-HK', 'Noto Sans Thai', Arial,
+                Helvetica, sans-serif !important;
+        }
+
         html.ytaf-remove-borders yt-formatted-string,
         html.ytaf-remove-borders .style-scope.ytd-rich-grid-media,
         html.ytaf-remove-borders #video-title,
@@ -2519,6 +2532,8 @@ configAddChangeListener('disableAutoCaptions', () => syncAdblockHook());
 configAddChangeListener('forceOriginalAudio', () => syncAdblockHook());
 configAddChangeListener('extendLongPressMenu', () => syncAdblockHook());
 configAddChangeListener('enableDeArrow', () => syncAdblockHook());
+// Open Playing Previews Without Reloading clears a flag in the same hook.
+configAddChangeListener('continuePreviews', () => syncAdblockHook());
 
 configAddChangeListener('videoShelfOpacity', () => {
   // Cheap update — rewrites the one-rule opacity <style> and toggles the

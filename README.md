@@ -127,7 +127,8 @@ Every coloured button and number key can be set to any of these actions on the *
 - **Screen:** Toggle OLED Black Overlay, **Toggle Audio-Only Mode** (hides the picture and keeps the sound; ends
   when you leave the video), **Sleep Timer** (each press steps 15/30/60/90/120 min, then off; pauses the video
   when it runs out)
-- **App:** Open/Close Settings, Refresh Page, Play Next in Queue, Clear Queue
+- **App:** Open/Close Settings, Refresh Page, Play Next in Queue, Clear Queue, **Open Long-Press Menu** (the
+  menu a held OK opens on the focused video, for phone remotes that cannot hold a key)
 
 Holding a key that runs a seek keeps seeking; holding any other bound key runs it once and is not passed on
 to YouTube. A USB or Bluetooth keyboard can type in the search page (see *Type in Search with a Keyboard*).
@@ -252,7 +253,7 @@ Return YouTube Dislike sends the id of every video you open to returnyoutubedisl
 | Setting | Default |
 |---|---|
 | SponsorBlock | On |
-| Sponsor, Intro, Outro, Interaction Reminder, Self Promotion, Non-Music Section | Auto Skip |
+| Sponsor, Intermission/Intro, Endcards/Credits, Interaction Reminder, Self Promotion, Non-Music Section | Auto Skip |
 | Preview/Recap, Filler/Tangents, Hook/Greetings | Show in Seek Bar |
 | Highlight (Auto Skip to Start, Ask, Show in Seek Bar, Disable) | Show in Seek Bar |
 | Allow segments that mute audio | Off |
@@ -292,12 +293,12 @@ The actions each key can take are listed under [Remote control](#-remote-control
 | UI Brightness (dims menus and thumbnails, never the video) | 100% |
 | Previews With Sound (Disabled, Force On, Force Off; sets YouTube's own setting) | Disabled |
 | Mute Video Previews | Off |
+| Open Playing Previews Without Reloading (OK on a playing preview carries it on, full screen) | Off |
 | Fix Black Tile Previews (webOS 3-6 only) | On |
 | Fit Page Beside Open Menu | Off |
 | Remove Black Text Boxes | On |
 | Fix Multiline Titles | On |
 | New Liquid Glass UI | Off |
-| Emoji + Characters Fix (webOS 3-4 only) | On |
 | Start Page (Home, Subscriptions, Library, History) | Home |
 | More Options in the Long-Press Menu | Off |
 | Hide Left Menu Entries (a switch per entry: Search, Subscriptions, Music, Gaming...) | None hidden |
@@ -335,11 +336,14 @@ Ko-fi and project pages as QR codes.
 ## 🆕 What this fork adds
 
 <p align="center">
-  <img src="screenshots/fork-trail.svg" alt="Fox paw prints walking from version 0.9.0 to 0.9.1 to 0.9.2" width="100%">
+  <img src="screenshots/fork-trail.svg" alt="Fox paw prints walking through the last three releases" width="100%">
 </p>
 
-Compared to upstream NicholasBly 0.8.4. Taken from webosbrew, NicholasBly's open pull requests and the other forks
-of the project; credits are in [CHANGELOG.md](CHANGELOG.md).
+Compared to upstream NicholasBly 0.8.5 (2026-11-13). Much of 0.8.5 came from mirijanristic's fork, as this fork's
+0.8.6 did, so what both now have is left out here: Load Rows Ahead, Smooth (SD) thumbnails, DeArrow, the date in
+the clock, Back closing the settings, and most fixes to SponsorBlock, Force Max Quality, Max Thumbnail Quality and
+Ad Blocking. Taken from webosbrew, NicholasBly's open pull requests and the other forks of the project; credits are
+in [CHANGELOG.md](CHANGELOG.md).
 
 **New**
 - Auto-Translate Subtitles to a language of your choice.
@@ -349,19 +353,19 @@ of the project; credits are in [CHANGELOG.md](CHANGELOG.md).
 - Bindable yellow button, Sleep Timer and Audio-Only Mode.
 - Magic Remote scroll-wheel seeking.
 - SponsorBlock picks up segments submitted while you watch: re-checked during playback.
-- Block webOS Cast Service toggle.
-- *0.8.6:* Remove Upcoming / Members-Only Videos filters, Load Rows Ahead, Smooth (SD) thumbnails, Turn On
-  Translated Subtitles Automatically, typing in search with a USB/Bluetooth keyboard, Jump to Live, Show Video
-  Quality on Start, a pointer button for the settings, Disable Animations and UI Brightness.
-- *0.8.7:* no "Are you still watching?" pause, no paid-promotion banner, a clock with the date that can stay on
-  during playback, remaining time and end time, Mute Video Previews and Don't Turn On Subtitles by Themselves;
-  about 5.6 KB smaller packages.
+- Block webOS Cast Service as a switch (upstream blocks it with none).
+- *0.8.6:* Remove Upcoming / Members-Only Videos filters, Turn On Translated Subtitles Automatically, typing in
+  search with a USB/Bluetooth keyboard, Jump to Live, Show Video Quality on Start, a pointer button for the
+  settings, Disable Animations and UI Brightness.
+- *0.8.7:* no "Are you still watching?" pause, no paid-promotion banner, a clock that can stay on during playback,
+  remaining time and end time, Mute Video Previews and Don't Turn On Subtitles by Themselves.
 - *0.8.8:* from MickLesk's fork, Prefer Original Audio over Dubbed, Feed Filters (watched videos, short
   videos, blocked channels, title keywords), "Block channel" / "Not interested" / "Don't recommend channel" in the
-  long-press menu, Start Page, a Left/Right seek step and DeArrow; from Dazzyelv's fork, Fit Page Beside Open Menu.
+  long-press menu, Start Page and a Left/Right seek step; from Dazzyelv's fork, Fit Page Beside Open Menu.
   The app waits for the network at launch instead of stopping on YouTube's error page.
-- *0.9.0:* Playback Speed Control, Show Video Quality Next to the Title, Show Watch Time With the Clock, Remove AI
-  Videos and Mark AI Videos, Hide Recommended Videos Under the Player, Search: Upload Date.
+- *0.9.0:* Playback Speed Control, on by default (upstream 0.8.5 has it as an experiment, off by default, on
+  webOS 23 and newer), Show Video Quality Next to the Title, Show Watch Time With the Clock, Remove AI Videos and
+  Mark AI Videos, Hide Recommended Videos Under the Player, Search: Upload Date.
 - *0.9.1:* the name YouTube Foxtended, the About tab with an update check and What's New, Show Most Replayed Graph
   Above the Seek Bar.
 - *0.9.2:* Reset All Settings, and a video queue from the long-press menu: queued videos play one after another,
@@ -375,23 +379,10 @@ of the project; credits are in [CHANGELOG.md](CHANGELOG.md).
 - Ad blocking holds up against YouTube's "property locker"; previously playback could stall a few seconds in.
 - webOS 25: the webOS Cast service is no longer blocked when a cast starts the app. Casting can still fail while
   the app is open; see *Known issues* in [CHANGELOG.md](CHANGELOG.md).
-- SponsorBlock: Non-Music segments are actually fetched; muted segments now mute; failed requests are retried.
-- Back closes the settings panel, and colour-button seeks no longer fire twice.
+- Colour-button seeks no longer fire twice.
 - The OLED overlay no longer hides the notifications.
-- Return YouTube Dislike no longer shows "1000k".
-- Force Max Quality no longer expires after a year, and resets when switched off.
-- 2026+ TVs are no longer detected as a simulator.
-- Fixes for the legacy build (webOS 3-6).
-- *0.8.6:* about 30 more, most of them from mirijanristic's fork:
-  - SponsorBlock: overlapping and nested segments, a stalled server blocking the fallback, segments cut short
-    by an early video length, the start-of-video chain, a late player, progress-bar watchers;
-  - Ad Blocking: continuations and action lists beside the main content, bare search results, expanded
-    shelves, filters that ran with Ad Blocking off;
-  - thumbnails stuck at low quality after a network error, held keys, burst seeks, Shorts hiding the
-    controls, the screensaver fix, Force Max Quality switched off from the home screen;
-  - the settings panel: the SponsorBlock switch could not be reached with the arrows; it is about 16 KiB
-    lighter without the spatial-navigation polyfill;
-  - webOS 3/4: focus highlight, emoji sequences; webOS 22+: "fancy font" channel names.
+- *0.8.6:* Ad Blocking on expanded shelves, held keys, Force Max Quality switched off from the home screen, and
+  "fancy font" channel names on webOS 22+.
 - *0.8.8:* about 20 more, found in a full test on a webOS 25 TV:
   - Force Max Quality stuck at 720p, and a pinned codec dropping every 60 fps format;
   - webOS 25: scroll-wheel seeking, Toggle Comments in other languages, Hide Sign-in Buttons in guest mode,
@@ -399,16 +390,13 @@ of the project; credits are in [CHANGELOG.md](CHANGELOG.md).
   - Shorts left in search results, the History page left unfiltered, DeArrow titles that never showed,
     the Highlight jump undone on a partly watched video;
   - opening the running app again no longer reloads it and jumps to Home.
-- *0.9.0:* the first home screen after a fresh start is filtered too; a channel tab on Subscriptions no longer
-  shows another channel's videos with Reduce Telemetry & Tracking on; no frozen picture after a video screensaver;
-  long settings pages scroll with the remote; playback speed keeps only the last 60 s of audio in memory.
+- *0.9.0:* the first home screen after a fresh start is filtered too; long settings pages scroll with the remote;
+  playback speed keeps only the last 60 s of audio in memory.
 - *0.9.1:* tile previews show their picture on webOS 3-6; playback speed on Dolby and surround videos, and at 1.25×
   on 2160p60; Force Max Quality on a video resumed part-way on webOS 25; DeArrow on live streams and its logo on
   every tile that needs it; Up and Down in the settings panel and in What's New.
-- *0.9.2:* SponsorBlock's switch applies at once; Auto Login no longer presses OK in the profile picker later on;
-  the settings open over the OLED blackout; the clock after standby; thumbnail tests; chapter skip on a bar without
-  chapters; AI, Shorts and live filters beside the player; the Premium logo stays after a resume; DeArrow frees its
-  thumbnail copies when switched off; a notification no longer shows twice.
+- *0.9.2:* the clock after standby; chapter skip on a bar without chapters; AI, Shorts and live filters beside the
+  player; DeArrow frees its thumbnail copies when switched off; a notification no longer shows twice.
 </details>
 
 <details>
@@ -548,14 +536,18 @@ Releases are drafted automatically and published only after a test on the TV:
    install it on the TV.
 3. If it works, open the draft and press **Publish release**. A full release creates the tag and runs
    [Update Homebrew Repository](.github/workflows/build_repo.yml), which points `repo.json` (legacy) and
-   `repo-webos22.json` (webOS 22+) at the new release, so Homebrew Channel offers the update. Tick **Set as a
-   pre-release** first to let testers download it while the Homebrew repository stays on the latest full release.
+   `repo-webos22.json` (webOS 22+) at the new release, so Homebrew Channel offers the update. It also writes the
+   release's version into `package.json`, `package-lock.json` and `assets/appinfo.json` on `main`, so a local build
+   shows it, and moves the version flags of `screenshots/fork-trail.svg` on to the last three releases
+   ([`tools/release-bump.cjs`](tools/release-bump.cjs)). None of them moves back for a release older than what
+   `main` has. Tick **Set as a pre-release** first to let testers download it while the Homebrew repository and
+   `main` stay on the latest full release.
 
 **Version rule:** the draft takes the version in `package.json` while that is not published yet, so raising it by
 hand wins. Otherwise later pushes refresh the highest published release if it is a pre-release, or else the open
-draft; with neither, a new draft starts one patch above the highest published release (0.8.8 -> 0.8.9). The build
-writes the version into `package.json` and `appinfo.json` on the runner only, and nothing is committed. Drafts of
-other versions are deleted. The version flags in `screenshots/fork-trail.svg` are updated by hand for each release.
+draft; with neither, a new draft starts one patch above the highest published release (0.8.8 -> 0.8.9). A draft's
+build writes its version into `package.json` and `appinfo.json` on the runner only; `main` takes it when the release
+is published as a full release (step 3). Drafts of other versions are deleted.
 
 ### Staying up to date with upstream
 
