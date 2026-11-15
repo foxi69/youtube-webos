@@ -380,7 +380,12 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
     if (!player) return;
     // The last reload's checks would put back the subtitles from before it.
     stopCaptions();
-    const videoData = player.getVideoData && player.getVideoData();
+    let videoData = null;
+    try {
+      videoData = player.getVideoData && player.getVideoData();
+    } catch {
+      // The player between two videos: no ID, so no reload below (as in isLive).
+    }
     const videoId = videoData && videoData.video_id;
     // Read before the quality range below, which can reload the <video> too.
     const reused = !!keptCaptions && !keptCaptions.landed && keptCaptions.videoId === videoId;

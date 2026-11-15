@@ -203,6 +203,16 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
     win.close();
   }
   {
+    // The player between two videos: its metadata read throws.
+    const { win, p, speed, log } = boot(720);
+    p.getVideoData = () => { throw new Error('no video data'); };
+    let error = null;
+    try { speed.setSpeed(1.5, { immediate: true }); } catch (err) { error = err; }
+    t('a throwing getVideoData skips the reload instead of breaking the speed change',
+      !error && log.reloads === 0, String(error));
+    win.close();
+  }
+  {
     const { win, p, speed, log, emit } = boot(720, { manualPlayback: true });
     speed.setSpeed(1.5, { immediate: true });
     // YouTube writes the new manual choice within the old heuristic's 1s window.
