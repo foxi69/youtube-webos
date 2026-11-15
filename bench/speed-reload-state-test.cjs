@@ -390,6 +390,28 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
       log.ranges.join());
     win.close();
   }
+  {
+    // The position check runs every 250 ms for 25 s after a reload: while the
+    // picture is at the cap, the stored record is not read on every tick.
+    const { win, p, log, speed } = boot(0);
+    let reads = 0;
+    const getItem = win.Storage.prototype.getItem;
+    win.Storage.prototype.getItem = function (key) {
+      if (key === 'yt-player-quality') reads++;
+      return getItem.call(this, key);
+    };
+    speed.setSpeed(1.5, { immediate: true });
+    await sleep(800);
+    reads = 0;
+    await sleep(1500);
+    t('at the cap, the position check does not read the quality record', reads === 0, `${reads} reads`);
+    // YouTube falls to 720p: the cap is set again (after 2 s of it).
+    log.ranges.length = 0;
+    p.getPlaybackQuality = () => 'hd720';
+    await sleep(2600);
+    t('fallen below the cap, the cap is set again', log.ranges.join() === 'hd1080', log.ranges.join());
+    win.close();
+  }
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })();

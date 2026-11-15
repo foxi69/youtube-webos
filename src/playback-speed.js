@@ -472,10 +472,13 @@ export function createSpeedController({
     };
     stopPositionWatch = watchPosition(win, player, at, onPlaying, {
       isLow() {
-        // A lower quality the viewer picked is not a fall to fight.
-        if (currentSpeed <= CAP_ABOVE || capQuality() !== 'hd1080') return false;
+        // Every tick for 25 s: the player first, the stored record (capQuality)
+        // only once the picture is below 1080p.
+        if (currentSpeed <= CAP_ABOVE) return false;
         const levels = player.getAvailableQualityLevels ? player.getAvailableQualityLevels() : [];
-        return levels.indexOf('hd1080') !== -1 && BELOW_1080.indexOf(player.getPlaybackQuality()) !== -1;
+        if (levels.indexOf('hd1080') === -1 || BELOW_1080.indexOf(player.getPlaybackQuality()) === -1) return false;
+        // A lower quality the viewer picked is not a fall to fight.
+        return capQuality() === 'hd1080';
       },
       setCap
     }, videoId, () => {
