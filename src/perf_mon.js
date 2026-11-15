@@ -1793,7 +1793,7 @@ export {};
     videoShelfOpacity: 100,
     fixMultilineTitles: true,
     removeBlackBorders: false,
-    forcePreviews: 'disabled',
+    videoPreviews: 'default',
     enableLegacyEmojiFix: true,
     hideGuestSignInPrompts: false,
     forceHighResVideo: false,
@@ -2603,15 +2603,15 @@ export {};
     },
 
     {
-      key: 'forcePreviews',
-      label: 'Force Previews',
+      key: 'videoPreviews',
+      label: 'Video Previews',
       lamp: 'PREVW',
       module: 'auto-login.js',
       pages: ['home', 'search'],
       idlePages: ['watch', 'shorts', 'account'],
       cost: 'light',
       enabledWhen: function (v) {
-        return v && v !== 'disabled';
+        return v && v !== 'default';
       },
       expect: 'The inline playback preference is written so shelf tiles autoplay (or do not).',
       fns: ['setInlinePlayback', 'initPreviews'],
@@ -2619,7 +2619,7 @@ export {};
         var ran = anyFnRan('auto-login.js', ['setInlinePlayback', 'initPreviews']);
         return {
           state: ran ? 'firing' : 'armed',
-          detail: 'Mode: ' + cfgGet('forcePreviews')
+          detail: 'Mode: ' + cfgGet('videoPreviews')
         };
       }
     }

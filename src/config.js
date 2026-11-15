@@ -123,10 +123,16 @@ export const sbModesHighlight = {
   disable: 'Disable'
 };
 
-export const forcePreviewModes = {
-  disabled: 'Disabled',
-  force_on: 'Force On',
-  force_off: 'Force Off'
+/**
+ * Video Previews: Default leaves YouTube's own previews setting alone, the
+ * others force it off or on when the app starts (auto-login.js); Without sound
+ * also mutes them (mute-previews.js).
+ */
+export const videoPreviewModes = {
+  default: 'Default',
+  off: 'Off',
+  muted: 'Without sound',
+  sound: 'With sound'
 };
 
 
@@ -296,8 +302,7 @@ const configOptions = new Map([
   ['keyboardSearch', { default: true, desc: 'Type in Search with a Keyboard' }],
   ['searchUploadDate', { default: 'any', desc: 'Search: Upload Date' }],
   ['removeBlackBorders', { default: false, desc: 'New Liquid Glass UI' }],
-  ['forcePreviews', { default: 'disabled', desc: 'Previews With Sound' }],
-  ['mutePreviews', { default: false, desc: 'Mute Video Previews' }],
+  ['videoPreviews', { default: 'default', desc: 'Video Previews' }],
   // OK on a playing preview carries it on instead of loading the video again (adblock.js).
   ['continuePreviews', { default: false, desc: 'Open Playing Previews Without Reloading' }],
   // webOS 3-6 only (preview-fix.js, #67).
@@ -432,6 +437,18 @@ function migrateStored(stored) {
   if ('showTimeRemaining' in stored) {
     if (!('timeRemainingMode' in stored)) stored.timeRemainingMode = stored.showTimeRemaining ? 'both' : 'off';
     delete stored.showTimeRemaining;
+  }
+  // Video Previews was two settings: Previews With Sound (forcePreviews) and
+  // Mute Video Previews (mutePreviews). A mute turns previews on now.
+  if ('forcePreviews' in stored || 'mutePreviews' in stored) {
+    if (!('videoPreviews' in stored)) {
+      const force = stored.forcePreviews;
+      stored.videoPreviews = force === 'force_off' ? 'off'
+        : stored.mutePreviews ? 'muted'
+          : force === 'force_on' ? 'sound' : 'default';
+    }
+    delete stored.forcePreviews;
+    delete stored.mutePreviews;
   }
   return stored;
 }

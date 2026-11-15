@@ -10,8 +10,9 @@
  *     namespace, seeded on a fresh install and reset when turned off.
  *   - The selector: Enter pressed for the viewer (Down, Enter for a guest),
  *     the page hidden meanwhile; nothing when the option goes off in between.
- *   - Previews With Sound: YouTube's inline playback record forced on or off,
- *     and given back as it was on Disabled.
+ *   - Video Previews: YouTube's inline playback record forced on or off,
+ *     given back as it was on Default, the restart toast, and the two old
+ *     settings it replaced.
  *   - Bypass Nag Screens off: nothing of the above.
  *
  * upstream-fixes-test covers the selector's time window and the relaunch;
@@ -46,7 +47,7 @@ const INLINE = 'yt.leanback.default::inline-playback-enabled';
 const IDENTITY = 'yt.leanback.default::last-identity-used';
 const LABEL_BYPASS = 'Bypass Nag Screens';
 const LABEL_SELECT = 'Auto Login (off: always ask who is watching)';
-const LABEL_PREVIEWS = 'Previews With Sound';
+const LABEL_PREVIEWS = 'Video Previews';
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 // A real time for N of the page's (sped up) milliseconds.
 const pageMs = (ms) => wait(ms / SPEED + 20);
@@ -340,9 +341,11 @@ async function boot(cfg, opts = {}) {
     env.win.close();
   }
 
-  // ---- Previews With Sound ----
-  for (const [mode, want] of [['force_on', true], ['force_off', false]]) {
-    const env = await boot({ enableAutoLogin: false, forcePreviews: mode });
+  // ---- Video Previews ----
+  const RESTART = 'Video Previews: restart the app to apply';
+  const toasts = (env) => [...env.win.document.querySelectorAll('.message')].filter((m) => m.textContent === RESTART).length;
+  for (const [mode, want] of [['sound', true], ['muted', true], ['off', false]]) {
+    const env = await boot({ enableAutoLogin: false, videoPreviews: mode });
     t(n(`previews ${mode}: not written before YouTube has loaded its own`), env.read(INLINE) === null);
     await pageMs(3000);
     t(n(`previews ${mode}: inline playback forced ${want ? 'on' : 'off'}`),
@@ -350,46 +353,79 @@ async function boot(cfg, opts = {}) {
     env.win.close();
   }
   {
-    const env = await boot({ enableAutoLogin: false, forcePreviews: 'disabled' });
+    const env = await boot({ enableAutoLogin: false, videoPreviews: 'default' });
     await pageMs(3000);
-    t(n('previews disabled: the record is not written'), env.read(INLINE) === null, env.store.getItem(INLINE));
+    t(n('previews default: the record is not written'), env.read(INLINE) === null, env.store.getItem(INLINE));
     env.pressGreen();
     await wait(20);
     await env.openTab(5);   // UI Tweaks
-    const shown = env.cycle(LABEL_PREVIEWS);
-    t(n('previews set to Force On in the panel: written at once'), shown === 'Force On' &&
-      JSON.stringify(env.read(INLINE)) === '{"data":true}', `${shown} ${env.store.getItem(INLINE)}`);
+    const off = env.cycle(LABEL_PREVIEWS);
+    t(n('previews set to Off in the panel: written at once'), off === 'Off' &&
+      JSON.stringify(env.read(INLINE)) === '{"data":false}', `${off} ${env.store.getItem(INLINE)}`);
+    t(n('...with a toast that a restart applies it'), toasts(env) === 1, toasts(env));
+    const muted = env.cycle(LABEL_PREVIEWS);
+    t(n('...Without sound: written on'), muted === 'Without sound' &&
+      JSON.stringify(env.read(INLINE)) === '{"data":true}', `${muted} ${env.store.getItem(INLINE)}`);
     const back = env.cycle(LABEL_PREVIEWS, true);
-    t(n('...back to Disabled: YouTube\'s own record given back (there was none)'), back === 'Disabled' &&
-      env.read(INLINE) === null, `${back} ${env.store.getItem(INLINE)}`);
-    const off = env.cycle(LABEL_PREVIEWS, true);
-    t(n('...Force Off: written off'), off === 'Force Off' && JSON.stringify(env.read(INLINE)) === '{"data":false}',
-      `${off} ${env.store.getItem(INLINE)}`);
+    const def = env.cycle(LABEL_PREVIEWS, true);
+    t(n('...back to Default: YouTube\'s own record given back (there was none)'), back === 'Off' && def === 'Default' &&
+      env.read(INLINE) === null, `${back} ${def} ${env.store.getItem(INLINE)}`);
     t(n('previews: no page errors'), env.errors.length === 0, env.errors.join(' | '));
     env.win.close();
   }
   {
+    // Only the mute changes: YouTube's own setting stays as it is, no restart.
+    const env = await boot({ enableAutoLogin: false, videoPreviews: 'muted' });
+    await pageMs(3000);
+    env.pressGreen();
+    await wait(20);
+    await env.openTab(5);   // UI Tweaks
+    const sound = env.cycle(LABEL_PREVIEWS);
+    t(n('previews Without sound -> With sound: no restart toast'), sound === 'With sound' && toasts(env) === 0 &&
+      JSON.stringify(env.read(INLINE)) === '{"data":true}', `${sound} ${toasts(env)} ${env.store.getItem(INLINE)}`);
+    env.win.close();
+  }
+  {
     // YouTube's own setting, as it stores it: forced on and off, then
-    // Disabled gives back what it was before the first force.
+    // Default gives back what it was before the first force.
     const own = { data: false, expiration: 9e12, creation: 7 };
-    const env = await boot({ enableAutoLogin: false, forcePreviews: 'force_on' }, { storage: { [INLINE]: own } });
+    const env = await boot({ enableAutoLogin: false, videoPreviews: 'sound' }, { storage: { [INLINE]: own } });
     await pageMs(3000);
     t(n('previews forced on over YouTube\'s own record'), JSON.stringify(env.read(INLINE)) === '{"data":true}',
       env.store.getItem(INLINE));
     env.pressGreen();
     await wait(20);
     await env.openTab(5);   // UI Tweaks
-    const off = env.cycle(LABEL_PREVIEWS);
-    t(n('...then Force Off'), off === 'Force Off' && JSON.stringify(env.read(INLINE)) === '{"data":false}',
+    env.cycle(LABEL_PREVIEWS, true);   // Without sound
+    const off = env.cycle(LABEL_PREVIEWS, true);
+    t(n('...then Off'), off === 'Off' && JSON.stringify(env.read(INLINE)) === '{"data":false}',
       `${off} ${env.store.getItem(INLINE)}`);
-    const disabled = env.cycle(LABEL_PREVIEWS);
-    t(n('...Disabled: YouTube\'s own record as it was before the first force'), disabled === 'Disabled' &&
-      JSON.stringify(env.read(INLINE)) === JSON.stringify(own), `${disabled} ${env.store.getItem(INLINE)}`);
-    const on = env.cycle(LABEL_PREVIEWS);
-    const again = env.cycle(LABEL_PREVIEWS, true);
-    t(n('...and so again after another force'), on === 'Force On' && again === 'Disabled' &&
+    const def = env.cycle(LABEL_PREVIEWS, true);
+    t(n('...Default: YouTube\'s own record as it was before the first force'), def === 'Default' &&
+      JSON.stringify(env.read(INLINE)) === JSON.stringify(own), `${def} ${env.store.getItem(INLINE)}`);
+    const on = env.cycle(LABEL_PREVIEWS, true);
+    const again = env.cycle(LABEL_PREVIEWS);
+    t(n('...and so again after another force'), on === 'With sound' && again === 'Default' &&
       JSON.stringify(env.read(INLINE)) === JSON.stringify(own), `${on} ${again} ${env.store.getItem(INLINE)}`);
     t(n('previews given back: no page errors'), env.errors.length === 0, env.errors.join(' | '));
+    env.win.close();
+  }
+  // The two settings Video Previews replaced, as a stored configuration has them.
+  for (const [old, want, mutes] of [
+    [{ forcePreviews: 'force_on', mutePreviews: false }, true, false],
+    [{ forcePreviews: 'disabled', mutePreviews: true }, true, true],
+    [{ forcePreviews: 'force_off', mutePreviews: true }, false, false],
+    [{ forcePreviews: 'disabled', mutePreviews: false }, null, false]
+  ]) {
+    const env = await boot(Object.assign({ enableAutoLogin: false }, old));
+    await pageMs(3000);
+    const video = env.win.document.createElement('video');
+    env.win.document.body.appendChild(video);
+    video.dispatchEvent(new env.win.Event('playing'));
+    const name = `old ${old.forcePreviews}${old.mutePreviews ? ' + mute' : ''}`;
+    t(n(`${name}: previews ${want === null ? 'left to YouTube' : want ? 'on' : 'off'}${mutes ? ', muted' : ''}`),
+      JSON.stringify(env.read(INLINE)) === JSON.stringify(want === null ? null : { data: want }) && video.muted === mutes,
+      `${env.store.getItem(INLINE)} muted=${video.muted}`);
     env.win.close();
   }
 

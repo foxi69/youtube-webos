@@ -170,8 +170,8 @@ function disablePromoUpsell(enable = true) {
 }
 
 const INLINE_PLAYBACK_KEY = 'yt.leanback.default::inline-playback-enabled';
-// YouTube's own record as it was before Previews With Sound first forced it
-// ({ value: the raw record, or null for none}), put back on Disabled.
+// YouTube's own record as it was before Video Previews first forced it
+// ({ value: the raw record, or null for none}), put back on Default.
 const INLINE_PLAYBACK_SAVED_KEY = 'ytaf-inline-playback-saved';
 
 function restoreInlinePlayback() {
@@ -193,13 +193,14 @@ function restoreInlinePlayback() {
   }
 }
 
+/** Video Previews' part in YouTube's own setting: Off forces it off, Without and With sound on. */
 export function setInlinePlayback(mode) {
-  if (mode === 'disabled') {
+  if (mode === 'default') {
     restoreInlinePlayback();
     return;
   }
 
-  const isEnabled = mode === 'force_on';
+  const isEnabled = mode !== 'off';
   try {
     if (localStorage.getItem(INLINE_PLAYBACK_SAVED_KEY) === null) {
       localStorage.setItem(INLINE_PLAYBACK_SAVED_KEY, JSON.stringify({ value: localStorage.getItem(INLINE_PLAYBACK_KEY) }));
@@ -212,8 +213,8 @@ export function setInlinePlayback(mode) {
 }
 
 export function initPreviews() {
-  const mode = configRead('forcePreviews');
-  if (mode === 'disabled') return;
+  const mode = configRead('videoPreviews');
+  if (mode === 'default') return;
 
   // Delay by 2.5 seconds to ensure it applies after YouTube's initial load overrides
   setTimeout(() => {
@@ -326,6 +327,6 @@ configAddChangeListener('autoSelectAccount', ({ detail }) => {
   if (detail.newValue && configRead('enableAutoLogin')) disableWhosWatching(true);
 });
 
-configAddChangeListener('forcePreviews', ({ detail }) => {
+configAddChangeListener('videoPreviews', ({ detail }) => {
   setInlinePlayback(detail.newValue);
 });

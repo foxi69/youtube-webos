@@ -1,5 +1,5 @@
 import { logoStyles, timeRemainingModes, thumbnailQualityModes, videoCodecModes, uiThemes, clockModes, startPageModes, minVideoLengthModes, seekStepModes, maxVideoAgeModes, searchUploadDateModes, dearrowTitleFormats, dearrowThumbnailFallbacks } from './config.js';
-import { configAddChangeListener, configRead, configWrite, configGetDesc, segmentTypes, configGetDefault, shortcutActions, sbModes, sbModesHighlight, forcePreviewModes, configGetProfileStatus } from './config.js';
+import { configAddChangeListener, configRead, configWrite, configGetDesc, segmentTypes, configGetDefault, shortcutActions, sbModes, sbModesHighlight, videoPreviewModes, configGetProfileStatus } from './config.js';
 import './ui.css';
 import './auto-login.js';
 import './return-dislike.js';
@@ -404,14 +404,18 @@ function createGenericControlRow(labelText, displayValueGetter, onLeft, onRight,
   return { container, updateDisplay };
 }
 
-function createCycleControl(configKey, labelText, modesArray, displayMap = null, extraElements = null) {
+// onCycle(oldValue, newValue): after a step made in the panel, not after a
+// change from elsewhere (an account switch).
+function createCycleControl(configKey, labelText, modesArray, displayMap = null, extraElements = null, onCycle = null) {
     const displayValueGetter = () => displayMap ? displayMap[configRead(configKey)] || configRead(configKey) : configRead(configKey);
     const cycle = (dir) => {
-        let idx = modesArray.indexOf(configRead(configKey));
+        const before = configRead(configKey);
+        let idx = modesArray.indexOf(before);
         if (idx === -1) idx = 0;
         idx = dir === 'next' ? (idx + 1) % modesArray.length : (idx - 1 + modesArray.length) % modesArray.length;
         configWrite(configKey, modesArray[idx]);
         updateDisplay();
+        if (onCycle) onCycle(before, modesArray[idx]);
     };
 
     const { container, updateDisplay } = createGenericControlRow(
@@ -434,9 +438,9 @@ function createCycleControl(configKey, labelText, modesArray, displayMap = null,
  * across themes than hard-coding a padding value that has to track the checkbox
  * CSS by hand.
  */
-function createAlignedCycleControl(configKey, displayMap) {
+function createAlignedCycleControl(configKey, displayMap, onCycle = null) {
   const control = createCycleControl(configKey, configGetDesc(configKey),
-    Object.keys(displayMap), displayMap);
+    Object.keys(displayMap), displayMap, null, onCycle);
   return alignControlLabel(control, configGetDesc(configKey));
 }
 
@@ -572,8 +576,13 @@ function createShortcutControl(keyIdentifier) {
   return createCycleControl(configKey, labelText, actions, shortcutActions);
 }
 
+// YouTube reads its own previews setting as the app starts: a step that changes
+// it (anything but Without sound <-> With sound) needs a restart.
+const forcedPreviews = (mode) => (mode === 'default' ? null : mode !== 'off');
 function createPreviewControl(key) {
-  return createAlignedCycleControl(key, forcePreviewModes);
+  return createAlignedCycleControl(key, videoPreviewModes, (before, after) => {
+    if (forcedPreviews(before) !== forcedPreviews(after)) showNotification('Video Previews: restart the app to apply');
+  });
 }
 
 // A percentage stepped with Left/Right and clamped at both ends.
@@ -1189,9 +1198,8 @@ function createOptionsPanel() {
         createElement('div', { text: 'Adjusts opacity of black background underneath videos (Requires OLED-care mode)', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
         createOpacityControl('uiBrightness', 10, 40, 100),
         createElement('div', { text: 'Dims the YouTube menus and thumbnails; never the playing video or this panel', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
-  	  createPreviewControl('forcePreviews'),
-  	  createElement('div', { text: 'Sets YouTube\'s own "previews with sound" setting on app load. No effect where YouTube shows no previews', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
-  	  createConfigCheckbox('mutePreviews'),
+  	  createPreviewControl('videoPreviews'),
+  	  createElement('div', { text: 'Default leaves the previews to YouTube\'s own setting. Off and With sound set it when the app starts; Without sound turns previews on and mutes them. No effect where YouTube shows no previews', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   	  createConfigCheckbox('continuePreviews'),
   	  createElement('div', { text: 'OK on a tile whose preview is playing carries that playback on, full screen, instead of loading the video again', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   	  ...(isLegacyWebOS() ? [

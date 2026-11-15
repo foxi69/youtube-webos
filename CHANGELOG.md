@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Changed
 
++ **Video Previews** (UI Tweaks) takes the place of Previews With Sound and Mute Video Previews, which worked on the same previews: Default leaves them to YouTube's own setting, Off turns them off, Without sound turns them on muted and With sound turns them on with sound. YouTube reads its setting as the app starts, so a change between Default, Off and the two sound ones shows a toast that it applies after a restart; Without sound and With sound switch at once. The two old settings carry over: Force Off is Off, a mute is Without sound (it now also turns previews on), Force On is With sound, the rest Default.
 + The Emoji + Characters Fix switch is gone from UI Tweaks on webOS 3-4: the fix is on, as it was by default, and switching it off gained nothing. A TV where it had been switched off keeps it off until Reset All Settings.
 
 ## Fixes
