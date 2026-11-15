@@ -32,9 +32,11 @@ const OFF_BY_S = 2;
  * @param {() => void} onPlaying runs once, when the video first plays
  * @param {{isLow: () => boolean, setCap: () => void}} [quality] the speed's quality cap
  * @param {string} [targetId] the video the speed changed on (else the one the player names now)
+ * @param {() => void} [onEnd] runs when the check ends by itself (25 s, another
+ *   video, a player that throws), not when the caller stops it
  * @returns {() => void} stops the check
  */
-export function watchPosition(win, player, at, onPlaying, quality, targetId) {
+export function watchPosition(win, player, at, onPlaying, quality, targetId, onEnd) {
   let ticks = 0;
   let stalled = 0;
   let seeks = 0;
@@ -53,6 +55,10 @@ export function watchPosition(win, player, at, onPlaying, quality, targetId) {
   }
 
   const stop = () => win.clearInterval(timer);
+  const end = () => {
+    stop();
+    if (onEnd) onEnd();
+  };
   const timer = win.setInterval(() => {
     let state;
     let now;
@@ -62,19 +68,19 @@ export function watchPosition(win, player, at, onPlaying, quality, targetId) {
       now = player.getCurrentTime();
       id = idOf();
     } catch {
-      stop();
+      end();
       return;
     }
     // Another video now (an id while it loads may still be missing).
     if (videoId && id && id !== videoId) {
-      stop();
+      end();
       return;
     }
     if (!videoId) videoId = id;
     // No video named: it may be another one already, so nothing is corrected
     // on this tick; the check goes on.
     if (namesVideos && !id) {
-      if (++ticks >= WATCH_TICKS) stop();
+      if (++ticks >= WATCH_TICKS) end();
       return;
     }
 
@@ -103,7 +109,7 @@ export function watchPosition(win, player, at, onPlaying, quality, targetId) {
       }
     }
 
-    if (++ticks >= WATCH_TICKS) stop();
+    if (++ticks >= WATCH_TICKS) end();
   }, TICK_MS);
   return stop;
 }

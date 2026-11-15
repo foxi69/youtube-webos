@@ -219,9 +219,10 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
   let pending = null;
   let lastReloadAt = 0;
   let stopPositionWatch = null;
-  // The subtitles to put back after a reload: { videoId, captions, landed }.
+  // The subtitles to put back after a reload: { videoId, captions, landed, keyAt }.
   // Kept until the reload plays, so a second speed change meanwhile does not
-  // read the subtitles YouTube put on the half-loaded video.
+  // read the subtitles YouTube put on the half-loaded video; dropped when its
+  // position check ends without the video having played.
   let keptCaptions = null;
   // Stops the caption checks of the last reload (player-state.js).
   let stopCaptions = () => {};
@@ -446,7 +447,11 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
         return levels.indexOf('hd1080') !== -1 && BELOW_1080.indexOf(player.getPlaybackQuality()) !== -1;
       },
       setCap
-    }, videoId);
+    }, videoId, () => {
+      // Never played (another video opened, or the check gave up): those
+      // subtitles belong to that reload only, not to a later one of the video.
+      if (keptCaptions === kept && !kept.landed) keptCaptions = null;
+    });
   }
 
   function setSpeed(speed, { immediate = false } = {}) {

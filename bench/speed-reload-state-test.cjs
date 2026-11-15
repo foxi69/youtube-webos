@@ -316,6 +316,29 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
       !p.track.languageCode, JSON.stringify(p.track));
     win.close();
   }
+  {
+    // A reload that never played: another video was opened while it buffered.
+    // Back on the first video the viewer turns subtitles on, and the next speed
+    // change keeps them on, not the off state from before that reload.
+    const { win, p, speed, emit } = boot(0, { manualPlayback: true, reloadTrack: EN });
+    pressKey(win);
+    speed.setSpeed(1.5, { immediate: true });
+    p.videoId = 'othervideo1';
+    await sleep(400);
+    p.videoId = 'abcdefghijk';
+    emit(1);
+    pressKey(win);
+    p.track = EN;
+    // This time YouTube's reload drops them.
+    p.reloadTrack = {};
+    pressKey(win);
+    speed.setSpeed(2, { immediate: true });
+    emit(1);
+    await sleep(600);
+    t('a reload that never played does not hand its subtitles to a later speed change',
+      p.track === EN, JSON.stringify(p.track));
+    win.close();
+  }
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })();
