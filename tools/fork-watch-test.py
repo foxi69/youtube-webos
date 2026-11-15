@@ -99,7 +99,7 @@ pulls = [{'repo': 'up/youtube-webos', 'number': 5, 'title': 'Thanks @bob, fixes 
           'state': 'open', 'url': 'https://github.com/up/youtube-webos/pull/5', 'updated': '2026-11-11'}]
 issues = [{'repo': 'up/youtube-webos', 'number': 6, 'title': 'Bug', 'user': 'eve', 'labels': '',
            'url': 'https://github.com/up/youtube-webos/issues/6', 'created': '2026-11-11'}]
-report = fw.build_report(NOW, [], pulls, issues, 0)
+report = fw.build_report(NOW, [], pulls, issues)
 check('report: pull request linked through redirect.github.com',
       '(https://redirect.github.com/up/youtube-webos/pull/5)' in report, report)
 check('report: issue linked through redirect.github.com',
