@@ -61,15 +61,19 @@ import(MODULE).then(({ watchPosition }) => {
   {
     // The picture at 0, the player buffering at 11.2 s.
     const s = setup({ state: 3, t: AT, vt: 0 });
-    watchPosition(s.win, s.player, AT, () => {});
+    const watch = watchPosition(s.win, s.player, AT, () => {});
+    t('the check says it runs', watch.running() === true);
     s.run(2000);
     t('not at once: the player may still seek by itself', s.player.seeks.length === 0, s.player.seeks.join());
     s.run(2000);
-    t('stuck at 0: seeks to the player\'s position', s.player.seeks.join() === '11.2', s.player.seeks.join());
+    // Just before: a seek to the position itself left it waiting on a TV.
+    t('stuck at 0: seeks to just before the player\'s position', s.player.seeks.join() === '10.7', s.player.seeks.join());
     s.video.currentTime = AT;
     s.player.state = 1;
     s.run(30000);
     t('once it plays it is left alone', s.player.seeks.length === 1, s.player.seeks.join());
+    // A reload's watch is kept by capNext while it runs: it must say when it ended on its own.
+    t('ended on its own after 25 s, it says so', watch.running() === false);
   }
   {
     // Plays first, then the reload of the quality cap leaves the picture at 0.
@@ -82,7 +86,7 @@ import(MODULE).then(({ watchPosition }) => {
     s.player.state = 3;
     s.video.currentTime = 0;
     s.run(4000);
-    t('stuck after the cap\'s reload: seeks too', s.player.seeks.join() === '11.2', s.player.seeks.join());
+    t('stuck after the cap\'s reload: seeks too', s.player.seeks.join() === '10.7', s.player.seeks.join());
     t('the cap is not set again', caps === 1, caps);
   }
   {
@@ -144,10 +148,11 @@ import(MODULE).then(({ watchPosition }) => {
     s.run(3000);
     t('at the cap: nothing to do', caps === 0, caps);
     isLow = true;
-    s.run(1500);
-    t('a short dip is left alone', caps === 0, caps);
-    s.run(1000);
-    t('it lasts: the cap is set again', caps === 1, caps);
+    // Exactly 2 s: 7 low ticks of 250 ms are not enough, the 8th sets it.
+    s.run(1750);
+    t('a short dip (7 ticks, 1.75 s) is left alone', caps === 0, caps);
+    s.run(250);
+    t('it lasts 2 s (the 8th tick): the cap is set again', caps === 1, caps);
     isLow = false;
     s.run(5000);
     t('back up: no more', caps === 1, caps);
