@@ -39,6 +39,7 @@ jobs:
           node tools/yt-tv-snapshot.cjs watch-code bench/fixtures/yt-tv-snapshot.json > report.md
           status=$?
           set -e
+          cat report.md
           cat report.md >> "$GITHUB_STEP_SUMMARY"
           echo "status=$status" >> "$GITHUB_OUTPUT"
           echo "report=$(base64 -w0 report.md)" >> "$GITHUB_OUTPUT"
