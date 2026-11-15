@@ -122,6 +122,14 @@ function onPlaying(evt) {
   if (!timer) timer = setInterval(tick, TICK_MS);
 }
 
+// A preview stopping: what was cleared gets its look back at once, not at the
+// next re-check up to a second later (until then the stopped video's hole
+// shows through it).
+function onStopped(evt) {
+  if (!timer || !(evt.target instanceof HTMLVideoElement)) return;
+  tick();
+}
+
 function sync() {
   document.documentElement.classList.toggle(ON_CLASS, enabled());
   if (!enabled() || !isPreviewPage()) stop();
@@ -131,6 +139,8 @@ export function initPreviewFix() {
   legacy = isLegacyWebOS();
   if (!legacy) return;
   document.addEventListener('playing', onPlaying, true);
+  document.addEventListener('pause', onStopped, true);
+  document.addEventListener('ended', onStopped, true);
   window.addEventListener('ytaf-page-update', sync);
   configAddChangeListener('fixBlackPreviews', sync);
   sync();

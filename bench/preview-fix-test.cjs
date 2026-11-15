@@ -224,18 +224,22 @@ function boot(webos, cfg = {}) {
         fresh.classList.contains(CLEARED), env.cleared());
       t('webOS 3: ...and the one it replaced gets its background back', !old.classList.contains(CLEARED));
 
-      // The focus moves on: YouTube stops the preview.
+      // The focus moves on: YouTube stops the preview. The page gets its
+      // look back then, not at the next re-check a second later.
       env.pause();
-      await wait(TICK);
-      t('webOS 3: the preview stopped (the focus moved on): the surface page gets its black background back',
+      await wait(30);
+      t('webOS 3: the preview stopped (the focus moved on): the surface page gets its black background back at once',
         env.cleared() === '' && env.style('browse').backgroundColor === 'rgb(0, 0, 0)',
         env.cleared() + ' / ' + env.style('browse').backgroundColor);
       t('webOS 3: <html> keeps the fix\'s class (the setting is on)', env.on());
+      await wait(TICK);
+      t('webOS 3: ...and it stays so', env.cleared() === '', env.cleared());
 
       env.play();
       env.end();
+      await wait(30);
+      t('webOS 3: a preview that ended: the background comes back at once too', env.cleared() === '', env.cleared());
       await wait(TICK);
-      t('webOS 3: a preview that ended: the background comes back too', env.cleared() === '', env.cleared());
 
       // The preview opened: the watch page plays in the same <video>.
       env.play();
