@@ -71,7 +71,7 @@ const RECTS = {
   app: FULL, 'ytlr-player__player-container': FULL, backdrop: FULL, browse: FULL, clearpage: FULL,
   side: box(1600, 0, 320, 1080),
   tile1: TILE1, thumb1: TILE1, shade1: TILE1, glass1: TILE1, tint1: TILE1, label1: TILE1,
-  tile2: TILE2, thumb2: TILE2, label2: TILE2
+  tile2: TILE2, thumb2: TILE2, label2: TILE2, icon2: TILE2
 };
 // Topmost first, as the TV would stack them: the tile's own layers, the
 // browse page, then the player and what lies under it.
@@ -330,6 +330,20 @@ function boot(webos, cfg = {}) {
       t('webOS 6: ...and the first tile gets its image, shadow and tint back',
         env.style('thumb1').opacity !== '0' && env.style('shade1').boxShadow !== 'none' &&
         env.style('tint1').backgroundColor === 'rgba(0, 0, 0, 0.5)');
+
+      // An SVG drawn over the video (an icon on the tile) paints too: it is
+      // hidden like the image.
+      const icon = env.doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      icon.id = 'icon2';
+      env.el('tile2').appendChild(icon);
+      env.state.order = ['icon2'].concat(ORDER);
+      await wait(TICK);
+      t('webOS 6: an SVG over the video is cleared, and hidden', icon.classList.contains(CLEARED) &&
+        env.style('icon2').opacity === '0', env.cleared() + ' / opacity ' + env.style('icon2').opacity);
+      env.state.order = ORDER.slice();
+      await wait(TICK);
+      t('webOS 6: ...and shown again once it no longer covers it', !icon.classList.contains(CLEARED) &&
+        env.style('icon2').opacity !== '0', env.style('icon2').opacity);
 
       // A pointer-events quirk: an element holding the video comes first.
       env.state.order = ['ytlr-player__player-container'].concat(ORDER);
