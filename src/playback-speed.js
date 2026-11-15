@@ -492,7 +492,8 @@ export function createSpeedController({
     if (stopPositionWatch) stopPositionWatch();
     const setCap = () => {
       if (currentSpeed > CAP_ABOVE) {
-        const cap = capQuality();
+        // The cap, or the most the video has below it (capFor reads the pick first).
+        const cap = capFor(player) || capQuality();
         qualityPickVideoId = lastPick ? videoId : null;
         setRange(player, cap);
       }
@@ -504,15 +505,9 @@ export function createSpeedController({
     };
     watchedVideoId = videoId;
     stopPositionWatch = watchPosition(win, player, at, onPlaying, {
-      isLow() {
-        // Every tick for 25 s: the player first, the stored record (capQuality)
-        // only once the picture is below 1080p.
-        if (currentSpeed <= CAP_ABOVE) return false;
-        const levels = (player.getAvailableQualityLevels && player.getAvailableQualityLevels()) || [];
-        if (levels.indexOf('hd1080') === -1 || BELOW_1080.indexOf(player.getPlaybackQuality()) === -1) return false;
-        // A lower quality the viewer picked is not a fall to fight.
-        return capQuality() === 'hd1080';
-      },
+      // Below the cap or the viewer's lower pick (720p picked, fallen to 480p),
+      // as capNext judges it: a pick at or above what plays is not a fall.
+      isLow: () => currentSpeed > CAP_ABOVE && belowCap(player),
       setCap
     }, videoId, () => {
       // Never played (another video opened, or the check gave up): those
@@ -524,7 +519,9 @@ export function createSpeedController({
   // The cap, or the highest level the video has below it.
   function capFor(player) {
     const cap = capQuality();
-    const levels = (player.getAvailableQualityLevels && player.getAvailableQualityLevels()) || [];
+    // Anything but a list (none yet, say) is no levels: no target, the caller falls back.
+    let levels = player.getAvailableQualityLevels && player.getAvailableQualityLevels();
+    if (!Array.isArray(levels)) levels = [];
     return LEVELS_DOWN.slice(LEVELS_DOWN.indexOf(cap)).find((q) => levels.includes(q)) || null;
   }
 
@@ -552,7 +549,8 @@ export function createSpeedController({
     if (stopPositionWatch && stopPositionWatch.running() && watchedVideoId === videoId) return;
     if (stopPositionWatch) stopPositionWatch();
     watchedVideoId = videoId;
-    stopPositionWatch = watchPosition(win, player, player.getCurrentTime(), () => {}, {
+    // No position to restore (null): a seek the viewer makes as it starts is theirs.
+    stopPositionWatch = watchPosition(win, player, null, () => {}, {
       isLow: () => currentSpeed > CAP_ABOVE && belowCap(player),
       setCap() {
         const target = capFor(player);
