@@ -1791,6 +1791,8 @@ function fixPreviewCommands(data, allowHandover) {
   }
 }
 
+const hasOwn = Object.prototype.hasOwnProperty;
+
 function findObjects(haystack, needlesArray, maxDepth = 10) {
   if (!haystack || typeof haystack !== 'object' || maxDepth <= 0 || !needlesArray.length) return {};
   const results = {};
@@ -1811,7 +1813,8 @@ function findObjects(haystack, needlesArray, maxDepth = 10) {
       // The first value that is there is kept, and counted once: a null is
       // passed over, so it neither ends the search early nor hides a real
       // value met further down (a flat guide `items` after an `items: null`).
-      if (results[needle] === undefined && currentObj[needle] != null) {
+      // Own properties only: a list's inherited entries() is no `entries`.
+      if (results[needle] === undefined && currentObj[needle] != null && hasOwn.call(currentObj, needle)) {
         results[needle] = currentObj[needle];
         foundCount++;
       }

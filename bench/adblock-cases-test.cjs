@@ -160,10 +160,17 @@ function setSwitch(win, label, on) {
     t(n('fallback: the player ads and the endscreen go'), r.adPlacements.length === 0 && !r.endscreen);
   }
   {
-    // A nested entries list. Only with no list above it: the search takes a
-    // list's own entries() method for the one it looks for.
+    // A nested entries list.
     const r = P({ responseContext: { _pad: 'b'.repeat(11000) }, wrapper: { inner: { entries: [ad(), tile('fbentry0001')] } } });
     t(n('fallback: a nested entries list filtered'), ids(r.wrapper.inner.entries) === 'fbentry0001', ids(r.wrapper.inner.entries));
+  }
+  {
+    // ...with a list met first, higher up: a list's own entries() method,
+    // inherited from Array.prototype, is no entries list.
+    const r = P({ responseContext: { _pad: 'b'.repeat(11000) }, list: [1, 2],
+      wrapper: { inner: { entries: [ad(), tile('fbentry0002')] } } });
+    t(n('fallback: a nested entries list filtered with a list above it'), ids(r.wrapper.inner.entries) === 'fbentry0002',
+      ids(r.wrapper.inner.entries));
   }
   {
     // Under 10 kB with no known shape: only the guide entries are looked at.
