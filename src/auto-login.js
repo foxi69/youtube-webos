@@ -253,9 +253,12 @@ function setupActiveBypassListener() {
     window.addEventListener('ytaf-page-update', (evt) => {
         if (evt.detail && evt.detail.isAccountSelector) {
             attemptActiveBypass();
-        } 
+        }
     });
     pageObserverAttached = true;
+    // utils.js reports the page state it starts on before this listener is
+    // in: a selector already on screen would otherwise never be reported.
+    if (document.body && document.body.classList.contains(SELECTORS.ACCOUNT_SELECTOR)) attemptActiveBypass();
 }
 
 export function initAutoLogin() {

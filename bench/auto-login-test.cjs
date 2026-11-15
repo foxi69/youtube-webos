@@ -70,7 +70,7 @@ async function boot(cfg, opts = {}) {
   vc.on('jsdomError', (e) => { if (!/Not implemented: navigation/.test(e.message)) errors.push(e.message); });
   vc.on('error', (...a) => errors.push(a.map(String).join(' ')));
   vc.on('warn', (...a) => warnings.push(a.map(String).join(' ')));
-  const dom = new JSDOM('<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app></ytlr-app></body></html>',
+  const dom = new JSDOM(`<!doctype html><html><body class="${opts.page || 'WEB_PAGE_TYPE_BROWSE'}"><ytlr-app></ytlr-app></body></html>`,
     { runScripts: 'outside-only', url: 'https://www.youtube.com/tv#/', virtualConsole: vc, pretendToBeVisual: true });
   const win = dom.window;
   setUserAgent(win, modern ? UA.webos23 : UA.webos3);
@@ -194,6 +194,23 @@ async function boot(cfg, opts = {}) {
     await pageMs(2000);
     t(n('...and the selector shown again once done'), !env.bypassing());
     t(n('on: no page errors'), env.errors.length === 0, env.errors.join(' | '));
+    env.win.close();
+  }
+
+  // ---- The selector already on screen when the bundle starts ----
+  {
+    // A start without launch parameters: the page-state event that reports
+    // the selector goes out before the module listens for it.
+    const env = await boot({ enableAutoLogin: true, autoSelectAccount: true }, { page: 'WEB_PAGE_TYPE_ACCOUNT_SELECTOR' });
+    await pageMs(1000);
+    t(n('the selector on screen at the start: Enter is pressed for the viewer'),
+      env.keys.map((k) => k.code).join() === '13', JSON.stringify(env.keys));
+    env.win.close();
+  }
+  {
+    const env = await boot({ enableAutoLogin: true, autoSelectAccount: false }, { page: 'WEB_PAGE_TYPE_ACCOUNT_SELECTOR' });
+    await pageMs(1000);
+    t(n('...not with always ask'), env.keys.length === 0 && !env.bypassing(), JSON.stringify(env.keys));
     env.win.close();
   }
 
