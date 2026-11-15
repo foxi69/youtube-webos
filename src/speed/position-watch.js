@@ -30,7 +30,8 @@ const STALL_BACK_S = 0.5;
 /**
  * @param {Window} win
  * @param {object} player YouTube's player
- * @param {number} at the position the reload should continue from, in seconds
+ * @param {number|null} at the position the reload should continue from, in
+ *   seconds; null for a video that plays already (only stalls are corrected)
  * @param {() => void} onPlaying runs once, when the video first plays
  * @param {{isLow: () => boolean, setCap: () => void}} [quality] the speed's quality cap
  * @param {string} [targetId] the video the speed changed on (else the one the player names now)
@@ -86,7 +87,7 @@ export function watchPosition(win, player, at, onPlaying, quality, targetId) {
       stalled = 0;
       if (!played) {
         played = true;
-        if (Math.abs(now - at) > OFF_BY_S) player.seekTo(at, true);
+        if (at !== null && Math.abs(now - at) > OFF_BY_S) player.seekTo(at, true);
         onPlaying();
       }
       low = quality && quality.isLow() ? low + 1 : 0;
