@@ -47,6 +47,14 @@ export const clockModes = {
 };
 
 /** What the time label under the seek bar adds before the duration (NicholasBly/youtube-webos#195). */
+// Show Video Quality: a notice when a video starts, the tag under the title, or both.
+export const videoQualityDisplayModes = {
+  off: 'Off',
+  start: 'At Start',
+  title: 'Under Title',
+  both: 'Both'
+};
+
 export const timeRemainingModes = {
   off: 'Off',
   remaining: 'Remaining',
@@ -317,8 +325,7 @@ const configOptions = new Map([
   ['enableLegacyEmojiFix', { default: true, desc: 'Emoji + Characters Fix' }],
   ['hideGuestSignInPrompts', { default: false, desc: 'Guest Mode: Hide Sign-in Buttons' }],
   ['forceHighResVideo', { default: false, desc: 'Force Max Quality' }],
-  ['showQualityOnStart', { default: false, desc: 'Show Video Quality on Start' }],
-  ['showQualityInTitle', { default: false, desc: 'Show Video Quality Next to the Title' }],
+  ['showVideoQuality', { default: 'off', desc: 'Show Video Quality' }],
   ['forceVideoCodec', { default: 'auto', desc: 'Force Video Codec' }],
   ['subtitleTranslateLang', { default: 'off', desc: 'Auto-Translate Subtitles' }],
   ['subtitleAutoEnable', { default: false, desc: 'Turn On Translated Subtitles Automatically' }],
@@ -448,6 +455,16 @@ function migrateStored(stored) {
     }
     delete stored.forcePreviews;
     delete stored.mutePreviews;
+  }
+  // Show Video Quality was two switches: on Start and Next to the Title.
+  if ('showQualityOnStart' in stored || 'showQualityInTitle' in stored) {
+    if (!('showVideoQuality' in stored)) {
+      const atStart = !!stored.showQualityOnStart;
+      const underTitle = !!stored.showQualityInTitle;
+      stored.showVideoQuality = atStart && underTitle ? 'both' : atStart ? 'start' : underTitle ? 'title' : 'off';
+    }
+    delete stored.showQualityOnStart;
+    delete stored.showQualityInTitle;
   }
   return stored;
 }

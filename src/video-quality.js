@@ -450,7 +450,7 @@ export function playingQualityLabel() {
 function scheduleQualityToast(actualState) {
   // The watch page only: attached at the start of the app, the player also
   // reports the tile previews that play in it on Home.
-  if (actualState !== STATE_PLAYING || !configRead('showQualityOnStart') || !isWatchPage()) return;
+  if (actualState !== STATE_PLAYING || !/^(start|both)$/.test(configRead('showVideoQuality')) || !isWatchPage()) return;
   let videoId = null;
   try { videoId = player.getVideoData?.()?.video_id || null; } catch { /* ignore */ }
   if (!videoId || videoId === qualityToastVideoId) return;

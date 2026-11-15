@@ -139,7 +139,7 @@ function openVideo(win) {
 
   // ---- A tile preview on Home, then the video opened ----
   {
-    const win = await boot({ subtitleTranslateLang: 'hu', subtitleAutoEnable: true, showQualityOnStart: true },
+    const win = await boot({ subtitleTranslateLang: 'hu', subtitleAutoEnable: true, showVideoQuality: 'start' },
       { html: '<body class="WEB_PAGE_TYPE_BROWSE"></body>', url: 'https://www.youtube.com/tv#/', speed: 20 });
     const player = makePlayer(win, -1);
     player.inline = true;

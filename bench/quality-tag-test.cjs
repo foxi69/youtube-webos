@@ -1,8 +1,9 @@
 /**
- * Show Video Quality Next to the Title (quality-tag.js): a stylesheet rule
- * puts the quality the video plays in after the metadata line under the
+ * Show Video Quality, Under Title and Both (quality-tag.js): a stylesheet
+ * rule puts the quality the video plays in after the metadata line under the
  * title, follows the picture when the stream switches quality, and is
- * cleared off the watch page and with the option off.
+ * cleared off the watch page and on Off and At Start. The stored setting is
+ * the old Show Video Quality Next to the Title switch, which carries over.
  *
  * Usage: node bench/quality-tag-test.cjs [dist/webOSUserScripts/userScript.js]
  */
@@ -30,6 +31,7 @@ win.cancelAnimationFrame = () => {};
 win.localStorage.setItem('ytaf-configuration', win.JSON.stringify({
   enableAdBlock: false, enableLegacyEmojiFix: false, enableSponsorBlock: false,
   enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false,
+  // The old switch, as a stored configuration has it: it carries over as Under Title.
   showQualityInTitle: true
 }));
 if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
@@ -48,12 +50,12 @@ function key(code) {
   Object.defineProperty(e, 'keyCode', { get: () => code, configurable: true });
   dispatchTrusted(doc.body, e);
 }
-function toggle(label) {
-  const row = [...doc.querySelectorAll('.ytaf-ui-container label')].find((l) => l.textContent.trim() === label);
-  const input = row.querySelector('input');
-  input.checked = !input.checked;
-  input.dispatchEvent(new win.Event('change', { bubbles: true }));
-  return row;
+/** One step of the Show Video Quality row on the panel; its value after it. */
+function step() {
+  const row = [...doc.querySelectorAll('.ytaf-ui-container .shortcut-control-row')]
+    .find((r) => (r.querySelector('.shortcut-label') || {}).textContent === 'Show Video Quality');
+  row.click();
+  return row.querySelector('.current-value').textContent;
 }
 const rule = () => (doc.getElementById('ytaf-quality-tag') || {}).textContent || '';
 const video = doc.querySelector('video');
@@ -89,10 +91,17 @@ function picture(w, h) {
 
   key(GREEN);
   await sleep(100);
-  toggle('Show Video Quality Next to the Title');
-  t('cleared with the option off', rule() === '', rule());
-  toggle('Show Video Quality Next to the Title');
-  t('shown again with the option on', /content:"1080p"/.test(rule()), rule());
+  const stored = JSON.parse(win.localStorage.getItem('ytaf-configuration'));
+  t('the old switch is stored as Under Title, and is gone', stored.showVideoQuality === 'title' &&
+    !('showQualityInTitle' in stored), JSON.stringify(stored));
+  let value = step();
+  t('Both: the tag stays', value === 'Both' && /content:"1080p"/.test(rule()), `${value} ${rule()}`);
+  value = step();
+  t('Off: cleared', value === 'Off' && rule() === '', `${value} ${rule()}`);
+  value = step();
+  t('At Start: no tag', value === 'At Start' && rule() === '', `${value} ${rule()}`);
+  value = step();
+  t('Under Title: shown again', value === 'Under Title' && /content:"1080p"/.test(rule()), `${value} ${rule()}`);
 
   t('no page errors', errors.length === 0, errors.join(' | '));
   console.log(`\n${pass} passed, ${fail} failed`);

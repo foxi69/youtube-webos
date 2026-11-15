@@ -1,5 +1,5 @@
 import { logoStyles, timeRemainingModes, thumbnailQualityModes, videoCodecModes, uiThemes, clockModes, startPageModes, minVideoLengthModes, seekStepModes, maxVideoAgeModes, searchUploadDateModes, dearrowTitleFormats, dearrowThumbnailFallbacks } from './config.js';
-import { configAddChangeListener, configRead, configWrite, configGetDesc, segmentTypes, configGetDefault, shortcutActions, sbModes, sbModesHighlight, videoPreviewModes, configGetProfileStatus } from './config.js';
+import { configAddChangeListener, configRead, configWrite, configGetDesc, segmentTypes, configGetDefault, shortcutActions, sbModes, sbModesHighlight, videoPreviewModes, videoQualityDisplayModes, configGetProfileStatus } from './config.js';
 import './ui.css';
 import './auto-login.js';
 import './return-dislike.js';
@@ -1111,8 +1111,8 @@ function createOptionsPanel() {
   // --- Page 2: Player ---
   makePage(1).appendChild(createSection('Video Player',
   [createConfigCheckbox('forceHighResVideo'),
-  createConfigCheckbox('showQualityOnStart'),
-  createConfigCheckbox('showQualityInTitle'),
+  createAlignedCycleControl('showVideoQuality', videoQualityDisplayModes),
+  createElement('div', { text: 'At Start: a notice with the quality for a few seconds when a video starts. Under Title: a tag after the channel, views and date line', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   createConfigCheckbox('enablePlaybackSpeed'),
   createVideoCodecControl(),
   createAlignedCycleControl('subtitleTranslateLang', subtitleTranslateLanguages),
