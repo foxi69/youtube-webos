@@ -71,7 +71,9 @@ const CHANGELOG = [
 /**
  * The bundle on a page. opts: cfg, storage, bodyClass, listing (the body, or
  * { status }), changelog (likewise), homebrew ('yes', 'no', 'denied', or
- * 'none' for no service bridge at all), throwOn (services whose call throws).
+ * 'none' for no service bridge at all), throwOn (services whose call throws),
+ * holdHomebrew (the Homebrew Channel's app info is answered only when the
+ * test calls answerHomebrew()).
  */
 function boot(opts = {}) {
   const errors = [];
@@ -118,17 +120,22 @@ function boot(opts = {}) {
   // is answered at once, the others when the test calls answer().
   const calls = [];
   const homebrew = opts.homebrew || 'yes';
+  const homebrewAnswer = (kind) => (kind === 'yes' ? { returnValue: true, appInfo: { id: 'org.webosbrew.hbchannel' } }
+    : kind === 'denied' ? { returnValue: false, errorText: 'Permission denied' }
+      : { returnValue: false, errorText: 'Cannot find application info' });
+  // The held app info calls answered now, as the Homebrew Channel `kind` would.
+  const answerHomebrew = (kind) => {
+    for (const c of calls) if (c.uri === HB_INFO && !c.answered) { c.answered = true; c.answer(homebrewAnswer(kind)); }
+  };
   if (homebrew !== 'none') {
     win.PalmServiceBridge = function PalmServiceBridge() {
       this.call = (uri, payload) => {
         if ((opts.throwOn || []).indexOf(uri) !== -1) throw new Error('refused: ' + uri);
         const call = { uri, params: JSON.parse(payload), answer: (res) => this.onservicecallback(JSON.stringify(res)) };
         calls.push(call);
-        if (uri !== HB_INFO) return;
-        const res = homebrew === 'yes' ? { returnValue: true, appInfo: { id: 'org.webosbrew.hbchannel' } }
-          : homebrew === 'denied' ? { returnValue: false, errorText: 'Permission denied' }
-            : { returnValue: false, errorText: 'Cannot find application info' };
-        realTimeout(() => call.answer(res), 5);
+        if (uri !== HB_INFO || opts.holdHomebrew) return;
+        call.answered = true;
+        realTimeout(() => call.answer(homebrewAnswer(homebrew)), 5);
       };
     };
   }
@@ -185,7 +192,7 @@ function boot(opts = {}) {
   };
   return {
     win, doc, errors, requests, calls, routes, pageKeys, press, tap, dialogs, text, buttons, focused, versions,
-    reader, note, status, listings, changelogs, toasts, stored, about
+    reader, note, status, listings, changelogs, toasts, stored, about, answerHomebrew
   };
 }
 
@@ -389,6 +396,37 @@ const visible = (n) => !!n && n.style.display !== 'none';
     t(n('About without a bridge: no Open in Browser'), !a.btn('Open in Browser') &&
       !/TV's browser/.test(a.page.textContent));
     t(n('no bridge: no page errors'), env.errors.length === 0, env.errors.join(' | '));
+  }
+
+  // ---- The About tab before the TV says whether the Homebrew Channel is there ----
+  // A newer release already known (checked and offered earlier today), so the
+  // tab has the release at once; the app info call is held until the test
+  // answers it. Until then the tab must not tell a TV that has the Homebrew
+  // Channel to install the update without it.
+  for (const kind of ['yes', 'no']) {
+    const now = Date.now();
+    const env = boot({
+      holdHomebrew: true,
+      storage: { 'ytaf-update-check': JSON.stringify({ at: now, latest: '99.0.0', ipk: { url: IPK, sha256: SHA }, notified: '99.0.0', notifiedAt: now }) }
+    });
+    await sleep(500);
+    const a = await env.about();
+    const asked = callsTo(env, HB_INFO).length > 0;
+    t(n(`About, the Homebrew Channel not answered yet (${kind}): the release is shown`), asked &&
+      a.status.textContent === 'Version 99.0.0 is available.', a.status.textContent);
+    t(n(`...and no install-from-a-computer note yet (${kind})`), !a.shown(a.computer) &&
+      !/Without the Homebrew Channel/.test(a.page.textContent),
+      (a.shown(a.computer) ? 'shown: ' : 'hidden: ') + a.computer.textContent);
+    env.answerHomebrew(kind);
+    await sleep(20);
+    if (kind === 'yes') {
+      t(n('...answered yes: the install button, no note'), a.shown(a.install) && !a.shown(a.computer),
+        `install ${a.shown(a.install)}, note ${a.shown(a.computer)}`);
+    } else {
+      t(n('...answered no: the note that it is not installed, no install button'), !a.shown(a.install) && a.shown(a.computer) &&
+        a.computer.textContent.indexOf('The Homebrew Channel is not installed on this TV') === 0, a.computer.textContent);
+    }
+    t(n(`...no page errors (${kind})`), env.errors.length === 0, env.errors.join(' | '));
   }
 
   // ---- A package that is not https ----

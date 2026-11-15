@@ -601,7 +601,8 @@ export function buildAboutPage(page, h, checkbox, section) {
   const status = h('div', { class: 'ytaf-about-line' });
   const installStatus = h('div', { class: 'ytaf-about-line', style: { display: 'none' } });
   let installing = false;
-  let homebrew = 'unknown';
+  // null until the TV answers whether the Homebrew Channel is there.
+  let homebrew = null;
   let installFailed = false;
   const report = (text, failed) => {
     installStatus.textContent = text;
@@ -631,9 +632,11 @@ export function buildAboutPage(page, h, checkbox, section) {
     status.textContent = describeUpdateState(state);
     const newer = state.status === 'done' && isNewer(state.latest);
     installButton.textContent = `Download and Install ${state.latest || ''}`.trim();
-    installButton.style.display = newer && state.ipk && canReachInstaller(homebrew) ? 'block' : 'none';
-    computerNote.textContent = computerInstallText(state.latest, homebrew);
-    computerNote.style.display = newer && (homebrew !== 'yes' || installFailed || !state.ipk) ? 'block' : 'none';
+    installButton.style.display = newer && state.ipk && canReachInstaller(homebrew || 'unknown') ? 'block' : 'none';
+    // Left out until the answer: which note is right depends on it, and a TV
+    // with the Homebrew Channel needs none.
+    computerNote.textContent = homebrew ? computerInstallText(state.latest, homebrew) : '';
+    computerNote.style.display = newer && homebrew && (homebrew !== 'yes' || installFailed || !state.ipk) ? 'block' : 'none';
   };
   onUpdateState(render);
   detectHomebrew((answer) => {
