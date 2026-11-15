@@ -312,6 +312,17 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
     win.close();
   }
   {
+    // A 720p pick; the reloaded video plays, then falls to 480p while its watch runs.
+    const { win, speed, log, setQuality } = boot(720);
+    speed.setSpeed(1.5, { immediate: true });
+    await sleep(900);
+    log.ranges.length = 0;
+    setQuality('large');
+    await sleep(2600);
+    t('a reload fallen below the 720p pick gets the pick again', log.ranges.join() === 'hd720', log.ranges.join());
+    win.close();
+  }
+  {
     // No pick: a 60 fps video started at 1.5x came at 480p30 on a TV, where 1080p60 played 1.5x at 60 fps.
     const { win, p, speed, log, emit, pump, setQuality } = boot(0);
     speed.setSpeed(1.5, { immediate: true });

@@ -427,7 +427,8 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
     if (stopPositionWatch) stopPositionWatch();
     const setCap = () => {
       if (currentSpeed > CAP_ABOVE) {
-        const cap = capQuality();
+        // The cap, or the most the video has below it (capFor reads the pick first).
+        const cap = capFor(player) || capQuality();
         qualityPickVideoId = lastPick ? videoId : null;
         setRange(player, cap);
       }
@@ -439,12 +440,9 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
     };
     watchedVideoId = videoId;
     stopPositionWatch = watchPosition(win, player, at, onPlaying, {
-      isLow() {
-        // A lower quality the viewer picked is not a fall to fight.
-        if (currentSpeed <= CAP_ABOVE || capQuality() !== 'hd1080') return false;
-        const levels = (player.getAvailableQualityLevels && player.getAvailableQualityLevels()) || [];
-        return levels.indexOf('hd1080') !== -1 && BELOW_1080.indexOf(player.getPlaybackQuality()) !== -1;
-      },
+      // Below the cap or the viewer's lower pick (720p picked, fallen to 480p),
+      // as capNext judges it: a pick at or above what plays is not a fall.
+      isLow: () => currentSpeed > CAP_ABOVE && belowCap(player),
       setCap
     }, videoId);
   }
@@ -476,7 +474,8 @@ export function createSpeedController({ win, getPlayer, notify, configRead, code
     if (stopPositionWatch && stopPositionWatch.running() && watchedVideoId === videoId) return;
     if (stopPositionWatch) stopPositionWatch();
     watchedVideoId = videoId;
-    stopPositionWatch = watchPosition(win, player, player.getCurrentTime(), () => {}, {
+    // No position to restore (null): a seek the viewer makes as it starts is theirs.
+    stopPositionWatch = watchPosition(win, player, null, () => {}, {
       isLow: () => currentSpeed > CAP_ABOVE && belowCap(player),
       setCap() {
         const target = capFor(player);

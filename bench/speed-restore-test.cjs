@@ -117,6 +117,21 @@ import(MODULE).then(({ watchPosition }) => {
     t('the very start of a video is left alone', s.player.seeks.length === 0, s.player.seeks.join());
   }
   {
+    // No position to restore (a next video's quality check): the viewer seeked
+    // to 60 s as it started, before the first tick.
+    const s = setup({ state: 1, t: 60, vt: 60 });
+    watchPosition(s.win, s.player, null, () => {});
+    s.run(1000);
+    t('no position to restore: a seek made as it starts is not undone', s.player.seeks.length === 0,
+      s.player.seeks.join());
+  }
+  {
+    const s = setup({ state: 3, t: AT, vt: 0 });
+    watchPosition(s.win, s.player, null, () => {});
+    s.run(4000);
+    t('no position to restore: a stall is still started', s.player.seeks.join() === '10.7', s.player.seeks.join());
+  }
+  {
     // webOS 25 starts the reload up to 25 s early: back to the position, once.
     const s = setup({ state: -1, t: AT, vt: AT });
     watchPosition(s.win, s.player, AT, () => {});
