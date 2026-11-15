@@ -463,6 +463,41 @@ const within = (off, limit) => off.length > 0 && max(off) < limit;
     t('destroy: the timer and the audio context are closed', env.cleared() && env.ctx.state === 'closed');
   }
 
+  // ---- A jump without a seek event ----
+  // The video is somewhere else from one reading to the next, with no
+  // 'seeking' (a reload, a skip YouTube makes itself): one reading beyond
+  // 0.5 s, or two in a row beyond 0.25 s on the same side, stops the queue and
+  // starts the audio again at the new position. A soft correction would take
+  // seconds to get there.
+  for (const jump of [3, 0.35]) {
+    const env = setup(AudioEngine);
+    env.engine.configure(CFG);
+    await tick();
+    env.push(0, 30);
+    env.run(2);
+    // What is still to be heard when the video jumps.
+    const jumpAt = env.ctx.currentTime;
+    const queued = env.ctx.sources.filter((s) => s.when + s.buffer.length / RATE > jumpAt);
+    env.video.currentTime += jump;
+    env.run(0.1);   // two readings
+    const late = queued.filter((s) => s.stoppedAt === undefined || s.stoppedAt > env.ctx.currentTime);
+    const c0 = env.ctx.currentTime;
+    const v0 = env.video.currentTime;
+    env.run(2);
+    const fresh = env.ctx.sources.filter((s) => !queued.includes(s) && s.when >= jumpAt);
+    const firstAt = fresh.length ? Math.min(...fresh.map((s) => s.when)) - jumpAt : Infinity;
+    const q = live(env.ctx).filter((s) => s.when >= c0);
+    const off = offsets(q, (T) => v0 + (T - c0) * 1.5);
+    t(`a ${jump} s jump without an event: all the queued audio has stopped by the second reading`,
+      queued.length > 0 && late.length === 0, `${late.length} of ${queued.length} still on`);
+    // Two readings (0.1 s) and the engine's 30 ms lead.
+    t(`a ${jump} s jump without an event: new audio starts within 0.15 s`, firstAt <= 0.15, firstAt.toFixed(3));
+    t(`a ${jump} s jump without an event: the audio is back in step at once`, q.length > 5 && within(off, 0.06),
+      `max ${max(off).toFixed(3)} s`);
+    t(`a ${jump} s jump without an event: no error`, env.errors.length === 0, env.errors.map(String).join());
+    env.engine.destroy();
+  }
+
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);
 })().catch((e) => {
