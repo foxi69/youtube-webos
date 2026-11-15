@@ -199,22 +199,28 @@ function drawCopy(url, videoId, width, key) {
 function checkFrame(url, videoId, key) {
   const checkedFor = epoch;
   return new Promise((resolve) => {
-    const img = new Image();
+    let img = null;
     let timer = null;
     /** Resolves once: the image's own outcome or the timeout, whichever comes first. */
     const done = (frame) => {
       clearTimeout(timer);
-      img.onload = img.onerror = null;
+      if (img) img.onload = img.onerror = null;
       if (frame && checkedFor === epoch) copies.set(key, frame);
       resolve(frame);
     };
-    timer = setTimeout(() => done(null), IMAGE_TIMEOUT_MS);
-    img.onerror = () => done(null);
-    img.onload = () => {
-      const placeholder = img.naturalWidth === 120 && img.naturalHeight === 90;
-      done(img.naturalWidth && !placeholder ? url : null);
-    };
-    img.src = url;
+    try {
+      img = new Image();
+      timer = setTimeout(() => done(null), IMAGE_TIMEOUT_MS);
+      img.onerror = () => done(null);
+      img.onload = () => {
+        const placeholder = img.naturalWidth === 120 && img.naturalHeight === 90;
+        done(img.naturalWidth && !placeholder ? url : null);
+      };
+      img.src = url;
+    } catch {
+      // The image could not even be asked for: no frame, as for an error.
+      done(null);
+    }
   });
 }
 

@@ -789,6 +789,56 @@ const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-d
     win.close();
   }
 
+  // ---- A failure while a thumbnail is decided stays inside DeArrow ----
+  // The thumbnail is decided after the title, without the lookup waiting for
+  // it: a throw there (writing the stored response, loading an image) must
+  // not reach the page as an unhandled promise rejection.
+  {
+    const unhandled = [];
+    const onUnhandled = (reason) => { unhandled.push(String(reason && reason.message || reason)); };
+    process.on('unhandledRejection', onUnhandled);
+
+    // The stored response refuses DeArrow's thumbnail (YouTube's own goes in).
+    const refusing = boot({});
+    const r = refusing.parse(browse([tile('custom00001', 'Clickbait')]));
+    const holder = itemsOf(r)[0].tileRenderer.header.tileHeaderRenderer.thumbnail;
+    let list = holder.thumbnails;
+    Object.defineProperty(holder, 'thumbnails', {
+      configurable: true,
+      get: () => list,
+      set(value) {
+        if (value[0] && value[0].url.indexOf('https://i.ytimg.com/') !== 0) throw new TypeError('read-only thumbnail');
+        list = value;
+      }
+    });
+    await waitFor(() => refusing.images.some((u) => u.includes('time=12.5')), 2000);
+    await wait(200);
+    t('a stored response refusing the thumbnail: the title is still decided',
+      tileTitle(itemsOf(r)[0]) === 'the iPhone review', tileTitle(itemsOf(r)[0]));
+    refusing.win.close();
+
+    // An image the TV refuses to load (its src setter throws) for YouTube's frames.
+    const refused = boot({ dearrowThumbnailFallback: 'start' }, { brandingDelay: 1700 });
+    const ImageClass = refused.win.Image;
+    refused.win.Image = class extends ImageClass {
+      set src(url) {
+        if (url.indexOf('https://i.ytimg.com/') === 0) throw new Error('image refused');
+        super.src = url;
+      }
+      get src() { return super.src; }
+    };
+    const el = render(refused.win, tile('nosubmit001', 'Nothing submitted'), { onScreen: true });
+    refused.parse(browse([tile('nosubmit001', 'Nothing submitted')]));
+    await wait(2200);
+    t('a frame that cannot load leaves YouTube\'s thumbnail',
+      shownThumb(el) === 'url("https://i.ytimg.com/vi/nosubmit001/hqdefault.jpg")', shownThumb(el));
+    refused.win.close();
+
+    await wait(50);
+    process.removeListener('unhandledRejection', onUnhandled);
+    t('no unhandled promise rejection while thumbnails are decided', unhandled.length === 0, unhandled.join(' | '));
+  }
+
   // ---- Title formatting (webOS 22+ build only) ----
   {
     const f = boot({ dearrowTitleFormatting: 'sentence_case', dearrowCleanEmojis: true });
