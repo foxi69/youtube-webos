@@ -100,6 +100,8 @@ run ai-label-test
 run most-replayed-test
 run speed-audio-offer-test
 run speed-restore-test
+run speed-keep-state-test
+run speed-reload-state-test "$B"
 run speed-legacy-decoder-test
 run speed-core-test
 run speed-engine-test
@@ -133,6 +135,7 @@ if [ ${#env[@]} -eq 0 ]; then
   run dearrow-test "$B" modern
   run ai-filter-test "$B" modern
   run quality-reload-test "$B"
+  run speed-reload-state-test "$B"
   run handover-quality-test "$B"
 
   # perf_mon is a dev tool, not part of the app.
