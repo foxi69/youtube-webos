@@ -568,6 +568,20 @@ export function createSpeedController({
     activeSink = null;
   }
 
+  /** Ends what a reload left running: the reload waiting, its position and subtitle checks. */
+  function dispose() {
+    if (pending) {
+      win.clearTimeout(pending.timer);
+      pending = null;
+    }
+    if (stopPositionWatch) {
+      stopPositionWatch();
+      stopPositionWatch = null;
+    }
+    stopCaptions();
+    stopCaptions = () => {};
+  }
+
   function createAudioSink({ speed, element }) {
     releaseAudioSink();
 
@@ -606,7 +620,8 @@ export function createSpeedController({
     setRange,
     keepsQuality,
     clearQualityPick,
-    leaveVideo
+    leaveVideo,
+    dispose
   };
 }
 
@@ -697,6 +712,7 @@ export function installSpeedFeature(win, { notify, configRead: cfgRead, getPlaye
   return {
     controller: ctrl,
     uninstall() {
+      ctrl.dispose();
       mseHook.uninstall();
       restoreMenu();
       restoreSurround();
