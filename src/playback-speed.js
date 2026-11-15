@@ -214,6 +214,12 @@ const ABOVE_1080 = ['highres', 'hd2880', 'hd2160', 'hd1440'];
 // the menu); within this long of the call it is ours either way. A different
 // level is always the viewer's choice.
 const OWN_RECORD_MS = 1000;
+// The level this controller last asked for, kept across runs of the app:
+// { level, from, last } (setRange). A record from an earlier run is that run's
+// own cap when it names that level and was written after the call, within
+// this long of the last one (no key presses are known from then).
+const OWN_RANGE_KEY = 'ytaf-speed-own-range';
+const OWN_RECORD_BEFORE_MS = 10000;
 // The viewer's last key presses remembered for that (installSpeedFeature).
 const KEY_TIMES = 16;
 
@@ -245,9 +251,12 @@ export function createSpeedController({
   let lastPick = null;
   let seenRaw;
   let seenRecord = null;
-  // A record older than this controller is from an earlier run of the app (the
-  // cap of a session that ended above 1x, say): no pick made now.
+  // A record older than this controller is from an earlier run of the app:
+  // that run's own cap (a session that ended above 1x) is no pick, any other
+  // is the viewer's, which YouTube keeps playing after a restart.
   const startedAt = Date.now();
+  let ownBefore = null;
+  try { ownBefore = JSON.parse(win.localStorage.getItem(OWN_RANGE_KEY)); } catch { /* none known */ }
   let qualityPickVideoId = null;
 
   function isSupported() {
@@ -361,8 +370,14 @@ export function createSpeedController({
     seenRaw = raw;
     seenRecord = readQualityRecord({ getItem: () => raw }, now);
     const record = seenRecord;
-    if (!record || record.at < startedAt) {
+    if (!record) {
       lastPick = null;
+      return lastPick;
+    }
+    if (record.at < startedAt) {
+      const own = !!ownBefore && record.level === ownBefore.level && record.at >= ownBefore.from &&
+        record.at <= ownBefore.last + OWN_RECORD_BEFORE_MS;
+      lastPick = own ? null : record.level;
       return lastPick;
     }
     const own = ownRanges.get(record.level);
@@ -401,8 +416,12 @@ export function createSpeedController({
     const level = quality === 'highres' || quality === 'auto' ? null : quality;
     const now = Date.now();
     const own = level === ownRangeLevel ? ownRanges.get(level) : null;
-    ownRanges.set(level, { from: own ? own.from : now, last: now, until: now + OWN_RECORD_MS });
+    const from = own ? own.from : now;
+    ownRanges.set(level, { from, last: now, until: now + OWN_RECORD_MS });
     ownRangeLevel = level;
+    if (level) {
+      try { win.localStorage.setItem(OWN_RANGE_KEY, JSON.stringify({ level, from, last: now })); } catch { /* storage denied */ }
+    }
     player.setPlaybackQualityRange(quality, quality);
   }
 

@@ -39,9 +39,11 @@ const pressKey = (win) => dispatchTrusted(win.document.body, new win.KeyboardEve
 
 // lateRecord: the record follows each range call by 50 ms (true) or that many ms.
 // reloadTrack: the subtitles YouTube's reload turns on (else it toggles them).
-// oldRecord: a height already recorded a minute before the app started (the
-// last session's speed cap, say).
-function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = false, reloadTrack, oldRecord } = {}) {
+// oldRecord: a height already recorded a minute before the app started: the
+// viewer's pick of an earlier session, or with oldOwn the speed cap that
+// session asked for (stored by the controller) half a second, or that many ms,
+// before.
+function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = false, reloadTrack, oldRecord, oldOwn = false } = {}) {
   const dom = new JSDOM('<body class="WEB_PAGE_TYPE_WATCH"><div id="ytlr-player__player-container-player"><video></video></div></body>',
     { runScripts: 'outside-only', url: 'https://www.youtube.com/tv#/watch?v=abcdefghijk',
       virtualConsole: new VirtualConsole(), pretendToBeVisual: true });
@@ -71,6 +73,10 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
       data: JSON.stringify({ quality: oldRecord, previousQuality: 2160 }),
       creation: Date.now() - 60000, expiration: Date.now() + 1e9
     }));
+    if (oldOwn) {
+      const at = Date.now() - 60000 - (oldOwn === true ? 500 : oldOwn);
+      win.localStorage.setItem('ytaf-speed-own-range', JSON.stringify({ level: 'hd' + oldRecord, from: at, last: at }));
+    }
   }
   win.eval(bundle);
   // The viewer's pick in YouTube's menu, made after the app started (Force Max
@@ -342,12 +348,46 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
   {
     // The last session ended at 1.5x: its 1080p cap is still recorded when the
     // app starts. No pick of the viewer's: back at 1x is Auto.
+    const { win, log, speed } = boot(0, { oldRecord: 1080, oldOwn: true });
+    speed.setSpeed(1.5, { immediate: true });
+    await sleep(900);
+    log.ranges.length = 0;
+    speed.setSpeed(1, { immediate: true });
+    t('the own cap of the last session is no pick: back at 1x is Auto', log.ranges.join() === 'auto',
+      log.ranges.join());
+    win.close();
+  }
+  {
+    // 720p picked in an earlier session: YouTube still plays it at 1x after a
+    // restart (webOS 25), so it is the viewer's pick.
+    const { win, log, speed } = boot(0, { oldRecord: 720 });
+    speed.setSpeed(1.5, { immediate: true });
+    await sleep(900);
+    t('720p picked in an earlier session: the cap above 1x is 720p', log.ranges.join() === 'hd720,hd720',
+      log.ranges.join());
+    log.ranges.length = 0;
+    speed.setSpeed(1, { immediate: true });
+    t('and back at 1x it is kept', log.ranges.join() === 'hd720', log.ranges.join());
+    win.close();
+  }
+  {
+    // 1080p picked in an earlier session, not the speed's own record.
     const { win, log, speed } = boot(0, { oldRecord: 1080 });
     speed.setSpeed(1.5, { immediate: true });
     await sleep(900);
     log.ranges.length = 0;
     speed.setSpeed(1, { immediate: true });
-    t('a record from before the app started is no pick: back at 1x is Auto', log.ranges.join() === 'auto',
+    t('1080p picked in an earlier session is kept back at 1x', log.ranges.join() === 'hd1080', log.ranges.join());
+    win.close();
+  }
+  {
+    // That session capped at 1080p, and two minutes later the viewer picked 1080p.
+    const { win, log, speed } = boot(0, { oldRecord: 1080, oldOwn: 120000 });
+    speed.setSpeed(1.5, { immediate: true });
+    await sleep(900);
+    log.ranges.length = 0;
+    speed.setSpeed(1, { immediate: true });
+    t('a record long after the cap of the last session is a pick: kept back at 1x', log.ranges.join() === 'hd1080',
       log.ranges.join());
     win.close();
   }
