@@ -133,6 +133,9 @@ run launch-params-test "$B" legacy
 run clock-test "$B" legacy
 run sponsorblock-bar-test "$B" legacy
 run sponsorblock-lifecycle-test "$B" legacy
+run dislike-panel-test "$B" legacy
+run keyboard-search-cases-test "$B" legacy
+run math-letters-test
 run low-memory-style-test "$B"
 run review-fixes-test "$B"
 run search-font-test "$B"
@@ -164,7 +167,8 @@ for t in smoke adblock-test panel-test module-behaviour-test upstream-fixes-test
   search-font-test preview-autoopen-test preview-countdown-test sponsorblock-skip-test \
   panel-nav-test fetch-hook-test most-replayed-bundle-test preview-fix-test \
   screensaver-cases-test subtitle-translate-test auto-login-test about-test \
-  launch-params-test clock-test sponsorblock-bar-test sponsorblock-lifecycle-test; do
+  launch-params-test clock-test sponsorblock-bar-test sponsorblock-lifecycle-test \
+  dislike-panel-test keyboard-search-cases-test; do
   run "$t" "$M" modern
 done
 run dearrow-test "$M" modern
