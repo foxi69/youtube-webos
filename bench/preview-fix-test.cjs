@@ -291,6 +291,16 @@ function boot(webos, cfg = {}) {
       await wait(TICK);
       t('setting off: a playing preview clears nothing', env.cleared() === '' &&
         env.style('browse').backgroundColor === 'rgb(0, 0, 0)', env.cleared());
+      // Turned on while that preview plays: it is fixed then, not from the next one.
+      env.openPanel();
+      t('setting off: turned on in the panel', env.setBox(true) && env.on());
+      t('setting off, then on: the preview playing now is cleared at once', env.cleared() === 'browse' &&
+        env.style('browse').backgroundColor === 'rgba(0, 0, 0, 0)', env.cleared());
+      await wait(TICK);
+      t('setting off, then on: ...and kept so by the re-checks', env.cleared() === 'browse', env.cleared());
+      env.pause();
+      await wait(30);
+      t('setting off, then on: ...until it stops', env.cleared() === '', env.cleared());
       t('setting off: no page errors', env.errors.length === 0, env.errors.join(' | '));
       env.win.close();
     }
