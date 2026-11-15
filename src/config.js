@@ -125,8 +125,8 @@ export const sbModesHighlight = {
 
 /**
  * Video Previews: Default leaves YouTube's own previews setting alone, the
- * others force it off or on when the app starts (auto-login.js); Without sound
- * also mutes them (mute-previews.js).
+ * others force it off or on (auto-login.js), at once: YouTube reads it as each
+ * preview starts. Without sound also mutes them (mute-previews.js).
  */
 export const videoPreviewModes = {
   default: 'Default',

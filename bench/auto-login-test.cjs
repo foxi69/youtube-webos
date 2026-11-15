@@ -11,8 +11,7 @@
  *   - The selector: Enter pressed for the viewer (Down, Enter for a guest),
  *     the page hidden meanwhile; nothing when the option goes off in between.
  *   - Video Previews: YouTube's inline playback record forced on or off,
- *     given back as it was on Default, the restart toast, and the two old
- *     settings it replaced.
+ *     given back as it was on Default, and the two old settings it replaced.
  *   - Bypass Nag Screens off: nothing of the above.
  *
  * upstream-fixes-test covers the selector's time window and the relaunch;
@@ -342,8 +341,6 @@ async function boot(cfg, opts = {}) {
   }
 
   // ---- Video Previews ----
-  const RESTART = 'Video Previews: restart the app to apply';
-  const toasts = (env) => [...env.win.document.querySelectorAll('.message')].filter((m) => m.textContent === RESTART).length;
   for (const [mode, want] of [['sound', true], ['muted', true], ['off', false]]) {
     const env = await boot({ enableAutoLogin: false, videoPreviews: mode });
     t(n(`previews ${mode}: not written before YouTube has loaded its own`), env.read(INLINE) === null);
@@ -362,7 +359,6 @@ async function boot(cfg, opts = {}) {
     const off = env.cycle(LABEL_PREVIEWS);
     t(n('previews set to Off in the panel: written at once'), off === 'Off' &&
       JSON.stringify(env.read(INLINE)) === '{"data":false}', `${off} ${env.store.getItem(INLINE)}`);
-    t(n('...with a toast that a restart applies it'), toasts(env) === 1, toasts(env));
     const muted = env.cycle(LABEL_PREVIEWS);
     t(n('...Without sound: written on'), muted === 'Without sound' &&
       JSON.stringify(env.read(INLINE)) === '{"data":true}', `${muted} ${env.store.getItem(INLINE)}`);
@@ -371,18 +367,6 @@ async function boot(cfg, opts = {}) {
     t(n('...back to Default: YouTube\'s own record given back (there was none)'), back === 'Off' && def === 'Default' &&
       env.read(INLINE) === null, `${back} ${def} ${env.store.getItem(INLINE)}`);
     t(n('previews: no page errors'), env.errors.length === 0, env.errors.join(' | '));
-    env.win.close();
-  }
-  {
-    // Only the mute changes: YouTube's own setting stays as it is, no restart.
-    const env = await boot({ enableAutoLogin: false, videoPreviews: 'muted' });
-    await pageMs(3000);
-    env.pressGreen();
-    await wait(20);
-    await env.openTab(5);   // UI Tweaks
-    const sound = env.cycle(LABEL_PREVIEWS);
-    t(n('previews Without sound -> With sound: no restart toast'), sound === 'With sound' && toasts(env) === 0 &&
-      JSON.stringify(env.read(INLINE)) === '{"data":true}', `${sound} ${toasts(env)} ${env.store.getItem(INLINE)}`);
     env.win.close();
   }
   {
