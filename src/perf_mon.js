@@ -408,7 +408,6 @@ export {};
     initTrackingBlock: ['adblock.js', 'Installs the XHR and fetch telemetry blocks', 'free'],
     destroyTrackingBlock: ['adblock.js', 'Restores the XHR and fetch originals', 'free'],
     initAdblock: ['adblock.js', 'Installs the JSON.parse hook', 'free'],
-    destroyAdblock: ['adblock.js', 'Restores native JSON.parse', 'free'],
     logSchemaMiss: ['adblock.js', 'Debug: logs unmatched response shapes', 'light'],
 
     // ---- thumbnail-quality.js -------------------------------------------
@@ -4452,10 +4451,10 @@ export {};
         if (domTick % OPTIONS.domCountEveryNTicks === 0) {
           countDom();
         }
-        // Toggling Ad Blocking in settings re-runs initAdblock(), which
-        // captures whatever JSON.parse currently is and installs itself on
-        // top — putting the mod outside our measurement. Re-arm when we
-        // notice we have been displaced.
+        // A JSON.parse hook installed after ours (force-codec.js,
+        // subtitle-translate.js) captures whatever JSON.parse currently is
+        // and installs itself on top — putting the mod outside our
+        // measurement. Re-arm when we notice we have been displaced.
         if (outerParseRef && JSON.parse !== outerParseRef) {
           console.info('[PERF] JSON.parse was re-hooked downstream; re-arming the outer probe.');
           installOuterJsonProbe();

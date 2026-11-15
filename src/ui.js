@@ -9,7 +9,7 @@ import { initMathLetters } from './math-letters.js';
 import { initPlaybackSpeed, stepSpeed, resetSpeed } from './playback-speed.js';
 import sponsorBlockUI from './Sponsorblock-UI.js';
 import { sendKey, REMOTE_KEYS, COLOR_CODE_MAP, isGuestMode, invalidateGuestModeCache, isWatchPage, isShortsPage, isSearchPage, SELECTORS, getVideo, SYNTHETIC_KEY_FLAG } from './utils.js';
-import { syncAdblockHook, initTrackingBlock, destroyTrackingBlock } from './adblock.js';
+import { initTrackingBlock, destroyTrackingBlock } from './adblock.js';
 import logoOrangeUrl from './icons/logo-orange.png';
 import logoBlueUrl from './icons/logo-blue.png';
 import logoRedUrl from './icons/logo-red.png';
@@ -2499,11 +2499,8 @@ if (!configRead('foxThemeApplied')) {
 applyTheme(configRead('uiTheme'));
 configAddChangeListener('uiTheme', (evt) => applyTheme(evt.detail.newValue));
 
-configAddChangeListener('enableAdBlock', () => {
-  syncAdblockHook();
-  // Tracking Block is gated on Ad Blocking, so its network hooks follow too.
-  syncTrackingBlock();
-});
+// Tracking Block is gated on Ad Blocking, so its network hooks follow it.
+configAddChangeListener('enableAdBlock', () => syncTrackingBlock());
 
 function syncTrackingBlock() {
   // Greyed out in the panel while Ad Blocking is off, so off then as well.
@@ -2512,28 +2509,6 @@ function syncTrackingBlock() {
 }
 
 configAddChangeListener('enableTrackingBlock', syncTrackingBlock);
-
-// The emoji fix lives on the same JSON.parse hook, so toggling it has to be
-// able to install that hook even with Ad Blocking off.
-configAddChangeListener('enableLegacyEmojiFix', () => syncAdblockHook());
-configAddChangeListener('hideGuestSignInPrompts', () => syncAdblockHook());
-configAddChangeListener('hideEndcards', () => syncAdblockHook());
-// Max Thumbnail Quality rewrites URLs inside the same JSON.parse hook.
-configAddChangeListener('upgradeThumbnails', () => syncAdblockHook());
-// Load Rows Ahead raises the continuation threshold inside the same hook.
-configAddChangeListener('loadRowsAhead', () => syncAdblockHook());
-// Hide Left Menu Entries filters the guide response in the same hook.
-configAddChangeListener('hiddenSidebarEntries', () => syncAdblockHook());
-// "Are you still watching?" (Bypass Nag Screens) and the subtitle start state
-// are rewritten in the same hook.
-configAddChangeListener('enableAutoLogin', () => syncAdblockHook());
-configAddChangeListener('disableAutoCaptions', () => syncAdblockHook());
-// Original audio, the long-press menu and DeArrow are rewrites in the same hook.
-configAddChangeListener('forceOriginalAudio', () => syncAdblockHook());
-configAddChangeListener('extendLongPressMenu', () => syncAdblockHook());
-configAddChangeListener('enableDeArrow', () => syncAdblockHook());
-// Open Playing Previews Without Reloading clears a flag in the same hook.
-configAddChangeListener('continuePreviews', () => syncAdblockHook());
 
 configAddChangeListener('videoShelfOpacity', () => {
   // Cheap update — rewrites the one-rule opacity <style> and toggles the
@@ -2656,7 +2631,6 @@ onWebClientRefused(() => showNotification('YouTube refused the AI label and Most
 
 // Apply initial states on boot
 syncUiBrightness();
-syncAdblockHook();
 syncTrackingBlock();
 
 // Startup hint. It used to fire a fixed 2s after the script loaded and stay
