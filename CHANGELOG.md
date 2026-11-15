@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Changed
 
++ The Fix Multiline Titles switch is gone from UI Tweaks: the tighter lines it gives titles over more than one line, in the black boxes YouTube draws behind the player's titles when it saves memory, are always on. It was on by default, and with Remove Black Text Boxes on (the default) there are no such boxes to change. A stored value does not count.
 + The Emoji + Characters Fix switch is gone from UI Tweaks on webOS 3-4: the fix is on, as it was by default, and switching it off gained nothing. A TV where it had been switched off keeps it off until Reset All Settings.
 
 ## Fixes

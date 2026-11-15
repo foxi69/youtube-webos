@@ -14,8 +14,8 @@ import { configRead, configAddChangeListener } from './config.js';
  * changes: the rest of YouTube's memory saving is decided in its own code and
  * stays as it is. YouTube rewrites body.className on navigation, so an observer
  * on <body>'s class attribute takes it off again each time. Turned off, the
- * class goes back if YouTube had put it there, and Fix Multiline Titles and New
- * Liquid Glass UI style the boxes again as before.
+ * class goes back if YouTube had put it there, and the multiline title rule (ui.js)
+ * and New Liquid Glass UI style the boxes again as before.
  *
  * webosbrew's ui.js did the same from 2024 (applyUIFixes, after TizenTube);
  * NicholasBly's 0.4.9 commented its call out and 0.6.1 removed it.
