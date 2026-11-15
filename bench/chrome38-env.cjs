@@ -112,6 +112,11 @@ function applyChrome38Downgrade(win) {
     win.EventTarget = Illegal;
     del.push('new EventTarget()');
   }
+  // The event constructors the app uses are left as they are: Chrome 38 has
+  // them all (MDN browser-compat-data: Event and CustomEvent from Chrome 15;
+  // MouseEvent, KeyboardEvent, FocusEvent, UIEvent and WheelEvent from 26).
+  // So keyboard-search.js's document.createEvent('MouseEvents') fallback does
+  // not run on a webOS 3 TV either.
 
   // Chrome 38 has Element#webkitMatchesSelector; restore it so polyfills.js can find it.
   if (!win.Element.prototype.matches) {
