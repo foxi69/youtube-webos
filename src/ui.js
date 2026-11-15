@@ -926,16 +926,8 @@ function createOptionsPanel() {
         evt.preventDefault(); evt.stopPropagation(); return;
       } else if (dir === 'up' || dir === 'down') {
         moveFocus(dir);
-        const postFocus = document.activeElement;
 
-        if (dir === 'up' && preFocus !== postFocus) {
-            if (preFocus.closest('.ytaf-settings-page') && postFocus.classList.contains('ytaf-tab-btn')) {
-                const activeTabBtn = tabBtns[activePage];
-                if (activeTabBtn) activeTabBtn.focus();
-            }
-        }
-
-        if (preFocus === postFocus) {
+        if (preFocus === document.activeElement) {
           const activeTabBtn = tabBtns[activePage];
           const focusables = [activeTabBtn].concat(pageFocusables(pages[activePage])).filter(Boolean);
           
@@ -1945,7 +1937,6 @@ function handleShortcutAction(action) {
       if (endOledBlackout()) {
           showNotification('OLED Mode Deactivated');
       } else {
-          if (optionsPanelVisible) showOptionsPanel(false);
           // Below the notification container (1200) so the toasts - this
           // feature's own included - are not painted behind the blackout, and
           // above the settings panel (1000). The clock (1199) is hidden by the
