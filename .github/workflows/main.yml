@@ -77,6 +77,19 @@ jobs:
       - name: Test
         run: npm test
 
+      # Both bundles in a real Chromium (bench/chromium-smoke.cjs): layout and
+      # CSS, trusted key presses, the engine's own fetch and Request, which
+      # jsdom does not have. Playwright is not a dependency of the package:
+      # this step installs it and its Chromium for itself.
+      - name: Chromium smoke
+        run: |
+          npm install --no-save playwright@1.63.0
+          npx playwright install --with-deps chromium
+          npx webpack --mode=production --stats errors-warnings --env modern
+          node bench/chromium-smoke.cjs dist/webOSUserScripts/userScript.js modern
+          npx webpack --mode=production --stats errors-warnings
+          node bench/chromium-smoke.cjs dist/webOSUserScripts/userScript.js legacy
+
       # The same tests under c8: the report goes to the job summary, and the
       # HTML version is uploaded below.
       - name: Coverage
