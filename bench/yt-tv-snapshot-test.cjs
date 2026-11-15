@@ -101,6 +101,9 @@ const stub = (page, bundle) => async (url) => (url.indexOf('m=main') !== -1 ? bu
 
   const down = await watchCode(snapshotFile(true), { fetchFn: async () => { throw new Error('network down'); } });
   t('watch: a fetch that fails is status 2, not a change', down.status === 2 && /network down/.test(down.report), down.report);
+  const reset = Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' });
+  const refused = await watchCode(snapshotFile(true), { fetchFn: async () => { throw new TypeError('fetch failed', { cause: reset }); } });
+  t('watch: the report names the network reason behind "fetch failed"', /fetch failed \(ECONNRESET\)/.test(refused.report), refused.report);
   const noBundle = await watchCode(snapshotFile(true), { fetchFn: stub('<html></html>', BUNDLE) });
   t('watch: a page without the bundle is status 2', noBundle.status === 2 && /no base bundle/.test(noBundle.report), noBundle.report);
   const tiny = await watchCode(snapshotFile(true), { fetchFn: stub(PAGE, 'blocked') });
