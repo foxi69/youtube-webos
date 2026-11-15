@@ -42,6 +42,12 @@ const TIME = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: 'numeri
 const DATETIME = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: 'numeric' });
 
 /** The bundle with the clock settings `cfg`; the page's time starts at `start`. */
+// A time well inside a minute, for the cases that compare the clock's text
+// with the time: with the real time, a minute turning between the drawing
+// and the comparison failed them now and then (seen with the tests running
+// side by side).
+const MID = new Date(2026, 2, 7, 15, 0, 10);
+
 function boot(cfg, start) {
   const errors = [];
   const vc = new VirtualConsole();
@@ -171,7 +177,7 @@ function boot(cfg, start) {
 
   // ---- OLED-Care Mode ----
   {
-    const env = boot({ clockMode: 'datetime', enableOledCareMode: true });
+    const env = boot({ clockMode: 'datetime', enableOledCareMode: true }, MID);
     await sleep(100);
     t(n('Date and Time from the start'), env.text() === DATETIME.format(env.now()), env.text());
     t(n('OLED-Care on: the clock in its black style'), env.el().classList.contains('oled-mode'));
@@ -183,24 +189,24 @@ function boot(cfg, start) {
 
   // ---- Off, and the old on/off switch ----
   {
-    const env = boot({});
+    const env = boot({}, MID);
     await sleep(100);
     t(n('Clock in UI off by default: no clock'), !env.el());
   }
   {
-    const env = boot({ showWatch: true });
+    const env = boot({ showWatch: true }, MID);
     await sleep(100);
     t(n('the old clock switch on: the clock shows the time'), env.text() === TIME.format(env.now()), env.text());
   }
   {
-    const env = boot({ showWatch: false });
+    const env = boot({ showWatch: false }, MID);
     await sleep(100);
     t(n('the old clock switch off: no clock'), !env.el());
   }
 
   // ---- Over a video ----
   {
-    const env = boot({ clockMode: 'time' });
+    const env = boot({ clockMode: 'time' }, MID);
     await sleep(100);
     const { doc } = env;
     doc.body.className = 'WEB_PAGE_TYPE_WATCH';
