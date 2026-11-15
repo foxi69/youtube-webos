@@ -371,6 +371,23 @@ const shelfItems = (r) => r.contents.tvBrowseRenderer.content.tvSurfaceContentRe
     win.close();
   }
   {
+    // A Hungarian TV's menu (as stored on a webOS 25 TV): the switches are in English all the same.
+    const HU = JSON.stringify([{ id: 'search', title: 'Keresés' }, { id: 'FEsubscriptions', title: 'Feliratkozások' },
+      { id: 'FElibrary', title: 'Könyvtár' }, { id: 'FEtopics_podcasts', title: 'Podcastok' }]);
+    const { win, pump } = boot({ enableAdBlock: false }, '', { 'ytaf-sidebar-entries': HU });
+    await wait(300);
+    const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
+    Object.defineProperty(e, 'keyCode', { get: () => 404, configurable: true });
+    dispatchTrusted(win.document.body, e);
+    for (let i = 0; i < 20; i++) pump();
+    const section = Array.from(win.document.querySelectorAll('#ytaf-page-ui-tweaks .ytaf-settings-section'))
+      .find((s) => s.querySelector('.section-title')?.textContent === 'Hide Left Menu Entries');
+    const names = section ? Array.from(section.querySelectorAll('label')).map((l) => l.textContent) : [];
+    t('[sidebar] the switches are named in English whatever language the menu came in',
+      JSON.stringify(names) === JSON.stringify(['Search', 'Subscriptions', 'Library', 'Podcasts']), JSON.stringify(names));
+    win.close();
+  }
+  {
     // A smaller menu (fewer entries) keeps a hidden entry listed, so it can be shown again.
     const { win, NS } = boot({ enableAdBlock: false, hiddenSidebarEntries: ['FEtopics_music'] }, '',
       { 'ytaf-sidebar-entries': LEARNT });

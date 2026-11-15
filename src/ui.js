@@ -22,7 +22,7 @@ import { VERSION_LABEL } from './version.js';
 import { buildAboutPage } from './about.js';
 import { clearQueue, playNextInQueue } from './video-queue.js';
 import { titleFormattingSupported } from './dearrow/index.js';
-import { getSidebarEntries, hiddenIds, SIDEBAR_ENTRIES_EVENT } from './sidebar.js';
+import { getSidebarEntries, hiddenIds, entryName, SIDEBAR_ENTRIES_EVENT } from './sidebar.js';
 import { onWebClientRefused } from './web-client.js';
 
 // YouTube puts every element that scrolls back to its top (a capture "scroll"
@@ -729,7 +729,7 @@ function createSidebarSection() {
       const input = createElement('input', { type: 'checkbox', events: { change: (evt) => setHidden(entry.id, evt.target.checked) } });
       input.ytafEntryId = entry.id;
       inputs.push(input);
-      const labelText = createElement('span', { class: 'label-text', text: entry.title });
+      const labelText = createElement('span', { class: 'label-text', text: entryName(entry) });
       rows.push(createElement('label', {}, createElement('div', { class: 'label-content', style: { fontSize: '2.1vh' } }, input, labelText)));
     });
     rows.forEach((row) => { section.insertBefore(row, hint); });

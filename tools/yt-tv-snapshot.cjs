@@ -216,7 +216,9 @@ async function watchCode(storedPath, { write = false, fetchFn = fetchText } = {}
     code = await fetchFn(url);
     if (code.length < 100000) throw new Error(`the bundle is only ${code.length} bytes`);
   } catch (e) {
-    return { status: 2, report: `Could not fetch youtube.com/tv's code: ${e.message}` };
+    // Node's fetch says only "fetch failed"; the network reason is in e.cause.
+    const cause = e.cause ? ` (${e.cause.code || e.cause.message})` : '';
+    return { status: 2, report: `Could not fetch youtube.com/tv's code: ${e.message}${cause}` };
   }
   const anchors = codeAnchors(code);
   const changes = base ? diffCode(base.anchors || {}, anchors) : ['no publicCode in the snapshot yet'];

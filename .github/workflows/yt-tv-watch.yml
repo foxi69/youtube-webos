@@ -31,7 +31,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '22'
+          node-version: lts/*
       - name: Compare youtube.com/tv's code with the snapshot
         id: check
         run: |
@@ -39,6 +39,7 @@ jobs:
           node tools/yt-tv-snapshot.cjs watch-code bench/fixtures/yt-tv-snapshot.json > report.md
           status=$?
           set -e
+          cat report.md
           cat report.md >> "$GITHUB_STEP_SUMMARY"
           echo "status=$status" >> "$GITHUB_OUTPUT"
           echo "report=$(base64 -w0 report.md)" >> "$GITHUB_OUTPUT"
