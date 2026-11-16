@@ -9,21 +9,15 @@
  * player YouTube builds, at 1x too) and `extends EventTarget` for the audio
  * SourceBuffer stand-in.
  *
- * Usage: node bench/speed-legacy-install-test.cjs [dist/webOSUserScripts/userScript.js]
+ * Usage: node bench/speed-legacy-install-test.cjs <bundle>
+ *
+ * The page is set up here, not by the harness's bootPage: a webOS 4 user
+ * agent with neither the Chrome 38 nor the Chrome 87 environment.
  */
-const fs = require('fs');
 const { JSDOM, VirtualConsole } = require('jsdom');
-const { UA, setUserAgent } = require('./chrome38-env.cjs');
+const { createReporter, readBundle, silentXHR, wait, UA, setUserAgent } = require('./harness.cjs');
 
-const bundlePath = process.argv[2] || 'dist/webOSUserScripts/userScript.js';
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-
-let pass = 0;
-let fail = 0;
-const t = (n, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + n); }
-  else { fail++; console.log('FAIL ' + n + (extra ? '\n     ' + extra : '')); }
-};
+const { t, run } = createReporter();
 
 function boot({ webCodecs = false } = {}) {
   const errors = [];
@@ -36,7 +30,7 @@ function boot({ webCodecs = false } = {}) {
   // as well, around the speed code's own wrapper.
   setUserAgent(win, UA.webos4);
   win.launchParams = '{}';
-  win.XMLHttpRequest = class { open(){} send(){} setRequestHeader(){} getResponseHeader(){return null;} addEventListener(){} };
+  win.XMLHttpRequest = silentXHR();
   win.fetch = () => new Promise(() => {});
   win.requestAnimationFrame = (cb) => setTimeout(cb, 0);
   win.cancelAnimationFrame = () => {};
@@ -75,11 +69,11 @@ function boot({ webCodecs = false } = {}) {
   win.URL.createObjectURL = () => 'blob:fake';
   win.URL.revokeObjectURL = () => {};
 
-  win.eval(fs.readFileSync(bundlePath, 'utf8'));
+  win.eval(readBundle());
   return { win, errors };
 }
 
-(async () => {
+run(async () => {
   const { win } = boot();
   await wait(100);
   t('the speed control installs without WebCodecs', !!win.ytafSpeed && win.ytafSpeed.isSupported(), String(!!win.ytafSpeed));
@@ -155,7 +149,4 @@ function boot({ webCodecs = false } = {}) {
     t('with WebCodecs the engine queues 0.4 s ahead, as before', !!e && e.leadS === 0.4, String(e && e.leadS));
     w.close();
   }
-
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})();
+});
