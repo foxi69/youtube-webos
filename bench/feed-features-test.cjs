@@ -5,66 +5,55 @@
  * list editors, the Left/Right seek step and the Start Page; and Hide
  * Recommended Videos Under the Player (fork watch #58).
  *
- * Usage: node bench/feed-features-test.cjs [dist/webOSUserScripts/userScript.js]
+ * Usage: node bench/feed-features-test.cjs [dist/webOSUserScripts/userScript.js] [legacy|modern]
  */
-const fs = require('fs');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent, dispatchTrusted, applyChrome87Downgrade } = require('./chrome38-env.cjs');
+const { createReporter, bootPage, trustedKey, wait, UA } = require('./harness.cjs');
 
-const bundlePath = process.argv[2] || 'dist/webOSUserScripts/userScript.js';
-// `modern`: the modern bundle (webOS 22 and newer), in jsdom's own engine with a
-// webOS 23 user agent, instead of the legacy one in a Chrome 38 environment.
-const modern = process.argv[3] === 'modern';
 const GREEN = 404;
 const ENTER = 13;
 const RIGHT = 39;
 const pad = 'z'.repeat(600);
 
 function boot(cfg, opts = {}) {
-  const errors = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => errors.push(e.message));
-  const dom = new JSDOM(`<!doctype html><html><body class="${opts.bodyClass || 'WEB_PAGE_TYPE_BROWSE'}"><ytlr-app>${opts.html || ''}</ytlr-app></body></html>`,
-    { runScripts: 'outside-only', url: opts.url || 'https://www.youtube.com/tv', virtualConsole: vc, pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, UA.webos23);
-  win.launchParams = opts.launchParams || '{}';
-  win.XMLHttpRequest = class { open(){} send(){} setRequestHeader(){} getResponseHeader(){return null;} addEventListener(){} };
-  let rafQ = [];
-  win.requestAnimationFrame = (cb) => { rafQ.push(cb); return rafQ.length; };
-  win.cancelAnimationFrame = () => {};
-  if (opts.yttv) win._yttv = opts.yttv(win);
-  if (opts.hl) win.ytcfg = { get: (k) => (k === 'HL' ? opts.hl : undefined) };
-  // webOS 3-5: no Intl.RelativeTimeFormat, so the table is read.
-  if (opts.noIntl) { const intl = Object.create(win.Intl); intl.RelativeTimeFormat = undefined; win.Intl = intl; }
-  const NS = win.JSON.stringify;
-  win.localStorage.setItem('ytaf-configuration', NS(Object.assign({
-    enableAdBlock: true, enableLegacyEmojiFix: false, enableSponsorBlock: false,
-    enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false
-  }, cfg)));
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  // After the downgrade, which takes fetch away (Chrome 38 had none): the
-  // bundle's polyfill then leaves this one in place.
-  win.fetch = opts.fetch || (() => Promise.reject(new Error('offline')));
-  win.eval(fs.readFileSync(bundlePath, 'utf8'));
+  let NS;
+  const { win, errors, frames } = bootPage({
+    // An empty body class is the browse page too.
+    bodyClass: opts.bodyClass || 'WEB_PAGE_TYPE_BROWSE',
+    inner: opts.html || '',
+    url: opts.url,
+    // The webOS 23 user agent on both builds.
+    userAgent: UA.webos23,
+    launchParams: opts.launchParams || '{}',
+    raf: 'manual',
+    config: Object.assign({
+      enableAdBlock: true, enableLegacyEmojiFix: false, enableSponsorBlock: false,
+      enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false
+    }, cfg),
+    consoleErrors: false,
+    // The legacy environment has no Element#remove here.
+    restoreRemove: false,
+    setup: (w) => {
+      if (opts.yttv) w._yttv = opts.yttv(w);
+      if (opts.hl) w.ytcfg = { get: (k) => (k === 'HL' ? opts.hl : undefined) };
+      // webOS 3-5: no Intl.RelativeTimeFormat, so the table is read.
+      if (opts.noIntl) { const intl = Object.create(w.Intl); intl.RelativeTimeFormat = undefined; w.Intl = intl; }
+      NS = w.JSON.stringify;
+    },
+    // After the downgrade, which takes fetch away (Chrome 38 had none): the
+    // bundle's polyfill then leaves this one in place.
+    fetch: opts.fetch || (() => Promise.reject(new Error('offline')))
+  });
   const parse = (obj) => win.JSON.parse(NS(obj));
   const config = () => JSON.parse(win.localStorage.getItem('ytaf-configuration'));
-  return { win, errors, parse, config, pump: () => { const q = rafQ; rafQ = []; for (const cb of q) cb(Date.now()); } };
+  return { win, errors, parse, config, pump: frames.pump };
 }
 
+// A key on `target`, or on what has the focus.
 function key(win, code, target, type = 'keydown') {
-  const e = new win.KeyboardEvent(type, { bubbles: true, cancelable: true });
-  Object.defineProperty(e, 'keyCode', { get: () => code, configurable: true });
-  dispatchTrusted(target || win.document.activeElement || win.document.body, e);
-  return e;
+  return trustedKey(win, code, target || win.document.activeElement || win.document.body, type);
 }
 
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra ? '\n     ' + extra : '')); }
-};
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const { t, run } = createReporter();
 
 // --- Items in the shapes YouTube sends ---
 
@@ -108,7 +97,7 @@ const itemsOf = (r) => r.contents.tvBrowseRenderer.content.tvSurfaceContentRende
   .sectionListRenderer.contents[0].shelfRenderer.content.horizontalListRenderer.items;
 const ids = (r) => itemsOf(r).map((i) => (i.tileRenderer || i.lockupViewModel).contentId).join(',');
 
-(async () => {
+run(async () => {
   // ---- Feed filters ----
   {
     const filters = { hideWatchedVideos: true, minVideoLength: '5', blockedChannels: ['Spam Channel'], blockedKeywords: ['clickbait'] };
@@ -857,7 +846,4 @@ const ids = (r) => itemsOf(r).map((i) => (i.tileRenderer || i.lockupViewModel).c
     t('Start Page leaves a viewer who went somewhere before Home was up where they are',
       b.win.location.hash === '#/', b.win.location.hash);
   }
-
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})().catch((e) => { console.error(e); process.exit(1); });
+});
