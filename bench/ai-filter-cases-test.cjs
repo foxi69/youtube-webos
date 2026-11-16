@@ -15,25 +15,15 @@
  * The page's Date.now can be moved forward (jump) for the cases that wait out
  * an answer's lifetime.
  */
-const fs = require('fs');
-const path = require('path');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, applyChrome87Downgrade, UA, setUserAgent } = require('./chrome38-env.cjs');
+const { createReporter, flavorFromArgs, readBundle, bootPage, wait } = require('./harness.cjs');
 
-const ROOT = path.resolve(__dirname, '..');
-const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
 // `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
 // with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
-const modern = process.argv[3] === 'modern';
-const code = fs.readFileSync(bundlePath, 'utf8');
+const { modern } = flavorFromArgs();
+const code = readBundle();
 const BADGE = 'data-ytaf-ai-badge';
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra !== undefined ? '\n     ' + extra : '')); }
-};
+const { t, run } = createReporter();
 
 const until = async (check, ms) => {
   const end = Date.now() + ms;
@@ -55,27 +45,15 @@ const lockupData = (id) => ({ contentId: id, contentType: 'LOCKUP_CONTENT_TYPE_V
 const vid = (n) => 'vid' + String(n).padStart(8, '0');
 
 function boot(cfg, opts = {}) {
-  const errors = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => errors.push(e.message));
-  vc.on('error', (...a) => errors.push(a.join(' ')));
-  const dom = new JSDOM('<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app><div id="root"></div></ytlr-app></body></html>',
-    { runScripts: 'outside-only', url: 'https://www.youtube.com/tv#/', virtualConsole: vc, pretendToBeVisual: true });
-  const win = dom.window;
-  const doc = win.document;
-  setUserAgent(win, modern ? UA.webos23 : UA.webos3);
-  win.launchParams = '{}';
   // The page's clock, `offset` ms ahead of the real one.
   let offset = 0;
-  const realNow = win.Date.now.bind(win.Date);
-  win.Date.now = () => realNow() + offset;
   // answers[id]: 'ai', 'plain' (the default) or an HTTP status; an array is
   // used up one answer per request.
   const answers = opts.answers || {};
   const requests = [];
   const held = [];
   let holding = !!opts.hold;
-  win.XMLHttpRequest = class {
+  const Player = class {
     open() {}
     setRequestHeader() {}
     getResponseHeader() { return null; }
@@ -96,20 +74,29 @@ function boot(cfg, opts = {}) {
       else setTimeout(finish, opts.delay || 0);
     }
   };
-  win.localStorage.setItem('ytaf-configuration', JSON.stringify(Object.assign({
-    enableAdBlock: true, enableTrackingBlock: false, removeAiVideos: false, markAiVideos: true,
-    enableSponsorBlock: false, enableReturnYouTubeDislike: false, enableDeArrow: false,
-    upgradeThumbnails: false, enableAutoLogin: false, checkForUpdates: false, showWhatsNew: false,
-    enableLegacyEmojiFix: false
-  }, cfg)));
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  win.Element.prototype.remove = function remove() { if (this.parentNode) this.parentNode.removeChild(this); };
-  win.fetch = () => new Promise(() => {});
+  const { win, doc, errors, evaluate } = bootPage({
+    code,
+    inner: '<div id="root"></div>',
+    url: 'https://www.youtube.com/tv#/',
+    xhr: Player,
+    config: Object.assign({
+      enableAdBlock: true, enableTrackingBlock: false, removeAiVideos: false, markAiVideos: true,
+      enableSponsorBlock: false, enableReturnYouTubeDislike: false, enableDeArrow: false,
+      upgradeThumbnails: false, enableAutoLogin: false, checkForUpdates: false, showWhatsNew: false,
+      enableLegacyEmojiFix: false
+    }, cfg),
+    setup(win) {
+      const realNow = win.Date.now.bind(win.Date);
+      win.Date.now = () => realNow() + offset;
+    },
+    fetch: 'pending',
+    evaluate: false
+  });
   // Under bench/late-injection-preload.cjs the page has loaded before the
   // bundle runs (readyState 'complete'); jsdom on its own is still loading.
   const late = doc.readyState === 'complete';
   if (opts.noBody) doc.documentElement.removeChild(doc.body);
-  win.eval(code);
+  evaluate();
   const ranWithoutBody = !doc.body;
   if (opts.noBody) {
     // The parser reaching <body>, before DOMContentLoaded as in a browser.
@@ -141,7 +128,7 @@ function boot(cfg, opts = {}) {
   return { win, doc, errors, requests, count, card, recycle, badged, jump, ranWithoutBody, late, root, held, release };
 }
 
-(async () => {
+run(async () => {
   const f = modern ? 'modern' : 'legacy';
   const n = (s) => `${f}: ${s}`;
 
@@ -278,7 +265,4 @@ function boot(cfg, opts = {}) {
       t(n('no <body> at start: no page errors'), h.errors.length === 0, h.errors.join(' | '));
     }
   }
-
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})().catch((e) => { console.log('FAIL harness: ' + (e && e.stack || e)); process.exit(1); });
+});

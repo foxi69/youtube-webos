@@ -7,51 +7,30 @@
  * every page ends up identical to the all-synchronous build, and that opening
  * and closing the panel repeatedly doesn't duplicate anything.
  */
-const fs = require('fs');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent, dispatchTrusted, applyChrome87Downgrade } = require('./chrome38-env.cjs');
+const { createReporter, bootPage, trustedKey: key, dispatchTrusted } =require('./harness.cjs');
 
-const bundlePath = process.argv[2] || 'dist/webOSUserScripts/userScript.js';
-// `modern`: the modern bundle (webOS 22 and newer), in jsdom's own engine with a
-// webOS 23 user agent, instead of the legacy one in a Chrome 38 environment.
-const modern = process.argv[3] === 'modern';
+// With `modern` on the command line, bootPage runs the modern bundle (webOS 22
+// and newer) in a Chrome 87 environment with a webOS 23 user agent, instead of
+// the legacy one in a Chrome 38 environment.
 const GREEN = 404;
 
 function boot(bodyClass = 'WEB_PAGE_TYPE_BROWSE', extraHtml = '', setup = null) {
-  const errors = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => errors.push(e.message));
-  const dom = new JSDOM('<!doctype html><html><body class="' + bodyClass + '"><ytlr-app></ytlr-app>' + extraHtml + '</body></html>',
-    { runScripts: 'outside-only', url: 'https://www.youtube.com/tv', virtualConsole: vc, pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, modern ? UA.webos23 : UA.webos3);
-  win.launchParams = '{}';
-  win.XMLHttpRequest = class { open(){} send(){} setRequestHeader(){} getResponseHeader(){return null;} addEventListener(){} };
-  let rafQ = [];
-  win.requestAnimationFrame = (cb) => { rafQ.push(cb); return rafQ.length; };
-  win.cancelAnimationFrame = () => {};
-  win.localStorage.setItem('ytaf-configuration', win.JSON.stringify({
-    enableAdBlock: true, enableLegacyEmojiFix: true, enableSponsorBlock: true,
-    enableReturnYouTubeDislike: true, upgradeThumbnails: false, enableAutoLogin: true,
-    enableScrollSeek: true, timeRemainingMode: 'both', logoStyle: 'premium'
-  }));
-  if (setup) setup(win);
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  win.eval(fs.readFileSync(bundlePath, 'utf8'));
-  return { win, errors, pump: () => { const q = rafQ; rafQ = []; for (const cb of q) cb(Date.now()); } };
+  const { win, errors, frames } = bootPage({
+    html: '<!doctype html><html><body class="' + bodyClass + '"><ytlr-app></ytlr-app>' + extraHtml + '</body></html>',
+    consoleErrors: false,
+    raf: 'manual',
+    config: {
+      enableAdBlock: true, enableLegacyEmojiFix: true, enableSponsorBlock: true,
+      enableReturnYouTubeDislike: true, upgradeThumbnails: false, enableAutoLogin: true,
+      enableScrollSeek: true, timeRemainingMode: 'both', logoStyle: 'premium'
+    },
+    setup,
+    restoreRemove: false
+  });
+  return { win, errors, pump: frames.pump };
 }
 
-function key(win, code) {
-  const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-  Object.defineProperty(e, 'keyCode', { get: () => code, configurable: true });
-  dispatchTrusted(win.document.body, e);
-}
-
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra ? '\n     ' + extra : '')); }
-};
+const { t, done } = createReporter();
 // One per tab, in tab order (SETTINGS_PAGES in src/ui.js).
 const PAGES = ['#ytaf-page-filters', '#ytaf-page-player', '#ytaf-page-interface',
   '#ytaf-page-sponsor', '#ytaf-page-shortcuts', '#ytaf-page-ui-tweaks', '#ytaf-page-about'];
@@ -317,6 +296,5 @@ setTimeout(async () => {
     t('digit bound to Toggle Comments presses the comments button', selected === 1, 'onSelect calls=' + selected);
   }
 
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
+  done();
 }, 500);

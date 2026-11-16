@@ -14,29 +14,19 @@
  * Legacy runs as webOS 3, where the emoji fix is on; modern as webOS 23,
  * where it must change nothing.
  */
-const fs = require('fs');
-const path = require('path');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, applyChrome87Downgrade, UA, setUserAgent, dispatchTrusted } = require('./chrome38-env.cjs');
+const { createReporter, flavorFromArgs, readBundle, bootPage, trustedKey, wait } = require('./harness.cjs');
 
-const ROOT = path.resolve(__dirname, '..');
-const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
 // `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
 // with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
-const modern = process.argv[3] === 'modern';
-const code = fs.readFileSync(bundlePath, 'utf8');
+const { modern } = flavorFromArgs();
+const code = readBundle();
 
 const GREEN = 404;
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const pad = 'z'.repeat(600);   // over the filter's 500-byte gate
 const OPEN = '​', CLOSE = '‌';
 const SMILE = '😀';
 
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra !== undefined ? '\n     ' + extra : '')); }
-};
+const { t, run } = createReporter();
 
 const tile = (id, extra = {}) => ({ tileRenderer: Object.assign({ style: 'TILE_STYLE_YTLR_DEFAULT', contentId: id,
   onSelectCommand: { watchEndpoint: { videoId: id } } }, extra) });
@@ -46,47 +36,41 @@ const shelf = (items) => ({ shelfRenderer: { content: { horizontalListRenderer: 
 const xtags = (text) => Buffer.from(text, 'latin1').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
 function boot(cfg = {}, opts = {}) {
-  const errors = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => { if (!/Not implemented: navigation/.test(e.message)) errors.push(e.message); });
-  vc.on('error', (...args) => errors.push('console.error: ' + args.map(String).join(' ')));
-  const dom = new JSDOM(`<!doctype html><html><body class="${opts.page || 'WEB_PAGE_TYPE_BROWSE'}"><ytlr-app></ytlr-app></body></html>`,
-    { runScripts: 'outside-only', url: 'https://www.youtube.com/tv#/', virtualConsole: vc, pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, modern ? UA.webos23 : UA.webos3);
-  win.launchParams = '{}';
   // The TV's XMLHttpRequest, recording what it is asked.
   const xhr = [];
-  win.XMLHttpRequest = class XMLHttpRequest {
+  const XHR = class XMLHttpRequest {
     open(...args) { xhr.push(['open'].concat(args)); }
     send(...args) { xhr.push(['send'].concat(args)); }
     setRequestHeader() {} getResponseHeader() { return null; } addEventListener() {}
   };
+  const { win, doc, errors, evaluate } = bootPage({
+    code,
+    bodyClass: opts.page || 'WEB_PAGE_TYPE_BROWSE',
+    url: 'https://www.youtube.com/tv#/',
+    ignoreNavigation: true,
+    xhr: XHR,
+    config: Object.assign({
+      enableAdBlock: true, enableTrackingBlock: true, removeGlobalShorts: true, removeLiveVideos: true,
+      removeUpcomingVideos: true, removeMembersOnly: true, hideEndcards: true, enableAutoLogin: true,
+      disableAutoCaptions: true, forceOriginalAudio: true, enableLegacyEmojiFix: true,
+      enableSponsorBlock: false, enableReturnYouTubeDislike: false, enableDeArrow: false,
+      upgradeThumbnails: false, checkForUpdates: false, showWhatsNew: false
+    }, cfg),
+    fetch: 'pending',
+    evaluate: false
+  });
+  // The page's own JSON.stringify, before the bundle wraps it.
   const NS = win.JSON.stringify;
-  win.localStorage.setItem('ytaf-configuration', NS(Object.assign({
-    enableAdBlock: true, enableTrackingBlock: true, removeGlobalShorts: true, removeLiveVideos: true,
-    removeUpcomingVideos: true, removeMembersOnly: true, hideEndcards: true, enableAutoLogin: true,
-    disableAutoCaptions: true, forceOriginalAudio: true, enableLegacyEmojiFix: true,
-    enableSponsorBlock: false, enableReturnYouTubeDislike: false, enableDeArrow: false,
-    upgradeThumbnails: false, checkForUpdates: false, showWhatsNew: false
-  }, cfg)));
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  // Chrome 23 has it; the Chrome 38 environment takes it away all the same
-  // (as in upstream-fixes-test).
-  win.Element.prototype.remove = function remove() { if (this.parentNode) this.parentNode.removeChild(this); };
-  win.fetch = () => new Promise(() => {});
-  win.eval(code);
+  evaluate();
   const P = (obj) => win.JSON.parse(NS(obj));
-  return { win, doc: win.document, errors, xhr, P, XHR: win.XMLHttpRequest };
+  return { win, doc, errors, xhr, P, XHR: win.XMLHttpRequest };
 }
 
 // A switch of the settings panel, by its label, set to `on`.
 function setSwitch(win, label, on) {
   const doc = win.document;
   if (!doc.querySelector('.ytaf-ui-container')) {
-    const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-    Object.defineProperty(e, 'keyCode', { get: () => GREEN, configurable: true });
-    dispatchTrusted(doc.body, e);
+    trustedKey(win, GREEN);
   }
   const panel = doc.querySelector('.ytaf-ui-container');
   for (let i = 0; i < 20; i++) panel.ensurePage(i);
@@ -99,7 +83,7 @@ function setSwitch(win, label, on) {
   }
 }
 
-(async () => {
+run(async () => {
   const f = modern ? 'modern' : 'legacy';
   const n = (s) => `${f}: ${s}`;
   const env = boot({ blockedKeywords: ['  SPOILER ', 7, '', null], blockedChannels: 'not a list' });
@@ -394,6 +378,4 @@ function setSwitch(win, label, on) {
   }
 
   t(n('no page errors'), env.errors.length === 0, env.errors.join(' | '));
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})().catch((e) => { console.log('FAIL harness: ' + (e && e.stack || e)); process.exit(1); });
+});

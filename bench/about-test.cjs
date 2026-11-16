@@ -14,16 +14,12 @@
  * run 50 times faster, so the 15 s wait after the start is 0.3 s.
  */
 const fs = require('fs');
-const path = require('path');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, applyChrome87Downgrade, UA, setUserAgent, dispatchTrusted } = require('./chrome38-env.cjs');
+const { ROOT, createReporter, flavorFromArgs, readBundle, bootPage, trustedKey, wait: sleep, until: waitFor } = require('./harness.cjs');
 
-const ROOT = path.resolve(__dirname, '..');
-const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
 // `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
 // with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
-const modern = process.argv[3] === 'modern';
-const code = fs.readFileSync(bundlePath, 'utf8');
+const { modern } = flavorFromArgs();
+const code = readBundle();
 const INSTALLED = JSON.parse(fs.readFileSync(ROOT + '/package.json', 'utf8')).version;
 
 const RAW = 'https://raw.githubusercontent.com/foxi69/youtube-webos/main/';
@@ -38,18 +34,8 @@ const LAUNCH = 'luna://com.webos.applicationManager/launch';
 const KEY = { LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40, ENTER: 13, BACK: 461, GREEN: 404 };
 const SCALE = 50;
 const HOUR = 3600 * 1000;
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-function waitFor(cond, timeout = 3000) {
-  const end = Date.now() + timeout;
-  const poll = () => (cond() ? Promise.resolve(true) : Date.now() >= end ? Promise.resolve(false) : sleep(10).then(poll));
-  return poll();
-}
 
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra !== undefined ? '\n     ' + extra : '')); }
-};
+const { t, run } = createReporter();
 
 const listing = (version, manifest = {}) => JSON.stringify({
   packages: [{ id: 'youtube.leanback.v4', manifest: Object.assign({ version, ipkUrl: IPK, ipkHash: { sha256: SHA } }, manifest) }]
@@ -76,18 +62,9 @@ const CHANGELOG = [
  * test calls answerHomebrew()).
  */
 function boot(opts = {}) {
-  const errors = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => errors.push('jsdomError: ' + e.message));
-  vc.on('error', (...a) => errors.push('console.error: ' + a.join(' ')));
-  const dom = new JSDOM(`<!doctype html><html><body class="${opts.bodyClass || 'WEB_PAGE_TYPE_BROWSE'}"><ytlr-app></ytlr-app></body></html>`,
-    { runScripts: 'outside-only', url: 'https://www.youtube.com/tv', virtualConsole: vc, pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, modern ? UA.webos23 : UA.webos3);
-  win.launchParams = '{}';
   const routes = { [LISTING_URL]: 'listing' in opts ? opts.listing : listing('99.0.0'), [CHANGELOG_URL]: opts.changelog || CHANGELOG };
   const requests = [];
-  win.XMLHttpRequest = class {
+  const GitHub = class {
     open(method, url) { this.url = String(url); }
     send() {
       requests.push(this.url);
@@ -104,17 +81,7 @@ function boot(opts = {}) {
     setRequestHeader() {} getResponseHeader() { return null; } getAllResponseHeaders() { return ''; }
     addEventListener() {} abort() {}
   };
-  win.fetch = () => new Promise(() => {});
-  const realTimeout = win.setTimeout.bind(win);
-  win.setTimeout = (fn, ms, ...args) => realTimeout(fn, (ms || 0) / SCALE, ...args);
-  win.requestAnimationFrame = (cb) => realTimeout(() => cb(Date.now()), 0);
-  win.cancelAnimationFrame = () => {};
-  win.localStorage.setItem('ytaf-configuration', JSON.stringify(Object.assign({
-    enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-    enableDeArrow: false, upgradeThumbnails: false, enableAutoLogin: false, showWhatsNew: false
-  }, opts.cfg)));
-  win.localStorage.setItem('ytaf-seen-version', INSTALLED);
-  for (const [k, v] of Object.entries(opts.storage || {})) win.localStorage.setItem(k, v);
+  let realTimeout;
 
   // The webOS services: every call is kept; the Homebrew Channel's app info
   // is answered at once, the others when the test calls answer().
@@ -127,32 +94,44 @@ function boot(opts = {}) {
   const answerHomebrew = (kind) => {
     for (const c of calls) if (c.uri === HB_INFO && !c.answered) { c.answered = true; c.answer(homebrewAnswer(kind)); }
   };
-  if (homebrew !== 'none') {
-    win.PalmServiceBridge = function PalmServiceBridge() {
-      this.call = (uri, payload) => {
-        if ((opts.throwOn || []).indexOf(uri) !== -1) throw new Error('refused: ' + uri);
-        const call = { uri, params: JSON.parse(payload), answer: (res) => this.onservicecallback(JSON.stringify(res)) };
-        calls.push(call);
-        if (uri !== HB_INFO || opts.holdHomebrew) return;
-        call.answered = true;
-        realTimeout(() => call.answer(homebrewAnswer(homebrew)), 5);
-      };
+  function PalmServiceBridge() {
+    this.call = (uri, payload) => {
+      if ((opts.throwOn || []).indexOf(uri) !== -1) throw new Error('refused: ' + uri);
+      const call = { uri, params: JSON.parse(payload), answer: (res) => this.onservicecallback(JSON.stringify(res)) };
+      calls.push(call);
+      if (uri !== HB_INFO || opts.holdHomebrew) return;
+      call.answered = true;
+      realTimeout(() => call.answer(homebrewAnswer(homebrew)), 5);
     };
   }
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  win.Element.prototype.remove = function remove() { if (this.parentNode) this.parentNode.removeChild(this); };
-
   // Keys the page itself (YouTube) would get.
   const pageKeys = [];
-  win.document.addEventListener('keydown', (e) => pageKeys.push('down ' + e.keyCode));
-  win.document.addEventListener('keyup', (e) => pageKeys.push('up ' + e.keyCode));
-  win.eval(code);
+  const { win, doc, errors } = bootPage({
+    code,
+    bodyClass: opts.bodyClass || 'WEB_PAGE_TYPE_BROWSE',
+    xhr: GitHub,
+    config: Object.assign({
+      enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
+      enableDeArrow: false, upgradeThumbnails: false, enableAutoLogin: false, showWhatsNew: false
+    }, opts.cfg),
+    storage: Object.assign({ 'ytaf-seen-version': INSTALLED }, opts.storage),
+    setup(win) {
+      // Set before the environment, which takes it away again on the legacy build.
+      win.fetch = () => new Promise(() => {});
+      realTimeout = win.setTimeout.bind(win);
+      win.setTimeout = (fn, ms, ...args) => realTimeout(fn, (ms || 0) / SCALE, ...args);
+      win.requestAnimationFrame = (cb) => realTimeout(() => cb(Date.now()), 0);
+      win.cancelAnimationFrame = () => {};
+      if (homebrew !== 'none') win.PalmServiceBridge = PalmServiceBridge;
+    },
+    beforeEval(win) {
+      win.document.addEventListener('keydown', (e) => pageKeys.push('down ' + e.keyCode));
+      win.document.addEventListener('keyup', (e) => pageKeys.push('up ' + e.keyCode));
+    }
+  });
 
-  const doc = win.document;
   const press = (code, type = 'keydown') => {
-    const e = new win.KeyboardEvent(type, { bubbles: true, cancelable: true });
-    Object.defineProperty(e, 'keyCode', { get: () => code, configurable: true });
-    dispatchTrusted(doc.body, e);
+    trustedKey(win, code, doc.body, type);
   };
   const tap = (code) => { press(code, 'keydown'); press(code, 'keyup'); };
   const dialogs = () => [...doc.querySelectorAll('.ytaf-dialog')];
@@ -201,7 +180,7 @@ const settle = async (env, cond) => { if (cond) await waitFor(cond); else await 
 const callsTo = (env, uri) => env.calls.filter((c) => c.uri === uri);
 const visible = (n) => !!n && n.style.display !== 'none';
 
-(async () => {
+run(async () => {
   const f = modern ? 'modern' : 'legacy';
   const n = (s) => `${f}: ${s}`;
 
@@ -579,7 +558,4 @@ const visible = (n) => !!n && n.style.display !== 'none';
     t(n('What\'s New: no notes for this version'), env.reader().textContent === `No release notes for ${INSTALLED}.`,
       env.reader().textContent);
   }
-
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})().catch((e) => { console.log('FAIL harness: ' + (e && e.stack || e)); process.exit(1); });
+});

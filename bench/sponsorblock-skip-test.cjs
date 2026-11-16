@@ -9,28 +9,18 @@
  * The <video> is a stand-in whose time the test moves: a 'timeupdate' after
  * each move, 'seeking'/'seeked' after each seek the bundle makes.
  */
-const fs = require('fs');
-const path = require('path');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, applyChrome87Downgrade, UA, setUserAgent } = require('./chrome38-env.cjs');
+const { createReporter, flavorFromArgs, readBundle, bootPage, wait } = require('./harness.cjs');
 
-const ROOT = path.resolve(__dirname, '..');
-const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
 // `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
 // with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
-const modern = process.argv[3] === 'modern';
-const code = fs.readFileSync(bundlePath, 'utf8');
+const { modern } = flavorFromArgs();
+const code = readBundle();
 
 const VIDEO_ID = 'abcdefghijk';
 const PRIMARY = 'https://sponsor.ajay.app/api/skipSegments/';
 const FALLBACK = 'https://sponsorblock.inf.re/api/skipSegments/';
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra !== undefined ? '\n     ' + extra : '')); }
-};
+const { t, run } = createReporter();
 
 const seg = (category, start, end, actionType = 'skip') =>
   ({ UUID: `${category}-${start}`, category, actionType, segment: [start, end] });
@@ -72,25 +62,20 @@ function fakeVideo(win, video, duration) {
  * each server answers: { primary: status, fallback: status } (200 by default).
  */
 async function boot(cfg, segments, opts = {}) {
-  const errors = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => { if (!/Not implemented: navigation/.test(e.message)) errors.push(e.message); });
-  const dom = new JSDOM(`<!doctype html><html><body class="WEB_PAGE_TYPE_WATCH"><ytlr-app>
-    <div id="ytlr-player__player-container-player"><video></video></div></ytlr-app></body></html>`,
-  { runScripts: 'outside-only', url: `https://www.youtube.com/tv#/watch?v=${VIDEO_ID}`, virtualConsole: vc, pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, modern ? UA.webos23 : UA.webos3);
-  win.launchParams = '{}';
-  win.XMLHttpRequest = class { open() {} send() {} setRequestHeader() {} getResponseHeader() { return null; } addEventListener() {} };
-  win.localStorage.setItem('ytaf-configuration', JSON.stringify(Object.assign({
-    enableAdBlock: false, enableSponsorBlock: true, enableReturnYouTubeDislike: false,
-    enableDeArrow: false, upgradeThumbnails: false, enableAutoLogin: false,
-    checkForUpdates: false, showWhatsNew: false, sbPeriodicRefresh: false
-  }, cfg)));
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  // Chrome 23 has it; the Chrome 38 environment takes it away all the same
-  // (as in upstream-fixes-test).
-  win.Element.prototype.remove = function remove() { if (this.parentNode) this.parentNode.removeChild(this); };
+  const { win, errors, evaluate } = bootPage({
+    code,
+    bodyClass: 'WEB_PAGE_TYPE_WATCH',
+    inner: '\n    <div id="ytlr-player__player-container-player"><video></video></div>',
+    url: `https://www.youtube.com/tv#/watch?v=${VIDEO_ID}`,
+    ignoreNavigation: true,
+    consoleErrors: false,
+    config: Object.assign({
+      enableAdBlock: false, enableSponsorBlock: true, enableReturnYouTubeDislike: false,
+      enableDeArrow: false, upgradeThumbnails: false, enableAutoLogin: false,
+      checkForUpdates: false, showWhatsNew: false, sbPeriodicRefresh: false
+    }, cfg),
+    evaluate: false
+  });
   const asked = [];
   const api = opts.api || {};
   win.fetch = (resource) => {
@@ -111,7 +96,7 @@ async function boot(cfg, segments, opts = {}) {
     const held = win.Date.now();
     win.Date.now = () => held;
   }
-  win.eval(code);
+  evaluate();
   // The handler starts a moment after the page (about 0.8 s): wait for its
   // request, then for the answer to be applied.
   for (let i = 0; i < 100 && !asked.length; i++) await wait(50);
@@ -120,7 +105,7 @@ async function boot(cfg, segments, opts = {}) {
   return { win, errors, asked, video, ...v, toasts, sb: () => win.sponsorblock };
 }
 
-(async () => {
+run(async () => {
   const f = modern ? 'modern' : 'legacy';
   const n = (s) => `${f}: ${s}`;
 
@@ -318,7 +303,4 @@ async function boot(cfg, segments, opts = {}) {
     t(n('...and nothing is skipped from a 404\'s body'), env.state.time === 30.2 && env.state.seeks.length === 0,
       `${env.state.time} ${env.state.seeks.join()}`);
   }
-
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})().catch((e) => { console.log('FAIL harness: ' + (e && e.stack || e)); process.exit(1); });
+});

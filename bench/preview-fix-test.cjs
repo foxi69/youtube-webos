@@ -20,17 +20,12 @@
  * getComputedStyle (which applies the bundle's !important rules over them)
  * says what paints.
  */
-const fs = require('fs');
-const path = require('path');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, applyChrome87Downgrade, UA, setUserAgent, dispatchTrusted } = require('./chrome38-env.cjs');
+const { createReporter, flavorFromArgs, readBundle, bootPage, trustedKey, wait } = require('./harness.cjs');
 
-const ROOT = path.resolve(__dirname, '..');
-const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
 // `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
 // with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
-const modern = process.argv[3] === 'modern';
-const code = fs.readFileSync(bundlePath, 'utf8');
+const { modern } = flavorFromArgs();
+const code = readBundle();
 
 const UA_WEBOS6 = 'Mozilla/5.0 (Web0S; Linux/SmartTV) AppleWebKit/537.36 (KHTML, like Gecko) ' +
   'Chrome/79.0.3945.79 Safari/537.36 WebAppManager webOS.TV-2021';
@@ -38,13 +33,8 @@ const GREEN = 404;
 const CLEARED = 'ytaf-pfix-cleared';
 const ON = 'ytaf-pfix-clear';
 const TICK = 1150;   // one of the module's 1 s re-checks, and a little more
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra !== undefined ? '\n     ' + extra : '')); }
-};
+const { t, run } = createReporter();
 
 const BLACK = 'background-color: rgb(0, 0, 0)';
 // The browse page: two tiles in a row; the player, mounted once, under it.
@@ -81,26 +71,20 @@ const ORDER = ['label1', 'tint1', 'glass1', 'shade1', 'thumb1', 'tile1', 'label2
 
 /** The bundle on the browse page as `webos` (3, 6 or 23), with `cfg` stored. */
 function boot(webos, cfg = {}) {
-  const errors = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => errors.push(String(e && e.message)));
-  vc.on('error', (...a) => errors.push('console.error: ' + a.join(' ')));
-  const dom = new JSDOM(PAGE, { runScripts: 'outside-only', url: 'https://www.youtube.com/tv', virtualConsole: vc, pretendToBeVisual: true });
-  const win = dom.window;
-  const doc = win.document;
-  setUserAgent(win, webos === 23 ? UA.webos23 : webos === 6 ? UA_WEBOS6 : UA.webos3);
-  win.launchParams = '{}';
-  win.XMLHttpRequest = class { open() {} send() {} setRequestHeader() {} getResponseHeader() { return null; } addEventListener() {} };
-  win.localStorage.setItem('ytaf-configuration', JSON.stringify(Object.assign({
-    enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-    enableDeArrow: false, upgradeThumbnails: false, enableAutoLogin: false,
-    checkForUpdates: false, showWhatsNew: false
-  }, cfg)));
-  if (webos === 23) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  // Chrome 23 has it; the Chrome 38 environment takes it away all the same
-  // (as in upstream-fixes-test).
-  win.Element.prototype.remove = function remove() { if (this.parentNode) this.parentNode.removeChild(this); };
-  win.fetch = () => new Promise(() => {});
+  // webOS 6 runs the legacy bundle too, in the same Chrome 38 environment.
+  const { win, doc, errors, evaluate } = bootPage({
+    code,
+    html: PAGE,
+    modern: webos === 23,
+    userAgent: webos === 6 ? UA_WEBOS6 : undefined,
+    config: Object.assign({
+      enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
+      enableDeArrow: false, upgradeThumbnails: false, enableAutoLogin: false,
+      checkForUpdates: false, showWhatsNew: false
+    }, cfg),
+    fetch: 'pending',
+    evaluate: false
+  });
 
   const video = doc.querySelector('video');
   const state = { playing: false, ended: false, rect: TILE1, order: ORDER.slice(), fromPoint: [] };
@@ -129,9 +113,9 @@ function boot(webos, cfg = {}) {
       return out.concat([doc.body, doc.documentElement]);
     };
   }
-  win.eval(code);
+  evaluate();
 
-  const fire = (type) => video.dispatchEvent(new win.Event(type));
+  const fire =(type) => video.dispatchEvent(new win.Event(type));
   const env = {
     win, doc, errors, video, state,
     el: (id) => doc.getElementById(id),
@@ -147,9 +131,7 @@ function boot(webos, cfg = {}) {
     style: (id) => win.getComputedStyle(doc.getElementById(id)),
     async page(type) { doc.body.className = 'WEB_PAGE_TYPE_' + type; await wait(30); },
     openPanel() {
-      const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-      Object.defineProperty(e, 'keyCode', { get: () => GREEN, configurable: true });
-      dispatchTrusted(doc.body, e);
+      trustedKey(win, GREEN);
       const tab = Array.prototype.find.call(doc.querySelectorAll('.ytaf-tab-btn'), (b) => b.textContent.trim() === 'UI Tweaks');
       if (tab) tab.click();
       return !!tab;
@@ -171,7 +153,7 @@ function boot(webos, cfg = {}) {
   return env;
 }
 
-(async () => {
+run(async () => {
   if (modern) {
     // ---- webOS 23: not a legacy TV, the fix stays off ----
     const env = boot(23);
@@ -373,7 +355,4 @@ function boot(webos, cfg = {}) {
       env.win.close();
     }
   }
-
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})().catch((e) => { console.log('FAIL harness: ' + (e && e.stack || e)); process.exit(1); });
+});

@@ -15,26 +15,16 @@
  * line in a two-column section, the text box and its Add button side by side.
  * The page scrolls: its rows move up by its scrollTop.
  */
-const fs = require('fs');
-const path = require('path');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, applyChrome87Downgrade, UA, setUserAgent, dispatchTrusted } = require('./chrome38-env.cjs');
+const { createReporter, flavorFromArgs, readBundle, bootPage, trustedKey, wait } = require('./harness.cjs');
 
-const ROOT = path.resolve(__dirname, '..');
-const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
 // `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
 // with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
-const modern = process.argv[3] === 'modern';
-const code = fs.readFileSync(bundlePath, 'utf8');
+const { modern } = flavorFromArgs();
+const code = readBundle();
 
 const KEY = { LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40, OK: 13, BACK: 461, ESC: 27, GREEN: 404 };
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra !== undefined ? '\n     ' + extra : '')); }
-};
+const { t, run } = createReporter();
 
 // ---- The layout ----
 // The panel, the tabs along its top, the open page under them. A page is
@@ -141,38 +131,25 @@ function installLayout(win) {
 
 // ---- The bundle ----
 function boot() {
-  const errors = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => errors.push('jsdomError: ' + e.message));
-  vc.on('error', (...a) => errors.push('console.error: ' + a.join(' ')));
-  const dom = new JSDOM('<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app>' +
-    '<button id="outside">YouTube</button></ytlr-app></body></html>',
-  { runScripts: 'outside-only', url: 'https://www.youtube.com/tv', virtualConsole: vc, pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, modern ? UA.webos23 : UA.webos3);
-  win.launchParams = '{}';
-  win.XMLHttpRequest = class { open() {} send() {} setRequestHeader() {} getResponseHeader() { return null; } addEventListener() {} };
-  win.fetch = () => new Promise(() => {});
-  // The idle build chain runs only when the test lets it (pump).
-  let rafQ = [];
-  win.requestAnimationFrame = (cb) => { rafQ.push(cb); return rafQ.length; };
-  win.cancelAnimationFrame = () => {};
-  win.localStorage.setItem('ytaf-configuration', JSON.stringify({
-    enableAdBlock: true, enableSponsorBlock: true, enableReturnYouTubeDislike: true,
-    upgradeThumbnails: false, enableAutoLogin: false, enableDeArrow: false,
-    checkForUpdates: false, showWhatsNew: false
-  }));
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  // Chrome 23 has it; the Chrome 38 environment takes it away all the same
-  // (as in upstream-fixes-test).
-  win.Element.prototype.remove = function remove() { if (this.parentNode) this.parentNode.removeChild(this); };
-  installLayout(win);
-  win.eval(code);
-  const pump = () => { for (let i = 0; i < 20; i++) { const q = rafQ; rafQ = []; for (const cb of q) cb(Date.now()); } };
-  return { win, d: win.document, errors, pump };
+  const { win, doc, errors, frames } = bootPage({
+    code,
+    inner: '<button id="outside">YouTube</button>',
+    // The idle build chain runs only when the test lets it (pump).
+    raf: 'manual',
+    config: {
+      enableAdBlock: true, enableSponsorBlock: true, enableReturnYouTubeDislike: true,
+      upgradeThumbnails: false, enableAutoLogin: false, enableDeArrow: false,
+      checkForUpdates: false, showWhatsNew: false
+    },
+    // Set before the environment, which takes it away again on the legacy build.
+    setup(win) { win.fetch = () => new Promise(() => {}); },
+    beforeEval: installLayout
+  });
+  const pump = () => { for (let i = 0; i < 20; i++) frames.pump(); };
+  return { win, d: doc, errors, pump };
 }
 
-(async () => {
+run(async () => {
   const f = modern ? 'modern' : 'legacy';
   const n = (s) => `${f}: ${s}`;
   const { win, d, errors, pump } = boot();
@@ -188,9 +165,7 @@ function boot() {
   const lost = [];
   const press = (keyCode) => {
     for (const type of ['keydown', 'keyup']) {
-      const e = new win.KeyboardEvent(type, { bubbles: true, cancelable: true });
-      Object.defineProperty(e, 'keyCode', { get: () => keyCode, configurable: true });
-      dispatchTrusted(focused() || d.body, e);
+      trustedKey(win, keyCode, focused() || d.body, type);
     }
     if (isOpen()) {
       presses++;
@@ -428,7 +403,4 @@ function boot() {
   t(n('Back closes it from the text box as well'), !!box && !isOpen());
 
   t(n('no page errors'), errors.length === 0, errors.join(' | '));
-
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})().catch((e) => { console.log('FAIL harness: ' + (e && e.stack || e)); process.exit(1); });
+});

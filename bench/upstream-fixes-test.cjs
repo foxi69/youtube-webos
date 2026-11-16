@@ -8,70 +8,57 @@
  *
  * Usage: node bench/upstream-fixes-test.cjs [dist/webOSUserScripts/userScript.js]
  */
-const fs = require('fs');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent, dispatchTrusted, applyChrome87Downgrade } = require('./chrome38-env.cjs');
+const { createReporter, bootPage, trustedKey, UA, wait } = require('./harness.cjs');
 
-const bundlePath = process.argv[2] || 'dist/webOSUserScripts/userScript.js';
-// `modern`: the modern bundle (webOS 22 and newer), in jsdom's own engine with a
-// webOS 23 user agent, instead of the legacy one in a Chrome 38 environment.
-const modern = process.argv[3] === 'modern';
+// With `modern` on the command line, bootPage runs the modern bundle (webOS 22
+// and newer) in a Chrome 87 environment, instead of the legacy one in a
+// Chrome 38 environment. Both with a webOS 23 user agent here.
 const RED = 403;
 const GREEN = 404;
 const FIVE = 53; // Skip to Next Chapter, by default.
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const pad = 'z'.repeat(600);
 
 function boot(cfg, opts = {}) {
-  const errors = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => errors.push(e.message));
-  const dom = new JSDOM(`<!doctype html><html><body class="${opts.bodyClass || 'WEB_PAGE_TYPE_BROWSE'}"><ytlr-app>${opts.html || ''}</ytlr-app></body></html>`,
-    { runScripts: 'outside-only', url: opts.url || 'https://www.youtube.com/tv', virtualConsole: vc, pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, UA.webos23);
-  win.launchParams = '{}';
-  win.XMLHttpRequest = class { open(){} send(){} setRequestHeader(){} getResponseHeader(){return null;} addEventListener(){} };
-  win.requestAnimationFrame = (cb) => setTimeout(cb, 0);
-  win.cancelAnimationFrame = () => {};
   // A clock that can jump, for the time windows and the standby, or stand
   // still (frozenAt) for a throttle.
   const clock = { offset: 0, frozenAt: null };
-  const RealDate = win.Date;
-  const at = () => (clock.frozenAt !== null ? clock.frozenAt : RealDate.now() + clock.offset);
-  win.Date = class extends RealDate {
-    constructor(...args) {
-      if (args.length) super(...args);
-      else super(at());
-    }
-    static now() { return at(); }
-  };
-  const NS = win.JSON.stringify;
-  win.localStorage.setItem('ytaf-configuration', NS(Object.assign({
-    enableAdBlock: true, enableLegacyEmojiFix: false, enableSponsorBlock: false,
-    enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false,
-    checkForUpdates: false, showWhatsNew: false
-  }, cfg)));
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  win.Element.prototype.remove = function remove() { if (this.parentNode) this.parentNode.removeChild(this); };
-  // Requests that never answer: a handler stays as it is.
-  win.fetch = () => new Promise(() => {});
-  if (opts.setup) opts.setup(win);
-  win.eval(fs.readFileSync(bundlePath, 'utf8'));
-  const key = (code) => {
-    const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-    Object.defineProperty(e, 'keyCode', { get: () => code, configurable: true });
-    dispatchTrusted(win.document.body, e);
-  };
+  let NS;
+  const { win, errors } = bootPage({
+    bodyClass: opts.bodyClass || 'WEB_PAGE_TYPE_BROWSE',
+    inner: opts.html || '',
+    url: opts.url,
+    consoleErrors: false,
+    userAgent: UA.webos23,
+    config: Object.assign({
+      enableAdBlock: true, enableLegacyEmojiFix: false, enableSponsorBlock: false,
+      enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false,
+      checkForUpdates: false, showWhatsNew: false
+    }, cfg),
+    setup(win) {
+      win.requestAnimationFrame = (cb) => setTimeout(cb, 0);
+      win.cancelAnimationFrame = () => {};
+      const RealDate = win.Date;
+      const at = () => (clock.frozenAt !== null ? clock.frozenAt : RealDate.now() + clock.offset);
+      win.Date = class extends RealDate {
+        constructor(...args) {
+          if (args.length) super(...args);
+          else super(at());
+        }
+        static now() { return at(); }
+      };
+      // The page's own JSON.stringify, before the bundle wraps it.
+      NS = win.JSON.stringify;
+    },
+    // Requests that never answer: a handler stays as it is.
+    fetch: 'pending',
+    beforeEval: opts.setup
+  });
+  const key = (code) => { trustedKey(win, code); };
   const toasts = () => (win.document.querySelector('.ytaf-notification-container') || {}).textContent || '';
   return { win, errors, clock, key, toasts, parse: (o) => win.JSON.parse(NS(o)) };
 }
 
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra ? '\n     ' + extra : '')); }
-};
+const { t, done } = createReporter();
 
 setTimeout(async () => {
   // ---- No-ad flag ----
@@ -357,6 +344,5 @@ setTimeout(async () => {
     t('the clock is right on coming back', text() !== before && text() !== '', `${before} -> ${text()}`);
   }
 
-  console.log(`${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
+  done();
 }, 0);

@@ -12,31 +12,16 @@
  * The page's clock is a fake the test sets (real time plus an offset); the
  * text is compared with what Intl gives for that time.
  */
-const fs = require('fs');
-const path = require('path');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, applyChrome87Downgrade, UA, setUserAgent, dispatchTrusted } = require('./chrome38-env.cjs');
+const { createReporter, flavorFromArgs, readBundle, bootPage, trustedKey, wait: sleep, until: waitFor } = require('./harness.cjs');
 
-const ROOT = path.resolve(__dirname, '..');
-const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
 // `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
 // with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
-const modern = process.argv[3] === 'modern';
-const code = fs.readFileSync(bundlePath, 'utf8');
+const { modern } = flavorFromArgs();
+const code = readBundle();
 const GREEN = 404;
 const MIN = 60000;
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-function waitFor(cond, timeout = 3000) {
-  const end = Date.now() + timeout;
-  const poll = () => (cond() ? Promise.resolve(true) : Date.now() >= end ? Promise.resolve(false) : sleep(10).then(poll));
-  return poll();
-}
 
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra !== undefined ? '\n     ' + extra : '')); }
-};
+const { t, run } = createReporter();
 
 const TIME = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: 'numeric' });
 const DATETIME = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: 'numeric' });
@@ -49,38 +34,30 @@ const DATETIME = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeri
 const MID = new Date(2026, 2, 7, 15, 0, 10);
 
 function boot(cfg, start, hold = false) {
-  const errors = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => errors.push('jsdomError: ' + e.message));
-  vc.on('error', (...a) => errors.push('console.error: ' + a.join(' ')));
-  const dom = new JSDOM('<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app></ytlr-app></body></html>',
-    { runScripts: 'outside-only', url: 'https://www.youtube.com/tv', virtualConsole: vc, pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, modern ? UA.webos23 : UA.webos3);
-  win.launchParams = '{}';
-  win.XMLHttpRequest = class { open() {} send() {} setRequestHeader() {} getResponseHeader() { return null; } addEventListener() {} };
-  win.fetch = () => new Promise(() => {});
-  win.requestAnimationFrame = (cb) => win.setTimeout(() => cb(Date.now()), 0);
-  win.cancelAnimationFrame = () => {};
-  win.localStorage.setItem('ytaf-configuration', JSON.stringify(Object.assign({
-    enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false, enableDeArrow: false,
-    upgradeThumbnails: false, enableAutoLogin: false, checkForUpdates: false, showWhatsNew: false
-  }, cfg)));
-
-  const RealDate = win.Date;
   // The page's time stands still at `start` while the bundle loads (and, with
   // `hold`, until release()), so a slow start (CI, coverage) does not carry it
   // past the minute the test is about.
   const clock = { offset: 0, held: start ? start.getTime() : null };
+  let RealDate;
   const pageNow = () => (clock.held !== null ? clock.held : RealDate.now() + clock.offset);
-  class FakeDate extends RealDate {
-    constructor(...args) { if (args.length) super(...args); else super(pageNow()); }
-    static now() { return pageNow(); }
-  }
-  win.Date = FakeDate;
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  win.Element.prototype.remove = function remove() { if (this.parentNode) this.parentNode.removeChild(this); };
-  win.eval(code);
+  const { win, doc, errors } = bootPage({
+    code,
+    raf: 'timer',
+    config: Object.assign({
+      enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false, enableDeArrow: false,
+      upgradeThumbnails: false, enableAutoLogin: false, checkForUpdates: false, showWhatsNew: false
+    }, cfg),
+    setup(win) {
+      // Set before the environment, which takes it away again on the legacy build.
+      win.fetch = () => new Promise(() => {});
+      RealDate = win.Date;
+      class FakeDate extends RealDate {
+        constructor(...args) { if (args.length) super(...args); else super(pageNow()); }
+        static now() { return pageNow(); }
+      }
+      win.Date = FakeDate;
+    }
+  });
   const release = () => {
     if (clock.held === null) return;
     clock.offset = clock.held - RealDate.now();
@@ -88,16 +65,13 @@ function boot(cfg, start, hold = false) {
   };
   if (!hold) release();
 
-  const doc = win.document;
   const now = () => new RealDate(pageNow());
   const el = () => doc.querySelector('.webOs-watch');
   const text = () => (el() || {}).textContent || '';
   const shown = () => !!el() && el().style.display === 'block';
   const hidden = () => !!el() && el().style.display === 'none';
   const key = (code) => {
-    const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-    Object.defineProperty(e, 'keyCode', { get: () => code, configurable: true });
-    dispatchTrusted(doc.body, e);
+    trustedKey(win, code);
   };
   const panelOpen = () => { const p = doc.querySelector('.ytaf-ui-container'); return !!p && p.style.display !== 'none'; };
   // The panel row of a setting, by its label.
@@ -124,7 +98,7 @@ function boot(cfg, start, hold = false) {
   return { win, doc, errors, clock, release, now, el, text, shown, hidden, toggle, cycleClock, stateChange, stored: () => JSON.parse(win.localStorage.getItem('ytaf-configuration')) };
 }
 
-(async () => {
+run(async () => {
   const f = modern ? 'modern' : 'legacy';
   const n = (s) => `${f}: ${s}`;
 
@@ -270,7 +244,4 @@ function boot(cfg, start, hold = false) {
     t(n('the player gone: shown again'), await waitFor(env.shown, 1000), env.el().style.display);
     t(n('over a video: no page errors'), env.errors.length === 0, env.errors.join(' | '));
   }
-
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})().catch((e) => { console.log('FAIL harness: ' + (e && e.stack || e)); process.exit(1); });
+});

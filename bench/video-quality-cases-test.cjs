@@ -18,7 +18,8 @@
 const fs = require('fs');
 const path = require('path');
 const { JSDOM, VirtualConsole } = require('jsdom');
-const { UA, setUserAgent, dispatchTrusted, applyChrome38Downgrade, applyChrome87Downgrade } = require('./chrome38-env.cjs');
+const { UA, setUserAgent, applyChrome38Downgrade, applyChrome87Downgrade } = require('./chrome38-env.cjs');
+const { createReporter, trustedKey, wait } = require('./harness.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
@@ -30,15 +31,10 @@ const bundle = fs.readFileSync(bundlePath, 'utf8');
 const GREEN = 404;
 const KEY = 'yt-player-quality';
 const YEAR = 365 * 24 * 60 * 60 * 1000;
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 // webOS 25, which gets the modern build.
 const UA25 = UA.webos23.replace('webOS.TV-2023', 'webOS.TV-2025');
 
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra !== undefined ? '\n     ' + extra : '')); }
-};
+const { t, run } = createReporter();
 // Every boot's jsdomErrors (a script error on the page), checked at the end.
 const allErrors = [];
 
@@ -116,9 +112,7 @@ function boot(cfg, { player = true, events = true, record, ua, quality = 'hd720'
   const stored = () => { try { const r = JSON.parse(win.localStorage.getItem(KEY)); return r && { ...r, data: JSON.parse(r.data) }; } catch { return null; } };
   const toggle = (label, on) => {
     if (!win.document.querySelector('.ytaf-ui-container')) {
-      const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-      Object.defineProperty(e, 'keyCode', { get: () => GREEN, configurable: true });
-      dispatchTrusted(win.document.body, e);
+      trustedKey(win, GREEN);
     }
     const input = Array.from(win.document.querySelectorAll('.ytaf-ui-container label'))
       .find((l) => l.querySelector('.label-text')?.textContent === label)?.querySelector('input');
@@ -129,7 +123,7 @@ function boot(cfg, { player = true, events = true, record, ua, quality = 'hd720'
   return { win, p, s, log, errors, emit, toasts, stored, toggle, video: p.querySelector('video') };
 }
 
-(async () => {
+run(async () => {
   // ---- A video below its best level ----
   {
     // Attached while it plays with its levels not listed yet: nothing to compare with.
@@ -348,6 +342,4 @@ function boot(cfg, { player = true, events = true, record, ua, quality = 'hd720'
   }
 
   t('no jsdomError in any case', allErrors.length === 0, allErrors[0]);
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})();
+});

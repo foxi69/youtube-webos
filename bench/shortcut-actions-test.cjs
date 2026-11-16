@@ -14,28 +14,18 @@
  * is counted. The sleep timer's and the keep-alive's long timers are held by
  * the test and run when it says.
  */
-const fs = require('fs');
-const path = require('path');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, applyChrome87Downgrade, UA, setUserAgent, dispatchTrusted } = require('./chrome38-env.cjs');
+const { createReporter, flavorFromArgs, readBundle, bootPage, dispatchTrusted, wait } = require('./harness.cjs');
 
-const ROOT = path.resolve(__dirname, '..');
-const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
 // `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
 // with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
-const modern = process.argv[3] === 'modern';
-const code = fs.readFileSync(bundlePath, 'utf8');
+const { modern } = flavorFromArgs();
+const code = readBundle();
 
 const KEY = { RED: 403, GREEN: 404, YELLOW: 405, BLUE: 406, UP: 38, BACK: 461 };
 const digit = (n) => 48 + n;
 const VIDEO_ID = 'abcdefghijk';
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra !== undefined ? '\n     ' + extra : '')); }
-};
+const { t, run } = createReporter();
 
 // Which number key runs which action in these tests.
 const BINDINGS = {
@@ -57,26 +47,23 @@ const K = { comments: 1, description: 2, save: 3, subs: 4, live: 6, sleep: 7, au
  * player. Timers of a minute or more are held in `long` instead of running.
  */
 async function boot(cfg = {}, opts = {}) {
-  const errors = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => { if (!/Not implemented: navigation/.test(e.message)) errors.push(e.message); });
-  vc.on('error', (...args) => errors.push('console.error: ' + args.map(String).join(' ')));
   const warnings = [];
-  vc.on('warn', (...args) => warnings.push(args.map(String).join(' ')));
   const page = opts.page || 'WEB_PAGE_TYPE_WATCH';
-  const url = page === 'WEB_PAGE_TYPE_WATCH' ? `https://www.youtube.com/tv#/watch?v=${VIDEO_ID}` : 'https://www.youtube.com/tv#/';
-  const dom = new JSDOM(`<!doctype html><html><body class="${page}"><ytlr-app>
-    <div id="ytlr-player__player-container-player"><video></video></div>${opts.html || ''}</ytlr-app></body></html>`,
-  { runScripts: 'outside-only', url, virtualConsole: vc, pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, modern ? UA.webos23 : UA.webos3);
-  win.launchParams = '{}';
-  win.XMLHttpRequest = class { open() {} send() {} setRequestHeader() {} getResponseHeader() { return null; } addEventListener() {} };
-  win.localStorage.setItem('ytaf-configuration', JSON.stringify(Object.assign({
-    enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-    enableDeArrow: false, upgradeThumbnails: false, enableAutoLogin: false,
-    checkForUpdates: false, showWhatsNew: false
-  }, BINDINGS, cfg)));
+  const { win, errors, evaluate } = bootPage({
+    code,
+    bodyClass: page,
+    inner: `\n    <div id="ytlr-player__player-container-player"><video></video></div>${opts.html || ''}`,
+    url: page === 'WEB_PAGE_TYPE_WATCH' ? `https://www.youtube.com/tv#/watch?v=${VIDEO_ID}` : 'https://www.youtube.com/tv#/',
+    ignoreNavigation: true,
+    console: { warn: (...args) => warnings.push(args.map(String).join(' ')) },
+    config: Object.assign({
+      enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
+      enableDeArrow: false, upgradeThumbnails: false, enableAutoLogin: false,
+      checkForUpdates: false, showWhatsNew: false
+    }, BINDINGS, cfg),
+    fetch: 'pending',
+    evaluate: false
+  });
   // The long timers (the sleep timer, the blackout's keep-alive), held.
   const long = [];
   let nextId = 1e6;
@@ -94,11 +81,6 @@ async function boot(cfg = {}, opts = {}) {
   win.setInterval = holdOr(realInterval, 'interval');
   win.clearTimeout = dropOr(realClearTimeout);
   win.clearInterval = dropOr(realClearInterval);
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  // Chrome 23 has it; the Chrome 38 environment takes it away all the same
-  // (as in upstream-fixes-test).
-  win.Element.prototype.remove = function remove() { if (this.parentNode) this.parentNode.removeChild(this); };
-  win.fetch = () => new Promise(() => {});
 
   // The <video>: paused or playing, and what was asked of it.
   const video = win.document.querySelector('video');
@@ -118,7 +100,7 @@ async function boot(cfg = {}, opts = {}) {
   const sentAt = [];
   win.document.addEventListener('keydown', (e) => { if (e.__ytafSynthetic) { sent.push(e.keyCode); sentAt.push(Date.now()); } });
 
-  win.eval(code);
+  evaluate();
   // The Return YouTube Dislike handler is made 0.5 s after the page.
   await wait(opts.settle || 600);
 
@@ -171,7 +153,7 @@ async function boot(cfg = {}, opts = {}) {
   return { win, doc: win.document, errors, warnings, clearToasts, video, vs, long, sent, sentAt, backs, toasts, press, clicks, playerButton, byHtml };
 }
 
-(async () => {
+run(async () => {
   const f = modern ? 'modern' : 'legacy';
   const n = (s) => `${f}: ${s}`;
   const D = digit;
@@ -636,7 +618,4 @@ async function boot(cfg = {}, opts = {}) {
       env.warnings.some((w) => /Unknown action: retired_action/.test(w)) && env.errors.length === 0,
     env.warnings.join(' | '));
   }
-
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})().catch((e) => { console.log('FAIL harness: ' + (e && e.stack || e)); process.exit(1); });
+});

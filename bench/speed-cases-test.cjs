@@ -15,37 +15,25 @@
  *
  * Usage: node bench/speed-cases-test.cjs <bundle> [legacy|modern]
  */
-const fs = require('fs');
-const path = require('path');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { UA, setUserAgent, dispatchTrusted, applyChrome38Downgrade, applyChrome87Downgrade } = require('./chrome38-env.cjs');
+const { createReporter, readBundle, bootPage, failingXHR, trustedKey, wait } = require('./harness.cjs');
 
-const ROOT = path.resolve(__dirname, '..');
-const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
-// `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
-// with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
-const modern = process.argv[3] === 'modern';
-const bundle = fs.readFileSync(bundlePath, 'utf8');
+// With `modern`, bootPage runs the modern bundle (webOS 22 and newer) in a
+// Chrome 87 environment with a webOS 23 user agent, instead of the legacy one
+// in a Chrome 38 one.
+const bundle = readBundle();
 
 const GREEN = 404;
 // RELOAD_DELAY_MS in playback-speed.js, with room.
 const AFTER_DELAY_MS = 800 + 150;
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra !== undefined ? '\n     ' + extra : '')); }
-};
+const { t, run } = createReporter();
 // One remote press: keydown then keyup of each code (a colour button sends two
 // at once). Says whether the page kept the key from YouTube.
 const press = async (win, ...codes) => {
   let held = false;
   for (const type of ['keydown', 'keyup']) {
     for (const keyCode of codes) {
-      const e = new win.KeyboardEvent(type, { bubbles: true, cancelable: true });
-      Object.defineProperty(e, 'keyCode', { get: () => keyCode, configurable: true });
-      dispatchTrusted(win.document.activeElement || win.document.body, e);
+      const e = trustedKey(win, keyCode, win.document.activeElement || win.document.body, type);
       held = held || e.defaultPrevented;
     }
   }
@@ -56,26 +44,22 @@ const press = async (win, ...codes) => {
 const allErrors = [];
 
 function boot(cfg = {}, { live = false, page = 'WEB_PAGE_TYPE_WATCH' } = {}) {
-  const errors = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => { errors.push(e.message); allErrors.push(e.message); });
-  const dom = new JSDOM(`<!doctype html><html><body class="${page}"><ytlr-app>` +
-    '<div id="ytlr-player__player-container-player"><video></video></div></ytlr-app></body></html>',
-  { runScripts: 'outside-only', url: 'https://www.youtube.com/tv#/watch?v=abcdefghijk', virtualConsole: vc, pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, modern ? UA.webos23 : UA.webos3);
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  // Chrome 23 has it; the Chrome 38 environment takes it away all the same.
-  win.Element.prototype.remove = function remove() { if (this.parentNode) this.parentNode.removeChild(this); };
-  win.launchParams = '{}';
-  win.fetch = () => Promise.reject(new Error('offline'));
-  win.XMLHttpRequest = class {
-    open() {} send() { if (this.onerror) this.onerror(); }
-    setRequestHeader() {} getResponseHeader() { return null; } addEventListener() {}
-  };
-  let rafQ = [];
-  win.requestAnimationFrame = (cb) => { rafQ.push(cb); return rafQ.length; };
-  win.cancelAnimationFrame = () => {};
+  const { win, errors, frames, evaluate } = bootPage({
+    code: bundle,
+    bodyClass: page,
+    inner: '<div id="ytlr-player__player-container-player"><video></video></div>',
+    url: 'https://www.youtube.com/tv#/watch?v=abcdefghijk',
+    consoleErrors: false,
+    onError: (text) => allErrors.push(text),
+    xhr: failingXHR(),
+    raf: 'manual',
+    config: Object.assign({
+      enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
+      upgradeThumbnails: false, enableAutoLogin: false
+    }, cfg),
+    fetch: () => Promise.reject(new Error('offline')),
+    evaluate: false
+  });
   // What the speed feature needs to install.
   win.AudioDecoder = class {};
   win.AudioContext = class {
@@ -84,10 +68,6 @@ function boot(cfg = {}, { live = false, page = 'WEB_PAGE_TYPE_WATCH' } = {}) {
     close() { this.state = 'closed'; }
   };
   win.MediaSource = class { addSourceBuffer() {} };
-  win.localStorage.setItem('ytaf-configuration', JSON.stringify(Object.assign({
-    enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-    upgradeThumbnails: false, enableAutoLogin: false
-  }, cfg)));
 
   // YouTube's player, before the bundle: the speed binds its rate a second in.
   const p = win.document.getElementById('ytlr-player__player-container-player');
@@ -110,15 +90,13 @@ function boot(cfg = {}, { live = false, page = 'WEB_PAGE_TYPE_WATCH' } = {}) {
     setPlaybackRate(r) { log.rates.push(r); this.rate = r; },
     getPlaybackRate() { return this.rate; }
   });
-  win.eval(bundle);
-  const pump = () => { const q = rafQ; rafQ = []; for (const cb of q) cb(Date.now()); };
+  evaluate();
+  const pump = frames.pump;
   const toasts = () => Array.from(win.document.querySelectorAll('.ytaf-notification-container .message')).map((m) => m.textContent);
   const parse = (obj) => win.JSON.parse(win.JSON.stringify(obj));
   const toggle = (label, on) => {
     if (!win.document.querySelector('.ytaf-ui-container')) {
-      const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-      Object.defineProperty(e, 'keyCode', { get: () => GREEN, configurable: true });
-      dispatchTrusted(win.document.body, e);
+      trustedKey(win, GREEN);
       for (let i = 0; i < 20; i++) pump();
     }
     const input = Array.from(win.document.querySelectorAll('.ytaf-ui-container label'))
@@ -130,7 +108,7 @@ function boot(cfg = {}, { live = false, page = 'WEB_PAGE_TYPE_WATCH' } = {}) {
   return { win, p, log, errors, speed: win.ytafSpeed, toasts, parse, toggle, quality: (q) => { quality = q; } };
 }
 
-(async () => {
+run(async () => {
   // ---- The speed keys ----
   {
     const { win, speed, log, toasts, errors } = boot();
@@ -369,6 +347,4 @@ function boot(cfg = {}, { live = false, page = 'WEB_PAGE_TYPE_WATCH' } = {}) {
   }
 
   t('no jsdomError in any case', allErrors.length === 0, allErrors[0]);
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})();
+});

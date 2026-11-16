@@ -21,17 +21,12 @@
  *
  * The page's timers run ten times faster; the minute's refresh is run by hand.
  */
-const fs = require('fs');
-const path = require('path');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, applyChrome87Downgrade, UA, setUserAgent, dispatchTrusted } = require('./chrome38-env.cjs');
+const { createReporter, flavorFromArgs, readBundle, bootPage, trustedKey, wait } = require('./harness.cjs');
 
-const ROOT = path.resolve(__dirname, '..');
-const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
 // `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
 // with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
-const modern = process.argv[3] === 'modern';
-const code = fs.readFileSync(bundlePath, 'utf8');
+const { modern } = flavorFromArgs();
+const code = readBundle();
 
 const SPEED = 10;
 const GREEN = 404;
@@ -47,15 +42,10 @@ const IDENTITY = 'yt.leanback.default::last-identity-used';
 const LABEL_BYPASS = 'Bypass Nag Screens';
 const LABEL_SELECT = 'Auto Login (off: always ask who is watching)';
 const LABEL_PREVIEWS = 'Video Previews';
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 // A real time for N of the page's (sped up) milliseconds.
 const pageMs = (ms) => wait(ms / SPEED + 20);
 
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra !== undefined ? '\n     ' + extra : '')); }
-};
+const { t, run } = createReporter();
 
 /** The app's recurring-actions record: the three selector screens and one other. */
 function recurring(lastFired = 0) {
@@ -65,31 +55,27 @@ function recurring(lastFired = 0) {
 }
 
 async function boot(cfg, opts = {}) {
-  const errors = [];
   const warnings = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => { if (!/Not implemented: navigation/.test(e.message)) errors.push(e.message); });
-  vc.on('error', (...a) => errors.push(a.map(String).join(' ')));
-  vc.on('warn', (...a) => warnings.push(a.map(String).join(' ')));
-  const dom = new JSDOM(`<!doctype html><html><body class="${opts.page || 'WEB_PAGE_TYPE_BROWSE'}"><ytlr-app></ytlr-app></body></html>`,
-    { runScripts: 'outside-only', url: 'https://www.youtube.com/tv#/', virtualConsole: vc, pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, modern ? UA.webos23 : UA.webos3);
-  win.launchParams = '{}';
-  win.XMLHttpRequest = class { open() {} send() {} setRequestHeader() {} getResponseHeader() { return null; } addEventListener() {} };
-  win.fetch = () => new Promise(() => {});
+  const storage = {};
+  if (opts.recurring !== null) storage[RECURRING] = JSON.stringify(opts.recurring || recurring());
+  if (opts.identity) storage[IDENTITY] = JSON.stringify({ data: opts.identity });
+  for (const [k, v] of Object.entries(opts.storage || {})) storage[k] = JSON.stringify(v);
+  const { win, errors, evaluate } = bootPage({
+    code,
+    bodyClass: opts.page || 'WEB_PAGE_TYPE_BROWSE',
+    url: 'https://www.youtube.com/tv#/',
+    ignoreNavigation: true,
+    console: { warn: (...a) => warnings.push(a.map(String).join(' ')) },
+    config: Object.assign({
+      enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
+      enableDeArrow: false, upgradeThumbnails: false, checkForUpdates: false, showWhatsNew: false
+    }, cfg),
+    storage,
+    // Set before the environment, which takes it away again on the legacy build.
+    setup(win) { win.fetch = () => new Promise(() => {}); },
+    evaluate: false
+  });
   const store = win.localStorage;
-  store.setItem('ytaf-configuration', JSON.stringify(Object.assign({
-    enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-    enableDeArrow: false, upgradeThumbnails: false, checkForUpdates: false, showWhatsNew: false
-  }, cfg)));
-  if (opts.recurring !== null) store.setItem(RECURRING, JSON.stringify(opts.recurring || recurring()));
-  if (opts.identity) store.setItem(IDENTITY, JSON.stringify({ data: opts.identity }));
-  for (const [k, v] of Object.entries(opts.storage || {})) store.setItem(k, JSON.stringify(v));
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  // Chrome 23 has it; the Chrome 38 environment takes it away all the same
-  // (as in upstream-fixes-test).
-  win.Element.prototype.remove = function remove() { if (this.parentNode) this.parentNode.removeChild(this); };
   win.requestAnimationFrame = (cb) => setTimeout(() => cb(0), 1);
   win.cancelAnimationFrame = (id) => clearTimeout(id);
   const st = win.setTimeout.bind(win);
@@ -114,7 +100,7 @@ async function boot(cfg, opts = {}) {
     for (const e of intervals) if (e.id === id) e.live = false;
     if (id >= 0) ci(id);
   };
-  win.eval(code);
+  evaluate();
   // The module starts on DOMContentLoaded.
   if (win.document.readyState === 'loading') await new Promise((r) => win.document.addEventListener('DOMContentLoaded', r));
   await wait(0);
@@ -136,9 +122,7 @@ async function boot(cfg, opts = {}) {
   const bypassing = () => body.classList.contains('ytaf-bypassing-login');
   const openSelector = () => { body.className = 'WEB_PAGE_TYPE_ACCOUNT_SELECTOR'; };
   const pressGreen = () => {
-    const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-    Object.defineProperty(e, 'keyCode', { get: () => GREEN, configurable: true });
-    dispatchTrusted(body, e);
+    trustedKey(win, GREEN, body);
   };
   const checkbox = (text) => {
     for (const label of win.document.querySelectorAll('.ytaf-ui-container label')) {
@@ -168,7 +152,7 @@ async function boot(cfg, opts = {}) {
     pressGreen, toggle, cycle, checkbox, openTab };
 }
 
-(async () => {
+run(async () => {
   const f = modern ? 'modern' : 'legacy';
   const n = (s) => `${f}: ${s}`;
 
@@ -480,6 +464,4 @@ async function boot(cfg, opts = {}) {
     t(n('previews given back: no page errors'), env.errors.length === 0, env.errors.join(' | '));
     env.win.close();
   }
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})().catch((e) => { console.log('FAIL harness: ' + (e && e.stack || e)); process.exit(1); });
+});

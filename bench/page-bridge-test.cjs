@@ -14,26 +14,17 @@
  * app_api looks for: a function with an `instance` whose resolveCommand takes
  * each command.
  */
-const fs = require('fs');
 const path = require('path');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, applyChrome87Downgrade, UA, setUserAgent, dispatchTrusted } = require('./chrome38-env.cjs');
+const { createReporter, flavorFromArgs, readBundle, bootPage, dispatchTrusted, wait } = require('./harness.cjs');
 
-const ROOT = path.resolve(__dirname, '..');
-const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
 // `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
 // with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
-const modern = process.argv[3] === 'modern';
-const code = fs.readFileSync(bundlePath, 'utf8');
+const { modern } = flavorFromArgs();
+const code = readBundle();
 
 const GREEN = 404;
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra !== undefined ? '\n     ' + extra : '')); }
-};
+const { t, run } = createReporter();
 
 // The TV app's command resolver: what reaches it is recorded.
 function fakeResolver() {
@@ -58,38 +49,35 @@ function jsdomUtils() {
 const { serializeURL } = require(require.resolve('whatwg-url', { paths: [path.dirname(require.resolve('jsdom/package.json'))] }));
 
 function boot(cfg = {}, opts = {}) {
-  const errors = [];
   const warnings = [];
   const logs = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => { if (!/Not implemented: navigation/.test(e.message)) errors.push(e.message); });
-  vc.on('error', (...args) => errors.push('console.error: ' + args.map(String).join(' ')));
-  vc.on('warn', (...args) => warnings.push(args.map(String).join(' ')));
-  for (const level of ['group', 'debug']) vc.on(level, (...args) => logs.push({ level, args }));
-  const dom = new JSDOM(`<!doctype html><html><body class="${opts.page || 'WEB_PAGE_TYPE_BROWSE'}"><ytlr-app></ytlr-app></body></html>`,
-    { runScripts: 'outside-only', url: 'https://www.youtube.com/tv#/', virtualConsole: vc, pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, modern ? UA.webos23 : UA.webos3);
-  win.launchParams = opts.launchParams || '{}';
-  win.XMLHttpRequest = class { open() {} send() {} setRequestHeader() {} getResponseHeader() { return null; } addEventListener() {} };
-  win.localStorage.setItem('ytaf-configuration', JSON.stringify(Object.assign({
-    enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-    enableDeArrow: false, upgradeThumbnails: false, enableAutoLogin: false,
-    checkForUpdates: false, showWhatsNew: false
-  }, cfg)));
-  for (const k of Object.keys(opts.storage || {})) win.localStorage.setItem(k, opts.storage[k]);
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  // Chrome 23 has it; the Chrome 38 environment takes it away all the same
-  // (as in upstream-fixes-test).
-  win.Element.prototype.remove = function remove() { if (this.parentNode) this.parentNode.removeChild(this); };
-  win.fetch = () => new Promise(() => {});
   const pageEvents = [];
-  win.addEventListener('ytaf-page-update', (e) => pageEvents.push(e.detail));
   // Where the page is sent (location.href): recorded, not followed.
   const navigations = [];
-  jsdomUtils().implForWrapper(win.location)._locationObjectSetterNavigate = (url) => { navigations.push(serializeURL(url)); };
-  if (opts.before) opts.before(win);
-  win.eval(code);
+  const { win, errors } = bootPage({
+    code,
+    bodyClass: opts.page || 'WEB_PAGE_TYPE_BROWSE',
+    url: 'https://www.youtube.com/tv#/',
+    ignoreNavigation: true,
+    console: {
+      warn: (...args) => warnings.push(args.map(String).join(' ')),
+      group: (...args) => logs.push({ level: 'group', args }),
+      debug: (...args) => logs.push({ level: 'debug', args })
+    },
+    launchParams: opts.launchParams || '{}',
+    config: Object.assign({
+      enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
+      enableDeArrow: false, upgradeThumbnails: false, enableAutoLogin: false,
+      checkForUpdates: false, showWhatsNew: false
+    }, cfg),
+    storage: opts.storage,
+    fetch: 'pending',
+    beforeEval(win) {
+      win.addEventListener('ytaf-page-update', (e) => pageEvents.push(e.detail));
+      jsdomUtils().implForWrapper(win.location)._locationObjectSetterNavigate = (url) => { navigations.push(serializeURL(url)); };
+      if (opts.before) opts.before(win);
+    }
+  });
   const toasts = () => (win.document.querySelector('.ytaf-notification-container') || {}).textContent || '';
   return { win, doc: win.document, errors, warnings, logs, pageEvents, toasts, navigations };
 }
@@ -106,7 +94,7 @@ function press(win, keyCode, make) {
 
 const flags = (d) => d && `${+d.isWatch}${+d.isShorts}${+d.isAccountSelector}${+d.isSearch}`;
 
-(async () => {
+run(async () => {
   const f = modern ? 'modern' : 'legacy';
   const n = (s) => `${f}: ${s}`;
 
@@ -287,7 +275,4 @@ const flags = (d) => d && `${+d.isWatch}${+d.isShorts}${+d.isAccountSelector}${+
       env.warnings.join(' | '));
     t(n('...no page errors'), env.errors.length === 0, env.errors.join(' | '));
   }
-
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})().catch((e) => { console.log('FAIL harness: ' + (e && e.stack || e)); process.exit(1); });
+});
