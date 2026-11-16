@@ -312,6 +312,11 @@ async function boot(cfg, segments, opts = {}) {
   {
     const env = await boot({}, [seg('sponsor', 30, 60)], { api: { primary: 404 } });
     t(n('a 404 is an answer (no segments): the mirror is not asked'), env.asked.length === 1, env.asked.join(' '));
+    // The stand-in's 404 carries a segment in its body all the same: it must not be read.
+    await env.playTo(10);
+    await env.playTo(30.2);
+    t(n('...and nothing is skipped from a 404\'s body'), env.state.time === 30.2 && env.state.seeks.length === 0,
+      `${env.state.time} ${env.state.seeks.join()}`);
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);
