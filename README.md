@@ -188,8 +188,7 @@ and search alone.
 | Setting | Default |
 |---|---|
 | Force Max Quality | Off |
-| Show Video Quality on Start | Off |
-| Show Video Quality Next to the Title | Off |
+| Show Video Quality (Off, At Start, Under Title, Both) | Off |
 | Force Video Codec (Auto, AV1, VP9, AVC, HEVC, Avoid AV1) | Auto |
 | Playback Speed Control (webOS 4 and newer; on webOS 4-6 and 22 with AAC audio only) | On |
 | Auto-Translate Subtitles (pick a language) | Off |

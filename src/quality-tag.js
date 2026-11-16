@@ -5,7 +5,7 @@ import { cssString } from './sponsorblock-labels.js';
 import './quality-tag.css';
 
 /**
- * Show Video Quality Next to the Title: the quality the video plays in
+ * Show Video Quality (Under Title, Both): the quality the video plays in
  * ("1080p60", "2160p60 HDR") as a small tag after the metadata line under
  * the title in the player (channel · views · date). Asked for in
  * NicholasBly/youtube-webos#204 (fork watch #51).
@@ -43,7 +43,7 @@ export function buildTagCss(label) {
 }
 
 function update() {
-  if (!configRead('showQualityInTitle') || !isWatchPage()) {
+  if (!/^(?:title|both)$/.test(configRead('showVideoQuality')) || !isWatchPage()) {
     write('');
     return;
   }
@@ -59,5 +59,5 @@ window.addEventListener('ytaf-page-update', update);
 // A <video> fires 'resize' when its picture size changes; media events do
 // not bubble, so it is caught on the way down.
 document.addEventListener('resize', onResize, true);
-configAddChangeListener('showQualityInTitle', update);
+configAddChangeListener('showVideoQuality', update);
 update();

@@ -96,7 +96,7 @@ async function boot(cfg, opts = {}) {
     config: Object.assign({
       enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
       enableDeArrow: false, upgradeThumbnails: false, enableAutoLogin: false,
-      checkForUpdates: false, showWhatsNew: false, showQualityOnStart: false
+      checkForUpdates: false, showWhatsNew: false, showVideoQuality: 'off'
     }, cfg),
     fetch: 'pending',
     evaluate: false

@@ -298,7 +298,7 @@ run(async () => {
 
   // ---- "Playing in": the label, or the picture's own size ----
   {
-    const { s, video, toasts } = boot({ forceHighResVideo: false, showQualityOnStart: true });
+    const { s, video, toasts } = boot({ forceHighResVideo: false, showVideoQuality: 'start' });
     s.label = false;
     Object.defineProperty(video, 'videoHeight', { configurable: true, get: () => 1080 });
     Object.defineProperty(video, 'videoWidth', { configurable: true, get: () => 1920 });
@@ -306,15 +306,23 @@ run(async () => {
     t('no label from the player: the picture\'s height', toasts().includes('Playing in 1080p'), toasts().join(' | '));
   }
   {
-    const { s, toasts } = boot({ forceHighResVideo: false, showQualityOnStart: true });
+    const { s, toasts } = boot({ forceHighResVideo: false, showVideoQuality: 'start' });
     s.label = false;
     s.quality = 'hd1440';
     await wait(4300);
     t('no label and no picture size: the level the player names', toasts().includes('Playing in 1440p'), toasts().join(' | '));
   }
+  // Under Title is the tag alone (quality-tag-test); Both is the tag and the notice.
+  for (const [mode, notice] of [['title', false], ['both', true]]) {
+    const { toasts } = boot({ forceHighResVideo: false, showVideoQuality: mode });
+    await wait(4300);
+    const playingIn = toasts().filter((x) => /^Playing in/.test(x));
+    t(`Show Video Quality ${mode === 'title' ? 'Under Title: no notice' : 'Both: the notice'}`,
+      playingIn.length === (notice ? 1 : 0), playingIn.join(' | '));
+  }
   {
     // Paused before the notice is due: none; the next time it plays, the notice.
-    const { s, emit, toasts } = boot({ forceHighResVideo: false, showQualityOnStart: true });
+    const { s, emit, toasts } = boot({ forceHighResVideo: false, showVideoQuality: 'start' });
     const playingIn = () => toasts().filter((x) => /^Playing in/.test(x));
     await wait(1000);
     emit(2);

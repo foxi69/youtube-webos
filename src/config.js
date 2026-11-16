@@ -46,6 +46,14 @@ export const clockModes = {
   datetime: 'Date and Time'
 };
 
+// Show Video Quality: a notice when a video starts, the tag under the title, or both.
+export const videoQualityDisplayModes = {
+  off: 'Off',
+  start: 'At Start',
+  title: 'Under Title',
+  both: 'Both'
+};
+
 /** What the time label under the seek bar adds before the duration (NicholasBly/youtube-webos#195). */
 export const timeRemainingModes = {
   off: 'Off',
@@ -317,8 +325,7 @@ const configOptions = new Map([
   ['enableLegacyEmojiFix', { default: true, desc: 'Emoji + Characters Fix' }],
   ['hideGuestSignInPrompts', { default: false, desc: 'Guest Mode: Hide Sign-in Buttons' }],
   ['forceHighResVideo', { default: false, desc: 'Force Max Quality' }],
-  ['showQualityOnStart', { default: false, desc: 'Show Video Quality on Start' }],
-  ['showQualityInTitle', { default: false, desc: 'Show Video Quality Next to the Title' }],
+  ['showVideoQuality', { default: 'off', desc: 'Show Video Quality' }],
   ['forceVideoCodec', { default: 'auto', desc: 'Force Video Codec' }],
   ['subtitleTranslateLang', { default: 'off', desc: 'Auto-Translate Subtitles' }],
   ['subtitleAutoEnable', { default: false, desc: 'Turn On Translated Subtitles Automatically' }],
