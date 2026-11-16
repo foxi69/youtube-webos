@@ -76,6 +76,9 @@ async function boot(cfg) {
       !!id.identityActionContext && JSON.stringify(id.identityActionContext.nextEndpoint) === JSON.stringify(NEXT) &&
       id.identityActionContext.eventTrigger === 'ACCOUNT_EVENT_TRIGGER_WHOS_WATCHING', JSON.stringify(id.identityActionContext));
     t(n('...as a client action'), !!got.commandMetadata && got.commandMetadata.webCommandMetadata.clientAction === true);
+    // The key presses of the other way of skipping it come 500 ms later (and
+    // 200 ms after that for a guest): past both before looking.
+    await wait(900);
     t(n('no key is pressed for it'), env.keys.length === 0, env.keys.join());
 
     // Once in the window after a start: opened again, it is the viewer's own doing.
