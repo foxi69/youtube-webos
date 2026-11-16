@@ -18,16 +18,11 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 // mse-hook.js imports '../custom-event-target' (a .ts file) without its extension.
 require('./ts-resolve.cjs');
 
-const MODULE = pathToFileURL(path.resolve(__dirname, '../src/playback-speed.js')).href;
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const { createReporter, wait } = require('./harness.cjs');
 
-let passed = 0;
-let failed = 0;
-const t = (name, ok, extra) => {
-  if (ok) passed++;
-  else failed++;
-  console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${ok || extra === undefined ? '' : ' -> ' + extra}`);
-};
+const MODULE = pathToFileURL(path.resolve(__dirname, '../src/playback-speed.js')).href;
+
+const { t, run } = createReporter();
 
 const EN = { languageCode: 'en', vss_id: '.en', kind: '' };
 
@@ -105,7 +100,8 @@ function makePlayer() {
 
 // Loaded before the fakes: the module's own instance (initPlaybackSpeed) does
 // not install in a window without Web Audio.
-import(MODULE).then(async ({ installSpeedFeature }) => {
+run(async () => {
+  const { installSpeedFeature } = await import(MODULE);
   prepare();
   const player = makePlayer();
   const feature = installSpeedFeature(win, {
@@ -139,9 +135,4 @@ import(MODULE).then(async ({ installSpeedFeature }) => {
   t('uninstalled: the speed menu is not set afterwards', player.rateSets === rateSets, `${player.rateSets - rateSets} sets`);
 
   t('no jsdomError', errors.length === 0, errors[0]);
-  console.log(`${passed} passed, ${failed} failed`);
-  process.exit(failed ? 1 : 0);
-}).catch((err) => {
-  console.log(`FAIL could not run: ${err && err.stack}`);
-  process.exit(1);
 });
