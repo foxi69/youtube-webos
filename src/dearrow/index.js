@@ -24,7 +24,7 @@ import { patchResponseTiles, unpatchResponses, applyToVideo } from './tiles.js';
 import { sweepTiles } from './sweep.js';
 import { queueLookups, lookUpOnScreen, clearQueue, setChangeHandler, wantsLookup } from './lookup.js';
 
-export { titleFormattingSupported } from './titles.js';
+export { titleFormattingSupported, titleFormatChoices } from './titles.js';
 
 let sweepTimer = null;
 
