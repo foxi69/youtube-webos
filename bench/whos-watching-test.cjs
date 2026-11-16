@@ -10,58 +10,44 @@
  * YouTube's command resolver is a stand-in in window._yttv that records what
  * reaches it. Not seen on a TV: the command's shape is as Bolli YouTube uses it.
  */
-const fs = require('fs');
-const path = require('path');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, applyChrome87Downgrade, UA, setUserAgent } = require('./chrome38-env.cjs');
+const { createReporter, bootPage, flavorFromArgs, wait } = require('./harness.cjs');
 
-const ROOT = path.resolve(__dirname, '..');
-const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
 // `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
 // with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
-const modern = process.argv[3] === 'modern';
-const code = fs.readFileSync(bundlePath, 'utf8');
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra !== undefined ? '\n     ' + extra : '')); }
-};
+const { modern } = flavorFromArgs();
+const { t, run } = createReporter();
 
 const NEXT = { browseEndpoint: { browseId: 'FEtopics' } };
 const selector = () => ({ startAccountSelectorCommand: { nextEndpoint: NEXT, other: 1 } });
 
 async function boot(cfg) {
+  // The messages as they are, without the harness's 'jsdomError: ' and
+  // 'console.error: ' in front.
   const errors = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => { if (!/Not implemented: navigation/.test(e.message)) errors.push(e.message); });
-  vc.on('error', (...a) => errors.push(a.map(String).join(' ')));
-  const dom = new JSDOM('<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app></ytlr-app></body></html>',
-    { runScripts: 'outside-only', url: 'https://www.youtube.com/tv#/', virtualConsole: vc, pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, modern ? UA.webos23 : UA.webos3);
-  win.launchParams = '{}';
-  win.XMLHttpRequest = class { open() {} send() {} setRequestHeader() {} getResponseHeader() { return null; } addEventListener() {} };
-  win.fetch = () => new Promise(() => {});
-  win.localStorage.setItem('ytaf-configuration', JSON.stringify(Object.assign({
-    enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-    enableDeArrow: false, upgradeThumbnails: false, checkForUpdates: false, showWhatsNew: false
-  }, cfg)));
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  win.Element.prototype.remove = function remove() { if (this.parentNode) this.parentNode.removeChild(this); };
   const seen = [];
   const keys = [];
-  win.addEventListener('keydown', (e) => keys.push(e.keyCode), true);
   const Resolver = function Resolver() {};
   Resolver.instance = { resolveCommand: (command, extra) => { seen.push({ command, extra }); return 'app'; } };
-  win._yttv = { resolver: Resolver };
-  win.eval(code);
+  const { win } = bootPage({
+    url: 'https://www.youtube.com/tv#/',
+    ignoreNavigation: true,
+    onError: (text) => errors.push(text.replace(/^(?:jsdomError|console\.error): /, '')),
+    config: Object.assign({
+      enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
+      enableDeArrow: false, upgradeThumbnails: false, checkForUpdates: false, showWhatsNew: false
+    }, cfg),
+    // Before the environment, which takes fetch away again on the legacy build.
+    setup: (w) => { w.fetch = () => new Promise(() => {}); },
+    beforeEval: (w) => {
+      w.addEventListener('keydown', (e) => keys.push(e.keyCode), true);
+      w._yttv = { resolver: Resolver };
+    }
+  });
   await wait(60);
   return { win, errors, seen, keys, resolve: (c, x) => Resolver.instance.resolveCommand(c, x) };
 }
 
-(async () => {
+run(async () => {
   const f = modern ? 'modern' : 'legacy';
   const n = (s) => `${f}: ${s}`;
 
@@ -118,7 +104,4 @@ async function boot(cfg) {
     t(n('a selector command with nothing in it is passed on'), !threw && env.seen[env.seen.length - 1].command === cmd, threw && threw.message);
     env.win.close();
   }
-
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})().catch((e) => { console.log('FAIL harness: ' + (e && e.stack || e)); process.exit(1); });
+});
