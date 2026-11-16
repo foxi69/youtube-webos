@@ -10,39 +10,33 @@
  *
  * These cases run the built bundle with a deliberately slow and a deliberately
  * failing RYD API.
+ *
+ * Usage: node bench/dislike-timing-test.cjs [dist/webOSUserScripts/userScript.js] [legacy|modern]
  */
-const fs = require('fs');
-const path = require('path');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent, applyChrome87Downgrade } = require('./chrome38-env.cjs');
-
-const ROOT = path.resolve(__dirname, '..');
-const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
-const legacy = process.argv[3] !== 'modern';
+const { createReporter, bootPage, wait } = require('./harness.cjs');
 
 function boot(fetchImpl, hl) {
-  const dom = new JSDOM(
-    '<!doctype html><html><body class="WEB_PAGE_TYPE_WATCH"><ytlr-app>' +
-    '<div id="ytlr-player__player-container"><video></video></div></ytlr-app></body></html>',
-    { runScripts: 'outside-only', url: 'https://www.youtube.com/tv#/watch?v=dQw4w9WgXcQ',
-      virtualConsole: new VirtualConsole(), pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, legacy ? UA.webos3 : UA.webos23);
-  win.launchParams = '{}';
-  win.XMLHttpRequest = class { open(){} send(){} setRequestHeader(){} getResponseHeader(){return null;} addEventListener(){} };
+  // Animation frames the cases run themselves, each with a time of 0.
   let rafQ = [];
-  win.requestAnimationFrame = (cb) => { rafQ.push(cb); return rafQ.length; };
-  win.cancelAnimationFrame = () => {};
-  win.localStorage.setItem('ytaf-configuration', win.JSON.stringify({
-    enableReturnYouTubeDislike: true, enableAdBlock: true, enableSponsorBlock: false,
-    enableLegacyEmojiFix: false, upgradeThumbnails: false, enableAutoLogin: false
-  }));
-  if (legacy) applyChrome38Downgrade(win); else applyChrome87Downgrade(win);
-  // AFTER the downgrade: it deletes window.fetch (Chrome 38 has none), which
-  // would wipe the mock and hand the request to the whatwg-fetch polyfill.
-  win.fetch = fetchImpl;
-  if (hl) win.ytcfg = { get: (k) => (k === 'HL' ? hl : undefined) };
-  win.eval(fs.readFileSync(bundlePath, 'utf8'));
+  const { win } = bootPage({
+    bodyClass: 'WEB_PAGE_TYPE_WATCH',
+    inner: '<div id="ytlr-player__player-container"><video></video></div>',
+    url: 'https://www.youtube.com/tv#/watch?v=dQw4w9WgXcQ',
+    config: {
+      enableReturnYouTubeDislike: true, enableAdBlock: true, enableSponsorBlock: false,
+      enableLegacyEmojiFix: false, upgradeThumbnails: false, enableAutoLogin: false
+    },
+    // The legacy environment has no Element#remove here.
+    restoreRemove: false,
+    setup: (w) => {
+      w.requestAnimationFrame = (cb) => { rafQ.push(cb); return rafQ.length; };
+      w.cancelAnimationFrame = () => {};
+    },
+    // AFTER the downgrade: it deletes window.fetch (Chrome 38 has none), which
+    // would wipe the mock and hand the request to the whatwg-fetch polyfill.
+    fetch: fetchImpl,
+    beforeEval: (w) => { if (hl) w.ytcfg = { get: (k) => (k === 'HL' ? hl : undefined) }; }
+  });
   return { win, pump: () => { const q = rafQ; rafQ = []; for (const cb of q) cb(0); } };
 }
 
@@ -75,13 +69,10 @@ const valueOf = (win) => {
   const v = f.querySelector('.ytLrVideoDescriptionHeaderRendererValue');
   return v ? v.textContent : null;
 };
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-let pass = 0, fail = 0;
-const t = (n, ok, extra) => { if (ok) { pass++; console.log('PASS ' + n); }
-  else { fail++; console.log('FAIL ' + n + (extra ? '\n     ' + extra : '')); } };
+const { t, run } = createReporter();
 
-(async () => {
+run(async () => {
   // ---- 1. Slow API: panel must still get a factoid immediately ----
   {
     let resolveFetch;
@@ -163,7 +154,4 @@ const t = (n, ok, extra) => { if (ok) { pass++; console.log('PASS ' + n); }
       label && label.textContent === 'Diszlájkok' && valueOf(win) === '4,3 E',
       (label && label.textContent) + ' / ' + JSON.stringify(valueOf(win)));
   }
-
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})();
+});

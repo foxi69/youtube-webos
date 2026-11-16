@@ -2,17 +2,14 @@
  * Logo selector, Live-video filter, Shorts guide entry, Hide Left Menu Entries
  * and page-1 sizing.
  * DOM fixtures are copied verbatim from real webOS 25 captures.
+ *
+ *   node bench/new-features-test.cjs <bundle> [legacy|modern]
+ *
+ * `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87
+ * environment, instead of the legacy one in a Chrome 38 one. Both run with a
+ * webOS 23 user agent.
  */
-const fs = require('fs');
-const path = require('path');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent, dispatchTrusted, applyChrome87Downgrade } = require('./chrome38-env.cjs');
-
-const ROOT = path.resolve(__dirname, '..');
-const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
-// `modern`: the modern bundle (webOS 22 and newer), in jsdom's own engine with a
-// webOS 23 user agent, instead of the legacy one in a Chrome 38 environment.
-const modern = process.argv[3] === 'modern';
+const { createReporter, bootPage, trustedKey, wait, UA } = require('./harness.cjs');
 
 const PREMIUM_URL = 'https://www.gstatic.com/youtube/img/branding/livingroom/premium/wordmark_truncated/fullcolor_white_57_2x_v2.png';
 const DEFAULT_URL = 'https://www.gstatic.com/youtube/img/branding/livingroom/youtube/wordmark/fullcolor_white_57_2x_v2.png';
@@ -24,37 +21,39 @@ const LOGO_HTML =
   `style="background-image: url(&quot;${DEFAULT_URL}&quot;);"></ytlr-thumbnail-details></ytlr-logo-entity>`;
 
 function boot(cfg, extraHtml = '', storage = {}, before) {
-  const dom = new JSDOM(
-    `<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app>${extraHtml}</ytlr-app></body></html>`,
-    { runScripts: 'outside-only', url: 'https://www.youtube.com/tv',
-      virtualConsole: new VirtualConsole(), pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, UA.webos23);
-  win.launchParams = '{}';
-  win.XMLHttpRequest = class { open(){} send(){} setRequestHeader(){} getResponseHeader(){return null;} addEventListener(){} };
+  // The frames wait until the test runs them (pump), each called with 0.
   let rafQ = [];
-  win.requestAnimationFrame = (cb) => { rafQ.push(cb); return rafQ.length; };
-  win.cancelAnimationFrame = () => {};
-  win.fetch = () => Promise.reject(new Error('offline'));
-  const NS = win.JSON.stringify;
-  win.localStorage.setItem('ytaf-configuration', NS(Object.assign({
-    enableAdBlock: true, enableTrackingBlock: false, removeGlobalShorts: false,
-    removeLiveVideos: false, removeAiVideos: false, markAiVideos: false, removeTopLiveGames: false, removeMostRelevant: false,
-    hideGuestSignInPrompts: false, hideEndcards: false, enableLegacyEmojiFix: false,
-    enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-    upgradeThumbnails: false, enableAutoLogin: false, logoStyle: 'default'
-  }, cfg)));
-  for (const k in storage) win.localStorage.setItem(k, storage[k]);
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  if (before) before(win);
-  win.eval(fs.readFileSync(bundlePath, 'utf8'));
+  // The page's own JSON.stringify, from before the bundle hooks it.
+  let NS;
+  const { win } = bootPage({
+    inner: extraHtml,
+    userAgent: UA.webos23,
+    config: Object.assign({
+      enableAdBlock: true, enableTrackingBlock: false, removeGlobalShorts: false,
+      removeLiveVideos: false, removeAiVideos: false, markAiVideos: false, removeTopLiveGames: false, removeMostRelevant: false,
+      hideGuestSignInPrompts: false, hideEndcards: false, enableLegacyEmojiFix: false,
+      enableSponsorBlock: false, enableReturnYouTubeDislike: false,
+      upgradeThumbnails: false, enableAutoLogin: false, logoStyle: 'default'
+    }, cfg),
+    storage,
+    // Before the environment is applied: the Chrome 38 one takes this fetch
+    // away again, so only the modern bundle sees it.
+    setup(win) {
+      win.requestAnimationFrame = (cb) => { rafQ.push(cb); return rafQ.length; };
+      win.cancelAnimationFrame = () => {};
+      win.fetch = () => Promise.reject(new Error('offline'));
+      NS = win.JSON.stringify;
+    },
+    beforeEval: before,
+    // The legacy page stays without Element#remove, as before this test moved
+    // to the harness.
+    restoreRemove: false
+  });
   return { win, NS, pump: () => { const q = rafQ; rafQ = []; for (const cb of q) cb(0); } };
 }
 
-let pass = 0, fail = 0;
-const t = (n, ok, extra) => { if (ok) { pass++; console.log('PASS ' + n); }
-  else { fail++; console.log('FAIL ' + n + (extra ? '\n     ' + extra : '')); } };
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const reporter = createReporter();
+const { t } = reporter;
 const pad = 'z'.repeat(600);
 
 // A shelf item in the lockupViewModel shape, with an optional LIVE badge.
@@ -83,7 +82,7 @@ function browse(items, extra) {
 const shelfItems = (r) => r.contents.tvBrowseRenderer.content.tvSurfaceContentRenderer
   .content.sectionListRenderer.contents[0].shelfRenderer.content.horizontalListRenderer.items;
 
-(async () => {
+reporter.run(async () => {
   // ---------- 1. Logo selector ----------
   // The wordmark comes from a stylesheet rule gated by a class on <html>, so
   // what counts is the computed style: it must beat the inline style YouTube
@@ -343,9 +342,7 @@ const shelfItems = (r) => r.contents.tvBrowseRenderer.content.tvSurfaceContentRe
     // The panel lists the learnt entries; ticking one hides it from the next guide on.
     const { win, NS, pump } = boot({ enableAdBlock: false }, '', { 'ytaf-sidebar-entries': LEARNT });
     await wait(300);
-    const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-    Object.defineProperty(e, 'keyCode', { get: () => 404, configurable: true });
-    dispatchTrusted(win.document.body, e);
+    trustedKey(win, 404);
     for (let i = 0; i < 20; i++) pump();
     const section = Array.from(win.document.querySelectorAll('#ytaf-page-ui-tweaks .ytaf-settings-section'))
       .find((s) => s.querySelector('.section-title')?.textContent === 'Hide Left Menu Entries');
@@ -376,9 +373,7 @@ const shelfItems = (r) => r.contents.tvBrowseRenderer.content.tvSurfaceContentRe
       { id: 'FElibrary', title: 'Könyvtár' }, { id: 'FEtopics_podcasts', title: 'Podcastok' }]);
     const { win, pump } = boot({ enableAdBlock: false }, '', { 'ytaf-sidebar-entries': HU });
     await wait(300);
-    const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-    Object.defineProperty(e, 'keyCode', { get: () => 404, configurable: true });
-    dispatchTrusted(win.document.body, e);
+    trustedKey(win, 404);
     for (let i = 0; i < 20; i++) pump();
     const section = Array.from(win.document.querySelectorAll('#ytaf-page-ui-tweaks .ytaf-settings-section'))
       .find((s) => s.querySelector('.section-title')?.textContent === 'Hide Left Menu Entries');
@@ -404,9 +399,7 @@ const shelfItems = (r) => r.contents.tvBrowseRenderer.content.tvSurfaceContentRe
     const { win, NS, pump } = boot({ enableAdBlock: false, hiddenSidebarEntries: 'oops' }, '',
       { 'ytaf-sidebar-entries': LEARNT });
     await wait(300);
-    const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-    Object.defineProperty(e, 'keyCode', { get: () => 404, configurable: true });
-    dispatchTrusted(win.document.body, e);
+    trustedKey(win, 404);
     for (let i = 0; i < 20; i++) pump();
     const section = Array.from(win.document.querySelectorAll('#ytaf-page-ui-tweaks .ytaf-settings-section'))
       .find((s) => s.querySelector('.section-title')?.textContent === 'Hide Left Menu Entries');
@@ -443,9 +436,7 @@ const shelfItems = (r) => r.contents.tvBrowseRenderer.content.tvSurfaceContentRe
   {
     const { win, pump } = boot({}, '');
     await wait(300);
-    const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-    Object.defineProperty(e, 'keyCode', { get: () => 404, configurable: true });
-    dispatchTrusted(win.document.body, e);
+    trustedKey(win, 404);
     for (let i = 0; i < 20; i++) pump();
     const section = Array.from(win.document.querySelectorAll('#ytaf-page-ui-tweaks .ytaf-settings-section'))
       .find((s) => s.querySelector('.section-title')?.textContent === 'Hide Left Menu Entries');
@@ -461,9 +452,7 @@ const shelfItems = (r) => r.contents.tvBrowseRenderer.content.tvSurfaceContentRe
   {
     const { win, pump } = boot({});
     await wait(300);
-    const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-    Object.defineProperty(e, 'keyCode', { get: () => 404, configurable: true });
-    dispatchTrusted(win.document.body, e);
+    trustedKey(win, 404);
     for (let i = 0; i < 20; i++) pump();
     const filters = win.document.querySelector('#ytaf-page-filters');
     const ui = win.document.querySelector('#ytaf-page-interface');
@@ -482,9 +471,7 @@ const shelfItems = (r) => r.contents.tvBrowseRenderer.content.tvSurfaceContentRe
   {
     const h = boot({ enableAdBlock: false, removeAiVideos: true, markAiVideos: false });
     await wait(300);
-    const e = new h.win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-    Object.defineProperty(e, 'keyCode', { get: () => 404, configurable: true });
-    dispatchTrusted(h.win.document.body, e);
+    trustedKey(h.win, 404);
     for (let i = 0; i < 20; i++) h.pump();
     const remove = h.win.document.querySelector('#ytaf-remove-ai');
     const mark = h.win.document.querySelector('#ytaf-mark-ai');
@@ -495,9 +482,7 @@ const shelfItems = (r) => r.contents.tvBrowseRenderer.content.tvSurfaceContentRe
   {
     const h = boot({ enableAdBlock: true, removeAiVideos: false, markAiVideos: false });
     await wait(300);
-    const e = new h.win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-    Object.defineProperty(e, 'keyCode', { get: () => 404, configurable: true });
-    dispatchTrusted(h.win.document.body, e);
+    trustedKey(h.win, 404);
     for (let i = 0; i < 20; i++) h.pump();
     const remove = h.win.document.querySelector('#ytaf-remove-ai');
     const mark = h.win.document.querySelector('#ytaf-mark-ai');
@@ -510,9 +495,7 @@ const shelfItems = (r) => r.contents.tvBrowseRenderer.content.tvSurfaceContentRe
     h.win.close();
     const h2 = boot(saved);
     await wait(300);
-    const e2 = new h2.win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-    Object.defineProperty(e2, 'keyCode', { get: () => 404, configurable: true });
-    dispatchTrusted(h2.win.document.body, e2);
+    trustedKey(h2.win, 404);
     for (let i = 0; i < 20; i++) h2.pump();
     const remove2 = h2.win.document.querySelector('#ytaf-remove-ai');
     const mark2 = h2.win.document.querySelector('#ytaf-mark-ai');
@@ -552,7 +535,4 @@ const shelfItems = (r) => r.contents.tvBrowseRenderer.content.tvSurfaceContentRe
       t(`other timers, and one whose source cannot be read, are passed on as they are (${delay} ms)`, on.passedOn && on.other === 2 && !on.threw, JSON.stringify(on));
     }
   }
-
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})();
+});

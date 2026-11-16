@@ -2,42 +2,36 @@
  * Reset All Settings (About tab): two presses, every setting back to its
  * default in the storage and in the panel, the accounts' setup left alone.
  *
- * Usage: node bench/settings-reset-test.cjs [dist/webOSUserScripts/userScript.js]
+ *   node bench/settings-reset-test.cjs <bundle> [legacy|modern]
+ *
+ * `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87
+ * environment, instead of the legacy one in a Chrome 38 one. Both run with a
+ * webOS 23 user agent.
  */
-const fs = require('fs');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent, dispatchTrusted, applyChrome87Downgrade } = require('./chrome38-env.cjs');
+const { createReporter, bootPage, trustedKey, wait: sleep, UA } = require('./harness.cjs');
 
-const bundlePath = process.argv[2] || 'dist/webOSUserScripts/userScript.js';
-// `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
-// with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
-const modern = process.argv[3] === 'modern';
 const GREEN = 404;
 const LABEL = 'Reset All Settings';
 const PROFILE_PREFIX = 'ytaf-configuration::';
 const IDENTITY = JSON.stringify({ data: { identityType: 'SIGNED_IN', obfuscatedGaiaId: '1111', accessToken: 'tok' } });
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function boot(cfg, storage = {}) {
-  const errors = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => errors.push(e.message));
-  const dom = new JSDOM('<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app></ytlr-app></body></html>',
-    { runScripts: 'outside-only', url: 'https://www.youtube.com/tv', virtualConsole: vc, pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, UA.webos23);
-  win.launchParams = '{}';
-  win.XMLHttpRequest = class { open(){} send(){} setRequestHeader(){} getResponseHeader(){return null;} addEventListener(){} };
-  win.requestAnimationFrame = () => 0;
-  win.cancelAnimationFrame = () => {};
-  win.localStorage.setItem('ytaf-configuration', win.JSON.stringify(cfg));
-  for (const [k, v] of Object.entries(storage)) win.localStorage.setItem(k, v);
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  win.fetch = () => Promise.reject(new Error('offline'));
-  win.eval(fs.readFileSync(bundlePath, 'utf8'));
-  const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-  Object.defineProperty(e, 'keyCode', { get: () => GREEN, configurable: true });
-  dispatchTrusted(win.document.body, e);
+  const { win, errors } = bootPage({
+    userAgent: UA.webos23,
+    consoleErrors: false,
+    config: cfg,
+    storage,
+    // No frame ever runs.
+    setup(win) {
+      win.requestAnimationFrame = () => 0;
+      win.cancelAnimationFrame = () => {};
+    },
+    fetch: () => Promise.reject(new Error('offline')),
+    // The legacy page stays without Element#remove, as before this test moved
+    // to the harness.
+    restoreRemove: false
+  });
+  trustedKey(win, GREEN);
   const tabs = win.document.querySelectorAll('.ytaf-tab-btn');
   tabs[tabs.length - 1].click();
   const button = [...win.document.querySelectorAll('#ytaf-page-about button')]
@@ -45,11 +39,7 @@ function boot(cfg, storage = {}) {
   return { win, errors, button, stored: () => JSON.parse(win.localStorage.getItem('ytaf-configuration')) };
 }
 
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra ? '\n     ' + extra : '')); }
-};
+const { t, run } = createReporter();
 
 const CHANGED = {
   enableAdBlock: false, removeGlobalShorts: true, blockedChannels: ['Some Channel'], blockedKeywords: ['word'],
@@ -57,7 +47,7 @@ const CHANGED = {
   foxThemeApplied: true
 };
 
-setTimeout(async () => {
+run(async () => {
   {
     const { win, errors, button, stored } = boot(CHANGED);
     t('the button is on the About tab', !!button);
@@ -116,6 +106,4 @@ setTimeout(async () => {
     t('a setting the whole TV shares is back at its default', stored().enableAutoLogin === true, String(stored().enableAutoLogin));
     t('separate settings for each account stays on', stored().perAccountSettings === true, String(stored().perAccountSettings));
   }
-  console.log(`${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-}, 0);
+});

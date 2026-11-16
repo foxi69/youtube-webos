@@ -6,40 +6,41 @@
  * the guest-prompt filter or the long-press entries were on, so a learned AI
  * video stayed beside the player (found in the webOS TV Simulators).
  *
- * Usage: node bench/pivot-filters-test.cjs [dist/webOSUserScripts/userScript.js]
+ *   node bench/pivot-filters-test.cjs <bundle> [legacy|modern]
+ *
+ * `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87
+ * environment, instead of the legacy one in a Chrome 38 one. Both run with a
+ * webOS 23 user agent.
  */
-const fs = require('fs');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent, applyChrome87Downgrade } = require('./chrome38-env.cjs');
+const { createReporter, bootPage, UA } = require('./harness.cjs');
 
-const bundlePath = process.argv[2] || 'dist/webOSUserScripts/userScript.js';
-// `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
-// with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
-const modern = process.argv[3] === 'modern';
 const pad = 'z'.repeat(600);
 
 function boot(cfg, aiIds) {
-  const errors = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => errors.push(e.message));
-  const dom = new JSDOM('<!doctype html><html><body class="WEB_PAGE_TYPE_WATCH"><ytlr-app></ytlr-app></body></html>',
-    { runScripts: 'outside-only', url: 'https://www.youtube.com/tv#/watch?v=current0001', virtualConsole: vc, pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, UA.webos23);
-  win.launchParams = '{}';
-  win.XMLHttpRequest = class { open(){} send(){} setRequestHeader(){} getResponseHeader(){return null;} addEventListener(){} };
-  win.requestAnimationFrame = () => 0;
-  win.cancelAnimationFrame = () => {};
-  const NS = win.JSON.stringify;
-  win.localStorage.setItem('ytaf-configuration', NS(Object.assign({
-    enableAdBlock: true, enableLegacyEmojiFix: false, enableSponsorBlock: false,
-    enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false
-  }, cfg)));
-  // Videos ai-content-filter.js found labelled "AI" (ai-video-store.js).
-  win.localStorage.setItem('ytaf-ai-videos', NS((aiIds || []).map((id) => ({ id, expiresAt: Date.now() + 864e5 }))));
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  win.fetch = () => Promise.reject(new Error('offline'));
-  win.eval(fs.readFileSync(bundlePath, 'utf8'));
+  // The page's own JSON.stringify, from before the bundle hooks it.
+  let NS;
+  const { win, errors } = bootPage({
+    bodyClass: 'WEB_PAGE_TYPE_WATCH',
+    url: 'https://www.youtube.com/tv#/watch?v=current0001',
+    userAgent: UA.webos23,
+    consoleErrors: false,
+    config: Object.assign({
+      enableAdBlock: true, enableLegacyEmojiFix: false, enableSponsorBlock: false,
+      enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false
+    }, cfg),
+    // Videos ai-content-filter.js found labelled "AI" (ai-video-store.js).
+    storage: { 'ytaf-ai-videos': JSON.stringify((aiIds || []).map((id) => ({ id, expiresAt: Date.now() + 864e5 }))) },
+    // No frame ever runs.
+    setup(win) {
+      win.requestAnimationFrame = () => 0;
+      win.cancelAnimationFrame = () => {};
+      NS = win.JSON.stringify;
+    },
+    fetch: () => Promise.reject(new Error('offline')),
+    // The legacy page stays without Element#remove, as before this test moved
+    // to the harness.
+    restoreRemove: false
+  });
   return { errors, parse: (obj) => win.JSON.parse(NS(obj)) };
 }
 
@@ -90,11 +91,7 @@ const idsBeside = (r) => r.contents.singleColumnWatchNextResults.pivot.sectionLi
   .shelfRenderer.content.horizontalListRenderer.items
   .map((i) => (i.tileRenderer || i.lockupViewModel || i.reelItemRenderer).contentId || (i.reelItemRenderer || {}).videoId);
 
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra ? '\n     ' + extra : '')); }
-};
+const { t, done } = createReporter();
 
 const ALL = ['plainvideo1', 'aivideo0001', 'shortvideo1', 'livevideo01', 'upcoming001', 'members0001', 'plainvideo2'];
 const cases = [
@@ -124,5 +121,4 @@ for (const [name, cfg, gone] of cases) {
   t('with Ad Blocking off they do nothing, as elsewhere', JSON.stringify(ids) === JSON.stringify(ALL), ids.join(','));
 }
 
-console.log(`${pass} passed, ${fail} failed`);
-process.exit(fail ? 1 : 0);
+done();

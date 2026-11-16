@@ -3,15 +3,16 @@
  * Chrome 38 feature set, with a fake YouTube-TV DOM, and report:
  *   - any exception thrown during evaluation
  *   - whether the app's expected side effects are present
+ *
+ *   node bench/smoke.cjs <bundle> [legacy|modern]
+ *
+ * `modern`: the modern bundle, in a Chrome 87 environment with a webOS 23
+ * user agent. The page comes from the harness; the checks are listed and
+ * printed here ("PASS  name", "N/N checks passed"), as they always were.
  */
-const fs = require('fs');
-const path = require('path');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const ROOT = path.resolve(__dirname, '..');
-const { applyChrome38Downgrade, UA, setUserAgent, applyChrome87Downgrade } = require('./chrome38-env.cjs');
+const { flavorFromArgs, bootPage, failingXHR } = require('./harness.cjs');
 
-const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
-const legacyMode = process.argv[3] !== 'modern';
+const legacyMode = !flavorFromArgs().modern;
 
 const HTML = `<!doctype html><html><head><title>YouTube</title></head>
 <body class="WEB_PAGE_TYPE_BROWSE">
@@ -27,43 +28,22 @@ const HTML = `<!doctype html><html><head><title>YouTube</title></head>
 </ytlr-app>
 </body></html>`;
 
-const errors = [];
-const vc = new VirtualConsole();
-vc.on('jsdomError', (e) => errors.push('jsdomError: ' + (e.stack || e.message)));
-vc.on('error', (...a) => errors.push('console.error: ' + a.join(' ')));
-
-const dom = new JSDOM(HTML, {
-  runScripts: 'outside-only',
-  url: 'https://www.youtube.com/tv',
-  virtualConsole: vc,
-  pretendToBeVisual: true,
+// Minimal webOS/YT host surface the script pokes at: launchParams, a small
+// webOS object and requests that fail at once. The legacy page stays without
+// Element#remove, as before this test moved to the harness.
+const page = bootPage({
+  html: HTML,
+  webOS: true,
+  xhr: failingXHR(),
+  errorStacks: true,
+  setup(win) { win.__ytaf_debug__ = false; },
+  restoreRemove: false,
+  catchThrow: true,
+  evaluate: false
 });
-
-const win = dom.window;
-setUserAgent(win, legacyMode ? UA.webos3 : UA.webos23);
-
-// Minimal webOS/YT host surface the script pokes at.
-win.launchParams = JSON.stringify({});
-win.webOS = { deviceInfo: (cb) => cb({ modelName: 'sim' }), platformBack: () => {} };
-win.__ytaf_debug__ = false;
-if (!win.requestAnimationFrame) win.requestAnimationFrame = (cb) => win.setTimeout(() => cb(Date.now()), 16);
-if (!win.cancelAnimationFrame) win.cancelAnimationFrame = (id) => win.clearTimeout(id);
-win.XMLHttpRequest = class { open(){} send(){ this.onerror && this.onerror(); } setRequestHeader(){} getResponseHeader(){return null;} addEventListener(){} };
-
-if (legacyMode) {
-  const removed = applyChrome38Downgrade(win);
-  console.log(`[env] downgraded ${removed.length} APIs to Chrome 38 baseline`);
-} else {
-  applyChrome87Downgrade(win);
-}
-
-const code = fs.readFileSync(bundlePath, 'utf8');
-let threw = null;
-try {
-  win.eval(code);
-} catch (e) {
-  threw = e;
-}
+const { win, errors } = page;
+if (legacyMode) console.log(`[env] downgraded ${page.removed.length} APIs to Chrome 38 baseline`);
+const threw = page.evaluate().threw;
 
 // Let deferred work (rAF/timers/microtasks) run.
 const done = () => {

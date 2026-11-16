@@ -7,52 +7,39 @@
  * account on the selector swaps the settings live, an unrecognised identity
  * falls back to the shared settings and reports only field names, and that
  * with the option off nothing but the shared store is written.
+ *
+ * Usage: node bench/per-account-test.cjs [dist/webOSUserScripts/userScript.js] [legacy|modern]
  */
-const fs = require('fs');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent, dispatchTrusted, applyChrome87Downgrade } = require('./chrome38-env.cjs');
+const { createReporter, bootPage, trustedKey: key, wait } = require('./harness.cjs');
 
-const bundlePath = process.argv[2] || 'dist/webOSUserScripts/userScript.js';
-// `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
-// with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
-const modern = process.argv[3] === 'modern';
 const GREEN = 404;
 const CONFIG_KEY = 'ytaf-configuration';
 const IDENTITY_KEY = 'yt.leanback.default::last-identity-used';
 const RYD = 'Return YouTube Dislike';
 
 function boot(shared, identity, extraStorage = {}) {
-  const errors = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => errors.push(e.message));
-  const dom = new JSDOM('<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app></ytlr-app></body></html>',
-    { runScripts: 'outside-only', url: 'https://www.youtube.com/tv', virtualConsole: vc, pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, modern ? UA.webos23 : UA.webos3);
-  win.launchParams = '{}';
-  win.XMLHttpRequest = class { open(){} send(){} setRequestHeader(){} getResponseHeader(){return null;} addEventListener(){} };
-  win.fetch = () => Promise.reject(new Error('offline'));
-  let rafQ = [];
-  win.requestAnimationFrame = (cb) => { rafQ.push(cb); return rafQ.length; };
-  win.cancelAnimationFrame = () => {};
-  const NS = win.JSON.stringify;
-  // A string is stored as it is (a broken set); null stores nothing (a first start).
-  if (shared !== null) win.localStorage.setItem(CONFIG_KEY, typeof shared === 'string' ? shared : NS(Object.assign({
-    enableAdBlock: true, enableLegacyEmojiFix: false, enableSponsorBlock: false,
-    enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false
-  }, shared)));
-  if (identity) win.localStorage.setItem(IDENTITY_KEY, NS({ data: identity }));
-  for (const [k, v] of Object.entries(extraStorage)) win.localStorage.setItem(k, NS(v));
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  win.eval(fs.readFileSync(bundlePath, 'utf8'));
-  const pump = () => { for (let i = 0; i < 10; i++) { const q = rafQ; rafQ = []; for (const cb of q) cb(Date.now()); } };
+  let NS;
+  const { win, errors, frames } = bootPage({
+    raf: 'manual',
+    consoleErrors: false,
+    // The legacy environment has no Element#remove here.
+    restoreRemove: false,
+    // Before the environment of the build is applied: on the legacy build
+    // this fetch is taken away with jsdom's, and the bundle's polyfill runs.
+    setup: (w) => {
+      w.fetch = () => Promise.reject(new Error('offline'));
+      NS = w.JSON.stringify;
+      // A string is stored as it is (a broken set); null stores nothing (a first start).
+      if (shared !== null) w.localStorage.setItem(CONFIG_KEY, typeof shared === 'string' ? shared : NS(Object.assign({
+        enableAdBlock: true, enableLegacyEmojiFix: false, enableSponsorBlock: false,
+        enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false
+      }, shared)));
+      if (identity) w.localStorage.setItem(IDENTITY_KEY, NS({ data: identity }));
+      for (const [k, v] of Object.entries(extraStorage)) w.localStorage.setItem(k, NS(v));
+    }
+  });
+  const pump = () => { for (let i = 0; i < 10; i++) frames.pump(); };
   return { win, NS, errors, pump };
-}
-
-function key(win, code) {
-  const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-  Object.defineProperty(e, 'keyCode', { get: () => code, configurable: true });
-  dispatchTrusted(win.document.body, e);
 }
 
 function checkbox(win, text) {
@@ -86,17 +73,12 @@ async function chooseAccount(win, identity) {
   await wait(20);
 }
 
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra ? '\n     ' + extra : '')); }
-};
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const { t, run } = createReporter();
 
 const ACCOUNT_A = { identityType: 'SIGNED_IN', obfuscatedGaiaId: '1111', accessToken: 'tok-a1' };
 const ACCOUNT_B = { identityType: 'SIGNED_IN', obfuscatedGaiaId: '2222', accessToken: 'tok-b1' };
 
-(async () => {
+run(async () => {
   // ---- Option off: one shared store, as before ----
   {
     const { win, errors } = boot({ perAccountSettings: false }, ACCOUNT_A);
@@ -230,7 +212,4 @@ const ACCOUNT_B = { identityType: 'SIGNED_IN', obfuscatedGaiaId: '2222', accessT
       win.localStorage.getItem(CONFIG_KEY));
     t('broken stored set: no errors', errors.length === 0, errors.join(' | '));
   }
-
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})();
+});

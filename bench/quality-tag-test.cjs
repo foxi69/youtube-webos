@@ -5,50 +5,30 @@
  * cleared off the watch page and on Off and At Start. The stored setting is
  * Show Video Quality on Under Title.
  *
- * Usage: node bench/quality-tag-test.cjs [dist/webOSUserScripts/userScript.js]
+ * Usage: node bench/quality-tag-test.cjs <bundle> [legacy|modern]
  */
-const fs = require('fs');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent, dispatchTrusted, applyChrome87Downgrade } = require('./chrome38-env.cjs');
+const { createReporter, bootPage, trustedKey, wait } = require('./harness.cjs');
 
-const bundlePath = process.argv[2] || 'dist/webOSUserScripts/userScript.js';
-// `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
-// with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
-const modern = process.argv[3] === 'modern';
 const GREEN = 404;
 
-const errors = [];
-const vc = new VirtualConsole();
-vc.on('jsdomError', (e) => errors.push(e.message));
-const dom = new JSDOM('<!doctype html><html><body class="WEB_PAGE_TYPE_WATCH"><ytlr-app><video></video></ytlr-app></body></html>',
-  { runScripts: 'outside-only', url: 'https://www.youtube.com/tv', virtualConsole: vc, pretendToBeVisual: true });
-const win = dom.window;
-setUserAgent(win, modern ? UA.webos23 : UA.webos3);
-win.launchParams = '{}';
-win.XMLHttpRequest = class { open(){} send(){} setRequestHeader(){} getResponseHeader(){return null;} addEventListener(){} };
-win.requestAnimationFrame = (cb) => win.setTimeout(() => cb(Date.now()), 0);
-win.cancelAnimationFrame = () => {};
-win.localStorage.setItem('ytaf-configuration', win.JSON.stringify({
-  enableAdBlock: false, enableLegacyEmojiFix: false, enableSponsorBlock: false,
-  enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false,
-  showVideoQuality: 'title'
-}));
-if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-win.eval(fs.readFileSync(bundlePath, 'utf8'));
+const { t, run } = createReporter();
 
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra ? '\n     ' + extra : '')); }
-};
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const doc = win.document;
+// The bundle on the watch page, of the build the command line names (the
+// modern one in a Chrome 87 environment with a webOS 23 user agent, the
+// legacy one in a Chrome 38 one). Page script errors go to `errors`.
+const { win, doc, errors } = bootPage({
+  bodyClass: 'WEB_PAGE_TYPE_WATCH',
+  inner: '<video></video>',
+  consoleErrors: false,
+  restoreRemove: false,
+  raf: 'timer',
+  config: {
+    enableAdBlock: false, enableLegacyEmojiFix: false, enableSponsorBlock: false,
+    enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false,
+    showVideoQuality: 'title'
+  }
+});
 
-function key(code) {
-  const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-  Object.defineProperty(e, 'keyCode', { get: () => code, configurable: true });
-  dispatchTrusted(doc.body, e);
-}
 /** One step of the Show Video Quality row on the panel; its value after it. */
 function step() {
   const row = [...doc.querySelectorAll('.ytaf-ui-container .shortcut-control-row')]
@@ -67,8 +47,8 @@ function picture(w, h) {
   video.dispatchEvent(new win.Event('resize'));
 }
 
-(async () => {
-  await sleep(300);
+run(async () => {
+  await wait(300);
   t('nothing before the picture is known', rule() === '', rule());
 
   picture(1920, 1080);
@@ -81,15 +61,15 @@ function picture(w, h) {
   t('a portrait video reads by its shorter side', /content:"1080p"/.test(rule()), rule());
 
   doc.body.className = 'WEB_PAGE_TYPE_BROWSE';
-  await sleep(50);
+  await wait(50);
   t('cleared off the watch page', rule() === '', rule());
 
   doc.body.className = 'WEB_PAGE_TYPE_WATCH';
-  await sleep(50);
+  await wait(50);
   t('back on the watch page', /content:"1080p"/.test(rule()), rule());
 
-  key(GREEN);
-  await sleep(100);
+  trustedKey(win, GREEN);
+  await wait(100);
   let value = step();
   t('Both: the tag stays', value === 'Both' && /content:"1080p"/.test(rule()), `${value} ${rule()}`);
   value = step();
@@ -100,6 +80,4 @@ function picture(w, h) {
   t('Under Title: shown again', value === 'Under Title' && /content:"1080p"/.test(rule()), `${value} ${rule()}`);
 
   t('no page errors', errors.length === 0, errors.join(' | '));
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})();
+});

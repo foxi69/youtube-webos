@@ -7,17 +7,10 @@
  *
  * The field values are a webOS 25 TV's (2026-11-14): the preview starts 3 s
  * after focus, opens the video at 39 s and ends at 40 s.
+ *
+ * Usage: node bench/preview-autoopen-test.cjs [dist/webOSUserScripts/userScript.js] [legacy|modern]
  */
-const fs = require('fs');
-const path = require('path');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent, applyChrome87Downgrade } = require('./chrome38-env.cjs');
-
-const ROOT = path.resolve(__dirname, '..');
-const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
-// `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
-// with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
-const modern = process.argv[3] === 'modern';
+const { createReporter, bootPage, UA } = require('./harness.cjs');
 
 // Every setting that once kept the JSON.parse hook installed, off.
 const ALL_OFF = {
@@ -74,32 +67,28 @@ function commands(node, out = []) {
 }
 
 function boot(cfg, early) {
-  const errors = [];
-  const virtualConsole = new VirtualConsole();
-  virtualConsole.on('jsdomError', (e) => errors.push(String(e && e.message)));
-  const dom = new JSDOM(
-    '<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app></ytlr-app></body></html>',
-    { runScripts: 'outside-only', url: 'https://www.youtube.com/tv', virtualConsole, pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, UA.webos23);
-  win.launchParams = '{}';
-  win.XMLHttpRequest = class { open(){} send(){} setRequestHeader(){} getResponseHeader(){return null;} addEventListener(){} };
-  win.requestAnimationFrame = () => 0;
-  win.cancelAnimationFrame = () => {};
-  win.localStorage.setItem('ytaf-configuration', win.JSON.stringify(cfg));
-  win.localStorage.setItem('ytaf-sidebar-entries', LEARNT_SIDEBAR);
-  // The first home screen, parsed by YouTube's page before the userScript ran.
-  if (early) win.pendingEarlyBrowse = win.Promise.resolve({ response: win.JSON.parse(win.JSON.stringify(early)) });
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  win.fetch = () => Promise.reject(new Error('offline'));
-  const nativeParse = win.JSON.parse;
-  win.eval(fs.readFileSync(bundlePath, 'utf8'));
+  let nativeParse;
+  const { win, errors } = bootPage({
+    // The webOS 23 user agent on both builds.
+    userAgent: UA.webos23,
+    config: cfg,
+    storage: { 'ytaf-sidebar-entries': LEARNT_SIDEBAR },
+    consoleErrors: false,
+    // The legacy environment has no Element#remove here.
+    restoreRemove: false,
+    setup: (w) => {
+      w.requestAnimationFrame = () => 0;
+      w.cancelAnimationFrame = () => {};
+      // The first home screen, parsed by YouTube's page before the userScript ran.
+      if (early) w.pendingEarlyBrowse = w.Promise.resolve({ response: w.JSON.parse(w.JSON.stringify(early)) });
+    },
+    fetch: () => Promise.reject(new Error('offline')),
+    beforeEval: (w) => { nativeParse = w.JSON.parse; }
+  });
   return { win, errors, nativeParse };
 }
 
-let pass = 0, fail = 0;
-const t = (n, ok, extra) => { if (ok) { pass++; console.log('PASS ' + n); }
-  else { fail++; console.log('FAIL ' + n + (extra ? '\n     ' + extra : '')); } };
+const { t, run } = createReporter();
 const tick = (win, ms = 0) => new Promise((r) => win.setTimeout(r, ms));
 const withTimeout = (p, ms, what) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(what + ' timed out')), ms))]);
 
@@ -204,9 +193,7 @@ async function mute() {
   t('control, With sound: no page errors', offRun.errors.length === 0, offRun.errors.join(' | '));
 }
 
-(async () => {
+run(async () => {
   await responses();
   await mute();
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})().catch((e) => { console.log('FAIL harness: ' + (e && e.stack || e)); process.exit(1); });
+});

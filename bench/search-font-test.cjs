@@ -4,42 +4,34 @@
  * left alone. And titles over more than one line get tighter lines in the
  * black boxes of YouTube's memory saving. Both always on, with no switch in
  * the panel.
+ *
+ * Usage: node bench/search-font-test.cjs <bundle> [legacy|modern]
  */
-const fs = require('fs');
-const path = require('path');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent, dispatchTrusted, applyChrome87Downgrade } = require('./chrome38-env.cjs');
+const { createReporter, bootPage, trustedKey, UA } = require('./harness.cjs');
 
-const ROOT = path.resolve(__dirname, '..');
-const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
-// `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
-// with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
-const modern = process.argv[3] === 'modern';
 const GREEN = 404;
 
-let pass = 0, fail = 0;
-const t = (n, ok, extra) => { if (ok) { pass++; console.log('PASS ' + n); }
-  else { fail++; console.log('FAIL ' + n + (extra ? '\n     ' + extra : '')); } };
+const { t, done } = createReporter();
 
+// The bundle of the build the command line names, in the Chrome 87 (modern)
+// or Chrome 38 (legacy) environment; the user agent is webOS 23 on both.
 function boot(cfg, page) {
-  const errors = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => errors.push(String(e && e.message)));
-  const dom = new JSDOM(`<!doctype html><html><body class="${page}"><ytlr-app>` +
-    '<ytlr-tile-renderer><span class="prqC5c">A video title</span></ytlr-tile-renderer></ytlr-app></body></html>',
-  { runScripts: 'outside-only', url: 'https://www.youtube.com/tv', virtualConsole: vc, pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, UA.webos23);
-  win.launchParams = '{}';
-  win.XMLHttpRequest = class { open(){} send(){} setRequestHeader(){} getResponseHeader(){return null;} addEventListener(){} };
-  win.requestAnimationFrame = () => 0;
-  win.cancelAnimationFrame = () => {};
-  win.localStorage.setItem('ytaf-configuration', JSON.stringify(Object.assign({
-    enableSponsorBlock: false, enableReturnYouTubeDislike: false, enableAutoLogin: false
-  }, cfg)));
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  win.fetch = () => Promise.reject(new Error('offline'));
-  win.eval(fs.readFileSync(bundlePath, 'utf8'));
+  const { win, errors } = bootPage({
+    bodyClass: page,
+    inner: '<ytlr-tile-renderer><span class="prqC5c">A video title</span></ytlr-tile-renderer>',
+    userAgent: UA.webos23,
+    consoleErrors: false,
+    restoreRemove: false,
+    config: Object.assign({
+      enableSponsorBlock: false, enableReturnYouTubeDislike: false, enableAutoLogin: false
+    }, cfg),
+    setup(w) {
+      // Frames never run.
+      w.requestAnimationFrame = () => 0;
+      w.cancelAnimationFrame = () => {};
+    },
+    fetch: () => Promise.reject(new Error('offline'))
+  });
   return { win, errors };
 }
 
@@ -47,9 +39,7 @@ const fontOf = (win) => win.getComputedStyle(win.document.querySelector('.prqC5c
 
 // The panel's labels, every tab opened.
 function panelLabels(win) {
-  const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-  Object.defineProperty(e, 'keyCode', { get: () => GREEN, configurable: true });
-  dispatchTrusted(win.document.body, e);
+  trustedKey(win, GREEN);
   for (const tab of win.document.querySelectorAll('.ytaf-tab-btn')) tab.click();
   return [...win.document.querySelectorAll('label')].map((l) => l.textContent);
 }
@@ -96,5 +86,4 @@ function panelLabels(win) {
   t('multiline titles: no page errors', errors.length === 0, errors.join(' | '));
 }
 
-console.log(`\n${pass} passed, ${fail} failed`);
-process.exit(fail ? 1 : 0);
+done();

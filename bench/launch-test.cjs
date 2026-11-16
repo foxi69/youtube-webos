@@ -1,12 +1,21 @@
 /**
  * Verifies dist/index.js (the launcher page) still builds the same YouTube URL
  * after the launch.js split, under a simulated Chromium 38.
+ *
+ * Usage: node bench/launch-test.cjs (after a build; it reads dist/index.js)
+ *
+ * The page is this test's own (the launcher's, not YouTube's, with a
+ * stand-in for window.location); from the harness it takes the reporter.
  */
 const fs = require('fs');
 const { JSDOM } = require('jsdom');
 const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
 const { applyChrome38Downgrade } = require('./chrome38-env.cjs');
+const { createReporter } = require('./harness.cjs');
+
+// The summary line is this test's own (at the end).
+const { t, counts } = createReporter();
 
 const cases = [
   [{}, ['env_forceFullAnimation=1', 'env_enableWebSpeech=1', 'env_enableVoice=1']],
@@ -21,7 +30,6 @@ const cases = [
   [{ contentTarget: 'theme=k' }, ['theme=k']]
 ];
 
-let fail = 0;
 for (const [params, expects, forbidden] of cases) {
   const dom = new JSDOM('<!doctype html><html><body></body></html>', {
     url: 'https://example.com/', runScripts: 'outside-only'
@@ -52,19 +60,18 @@ for (const [params, expects, forbidden] of cases) {
   try {
     // The newline ends a trailing //# sourceMappingURL comment (coverage builds).
     w.eval('(function(window){' + fs.readFileSync(ROOT + '/dist/index.js', 'utf8') + '\n})(__fakeWindow)');
-  } catch (e) { console.log('FAIL threw:', e.message); fail++; continue; }
+  } catch (e) { t('threw: ' + e.message, false); continue; }
   const href = w.eval('__getHref()');
 
   const missing = expects.filter((e) => !href || href.indexOf(e) === -1);
   if (forbidden && href && href.indexOf(forbidden) !== -1) missing.push('no ' + forbidden);
   const noTheme = params.contentTarget === 'theme=k'
     ? href.indexOf('env_forceFullAnimation') !== -1 : false;
-  if (missing.length || noTheme) {
-    fail++;
-    console.log(`FAIL ${JSON.stringify(params)}\n     href    ${href}\n     missing ${missing.join(', ')}${noTheme ? ' | env_* not stripped for theme=k' : ''}`);
-  } else {
-    console.log(`PASS ${JSON.stringify(params).slice(0, 58)}`);
-  }
+  // A case that passes is named by the start of its parameters, one that
+  // fails by all of them.
+  const ok = !(missing.length || noTheme);
+  t(ok ? JSON.stringify(params).slice(0, 58) : JSON.stringify(params), ok,
+    `href    ${href}\n     missing ${missing.join(', ')}${noTheme ? ' | env_* not stripped for theme=k' : ''}`);
 }
 // Offline at launch: no redirect, a note; the 'online' event redirects.
 {
@@ -90,8 +97,8 @@ for (const [params, expects, forbidden] of cases) {
   w.dispatchEvent(new w.Event('online'));
   const href = w.eval('__href') || '';
   const ok = waited && href.indexOf('https://www.youtube.com/tv') === 0 && !/Waiting/.test(w.document.documentElement.textContent);
-  if (!ok) fail++;
-  console.log((ok ? 'PASS' : 'FAIL') + ' offline launch waits for the online event' + (ok ? '' : `\n     waited ${waited} href ${href}`));
+  t('offline launch waits for the online event', ok, `waited ${waited} href ${href}`);
 }
+const { fail } = counts();
 console.log(fail ? `\n${fail} failed` : `\nall ${cases.length + 1} launch cases passed`);
 process.exit(fail ? 1 : 0);

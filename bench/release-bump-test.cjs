@@ -10,16 +10,13 @@ const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { isNewer, advanceTrail, bump } = require('../tools/release-bump.cjs');
+const { createReporter } = require('./harness.cjs');
 
 const repo = path.join(__dirname, '..');
 const FILES = ['package.json', 'package-lock.json', 'assets/appinfo.json', 'screenshots/fork-trail.svg'];
 const FLAG = /<text [^>]*>(\d+\.\d+\.\d+)<\/text>/g;
 
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra ? '\n     ' + extra : '')); }
-};
+const { t, done } = createReporter();
 const throws = (fn, pattern) => { try { fn(); return false; } catch (e) { return pattern.test(e.message); } };
 
 const dirs = [];
@@ -167,5 +164,4 @@ try {
   for (const dir of dirs) fs.rmSync(dir, { recursive: true, force: true });
 }
 
-console.log(`\n${pass} passed, ${fail} failed`);
-process.exit(fail ? 1 : 0);
+done();

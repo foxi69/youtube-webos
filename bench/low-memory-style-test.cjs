@@ -5,46 +5,37 @@
  * start the class is left alone. OLED-Care's rules for those elements no longer
  * need the class.
  *
- * Usage: node bench/low-memory-style-test.cjs [dist/webOSUserScripts/userScript.js]
+ *   node bench/low-memory-style-test.cjs <bundle> [legacy|modern]
+ *
+ * `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87
+ * environment, instead of the legacy one in a Chrome 38 one. Both run with a
+ * webOS 23 user agent.
  */
-const fs = require('fs');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent, dispatchTrusted, applyChrome87Downgrade } = require('./chrome38-env.cjs');
+const { createReporter, bootPage, trustedKey, wait, UA } = require('./harness.cjs');
 
-const bundlePath = process.argv[2] || 'dist/webOSUserScripts/userScript.js';
-// `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
-// with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
-const modern = process.argv[3] === 'modern';
 const GREEN = 404;
 const CLS = 'app-quality-root';
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function boot(cfg) {
-  const errors = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => errors.push(e.message));
-  const dom = new JSDOM(`<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE ${CLS}"><ytlr-app></ytlr-app></body></html>`,
-    { runScripts: 'outside-only', url: 'https://www.youtube.com/tv', virtualConsole: vc, pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, UA.webos23);
-  win.launchParams = '{}';
-  win.XMLHttpRequest = class { open(){} send(){} setRequestHeader(){} getResponseHeader(){return null;} addEventListener(){} };
-  win.requestAnimationFrame = (cb) => setTimeout(cb, 0);
-  win.cancelAnimationFrame = () => {};
-  win.localStorage.setItem('ytaf-configuration', win.JSON.stringify(Object.assign({
-    enableAdBlock: false, enableLegacyEmojiFix: false, enableSponsorBlock: false,
-    enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false,
-    checkForUpdates: false, showWhatsNew: false
-  }, cfg)));
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  win.Element.prototype.remove = function remove() { if (this.parentNode) this.parentNode.removeChild(this); };
-  win.fetch = () => new Promise(() => {});
-  win.eval(fs.readFileSync(bundlePath, 'utf8'));
+  const { win, errors } = bootPage({
+    bodyClass: `WEB_PAGE_TYPE_BROWSE ${CLS}`,
+    userAgent: UA.webos23,
+    consoleErrors: false,
+    config: Object.assign({
+      enableAdBlock: false, enableLegacyEmojiFix: false, enableSponsorBlock: false,
+      enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false,
+      checkForUpdates: false, showWhatsNew: false
+    }, cfg),
+    // A frame is a 0 ms timer of node's, called without a time.
+    setup(win) {
+      win.requestAnimationFrame = (cb) => setTimeout(cb, 0);
+      win.cancelAnimationFrame = () => {};
+    },
+    fetch: 'pending'
+  });
   const has = () => win.document.body.classList.contains(CLS);
   const openPanel = () => {
-    const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-    Object.defineProperty(e, 'keyCode', { get: () => GREEN, configurable: true });
-    dispatchTrusted(win.document.body, e);
+    trustedKey(win, GREEN);
     const tab = [...win.document.querySelectorAll('.ytaf-tab-btn')].find((b) => b.textContent.trim() === 'UI Tweaks');
     if (tab) tab.click();
   };
@@ -61,13 +52,9 @@ function boot(cfg) {
   return { win, errors, has, openPanel, setBox };
 }
 
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra ? '\n     ' + extra : '')); }
-};
+const { t, run } = createReporter();
 
-setTimeout(async () => {
+run(async () => {
   {
     const { win, errors, has, openPanel, setBox } = boot({});
     await wait(20);
@@ -129,7 +116,4 @@ setTimeout(async () => {
     t('OLED-Care: the shelf\'s inner backdrop too',
       /rgba\(0, 0, 0, 0\)|transparent/.test(bg('.JkDfAc')), bg('.JkDfAc'));
   }
-
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-}, 0);
+});

@@ -5,40 +5,28 @@
  * paused again before the check are left alone, and a stall met during
  * another video's cooldown is nudged once the cooldown is over.
  *
- * Usage: node bench/screensaver-test.cjs [dist/webOSUserScripts/userScript.js]
+ * Usage: node bench/screensaver-test.cjs <bundle> [legacy|modern]
  */
-const path = require('path');
-const fs = require('fs');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent, applyChrome87Downgrade } = require('./chrome38-env.cjs');
-// `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
-// with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
-const modern = process.argv[3] === 'modern';
+const { createReporter, bootPage, wait } = require('./harness.cjs');
 
-const dom = new JSDOM('<!doctype html><html><body><ytlr-app></ytlr-app></body></html>', {
-  runScripts: 'outside-only', url: 'https://www.youtube.com/tv',
-  virtualConsole: new VirtualConsole(), pretendToBeVisual: true
-});
-const win = dom.window;
-setUserAgent(win, modern ? UA.webos23 : UA.webos3);
-win.launchParams = '{}';
-win.XMLHttpRequest = class { open() {} send() {} setRequestHeader() {} addEventListener() {} };
-if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-win.fetch = () => Promise.reject(new Error('offline'));
+const { t, run } = createReporter();
 
 // The page's clock: real time plus an offset the cases move forward.
 let offset = 0;
-const realNow = win.Date.now.bind(win.Date);
-win.Date.now = () => realNow() + offset;
 
-win.eval(fs.readFileSync(process.argv[2] || path.resolve(__dirname, '../dist/webOSUserScripts/userScript.js'), 'utf8'));
-
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra ? '\n     ' + extra : '')); }
-};
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// The bundle of the build the command line names (the modern one in a Chrome
+// 87 environment with a webOS 23 user agent, the legacy one in a Chrome 38
+// one), with no network.
+const { win } = bootPage({
+  html: '<!doctype html><html><body><ytlr-app></ytlr-app></body></html>',
+  consoleErrors: false,
+  restoreRemove: false,
+  fetch: () => Promise.reject(new Error('offline')),
+  beforeEval(w) {
+    const realNow = w.Date.now.bind(w.Date);
+    w.Date.now = () => realNow() + offset;
+  }
+});
 
 // A <video> that reports playing and ready, with a clock that never moves:
 // what the element looks like once a screensaver took its decoder.
@@ -57,25 +45,25 @@ const pauseFor = (v, ms) => { fire(v, 'pause'); offset += ms; };
 // Past the 10s cooldown a previous case's nudge started.
 const clearCooldown = () => { offset += 20000; };
 
-(async () => {
+run(async () => {
   {
     const v = frozenVideo();
     fire(v, 'playing');
-    await sleep(2300);
+    await wait(2300);
     t('first play: left alone', v.seeks === 0, 'seeks ' + v.seeks);
   }
   {
     const v = frozenVideo();
     pauseFor(v, 5000);
     fire(v, 'playing');
-    await sleep(2300);
+    await wait(2300);
     t('resume after a short pause: left alone', v.seeks === 0, 'seeks ' + v.seeks);
   }
   {
     const v = frozenVideo();
     pauseFor(v, 120000);
     fire(v, 'playing');
-    await sleep(2300);
+    await wait(2300);
     t('resume after a long pause, clock stuck: one seek in place', v.seeks === 1, 'seeks ' + v.seeks);
     clearCooldown();
   }
@@ -83,9 +71,9 @@ const clearCooldown = () => { offset += 20000; };
     const v = frozenVideo();
     pauseFor(v, 120000);
     fire(v, 'playing');
-    await sleep(500);
+    await wait(500);
     fire(v, 'pause');
-    await sleep(1800);
+    await wait(1800);
     t('paused again before the check: the check is dropped', v.seeks === 0, 'seeks ' + v.seeks);
     clearCooldown();
   }
@@ -97,16 +85,13 @@ const clearCooldown = () => { offset += 20000; };
     fire(a, 'pause');
     pauseFor(b, 120000);
     fire(a, 'playing');
-    await sleep(300);
+    await wait(300);
     fire(b, 'playing');
-    await sleep(1850);
+    await wait(1850);
     t('first of two stalls: nudged', a.seeks === 1, 'seeks ' + a.seeks);
     // 150ms after the first nudge; let all but ~50ms of its cooldown pass.
     offset += 9800;
-    await sleep(500);
+    await wait(500);
     t('second stall during the cooldown: nudged once the cooldown is over', b.seeks === 1, 'seeks ' + b.seeks);
   }
-
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})();
+});

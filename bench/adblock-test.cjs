@@ -3,60 +3,50 @@
  * bundle. Asserts every filter still does what it did: ad removal, Shorts
  * removal, shelf-title removal, endcard/attestation stripping, trackingParams
  * blanking, emoji wrapping, and the guards that must NOT fire.
+ *
+ *   node bench/adblock-test.cjs <bundle> [legacy|modern]
  */
-const fs = require('fs');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const path = require('path');
-const ROOT = path.resolve(__dirname, '..');
-const { applyChrome38Downgrade, UA, setUserAgent, applyChrome87Downgrade } = require('./chrome38-env.cjs');
+const { createReporter, flavorFromArgs, bootPage, wait } = require('./harness.cjs');
 
-const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
-const legacy = process.argv[3] !== 'modern';
+const legacy = !flavorFromArgs().modern;
 
-const dom = new JSDOM('<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app></ytlr-app></body></html>', {
-  runScripts: 'outside-only', url: 'https://www.youtube.com/tv',
-  virtualConsole: new VirtualConsole(), pretendToBeVisual: true
-});
-const win = dom.window;
-setUserAgent(win, legacy ? UA.webos3 : UA.webos23);
-win.launchParams = JSON.stringify({});
-if (!win.requestAnimationFrame) win.requestAnimationFrame = (cb) => win.setTimeout(() => cb(Date.now()), 16);
-if (!win.cancelAnimationFrame) win.cancelAnimationFrame = (id) => win.clearTimeout(id);
-win.XMLHttpRequest = class { open(){} send(){} setRequestHeader(){} getResponseHeader(){return null;} addEventListener(){} };
-
-const nativeStringify = win.JSON.stringify;
-win.localStorage.setItem('ytaf-configuration', nativeStringify({
-  enableAdBlock: true, enableTrackingBlock: true, removeGlobalShorts: true,
-  removeTopLiveGames: true, removeMostRelevant: true, hideGuestSignInPrompts: true,
-  hideEndcards: true, enableLegacyEmojiFix: true, enableSponsorBlock: false,
-  enableReturnYouTubeDislike: false, upgradeThumbnails: false
-}));
+// The page's own JSON.stringify, from before the bundle hooks it.
+let nativeStringify;
 // The first home screen YouTube's page fetches and parses before the
 // userScript is injected (early-browse.js); already resolved by then.
-const earlyBrowse = { response: win.JSON.parse(nativeStringify({
-  responseContext: { visitorData: 'x' },
-  contents: { tvBrowseRenderer: { content: { tvSurfaceContentRenderer: { content: { sectionListRenderer: { contents: [
-    { shelfRenderer: { title: { runs: [{ text: 'Keep me' }] }, content: { horizontalListRenderer: { items: [
-      { adSlotRenderer: {} },
-      { tileRenderer: { style: 'TILE_STYLE_YTLR_DEFAULT' } },
-      { tileRenderer: { style: 'TILE_STYLE_YTLR_SHORTS' } }
-    ] } } } },
-    { shelfRenderer: { tvhtml5ShelfRendererType: 'TVHTML5_SHELF_RENDERER_TYPE_SHORTS' } },
-    { tvMastheadRenderer: {} }
-  ] } } } } } }
-})) };
-win.pendingEarlyBrowse = win.Promise.resolve(earlyBrowse);
+let earlyBrowse;
+const { win } = bootPage({
+  config: {
+    enableAdBlock: true, enableTrackingBlock: true, removeGlobalShorts: true,
+    removeTopLiveGames: true, removeMostRelevant: true, hideGuestSignInPrompts: true,
+    hideEndcards: true, enableLegacyEmojiFix: true, enableSponsorBlock: false,
+    enableReturnYouTubeDislike: false, upgradeThumbnails: false
+  },
+  setup(win) {
+    nativeStringify = win.JSON.stringify;
+    earlyBrowse = { response: win.JSON.parse(nativeStringify({
+      responseContext: { visitorData: 'x' },
+      contents: { tvBrowseRenderer: { content: { tvSurfaceContentRenderer: { content: { sectionListRenderer: { contents: [
+        { shelfRenderer: { title: { runs: [{ text: 'Keep me' }] }, content: { horizontalListRenderer: { items: [
+          { adSlotRenderer: {} },
+          { tileRenderer: { style: 'TILE_STYLE_YTLR_DEFAULT' } },
+          { tileRenderer: { style: 'TILE_STYLE_YTLR_SHORTS' } }
+        ] } } } },
+        { shelfRenderer: { tvhtml5ShelfRendererType: 'TVHTML5_SHELF_RENDERER_TYPE_SHORTS' } },
+        { tvMastheadRenderer: {} }
+      ] } } } } } }
+    })) };
+    win.pendingEarlyBrowse = win.Promise.resolve(earlyBrowse);
+  },
+  // The legacy page stays without Element#remove, as before this test moved
+  // to the harness.
+  restoreRemove: false
+});
 
-if (legacy) applyChrome38Downgrade(win); else applyChrome87Downgrade(win);
-win.eval(fs.readFileSync(bundlePath, 'utf8'));
+const { t, run } = createReporter();
 
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra ? '\n     ' + extra : '')); }
-};
-
-setTimeout(() => {
+run(async () => {
+  await wait(400);
   const P = win.JSON.parse;
   const pad = 'z'.repeat(600); // keep every payload over the 500-byte gate
 
@@ -297,7 +287,4 @@ setTimeout(() => {
     })).contents.tvBrowseRenderer.content.tvSurfaceContentRenderer.content.gridRenderer.items;
     t('browse grid: ad and Shorts tile removed', grid.length === 1, 'got ' + grid.length + ' items');
   }
-
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-}, 400);
+});

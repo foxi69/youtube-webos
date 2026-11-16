@@ -8,10 +8,9 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { build, diff } = require('../tools/yt-tv-snapshot.cjs');
+const { createReporter } = require('./harness.cjs');
 
-let pass = 0, fail = 0;
-const t = (n, ok, extra) => { if (ok) { pass++; console.log('PASS ' + n); }
-  else { fail++; console.log('FAIL ' + n + (extra ? '\n     ' + extra : '')); } };
+const { t, run } = createReporter();
 
 const command = (over = {}) => Object.assign({
   playbackEndpoint: { clickTrackingParams: 'SECRETTRACKING', watchEndpoint: { videoId: 'vvvvvvvvvv1' } },
@@ -89,7 +88,7 @@ function snapshotFile(withPublic) {
 }
 const stub = (page, bundle) => async (url) => (url.indexOf('m=main') !== -1 ? bundle : page);
 
-(async () => {
+run(async () => {
   const same = await watchCode(snapshotFile(true), { fetchFn: stub(PAGE, BUNDLE) });
   t('watch: the same bundle is status 0', same.status === 0 && /No change/.test(same.report), JSON.stringify(same));
 
@@ -125,7 +124,4 @@ const stub = (page, bundle) => async (url) => (url.indexOf('m=main') !== -1 ? bu
   const before = fs.readFileSync(unwritten, 'utf8');
   await watchCode(unwritten, { fetchFn: stub(PAGE, changedBundle) });
   t('watch without --write leaves the snapshot as it was', fs.readFileSync(unwritten, 'utf8') === before);
-
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})().catch((e) => { console.log('FAIL harness: ' + (e && e.stack || e)); process.exit(1); });
+});

@@ -7,45 +7,37 @@
  * data, and webOS 24 and older, are left alone.
  *
  * Runs on the MODERN bundle (webOS 22+ is only ever served that one).
+ *
+ * Usage: node bench/quality-reload-test.cjs <modern bundle>
  */
-const fs = require('fs');
-const path = require('path');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { UA, setUserAgent, applyChrome87Downgrade } = require('./chrome38-env.cjs');
+const { createReporter, readBundle, bootPage, failingXHR, wait, UA } = require('./harness.cjs');
 
-const ROOT = path.resolve(__dirname, '..');
-const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
-const bundle = fs.readFileSync(bundlePath, 'utf8');
+const bundle = readBundle();
 
 const UA25 = UA.webos23.replace('webOS.TV-2023', 'webOS.TV-2025');
 
-let pass = 0, fail = 0;
-const t = (n, ok, extra) => { if (ok) { pass++; console.log('PASS ' + n); }
-  else { fail++; console.log('FAIL ' + n + (extra ? '\n     ' + extra : '')); } };
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const { t, run: report } = createReporter();
 
 async function run(ua, ready, startAt) {
-  const dom = new JSDOM('<body class="WEB_PAGE_TYPE_WATCH"><div id="ytlr-player__player-container-player"><video></video></div></body>',
-    { runScripts: 'outside-only', url: 'https://www.youtube.com/tv#/watch?v=abc',
-      virtualConsole: new VirtualConsole(), pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, ua);
-  applyChrome87Downgrade(win);   // the oldest engine the modern build serves
-  win.launchParams = '{}';
-  win.fetch = () => Promise.reject(new Error('offline'));
-  win.XMLHttpRequest = class {
-    open() {} send() { if (this.onerror) this.onerror(); }
-    setRequestHeader() {} getResponseHeader() { return null; } addEventListener() {}
-  };
-  let rafQ = [];
-  win.requestAnimationFrame = (cb) => { rafQ.push(cb); return rafQ.length; };
-  win.cancelAnimationFrame = () => {};
-  const pump = () => { const q = rafQ; rafQ = []; for (const cb of q) cb(0); };
-  win.localStorage.setItem('ytaf-configuration', JSON.stringify({
-    forceHighResVideo: true, enableAdBlock: false, enableSponsorBlock: false,
-    enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false
-  }));
-  win.eval(bundle);
+  // The modern bundle whatever the command line says, in the Chrome 87
+  // environment (the oldest engine the modern build serves), with no network.
+  const { win, frames } = bootPage({
+    code: bundle,
+    modern: true,
+    userAgent: ua,
+    html: '<body class="WEB_PAGE_TYPE_WATCH"><div id="ytlr-player__player-container-player"><video></video></div></body>',
+    url: 'https://www.youtube.com/tv#/watch?v=abc',
+    consoleErrors: false,
+    restoreRemove: false,
+    xhr: failingXHR(),
+    raf: 'manual',
+    config: {
+      forceHighResVideo: true, enableAdBlock: false, enableSponsorBlock: false,
+      enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false
+    },
+    fetch: () => Promise.reject(new Error('offline'))
+  });
+  const pump = () => frames.pump();
 
   const p = win.document.getElementById('ytlr-player__player-container-player');
   const v = p.querySelector('video');
@@ -62,15 +54,15 @@ async function run(ua, ready, startAt) {
     pauseVideo() {}, playVideo() {}, isInline: () => false, addEventListener() {}
   });
   win.dispatchEvent(new win.CustomEvent('yt-navigate-finish', { detail: { pageType: 'watch' } }));
-  await sleep(300);
+  await wait(300);
   pump(); pump();
-  await sleep(1700);
+  await wait(1700);
   const upgraded = q === 'hd1440';
   win.close();
   return { ct, upgraded };
 }
 
-(async () => {
+report(async () => {
   let r = await run(UA25, 1, 0);
   t('webOS 25, element stuck at 0 after the switch: seeked to the player position', r.upgraded && r.ct === 95, JSON.stringify(r));
   r = await run(UA25, 4, 0);
@@ -79,6 +71,4 @@ async function run(ua, ready, startAt) {
   t('webOS 25, element within 1 s of the player: left alone', r.upgraded && r.ct === 94.5, JSON.stringify(r));
   r = await run(UA.webos23, 1, 0);
   t('webOS 23: never touched', r.upgraded && r.ct === 0, JSON.stringify(r));
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})();
+});

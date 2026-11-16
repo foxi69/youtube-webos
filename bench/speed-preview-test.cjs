@@ -9,67 +9,53 @@
  * Found on a webOS 25 TV (2026-11-14): after 1.5x on a video, every Home
  * preview played at 1.5x with the engine running.
  *
- * Usage: node bench/speed-preview-test.cjs [dist/webOSUserScripts/userScript.js]
+ * Usage: node bench/speed-preview-test.cjs <bundle> [legacy|modern]
  */
-const fs = require('fs');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { UA, setUserAgent, applyChrome38Downgrade, applyChrome87Downgrade } = require('./chrome38-env.cjs');
+const { createReporter, bootPage, wait } = require('./harness.cjs');
 
-const bundlePath = process.argv[2] || 'dist/webOSUserScripts/userScript.js';
-// `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
-// with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
-const modern = process.argv[3] === 'modern';
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 // RESUME_AFTER_PAGE_MS in playback-speed.js, with room for the page-update
 // event, which the page's MutationObserver sends a moment after the class.
 const AFTER_PAGE_MS = 1000 + 300;
 
-let pass = 0;
-let fail = 0;
-const t = (n, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + n); }
-  else { fail++; console.log('FAIL ' + n + (extra ? '\n     ' + extra : '')); }
-};
+const { t, run } = createReporter();
 
+// The bundle on the watch page, of the build the command line names (the
+// modern bundle in a Chrome 87 environment with a webOS 23 user agent, the
+// legacy one in a Chrome 38 one). Page script errors go to `errors`.
 function boot() {
-  const errors = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => errors.push(e.message));
-  const dom = new JSDOM('<!doctype html><html><body class="WEB_PAGE_TYPE_WATCH"><ytlr-app></ytlr-app></body></html>',
-    { runScripts: 'outside-only', url: 'https://www.youtube.com/tv#/watch?v=aaaaaaaaaaa', virtualConsole: vc, pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, modern ? UA.webos23 : UA.webos3);
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  win.Element.prototype.remove = function remove() { if (this.parentNode) this.parentNode.removeChild(this); };
-  win.launchParams = '{}';
-  win.XMLHttpRequest = class { open(){} send(){} setRequestHeader(){} getResponseHeader(){return null;} addEventListener(){} };
-  win.fetch = () => new Promise(() => {});
-  win.requestAnimationFrame = (cb) => setTimeout(cb, 0);
-  win.cancelAnimationFrame = () => {};
-  win.localStorage.setItem('ytaf-configuration', JSON.stringify({
-    enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-    upgradeThumbnails: false, enableAutoLogin: false, checkForUpdates: false, showWhatsNew: false
-  }));
+  const { win, errors } = bootPage({
+    bodyClass: 'WEB_PAGE_TYPE_WATCH',
+    url: 'https://www.youtube.com/tv#/watch?v=aaaaaaaaaaa',
+    consoleErrors: false,
+    config: {
+      enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
+      upgradeThumbnails: false, enableAutoLogin: false, checkForUpdates: false, showWhatsNew: false
+    },
+    fetch: 'pending',
+    beforeEval(win) {
+      // Frames on node's own timer, as a 0 ms timeout.
+      win.requestAnimationFrame = (cb) => setTimeout(cb, 0);
+      win.cancelAnimationFrame = () => {};
 
-  // WebCodecs, Web Audio and MSE, faked.
-  win.AudioDecoder = class { configure() {} decode() {} flush() { return Promise.resolve(); } close() {} };
-  win.AudioDecoder.isConfigSupported = () => Promise.resolve({ supported: true });
-  win.AudioContext = class {
-    constructor() { this.currentTime = 0; this.destination = {}; this.state = 'running'; this.sampleRate = 48000; }
-    createGain() { return { gain: { value: 1 }, connect() {} }; }
-    close() { this.state = 'closed'; }
-  };
-  const realSb = () => ({ updating: false, appendBuffer() {}, remove() {}, abort() {}, buffered: { length: 0 } });
-  win.MediaSource = class {
-    constructor() { this.readyState = 'open'; }
-    addSourceBuffer() { return realSb(); }
-    get sourceBuffers() { return { length: 0, item: () => undefined }; }
-  };
-  win.MediaSource.isTypeSupported = () => true;
-  win.URL.createObjectURL = () => 'blob:fake';
-  win.URL.revokeObjectURL = () => {};
-
-  win.eval(fs.readFileSync(bundlePath, 'utf8'));
+      // WebCodecs, Web Audio and MSE, faked.
+      win.AudioDecoder = class { configure() {} decode() {} flush() { return Promise.resolve(); } close() {} };
+      win.AudioDecoder.isConfigSupported = () => Promise.resolve({ supported: true });
+      win.AudioContext = class {
+        constructor() { this.currentTime = 0; this.destination = {}; this.state = 'running'; this.sampleRate = 48000; }
+        createGain() { return { gain: { value: 1 }, connect() {} }; }
+        close() { this.state = 'closed'; }
+      };
+      const realSb = () => ({ updating: false, appendBuffer() {}, remove() {}, abort() {}, buffered: { length: 0 } });
+      win.MediaSource = class {
+        constructor() { this.readyState = 'open'; }
+        addSourceBuffer() { return realSb(); }
+        get sourceBuffers() { return { length: 0, item: () => undefined }; }
+      };
+      win.MediaSource.isTypeSupported = () => true;
+      win.URL.createObjectURL = () => 'blob:fake';
+      win.URL.revokeObjectURL = () => {};
+    }
+  });
   return { win, errors };
 }
 
@@ -106,7 +92,7 @@ const audioIsEngine = (win) =>
 
 const setPage = async (win, cls) => { win.document.body.className = cls; await wait(20); };
 
-(async () => {
+run(async () => {
   const { win, errors } = boot();
   await wait(100);
   const speed = win.ytafSpeed;
@@ -217,6 +203,4 @@ const setPage = async (win, cls) => { win.document.body.className = cls; await w
 
   t('no page errors', errors.length === 0, errors.join(' | '));
   win.close();
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})().catch((e) => { console.log('FAIL harness: ' + (e && e.stack || e)); process.exit(1); });
+});

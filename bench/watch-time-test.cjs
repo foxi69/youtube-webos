@@ -4,61 +4,41 @@
  * pages counts - not pauses, buffering or previews on the browse pages - and
  * the panel row is off while the clock is.
  *
- * Usage: node bench/watch-time-test.cjs [dist/webOSUserScripts/userScript.js]
+ * Usage: node bench/watch-time-test.cjs [dist/webOSUserScripts/userScript.js] [legacy|modern]
  */
-const fs = require('fs');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent, dispatchTrusted, applyChrome87Downgrade } = require('./chrome38-env.cjs');
+const { createReporter, bootPage, trustedKey, wait: sleep } = require('./harness.cjs');
 
-const bundlePath = process.argv[2] || 'dist/webOSUserScripts/userScript.js';
-// `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
-// with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
-const modern = process.argv[3] === 'modern';
 const GREEN = 404;
 const MIN = 60000;
 
-const errors = [];
-const vc = new VirtualConsole();
-vc.on('jsdomError', (e) => errors.push(e.message));
-const dom = new JSDOM('<!doctype html><html><body class="WEB_PAGE_TYPE_WATCH"><ytlr-app><video></video></ytlr-app></body></html>',
-  { runScripts: 'outside-only', url: 'https://www.youtube.com/tv', virtualConsole: vc, pretendToBeVisual: true });
-const win = dom.window;
-setUserAgent(win, modern ? UA.webos23 : UA.webos3);
-win.launchParams = '{}';
-win.XMLHttpRequest = class { open(){} send(){} setRequestHeader(){} getResponseHeader(){return null;} addEventListener(){} };
-win.requestAnimationFrame = (cb) => win.setTimeout(() => cb(Date.now()), 0);
-win.cancelAnimationFrame = () => {};
-win.localStorage.setItem('ytaf-configuration', win.JSON.stringify({
-  enableAdBlock: false, enableLegacyEmojiFix: false, enableSponsorBlock: false,
-  enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false,
-  clockMode: 'time', showWatchTime: true
-}));
-
 // The page's clock: real time plus an offset the cases move forward.
-const RealDate = win.Date;
 let offset = 0;
-class FakeDate extends RealDate {
-  constructor(...args) { if (args.length) super(...args); else super(RealDate.now() + offset); }
-  static now() { return RealDate.now() + offset; }
-}
-win.Date = FakeDate;
 
-if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-win.eval(fs.readFileSync(bundlePath, 'utf8'));
+const { win, doc, errors } = bootPage({
+  bodyClass: 'WEB_PAGE_TYPE_WATCH',
+  inner: '<video></video>',
+  raf: 'timer',
+  config: {
+    enableAdBlock: false, enableLegacyEmojiFix: false, enableSponsorBlock: false,
+    enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false,
+    clockMode: 'time', showWatchTime: true
+  },
+  consoleErrors: false,
+  // The legacy environment has no Element#remove here.
+  restoreRemove: false,
+  setup: (w) => {
+    const RealDate = w.Date;
+    class FakeDate extends RealDate {
+      constructor(...args) { if (args.length) super(...args); else super(RealDate.now() + offset); }
+      static now() { return RealDate.now() + offset; }
+    }
+    w.Date = FakeDate;
+  }
+});
 
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra ? '\n     ' + extra : '')); }
-};
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const doc = win.document;
+const { t, run } = createReporter();
 
-function key(code) {
-  const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-  Object.defineProperty(e, 'keyCode', { get: () => code, configurable: true });
-  dispatchTrusted(doc.body, e);
-}
+const key = (code) => trustedKey(win, code);
 // The panel row of a setting, found by its label.
 function row(label) {
   return [...doc.querySelectorAll('.ytaf-ui-container label')].find((l) => l.textContent.trim() === label);
@@ -77,7 +57,7 @@ function refresh() {
 }
 const fire = (el, type) => el.dispatchEvent(new win.Event(type));
 
-(async () => {
+run(async () => {
   await sleep(300);
   key(GREEN);
   await sleep(100);
@@ -133,6 +113,4 @@ const fire = (el, type) => el.dispatchEvent(new win.Event(type));
   t('row enabled while the clock is on', !row('Show Watch Time With the Clock').querySelector('input').disabled);
 
   t('no page errors', errors.length === 0, errors.join(' | '));
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})();
+});

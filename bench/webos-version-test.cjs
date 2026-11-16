@@ -14,17 +14,13 @@
  * (2026 -> 26, not the simulator fallback).
  *
  * The legacy bundle runs in a Chrome 38 environment, as the other legacy
- * tests do; the modern one in jsdom's own, as modern-smoke does.
+ * tests do; the modern one in a Chrome 87 one. Each page gets the user agent
+ * of its row in the matrix instead of the harness's own two.
  */
-const fs = require('fs');
-const path = require('path');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, setUserAgent, dispatchTrusted, applyChrome87Downgrade } = require('./chrome38-env.cjs');
+const { createReporter, flavorFromArgs, readBundle, bootPage, trustedKey, wait } = require('./harness.cjs');
 
-const ROOT = path.resolve(__dirname, '..');
-const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
-const flavor = process.argv[3] === 'modern' ? 'modern' : 'legacy';
-const code = fs.readFileSync(bundlePath, 'utf8');
+const { flavor } = flavorFromArgs();
+const code = readBundle();
 
 const ua = (chrome, year) => 'Mozilla/5.0 (Web0S; Linux/SmartTV) AppleWebKit/537.36 (KHTML, like Gecko) ' +
   `Chrome/${chrome} Safari/537.36 WebAppManager` + (year ? ` webOS.TV-${year}` : '');
@@ -59,50 +55,43 @@ const HTML = `<!doctype html><html><head></head><body class="WEB_PAGE_TYPE_BROWS
   <div id="ytlr-player__player-container"><video></video></div>
 </ytlr-app></body></html>`;
 
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra ? '\n     ' + extra : '')); }
-};
+const { t, run } = createReporter();
 
 function load(entry) {
-  const errors = [];
   const info = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => errors.push('jsdomError: ' + (e.stack || e.message)));
-  vc.on('error', (...a) => errors.push('console.error: ' + a.join(' ')));
-  vc.on('info', (...a) => info.push(a.join(' ')));
-  const dom = new JSDOM(HTML, { runScripts: 'outside-only', url: 'https://www.youtube.com/tv',
-    virtualConsole: vc, pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, entry.ua);
-  win.launchParams = JSON.stringify({});
-  win.webOS = { deviceInfo: (cb) => cb({ modelName: 'sim' }), platformBack: () => {} };
-  win.XMLHttpRequest = class { open() {} send() {} setRequestHeader() {} getResponseHeader() { return null; } addEventListener() {} };
-  if (!win.requestAnimationFrame) win.requestAnimationFrame = (cb) => win.setTimeout(() => cb(Date.now()), 16);
-  if (!win.cancelAnimationFrame) win.cancelAnimationFrame = (id) => win.clearTimeout(id);
-  if (flavor === 'legacy') applyChrome38Downgrade(win); else applyChrome87Downgrade(win);
-  // A fetch that records what reaches it (the cast block cancels before).
-  // jsdom has no Request, which src/hooks/fetch.ts checks every request
-  // against: without it each one fails with a ReferenceError, which would
-  // pass for a block.
-  // Only the modern build relies on the TV's own: the legacy one brings its
-  // fetch polyfill, which a Request here would turn off.
-  if (flavor === 'modern') win.Request = Request;
   const fetched = [];
-  win.fetch = (resource) => {
-    fetched.push(String(resource && resource.url || resource));
-    return Promise.resolve({ ok: true, status: 204 });
-  };
-  let threw = null;
-  try { win.eval(code); } catch (e) { threw = e; }
+  const { win, errors, threw } = bootPage({
+    code,
+    modern: flavor === 'modern',
+    html: HTML,
+    userAgent: entry.ua,
+    webOS: true,
+    errorStacks: true,
+    console: { info: (...a) => info.push(a.join(' ')) },
+    // The legacy page stays without Element#remove, as before this test
+    // moved to the harness.
+    restoreRemove: false,
+    // After the environment is applied:
+    // a fetch that records what reaches it (the cast block cancels before).
+    // jsdom has no Request, which src/hooks/fetch.ts checks every request
+    // against: without it each one fails with a ReferenceError, which would
+    // pass for a block.
+    // Only the modern build relies on the TV's own: the legacy one brings its
+    // fetch polyfill, which a Request here would turn off.
+    beforeEval(win) {
+      if (flavor === 'modern') win.Request = Request;
+      win.fetch = (resource) => {
+        fetched.push(String(resource && resource.url || resource));
+        return Promise.resolve({ ok: true, status: 204 });
+      };
+    },
+    catchThrow: true
+  });
   return { win, errors, info, threw, fetched };
 }
 
 function openPanel(win) {
-  const green = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-  Object.defineProperty(green, 'keyCode', { get: () => 404, configurable: true });
-  dispatchTrusted(win.document.body, green);
+  trustedKey(win, 404);
   const panel = win.document.querySelector('.ytaf-ui-container');
   if (!panel) return null;
   // Only the first page is built on open, the others one per frame after
@@ -112,9 +101,7 @@ function openPanel(win) {
   return panel.textContent;
 }
 
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-
-(async () => {
+run(async () => {
   for (const entry of MATRIX) {
     const v = entry.version;
     const { win, errors, info, threw, fetched } = load(entry);
@@ -176,7 +163,4 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     t(n + 'no console.error / jsdomError', errors.length === 0, errors.slice(0, 2).join(' || '));
     win.close();
   }
-
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})().catch((e) => { console.log('FAIL harness: ' + (e && e.stack || e)); process.exit(1); });
+});

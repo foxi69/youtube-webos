@@ -7,39 +7,27 @@
  * (ytlr-tile-renderer, its data on __instance.props.data, the time in
  * ytlr-thumbnail-overlay-time-status-renderer > yt-formatted-string), the
  * player element and the shared <video>, whose time is set by hand.
+ *
+ * Usage: node bench/preview-countdown-test.cjs [dist/webOSUserScripts/userScript.js] [legacy|modern]
  */
-const fs = require('fs');
-const path = require('path');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent, applyChrome87Downgrade } = require('./chrome38-env.cjs');
+const { createReporter, bootPage, wait, UA } = require('./harness.cjs');
 
-const ROOT = path.resolve(__dirname, '..');
-const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
-// `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
-// with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
-const modern = process.argv[3] === 'modern';
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-
-let pass = 0, fail = 0;
-const t = (n, ok, extra) => { if (ok) { pass++; console.log('PASS ' + n); }
-  else { fail++; console.log('FAIL ' + n + (extra ? '\n     ' + extra : '')); } };
+const { t, run } = createReporter();
 
 function boot() {
-  const errors = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => errors.push(String(e && e.message)));
-  const dom = new JSDOM('<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app></ytlr-app></body></html>',
-    { runScripts: 'outside-only', url: 'https://www.youtube.com/tv', virtualConsole: vc, pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, UA.webos23);
-  win.launchParams = '{}';
-  win.XMLHttpRequest = class { open(){} send(){} setRequestHeader(){} getResponseHeader(){return null;} addEventListener(){} };
-  win.requestAnimationFrame = () => 0;
-  win.cancelAnimationFrame = () => {};
-  win.localStorage.setItem('ytaf-configuration', JSON.stringify({ enableSponsorBlock: false, enableReturnYouTubeDislike: false, enableAutoLogin: false }));
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  win.fetch = () => Promise.reject(new Error('offline'));
-  win.eval(fs.readFileSync(bundlePath, 'utf8'));
+  const { win, errors } = bootPage({
+    // The webOS 23 user agent on both builds.
+    userAgent: UA.webos23,
+    config: { enableSponsorBlock: false, enableReturnYouTubeDislike: false, enableAutoLogin: false },
+    consoleErrors: false,
+    // The legacy environment has no Element#remove here.
+    restoreRemove: false,
+    setup: (w) => {
+      w.requestAnimationFrame = () => 0;
+      w.cancelAnimationFrame = () => {};
+    },
+    fetch: () => Promise.reject(new Error('offline'))
+  });
   return { win, errors };
 }
 
@@ -73,7 +61,7 @@ function addVideo(win, state) {
   return v;
 }
 
-(async () => {
+run(async () => {
   const { win, errors } = boot();
   await wait(50);
   const state = { id: 'aaaaaaaaaa1', duration: 169, time: 12.3, playing: true };
@@ -172,7 +160,4 @@ function addVideo(win, state) {
   t('...and the end brings back YouTube\'s new text, not the first one', badgeOf(again) === '5:01', badgeOf(again));
 
   t('no page errors', errors.length === 0, errors.join(' | '));
-  win.close();
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})().catch((e) => { console.log('FAIL harness: ' + (e && e.stack || e)); process.exit(1); });
+  win.close();});

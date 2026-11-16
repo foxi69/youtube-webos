@@ -3,57 +3,37 @@
  * when the window opens, so an update whose window never got its browse page
  * (a long stay on "Who's watching") still shows it on the next start.
  *
- * Usage: node bench/whats-new-test.cjs [bundle]
+ * Usage: node bench/whats-new-test.cjs [bundle] [legacy|modern]
  */
 const fs = require('fs');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent, applyChrome87Downgrade } = require('./chrome38-env.cjs');
+const { createReporter, bootPage, wait: sleep, until } = require('./harness.cjs');
 
-const bundlePath = process.argv[2] || 'dist/webOSUserScripts/userScript.js';
-// `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
-// with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
-const modern = process.argv[3] === 'modern';
 const INSTALLED = JSON.parse(fs.readFileSync('package.json', 'utf8')).version;
 const SEEN = 'ytaf-seen-version';
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // Polls until cond() holds or the time runs out; returns whether it held.
-function waitFor(cond, timeout = 5000, step = 25) {
-  const end = Date.now() + timeout;
-  const poll = () => (cond() ? Promise.resolve(true)
-    : Date.now() >= end ? Promise.resolve(false)
-      : sleep(step).then(poll));
-  return poll();
-}
+const waitFor = (cond) => until(cond, 5000, 25);
 
 function boot(bodyClass, storage, setup) {
-  const dom = new JSDOM(`<!doctype html><html><body class="${bodyClass}"><ytlr-app></ytlr-app></body></html>`,
-    { runScripts: 'outside-only', url: 'https://www.youtube.com/tv', virtualConsole: new VirtualConsole(), pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, modern ? UA.webos23 : UA.webos3);
-  win.launchParams = '{}';
-  win.XMLHttpRequest = class { open() {} send() {} setRequestHeader() {} getResponseHeader() { return null; } addEventListener() {} };
-  win.requestAnimationFrame = () => 1;
-  win.cancelAnimationFrame = () => {};
-  for (const k of Object.keys(storage)) win.localStorage.setItem(k, storage[k]);
-  if (setup) setup(win);
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  win.eval(fs.readFileSync(bundlePath, 'utf8'));
-  return win;
+  return bootPage({
+    bodyClass,
+    storage,
+    // The legacy environment has no Element#remove here.
+    restoreRemove: false,
+    setup: (win) => {
+      win.requestAnimationFrame = () => 1;
+      win.cancelAnimationFrame = () => {};
+      if (setup) setup(win);
+    }
+  }).win;
 }
 
 const open = (win) => !!win.document.querySelector('.ytaf-dialog');
 const seen = (win) => win.localStorage.getItem(SEEN);
 const CONFIG = JSON.stringify({ enableAdBlock: true });
 
-let passed = 0;
-let failed = 0;
-const t = (name, ok, extra) => {
-  if (ok) passed++;
-  else failed++;
-  console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${ok || extra === undefined ? '' : ' -> ' + extra}`);
-};
+const { t, run } = createReporter();
 
-(async () => {
+run(async () => {
   // An update, still on "Who's watching".
   const picker = boot('WEB_PAGE_TYPE_ACCOUNT_SELECTOR', { 'ytaf-configuration': CONFIG, [SEEN]: '0.1.0' });
   await sleep(3600);
@@ -129,7 +109,4 @@ const t = (name, ok, extra) => {
     await sleep(100);
     t('an installer answer that is not an object throws nothing', !!button && bridgeErrors.length === 0, button ? bridgeErrors.join(' | ') : 'no Update button');
   }
-
-  console.log(`${passed} passed, ${failed} failed`);
-  process.exit(failed ? 1 : 0);
-})();
+});

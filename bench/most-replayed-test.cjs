@@ -10,6 +10,7 @@
  */
 const path = require('path');
 const { pathToFileURL } = require('url');
+const { createReporter } = require('./harness.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const SERVICE = pathToFileURL(path.join(ROOT, 'src/heatmap-data.js')).href;
@@ -67,11 +68,7 @@ const OLD_SHAPE = {
   } } } } } }
 };
 
-let pass = 0, fail = 0;
-const t = (n, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + n); }
-  else { fail++; console.log('FAIL ' + n + (extra ? '\n     ' + extra : '')); }
-};
+const { t, done } = createReporter();
 
 let generation = 0;
 const fresh = async () => {
@@ -150,8 +147,7 @@ async function main() {
   xhrs[4].ontimeout();
   t('timeout resolves null', (await got) === null);
 
-  console.log(`\n${pass} passed, ${fail} failed`);
-  if (fail) process.exit(1);
+  done();
 }
 
 main().catch((err) => {

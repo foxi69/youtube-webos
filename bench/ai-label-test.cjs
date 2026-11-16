@@ -11,6 +11,7 @@
 // would mix their requests together.
 const path = require('path');
 const { pathToFileURL } = require('url');
+const { createReporter } = require('./harness.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const SERVICE = pathToFileURL(path.join(ROOT, 'src/youtube-ai-label.js')).href;
@@ -62,11 +63,7 @@ const id = (n) => 'v' + String(n).padStart(10, '0');
 const flush = () => new Promise((r) => setImmediate(r));
 const used = () => xhrs.length;
 
-let pass = 0, fail = 0;
-const t = (n, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + n); }
-  else { fail++; console.log('FAIL ' + n + (extra ? '\n     ' + extra : '')); }
-};
+const { t, done } = createReporter();
 
 let generation = 0;
 // Fresh module instance (own cache, queue and rate-limit state) per test.
@@ -330,8 +327,7 @@ async function main() {
     t('refused version: said once', said === 1, String(said));
   }
 
-  console.log('\n' + pass + ' passed, ' + fail + ' failed');
-  process.exit(fail ? 1 : 0);
+  done();
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });
