@@ -6,46 +6,38 @@
  * loaded anew is forced as before, and so is one opened with no preview.
  *
  * Runs on the MODERN bundle, as quality-reload-test.
+ *
+ * Usage: node bench/handover-quality-test.cjs <modern bundle>
  */
-const fs = require('fs');
-const path = require('path');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { UA, setUserAgent, applyChrome87Downgrade } = require('./chrome38-env.cjs');
+const { createReporter, readBundle, bootPage, failingXHR, wait } = require('./harness.cjs');
 
-const ROOT = path.resolve(__dirname, '..');
-const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
-const bundle = fs.readFileSync(bundlePath, 'utf8');
+const bundle = readBundle();
 
-let pass = 0, fail = 0;
-const t = (n, ok, extra) => { if (ok) { pass++; console.log('PASS ' + n); }
-  else { fail++; console.log('FAIL ' + n + (extra ? '\n     ' + extra : '')); } };
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const { t, run: report } = createReporter();
 
 // scenario: 'carried' (a preview plays on Home, then the page turns to watch
 // with the same source still playing), 'reloaded' (the same, but the element
 // gets a new source first), 'direct' (no preview: the watch page from the start).
 async function run(scenario) {
   const startPage = scenario === 'direct' ? 'WEB_PAGE_TYPE_WATCH' : 'WEB_PAGE_TYPE_BROWSE';
-  const dom = new JSDOM(`<body class="${startPage}"><div id="ytlr-player__player-container-player"><video></video></div></body>`,
-    { runScripts: 'outside-only', url: 'https://www.youtube.com/tv#/', virtualConsole: new VirtualConsole(), pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, UA.webos23);
-  applyChrome87Downgrade(win);   // the oldest engine the modern build serves
-  win.launchParams = '{}';
-  win.fetch = () => Promise.reject(new Error('offline'));
-  win.XMLHttpRequest = class {
-    open() {} send() { if (this.onerror) this.onerror(); }
-    setRequestHeader() {} getResponseHeader() { return null; } addEventListener() {}
-  };
-  let rafQ = [];
-  win.requestAnimationFrame = (cb) => { rafQ.push(cb); return rafQ.length; };
-  win.cancelAnimationFrame = () => {};
-  const pump = () => { const qd = rafQ; rafQ = []; for (const cb of qd) cb(0); };
-  win.localStorage.setItem('ytaf-configuration', JSON.stringify({
-    forceHighResVideo: true, enableAdBlock: false, enableSponsorBlock: false,
-    enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false
-  }));
-  win.eval(bundle);
+  // The modern bundle whatever the command line says, in the Chrome 87
+  // environment (the oldest engine the modern build serves), with no network.
+  const { win, frames } = bootPage({
+    code: bundle,
+    modern: true,
+    html: `<body class="${startPage}"><div id="ytlr-player__player-container-player"><video></video></div></body>`,
+    url: 'https://www.youtube.com/tv#/',
+    consoleErrors: false,
+    restoreRemove: false,
+    xhr: failingXHR(),
+    raf: 'manual',
+    config: {
+      forceHighResVideo: true, enableAdBlock: false, enableSponsorBlock: false,
+      enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false
+    },
+    fetch: () => Promise.reject(new Error('offline'))
+  });
+  const pump = () => frames.pump();
 
   const p = win.document.getElementById('ytlr-player__player-container-player');
   const v = p.querySelector('video');
@@ -74,13 +66,13 @@ async function run(scenario) {
     }
     win.document.body.className = 'WEB_PAGE_TYPE_WATCH';
     win.location.hash = '#/watch?v=abc';
-    await sleep(30);
+    await wait(30);
     if (scenario === 'reloaded') v.dispatchEvent(new win.Event('playing'));
   }
   win.dispatchEvent(new win.CustomEvent('yt-navigate-finish', { detail: { pageType: 'watch' } }));
-  await sleep(300);
+  await wait(300);
   pump(); pump();
-  await sleep(1700);
+  await wait(1700);
   pump();
   const first = { rangeCalls, q };
   let next = null;
@@ -94,9 +86,9 @@ async function run(scenario) {
     if (onState) for (const state of [-1, 3]) onState(state);
     v.dispatchEvent(new win.Event('playing'));
     if (onState) onState(1);
-    await sleep(300);
+    await wait(300);
     pump(); pump();
-    await sleep(1700);
+    await wait(1700);
     pump();
     next = { rangeCalls: rangeCalls - first.rangeCalls, q };
   }
@@ -104,7 +96,7 @@ async function run(scenario) {
   return Object.assign(first, { next });
 }
 
-(async () => {
+report(async () => {
   const direct = await run('direct');
   t('control, a video opened with no preview: forced to the top quality', direct.rangeCalls >= 1 && direct.q === 'hd2160',
     JSON.stringify(direct));
@@ -116,6 +108,4 @@ async function run(scenario) {
     JSON.stringify(carried));
   t('...and the next video loaded on that watch page is forced again', !!carried.next && carried.next.rangeCalls >= 1 &&
     carried.next.q === 'hd2160', JSON.stringify(carried.next));
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})().catch((e) => { console.log('FAIL harness: ' + (e && e.stack || e)); process.exit(1); });
+});
