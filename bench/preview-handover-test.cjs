@@ -5,17 +5,11 @@
  *
  * Where the flag sits in a real response is not known here: the fixtures put
  * it in several places, which is what the search by name is for.
+ *
+ * Usage: node bench/preview-handover-test.cjs [dist/webOSUserScripts/userScript.js] [legacy|modern]
  */
-const fs = require('fs');
-const path = require('path');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent, dispatchTrusted, applyChrome87Downgrade } = require('./chrome38-env.cjs');
+const { createReporter, bootPage, trustedKey, wait, UA } = require('./harness.cjs');
 
-const ROOT = path.resolve(__dirname, '..');
-const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
-// `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
-// with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
-const modern = process.argv[3] === 'modern';
 const GREEN = 404;
 const LABEL = 'Open Playing Previews Without Reloading';
 
@@ -35,30 +29,27 @@ const LEARNT = { 'ytaf-sidebar-entries': JSON.stringify([{ id: 'FEtopics_music',
 
 // `tectonic`: YouTube's player config as the page had it before the bundle ran.
 function boot(cfg, storage = {}, tectonic) {
-  const errors = [];
-  const virtualConsole = new VirtualConsole();
-  virtualConsole.on('jsdomError', (e) => errors.push(String(e && e.message)));
-  const dom = new JSDOM(
-    '<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app></ytlr-app></body></html>',
-    { runScripts: 'outside-only', url: 'https://www.youtube.com/tv', virtualConsole, pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, UA.webos23);
-  win.launchParams = '{}';
-  win.XMLHttpRequest = class { open(){} send(){} setRequestHeader(){} getResponseHeader(){return null;} addEventListener(){} };
-  win.requestAnimationFrame = () => 0;
-  win.cancelAnimationFrame = () => {};
-  win.fetch = () => Promise.reject(new Error('offline'));
-  win.localStorage.setItem('ytaf-configuration', win.JSON.stringify(cfg));
-  for (const k of Object.keys(storage)) win.localStorage.setItem(k, storage[k]);
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  if (tectonic) win.tectonicConfig = tectonic;
-  win.eval(fs.readFileSync(bundlePath, 'utf8'));
+  const { win, errors } = bootPage({
+    // The webOS 23 user agent on both builds.
+    userAgent: UA.webos23,
+    config: cfg,
+    storage,
+    consoleErrors: false,
+    // The legacy environment has no Element#remove here.
+    restoreRemove: false,
+    // Before the environment of the build is applied: on the legacy build
+    // this fetch is taken away with jsdom's, and the bundle's polyfill runs.
+    setup: (w) => {
+      w.requestAnimationFrame = () => 0;
+      w.cancelAnimationFrame = () => {};
+      w.fetch = () => Promise.reject(new Error('offline'));
+    },
+    beforeEval: (w) => { if (tectonic) w.tectonicConfig = tectonic; }
+  });
   return { win, errors };
 }
 
-let pass = 0, fail = 0;
-const t = (n, ok, extra) => { if (ok) { pass++; console.log('PASS ' + n); }
-  else { fail++; console.log('FAIL ' + n + (extra ? '\n     ' + extra : '')); } };
+const { t, run } = createReporter();
 const pad = 'z'.repeat(600);
 
 // A tile with preview data, the flag at the depth `wrap` gives it.
@@ -91,16 +82,14 @@ function flags(node, out = []) {
 
 // Opens the panel on UI Tweaks and returns the switch's checkbox.
 function panelSwitch(win) {
-  const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-  Object.defineProperty(e, 'keyCode', { get: () => GREEN, configurable: true });
-  dispatchTrusted(win.document.body, e);
+  trustedKey(win, GREEN);
   for (const tab of win.document.querySelectorAll('.ytaf-tab-btn')) tab.click();
   return [...win.document.querySelectorAll('label')]
     .filter((l) => l.textContent.indexOf(LABEL) !== -1)
     .map((l) => l.querySelector('input[type=checkbox]'))[0];
 }
 
-(async () => {
+run(async () => {
   {
     const { win, errors } = boot({ continuePreviews: true });
     const out = win.JSON.parse(JSON.stringify(browse(true)));
@@ -152,7 +141,7 @@ function panelSwitch(win) {
       const on = flags(win.JSON.parse(JSON.stringify(browse(true))));
       t('switched on in the panel: cleared from the next response', on.every((f) => f === false), JSON.stringify(on));
       // The write to storage is debounced.
-      await new Promise((r) => setTimeout(r, 400));
+      await wait(400);
       t('and stored', JSON.parse(win.localStorage.getItem('ytaf-configuration')).continuePreviews === true);
       box.click();
       const off = flags(win.JSON.parse(JSON.stringify(browse(true))));
@@ -213,7 +202,4 @@ function panelSwitch(win) {
     }
     t('no page errors', errors.length === 0, errors.join(' | '));
   }
-
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})();
+});
