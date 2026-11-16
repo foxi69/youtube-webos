@@ -13,57 +13,35 @@
  * bundle sends back (ack: false holds the screensaver off). The 30 s Shorts
  * keep-alive runs every 0.3 s here.
  */
-const fs = require('fs');
-const path = require('path');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, applyChrome87Downgrade, UA, setUserAgent } = require('./chrome38-env.cjs');
+const { createReporter, flavorFromArgs, readBundle, bootPage, wait } = require('./harness.cjs');
 
-const ROOT = path.resolve(__dirname, '..');
-const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
 // `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
 // with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
-const modern = process.argv[3] === 'modern';
-const code = fs.readFileSync(bundlePath, 'utf8');
+const { modern } = flavorFromArgs();
+const code = readBundle();
 
 const TVPOWER = 'luna://com.webos.service.tvpower/power/';
 const YELLOW = 405;
 const YELLOW_ALT = 170;
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra !== undefined ? '\n     ' + extra : '')); }
-};
+const { t, run } = createReporter();
 
 /**
  * The bundle on the browse page, the player mounted. `bridge: false` leaves
  * PalmServiceBridge out, as on a firmware without it.
  */
 function boot(opts = {}) {
-  const errors = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => errors.push(String(e && e.message)));
-  vc.on('error', (...a) => errors.push('console.error: ' + a.join(' ')));
-  const dom = new JSDOM(`<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app>
-    <div id="ytlr-player__player-container"><div id="ytlr-player__player-container-player"></div></div>
-    </ytlr-app></body></html>`,
-  { runScripts: 'outside-only', url: 'https://www.youtube.com/tv', virtualConsole: vc, pretendToBeVisual: true });
-  const win = dom.window;
-  const doc = win.document;
-  setUserAgent(win, modern ? UA.webos23 : UA.webos3);
-  win.launchParams = '{}';
-  win.XMLHttpRequest = class { open() {} send() {} setRequestHeader() {} getResponseHeader() { return null; } addEventListener() {} };
-  win.localStorage.setItem('ytaf-configuration', JSON.stringify({
-    enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-    enableDeArrow: false, upgradeThumbnails: false, enableAutoLogin: false,
-    checkForUpdates: false, showWhatsNew: false
-  }));
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  // Chrome 23 has it; the Chrome 38 environment takes it away all the same
-  // (as in upstream-fixes-test).
-  win.Element.prototype.remove = function remove() { if (this.parentNode) this.parentNode.removeChild(this); };
-  win.fetch = () => new Promise(() => {});
+  const { win, doc, errors, evaluate } = bootPage({
+    code,
+    inner: '\n    <div id="ytlr-player__player-container"><div id="ytlr-player__player-container-player"></div></div>\n    ',
+    config: {
+      enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
+      enableDeArrow: false, upgradeThumbnails: false, enableAutoLogin: false,
+      checkForUpdates: false, showWhatsNew: false
+    },
+    fetch: 'pending',
+    evaluate: false
+  });
 
   // Every luna call the page makes: its uri, its params, whether it was cancelled.
   const calls = [];
@@ -86,7 +64,7 @@ function boot(opts = {}) {
   const keys = [];
   doc.addEventListener('keydown', (e) => { if (e.__ytafSynthetic) keys.push(e.keyCode); }, true);
 
-  win.eval(code);
+  evaluate();
 
   const env = {
     win, doc, errors, calls, state, keys, player,
@@ -123,7 +101,7 @@ function boot(opts = {}) {
 const FULL = '1024px 768px 0px 0px';   // jsdom's window: 1024 x 768
 const SMALL = { width: '640px', height: '360px', left: '100px', top: '50px' };
 
-(async () => {
+run(async () => {
   const f = modern ? 'modern' : 'legacy';
   const n = (s) => `${f}: ${s}`;
 
@@ -260,7 +238,4 @@ const SMALL = { width: '640px', height: '360px', left: '100px', top: '50px' };
     t(n('keep-alive: no page errors'), env.errors.length === 0, env.errors.join(' | '));
     env.win.close();
   }
-
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})().catch((e) => { console.log('FAIL harness: ' + (e && e.stack || e)); process.exit(1); });
+});

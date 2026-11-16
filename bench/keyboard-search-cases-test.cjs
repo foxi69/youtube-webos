@@ -13,27 +13,19 @@
  * on-screen keyboard whose keys type into it only when pressed the way the
  * case says. Key presses are dispatched as trusted, as the remote's are.
  */
-const fs = require('fs');
-const path = require('path');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, applyChrome87Downgrade, UA, setUserAgent, dispatchTrusted } = require('./chrome38-env.cjs');
+const { createReporter, flavorFromArgs, readBundle, bootPage, dispatchTrusted, wait } = require('./harness.cjs');
 
-const ROOT = path.resolve(__dirname, '..');
-const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
-const modern = process.argv[3] === 'modern';
-const code = fs.readFileSync(bundlePath, 'utf8');
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+// `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
+// with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
+const { modern } = flavorFromArgs();
+const code = readBundle();
 // Each decision takes 400 ms or more of the page's timers; poll for its
 // outcome rather than count on exact timing.
 const until = async (fn, max = 4000) => {
   for (const end = Date.now() + max; !fn() && Date.now() < end;) await wait(20);
 };
 
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra !== undefined ? '\n     ' + extra : '')); }
-};
+const { t, run } = createReporter();
 
 const LETTERS = 'abcdefghijklmnopqrstuvwxyz0123456789,'.split('');
 
@@ -47,25 +39,18 @@ const LETTERS = 'abcdefghijklmnopqrstuvwxyz0123456789,'.split('');
 const allErrors = [];
 
 async function boot(yt = {}, cfg = {}) {
-  const errors = [];
+  const { win, doc, errors, evaluate } = bootPage({
+    code,
+    bodyClass: yt.page || 'WEB_PAGE_TYPE_SEARCH',
+    url: 'https://www.youtube.com/tv#/search',
+    config: Object.assign({
+      enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false, enableDeArrow: false,
+      upgradeThumbnails: false, enableAutoLogin: false, checkForUpdates: false, showWhatsNew: false
+    }, cfg),
+    fetch: 'pending',
+    evaluate: false
+  });
   allErrors.push(errors);
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => errors.push(e.message));
-  vc.on('error', (...a) => errors.push(a.join(' ')));
-  const dom = new JSDOM('<!doctype html><html><body class="' + (yt.page || 'WEB_PAGE_TYPE_SEARCH') + '"><ytlr-app></ytlr-app></body></html>',
-    { runScripts: 'outside-only', url: 'https://www.youtube.com/tv#/search', virtualConsole: vc, pretendToBeVisual: true });
-  const win = dom.window;
-  const doc = win.document;
-  setUserAgent(win, modern ? UA.webos23 : UA.webos3);
-  win.launchParams = '{}';
-  win.XMLHttpRequest = class { open() {} send() {} setRequestHeader() {} getResponseHeader() { return null; } addEventListener() {} };
-  win.localStorage.setItem('ytaf-configuration', JSON.stringify(Object.assign({
-    enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false, enableDeArrow: false,
-    upgradeThumbnails: false, enableAutoLogin: false, checkForUpdates: false, showWhatsNew: false
-  }, cfg)));
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  win.Element.prototype.remove = function remove() { if (this.parentNode) this.parentNode.removeChild(this); };
-  win.fetch = () => new Promise(() => {});
   // Everything is on screen at 40x40, except what the test hides.
   win.Element.prototype.getBoundingClientRect = function () {
     const s = this.hasAttribute('data-hidden') ? 0 : 40;
@@ -149,7 +134,7 @@ async function boot(yt = {}, cfg = {}) {
   });
   doc.addEventListener('keyup', (e) => state.ytSawUp.push(e.key || String(e.keyCode)));
 
-  win.eval(code);
+  evaluate();
   await wait(300);
 
   // A key press from a keyboard: keydown, then keyup. Returns false when the
@@ -178,7 +163,7 @@ async function boot(yt = {}, cfg = {}) {
     setSkew: (ms) => { skew = ms; } };
 }
 
-(async () => {
+run(async () => {
   const f = modern ? 'modern' : 'legacy';
   const n = (s) => `${f}: ${s}`;
 
@@ -376,7 +361,4 @@ async function boot(yt = {}, cfg = {}) {
     const every = [].concat(...allErrors);
     t(n('no console errors in any case'), !every.length, every[0]);
   }
-
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})();
+});

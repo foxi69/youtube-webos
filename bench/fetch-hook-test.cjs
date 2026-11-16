@@ -22,27 +22,19 @@
  * stand-in (custom-event-target.ts) and is out of the test's reach; it is
  * checked through the Tracking Block alone.
  */
-const fs = require('fs');
-const path = require('path');
 const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, applyChrome87Downgrade, UA, setUserAgent, dispatchTrusted } = require('./chrome38-env.cjs');
+const { applyChrome38Downgrade, applyChrome87Downgrade, UA, setUserAgent } = require('./chrome38-env.cjs');
+const { createReporter, flavorFromArgs, readBundle, trustedKey, wait } = require('./harness.cjs');
 
-const ROOT = path.resolve(__dirname, '..');
-const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
 // `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
 // with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
-const modern = process.argv[3] === 'modern';
-const code = fs.readFileSync(bundlePath, 'utf8');
+const { modern } = flavorFromArgs();
+const code = readBundle();
 const ORIGIN = 'https://www.youtube.com';
 const TRACKING_LABEL = 'Reduce Telemetry & Tracking';
 const GREEN = 404;
 
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra !== undefined ? '\n     ' + extra : '')); }
-};
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const { t, run } = createReporter();
 const b64 = (s) => Buffer.from(s).toString('base64');
 
 /**
@@ -178,9 +170,7 @@ const describe = (r) => r.error ? 'rejected: ' + r.error : `resolved ${r.res && 
 function toggleTrackingBlock(win) {
   const doc = win.document;
   if (!doc.querySelector('.ytaf-ui-container')) {
-    const green = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-    Object.defineProperty(green, 'keyCode', { get: () => GREEN, configurable: true });
-    dispatchTrusted(doc.body, green);
+    trustedKey(win, GREEN);
   }
   const panel = doc.querySelector('.ytaf-ui-container');
   if (!panel) throw new Error('the settings panel did not open');
@@ -432,9 +422,7 @@ async function webos3() {
   win.close();
 }
 
-(async () => {
+run(async () => {
   await nativeFetchTv();
   if (!modern) await webos3();
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})().catch((e) => { console.log('FAIL harness: ' + (e && e.stack || e)); process.exit(1); });
+});

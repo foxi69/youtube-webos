@@ -16,7 +16,8 @@
 const fs = require('fs');
 const path = require('path');
 const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, applyChrome87Downgrade, UA, setUserAgent, dispatchTrusted } = require('./chrome38-env.cjs');
+const { applyChrome38Downgrade, applyChrome87Downgrade, UA, setUserAgent } = require('./chrome38-env.cjs');
+const { createReporter, trustedKey, wait } = require('./harness.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
@@ -27,15 +28,10 @@ const bundle = fs.readFileSync(bundlePath, 'utf8');
 
 const GREEN = 404;
 const pad = 'z'.repeat(600);
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 // The idle gate (PROBE_IDLE_DELAY, 1.2 s after the last response) with room.
 const SETTLE_MS = 1700;
 
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra !== undefined ? '\n     ' + extra : '')); }
-};
+const { t, run } = createReporter();
 // Every boot's jsdomErrors (a script error on the page), checked at the end.
 const allErrors = [];
 
@@ -117,9 +113,7 @@ function boot(cfg, { head = () => big, image = () => ({ width: 1280 }), stored, 
   /** Opens the panel once (the Interface page has the switch and the strategy). */
   const panel = () => {
     if (win.document.querySelector('.ytaf-ui-container')) return;
-    const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-    Object.defineProperty(e, 'keyCode', { get: () => GREEN, configurable: true });
-    dispatchTrusted(win.document.body, e);
+    trustedKey(win, GREEN);
     for (let i = 0; i < 20; i++) pump();
   };
   const toggle = (label, on) => {
@@ -154,7 +148,7 @@ const homeItems = (r) => r.contents.tvBrowseRenderer.content.tvSurfaceContentRen
 const MAX = (id) => url(id, 'maxresdefault');
 const HQ = (id) => url(id, 'hqdefault');
 
-(async () => {
+run(async () => {
   // ---- Where the thumbnails are, response by response ----
   {
     const { parse, errors } = boot({});
@@ -411,9 +405,7 @@ const HQ = (id) => url(id, 'hqdefault');
     const { win, parse, heads } = boot({});
     parse(home([shelf([tile('navpaused01')])]));
     const arrow = () => {
-      const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-      Object.defineProperty(e, 'keyCode', { get: () => 40, configurable: true });
-      dispatchTrusted(win.document.body, e);
+      trustedKey(win, 40);
     };
     for (let i = 0; i < 8; i++) { arrow(); await wait(200); }
     t('while the arrow keys are pressed, no probe', heads.length === 0, heads.join(' '));
@@ -430,9 +422,7 @@ const HQ = (id) => url(id, 'hqdefault');
     // The probe is out at once (the top of a new response); its answer comes in 300 ms.
     await wait(100);
     const arrow = () => {
-      const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-      Object.defineProperty(e, 'keyCode', { get: () => 39, configurable: true });
-      dispatchTrusted(win.document.body, e);
+      trustedKey(win, 39);
     };
     for (let i = 0; i < 6; i++) { arrow(); await wait(150); }
     t('while the rows move, a correction for a tile on screen waits', el.style.backgroundImage === `url("${MAX('heldpromote')}")`,
@@ -551,6 +541,4 @@ const HQ = (id) => url(id, 'hqdefault');
   }
 
   t('no jsdomError in any case', allErrors.length === 0, allErrors[0]);
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})();
+});

@@ -14,7 +14,8 @@
 const fs = require('fs');
 const crypto = require('crypto');
 const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, applyChrome87Downgrade, UA, setUserAgent, dispatchTrusted } = require('./chrome38-env.cjs');
+const { applyChrome38Downgrade, applyChrome87Downgrade, UA, setUserAgent } = require('./chrome38-env.cjs');
+const { createReporter, trustedKey, wait } = require('./harness.cjs');
 
 const bundlePath = process.argv[2] || 'dist/webOSUserScripts/userScript.js';
 // `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
@@ -24,18 +25,13 @@ const GREEN = 404;
 const BADGE = '◉';
 const pad = 'z'.repeat(600);
 const prefixOf = (id) => crypto.createHash('sha256').update(id).digest('hex').slice(0, 4);
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 function waitFor(fn, ms) {
   const end = Date.now() + ms;
   const poll = () => (fn() || Date.now() >= end ? Promise.resolve(fn()) : wait(10).then(poll));
   return poll();
 }
 
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra !== undefined ? '\n     ' + extra : '')); }
-};
+const { t, run } = createReporter();
 // Every boot's jsdomErrors (a script error on the page), checked at the end.
 const allErrors = [];
 
@@ -115,9 +111,7 @@ function boot(cfg, { copySize = 1000 } = {}) {
   const pump = () => { const q = rafQ; rafQ = []; for (const cb of q) cb(Date.now()); };
   const toggle = (label, on) => {
     if (!win.document.querySelector('#ytaf-page-ui-tweaks')) {
-      const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-      Object.defineProperty(e, 'keyCode', { get: () => GREEN, configurable: true });
-      dispatchTrusted(win.document.body, e);
+      trustedKey(win, GREEN);
       for (let i = 0; i < 20; i++) pump();
     }
     const input = Array.from(win.document.querySelectorAll('#ytaf-page-ui-tweaks label'))
@@ -160,7 +154,7 @@ function render(win, id, title, { badge = false, onScreen = true } = {}) {
 const shownTitle = (el) => el.querySelector('yt-formatted-string').textContent;
 const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-details').style.backgroundImage);
 
-(async () => {
+run(async () => {
   // ---- The logo switch alone ----
   {
     const { win, fetched, parse, toggle, known, errors } = boot({});
@@ -240,6 +234,4 @@ const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-d
   }
 
   t('no jsdomError in any case', allErrors.length === 0, allErrors[0]);
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})();
+});
