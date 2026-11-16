@@ -348,6 +348,29 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
     win.close();
   }
   {
+    // The same, but the next video starts below the cap: capNext replaces the
+    // reload's watch at once, which ends it without its onEnd.
+    const { win, p, speed, emit, pump, setQuality } = boot(0, { manualPlayback: true, reloadTrack: EN });
+    pressKey(win);
+    speed.setSpeed(1.5, { immediate: true });
+    p.videoId = 'othervideo1';
+    setQuality('large');
+    emit(-1); emit(3); emit(1); pump(); pump();
+    await sleep(400);
+    p.videoId = 'abcdefghijk';
+    emit(1);
+    pressKey(win);
+    p.track = EN;
+    p.reloadTrack = {};
+    pressKey(win);
+    speed.setSpeed(2, { immediate: true });
+    emit(1);
+    await sleep(600);
+    t('a reload replaced by the next video\'s cap check does not hand its subtitles on either',
+      p.track === EN, JSON.stringify(p.track));
+    win.close();
+  }
+  {
     // The last session ended at 1.5x: its 1080p cap is still recorded when the
     // app starts. No pick of the viewer's: back at 1x is Auto.
     const { win, log, speed } = boot(0, { oldRecord: 1080, oldOwn: true });
