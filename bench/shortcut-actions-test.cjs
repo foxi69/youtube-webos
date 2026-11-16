@@ -113,8 +113,10 @@ async function boot(cfg = {}, opts = {}) {
   });
 
   // The keys the bundle sends itself (Back to close a panel, Up to keep the TV awake).
+  // sentAt: when each was sent (Date.now()).
   const sent = [];
-  win.document.addEventListener('keydown', (e) => { if (e.__ytafSynthetic) sent.push(e.keyCode); });
+  const sentAt = [];
+  win.document.addEventListener('keydown', (e) => { if (e.__ytafSynthetic) { sent.push(e.keyCode); sentAt.push(Date.now()); } });
 
   win.eval(code);
   // The Return YouTube Dislike handler is made 0.5 s after the page.
@@ -166,7 +168,7 @@ async function boot(cfg = {}, opts = {}) {
     el.addEventListener('click', () => clicks.push(name));
     return el;
   };
-  return { win, doc: win.document, errors, warnings, clearToasts, video, vs, long, sent, backs, toasts, press, clicks, playerButton, byHtml };
+  return { win, doc: win.document, errors, warnings, clearToasts, video, vs, long, sent, sentAt, backs, toasts, press, clicks, playerButton, byHtml };
 }
 
 (async () => {
@@ -404,11 +406,11 @@ async function boot(cfg = {}, opts = {}) {
     await env.press(D(K.sleep));
     t(n('...the next 30, the 15 gone'), sleeping().length === 1 && sleeping()[0].ms === SLEEP[1] &&
       /Sleep timer: 30 min/.test(env.toasts()), env.toasts());
-    await env.press(D(K.sleep));
-    await env.press(D(K.sleep));
-    await env.press(D(K.sleep));
-    t(n('...then 60, 90 and 120'), sleeping().length === 1 && sleeping()[0].ms === SLEEP[4] &&
-      /Sleep timer: 120 min/.test(env.toasts()), env.toasts());
+    for (const [i, min] of [[2, 60], [3, 90], [4, 120]]) {
+      await env.press(D(K.sleep));
+      t(n(`...then ${min}`), sleeping().length === 1 && sleeping()[0].ms === SLEEP[i] &&
+        new RegExp(`Sleep timer: ${min} min`).test(env.toasts()), env.toasts());
+    }
     await env.press(D(K.sleep));
     t(n('...and past 120 it is off'), sleeping().length === 0 && /Sleep timer off/.test(env.toasts()), env.toasts());
     await env.press(D(K.sleep));
@@ -499,9 +501,12 @@ async function boot(cfg = {}, opts = {}) {
       env.doc.documentElement.classList.contains('ytaf-oled-blackout') && /OLED Mode Activated/.test(env.toasts()), env.toasts());
     t(n('...and keeps the TV awake every 30 minutes'), keepAlive.length === 1);
     env.sent.length = 0;
+    env.sentAt.length = 0;
     keepAlive[0].fn();
     await wait(300);
-    t(n('...with two presses of Up, a quarter second apart'), env.sent.join() === `${KEY.UP},${KEY.UP}`, env.sent.join());
+    const gap = env.sentAt.length === 2 ? env.sentAt[1] - env.sentAt[0] : -1;
+    t(n('...with two presses of Up, a quarter second apart'), env.sent.join() === `${KEY.UP},${KEY.UP}` &&
+      gap >= 240, `${env.sent.join()} gap=${gap}`);
     await env.press(KEY.RED);
     t(n('red again: the blackout ends, with a toast'), !env.doc.getElementById('oled-black-overlay') &&
       !env.doc.documentElement.classList.contains('ytaf-oled-blackout') && /OLED Mode Deactivated/.test(env.toasts()), env.toasts());

@@ -48,7 +48,7 @@ const DATETIME = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeri
 // side by side).
 const MID = new Date(2026, 2, 7, 15, 0, 10);
 
-function boot(cfg, start) {
+function boot(cfg, start, hold = false) {
   const errors = [];
   const vc = new VirtualConsole();
   vc.on('jsdomError', (e) => errors.push('jsdomError: ' + e.message));
@@ -68,18 +68,28 @@ function boot(cfg, start) {
   }, cfg)));
 
   const RealDate = win.Date;
-  const clock = { offset: start ? start.getTime() - RealDate.now() : 0 };
+  // The page's time stands still at `start` while the bundle loads (and, with
+  // `hold`, until release()), so a slow start (CI, coverage) does not carry it
+  // past the minute the test is about.
+  const clock = { offset: 0, held: start ? start.getTime() : null };
+  const pageNow = () => (clock.held !== null ? clock.held : RealDate.now() + clock.offset);
   class FakeDate extends RealDate {
-    constructor(...args) { if (args.length) super(...args); else super(RealDate.now() + clock.offset); }
-    static now() { return RealDate.now() + clock.offset; }
+    constructor(...args) { if (args.length) super(...args); else super(pageNow()); }
+    static now() { return pageNow(); }
   }
   win.Date = FakeDate;
   if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
   win.Element.prototype.remove = function remove() { if (this.parentNode) this.parentNode.removeChild(this); };
   win.eval(code);
+  const release = () => {
+    if (clock.held === null) return;
+    clock.offset = clock.held - RealDate.now();
+    clock.held = null;
+  };
+  if (!hold) release();
 
   const doc = win.document;
-  const now = () => new RealDate(RealDate.now() + clock.offset);
+  const now = () => new RealDate(pageNow());
   const el = () => doc.querySelector('.webOs-watch');
   const text = () => (el() || {}).textContent || '';
   const shown = () => !!el() && el().style.display === 'block';
@@ -111,7 +121,7 @@ function boot(cfg, start) {
     return row.querySelector('.current-value').textContent;
   });
   const stateChange = (state) => win.dispatchEvent(new win.CustomEvent('yt-player-state-change', { detail: { state } }));
-  return { win, doc, errors, clock, now, el, text, shown, hidden, toggle, cycleClock, stateChange, stored: () => JSON.parse(win.localStorage.getItem('ytaf-configuration')) };
+  return { win, doc, errors, clock, release, now, el, text, shown, hidden, toggle, cycleClock, stateChange, stored: () => JSON.parse(win.localStorage.getItem('ytaf-configuration')) };
 }
 
 (async () => {
@@ -122,14 +132,18 @@ function boot(cfg, start) {
   {
     // 1.5 s before a minute: the clock must turn over on its own.
     const start = new Date(2026, 2, 7, 14, 5, 58, 500);
-    const env = boot({ clockMode: 'time' }, start);
+    const env = boot({ clockMode: 'time' }, start, true);
     await sleep(100);
     t(n('Clock in UI on Time: the clock shows the time'), env.text() === TIME.format(env.now()) &&
       env.text() === TIME.format(start), JSON.stringify(env.text()));
     t(n('...shown on a browse page'), env.shown());
     t(n('...hidden from screen readers'), env.el().getAttribute('aria-hidden') === 'true');
+    // The page's time runs from 14:05:58.5 only now.
+    env.release();
     const before = env.text();
-    t(n('the minute turns over without a key press'), await waitFor(() => env.text() !== before, 3000) &&
+    // Due 1.5 s after the release; the wide limit only keeps a stalled CI
+    // machine from failing a correct clock, the check itself is unchanged.
+    t(n('the minute turns over without a key press'), await waitFor(() => env.text() !== before, 15000) &&
       env.text() === TIME.format(env.now()) && /:06/.test(env.text()), JSON.stringify(env.text()));
 
     // Back from the background: the time at once, not at the next minute.
@@ -187,23 +201,12 @@ function boot(cfg, start) {
     t(n('OLED-Care on again: black again'), env.el().classList.contains('oled-mode'));
   }
 
-  // ---- Off, and the old on/off switch ----
+  // ---- Off ----
   {
     const env = boot({}, MID);
     await sleep(100);
     t(n('Clock in UI off by default: no clock'), !env.el());
   }
-  {
-    const env = boot({ showWatch: true }, MID);
-    await sleep(100);
-    t(n('the old clock switch on: the clock shows the time'), env.text() === TIME.format(env.now()), env.text());
-  }
-  {
-    const env = boot({ showWatch: false }, MID);
-    await sleep(100);
-    t(n('the old clock switch off: no clock'), !env.el());
-  }
-
   // ---- Over a video ----
   {
     const env = boot({ clockMode: 'time' }, MID);

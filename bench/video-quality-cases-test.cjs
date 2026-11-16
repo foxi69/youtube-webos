@@ -242,15 +242,21 @@ function boot(cfg, { player = true, events = true, record, ua, quality = 'hd720'
       !toasts().some((x) => /upgraded/.test(x)), `${log.calls.join()} ${toasts().join(' | ')}`);
   }
   {
-    // Storage refused: Force Max Quality still sets the range.
-    const { win, log, s, emit } = boot({}, { levels: ['auto'] });
+    // Storage refused: Force Max Quality still sets the range. Switched off
+    // first, so its cached record is gone and switching on really writes.
+    const { win, log, s, emit, toggle, errors } = boot({}, { levels: ['auto'] });
     await wait(50);
-    win.Storage.prototype.setItem = () => { throw new Error('quota'); };
+    toggle('Force Max Quality', false);
+    let refused = 0;
+    win.Storage.prototype.setItem = () => { refused++; throw new Error('quota'); };
+    toggle('Force Max Quality', true);
+    log.calls.length = 0;
     s.videoId = 'quotavideo1';
     s.levels = ['hd2160', 'hd1080', 'hd720', 'auto'];
     emit(-1);
     await wait(50);
-    t('storage refused: the range is set all the same', log.calls.includes('range:highres'), log.calls.join());
+    t('storage refused: a write was tried, and the range is set all the same',
+      refused > 0 && log.calls.includes('range:highres') && errors.length === 0, `${refused} writes, ${log.calls.join()} ${errors[0] || ''}`);
   }
   {
     // The player mounts a second after the watch page.
@@ -298,8 +304,7 @@ function boot(cfg, { player = true, events = true, record, ua, quality = 'hd720'
 
   // ---- "Playing in": the label, or the picture's own size ----
   {
-    // Stored as the old Show Video Quality on Start switch: it carries over as At Start.
-    const { s, video, toasts } = boot({ forceHighResVideo: false, showQualityOnStart: true });
+    const { s, video, toasts } = boot({ forceHighResVideo: false, showVideoQuality: 'start' });
     s.label = false;
     Object.defineProperty(video, 'videoHeight', { configurable: true, get: () => 1080 });
     Object.defineProperty(video, 'videoWidth', { configurable: true, get: () => 1920 });

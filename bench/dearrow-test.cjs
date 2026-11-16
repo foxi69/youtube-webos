@@ -452,15 +452,6 @@ const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-d
       !!sw && shownThumb(el) === 'url("https://i.ytimg.com/vi/custom00001/hqdefault.jpg?v=later")', shownThumb(el));
   }
 
-  // ---- The old thumbnail switch carries over ----
-  {
-    const old = boot({ enableDeArrowThumbnails: false });
-    const r = old.parse(browse([tile('custom00001', 'Clickbait')]));
-    await waitFor(() => tileTitle(itemsOf(r)[0]) === 'the iPhone review', 2000);
-    await wait(50);
-    t('a TV that had DeArrow thumbnails off keeps YouTube\'s', tileThumb(itemsOf(r)[0]) === 'https://i.ytimg.com/vi/custom00001/hqdefault.jpg', tileThumb(itemsOf(r)[0]));
-  }
-
   // ---- Off: no request ----
   {
     const off = boot({ enableDeArrow: false });
@@ -744,6 +735,30 @@ const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-d
       win.close();
     }
 
+    // Random frames waiting for a slot when DeArrow is switched off: the draws
+    // dropped then do not fetch the start frame in their place.
+    {
+      const ids = crowdIds('rnd');
+      const extra = {};
+      ids.forEach((id) => { extra[id] = { titles: [], thumbnails: [], randomTime: 0.5, videoDuration: 60 }; });
+      const { win, parse, pump, images, pendingImages } = boot({ dearrowThumbnailFallback: 'random' }, { extra, holdImages: true });
+      const frames = (list) => list.filter((u) => ids.some((id) => u.includes('/vi/' + id + '/'))).length;
+      parse(browse(ids.map((id) => tile(id, 'Original ' + id))));
+      t('random frames: four are drawn, five wait for a slot', await waitFor(() => downloads(images, ids) === 4, 1500),
+        `${downloads(images, ids)} drawn`);
+      // The start frames shown as stand-ins meanwhile are fetched before.
+      const before = images.length;
+      flip(win, pump, 'DeArrow', false);
+      await wait(50);
+      pendingImages.splice(0).forEach((item) => { item.finish(); });
+      await wait(300);
+      pendingImages.splice(0).forEach((item) => { item.finish(); });
+      const after = images.slice(before);
+      t('...DeArrow switched off: no start frame fetched for the dropped or failed draws', frames(after) === 0 &&
+        downloads(images, ids) === 4, after.join(' '));
+      win.close();
+    }
+
     // Too many videos remembered: everything is wiped (DeArrow stays on).
     {
       const ids = crowdIds('wip');
@@ -826,33 +841,43 @@ const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-d
     const r = refusing.parse(browse([tile('custom00001', 'Clickbait')]));
     const holder = itemsOf(r)[0].tileRenderer.header.tileHeaderRenderer.thumbnail;
     let list = holder.thumbnails;
+    let refusals = 0;
     Object.defineProperty(holder, 'thumbnails', {
       configurable: true,
       get: () => list,
       set(value) {
-        if (value[0] && value[0].url.indexOf('https://i.ytimg.com/') !== 0) throw new TypeError('read-only thumbnail');
+        if (value[0] && value[0].url.indexOf('https://i.ytimg.com/') !== 0) {
+          refusals++;
+          throw new TypeError('read-only thumbnail');
+        }
         list = value;
       }
     });
-    await waitFor(() => refusing.images.some((u) => u.includes('time=12.5')), 2000);
-    await wait(200);
-    t('a stored response refusing the thumbnail: the title is still decided',
+    t('a stored response refusing the thumbnail: the write is tried (and throws)', await waitFor(() => refusals > 0, 2000),
+      refusing.images.join(' '));
+    await wait(50);
+    t('...the title is still decided',
       tileTitle(itemsOf(r)[0]) === 'the iPhone review', tileTitle(itemsOf(r)[0]));
     refusing.win.close();
 
     // An image the TV refuses to load (its src setter throws) for YouTube's frames.
     const refused = boot({ dearrowThumbnailFallback: 'start' }, { brandingDelay: 1700 });
     const ImageClass = refused.win.Image;
+    let imageRefusals = 0;
     refused.win.Image = class extends ImageClass {
       set src(url) {
-        if (url.indexOf('https://i.ytimg.com/') === 0) throw new Error('image refused');
+        if (url.indexOf('https://i.ytimg.com/') === 0) {
+          imageRefusals++;
+          throw new Error('image refused');
+        }
         super.src = url;
       }
       get src() { return super.src; }
     };
     const el = render(refused.win, tile('nosubmit001', 'Nothing submitted'), { onScreen: true });
     refused.parse(browse([tile('nosubmit001', 'Nothing submitted')]));
-    await wait(2200);
+    t('an image the TV refuses: the frame is tried (and throws)', await waitFor(() => imageRefusals > 0, 4000));
+    await wait(100);
     t('a frame that cannot load leaves YouTube\'s thumbnail',
       shownThumb(el) === 'url("https://i.ytimg.com/vi/nosubmit001/hqdefault.jpg")', shownThumb(el));
     refused.win.close();

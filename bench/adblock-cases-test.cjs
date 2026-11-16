@@ -178,6 +178,16 @@ function setSwitch(win, label, on) {
     t(n('a small response of no known shape is left alone'), r.wrapper.gridRenderer.items.length === 2);
   }
 
+  // ---- Ad Blocking the only filter: the videos beside the player too ----
+  {
+    const { P: P2 } = boot({ removeGlobalShorts: false, removeLiveVideos: false, removeUpcomingVideos: false,
+      removeMembersOnly: false, enableLegacyEmojiFix: false });
+    const r = P2({ responseContext: { _pad: pad },
+      contents: { singleColumnWatchNextResults: { pivot: { sectionListRenderer: { contents: [shelf([ad(), tile('onlyad00001')])] } } } } });
+    const items = r.contents.singleColumnWatchNextResults.pivot.sectionListRenderer.contents[0].shelfRenderer.content.horizontalListRenderer.items;
+    t(n('only Ad Blocking on: the ad beside the player goes'), ids(items) === 'onlyad00001', ids(items));
+  }
+
   // ---- A watch-next page with a continuation and actions beside it ----
   {
     const r = P({ responseContext: { _pad: pad },

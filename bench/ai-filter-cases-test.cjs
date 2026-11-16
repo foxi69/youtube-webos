@@ -73,6 +73,8 @@ function boot(cfg, opts = {}) {
   // used up one answer per request.
   const answers = opts.answers || {};
   const requests = [];
+  const held = [];
+  let holding = !!opts.hold;
   win.XMLHttpRequest = class {
     open() {}
     setRequestHeader() {}
@@ -83,11 +85,15 @@ function boot(cfg, opts = {}) {
       requests.push(id);
       let answer = answers[id] || 'plain';
       if (Array.isArray(answer)) answer = answer.length > 1 ? answer.shift() : answer[0];
-      setTimeout(() => {
+      const finish = () => {
         this.status = typeof answer === 'number' ? answer : 200;
         this.responseText = answer === 'ai' ? AI_BODY : PLAIN_BODY;
         if (this.onload) this.onload();
-      }, opts.delay || 0);
+      };
+      // opts.hold: the answers wait in `held` until release(), which also
+      // lets the later ones through at once.
+      if (holding) held.push(finish);
+      else setTimeout(finish, opts.delay || 0);
     }
   };
   win.localStorage.setItem('ytaf-configuration', JSON.stringify(Object.assign({
@@ -131,7 +137,8 @@ function boot(cfg, opts = {}) {
   const badged = (el) => el.hasAttribute(BADGE);
   const jump = (ms) => { offset += ms; };
   const count = (id) => requests.filter((r) => r === id).length;
-  return { win, doc, errors, requests, count, card, recycle, badged, jump, ranWithoutBody, late, root };
+  const release = () => { holding = false; held.splice(0).forEach((finish) => { finish(); }); };
+  return { win, doc, errors, requests, count, card, recycle, badged, jump, ranWithoutBody, late, root, held, release };
 }
 
 (async () => {
@@ -192,7 +199,7 @@ function boot(cfg, opts = {}) {
   {
     const h = boot({}, { answers: { [vid(20)]: 'ai', [vid(21)]: 'plain' } });
     const c = h.card('ytlr-tile-renderer', tileData(vid(20)));
-    await until(() => h.badged(c), 3000);
+    t(n('removal: the card is badged first'), await until(() => h.badged(c), 3000), h.requests.join());
     const row = h.doc.createElement('div');
     h.root().appendChild(row);
     row.appendChild(c);
@@ -206,7 +213,7 @@ function boot(cfg, opts = {}) {
     obs.observe(c, { attributes: true, attributeFilter: [BADGE] });
     h.recycle(c, tileData(vid(21)));
     h.root().appendChild(c);
-    await until(() => h.count(vid(21)) === 1, 3000);
+    t(n('...put back for a plain video, it is looked up'), await until(() => h.count(vid(21)) === 1, 3000), h.requests.join());
     await wait(100);
     obs.disconnect();
     t(n('...and put back for a plain video it shows no badge, not even briefly'), !flashed && !h.badged(c), h.requests.join());
@@ -214,16 +221,19 @@ function boot(cfg, opts = {}) {
 
   // ---- Answers reused, failures retried after their minute ----
   {
-    const h = boot({}, { delay: 300, answers: { [vid(30)]: 'ai', [vid(31)]: [500, 'ai'] } });
+    const h = boot({}, { hold: true, answers: { [vid(30)]: 'ai', [vid(31)]: [500, 'ai'] } });
     const ai = h.card('ytlr-tile-renderer', tileData(vid(30)));
-    await wait(100);
+    t(n('answers: the first lookup goes out and is held'), await until(() => h.held.length === 1, 3000), h.requests.join());
     // Another card while the first lookup is still out: the sweep that
     // follows must not ask again.
     const failing = h.card('ytlr-tile-renderer', tileData(vid(31)));
-    await until(() => h.badged(ai), 3000);
+    t(n('...a second sweep runs while it is out (the new card is asked)'), await until(() => h.count(vid(31)) === 1, 3000),
+      h.requests.join());
     t(n('a sweep while a lookup is out does not ask again'), h.count(vid(30)) === 1, h.requests.join());
-    await until(() => h.count(vid(31)) === 1, 3000);
-    await wait(400);
+    // From here on the answers come at once.
+    h.release();
+    await until(() => h.badged(ai), 3000);
+    await wait(100);
     t(n('a failed lookup (HTTP 500): no badge'), !h.badged(failing));
     // More cards: the answers already in are reused.
     h.card('ytlr-tile-renderer', tileData(vid(32)));
@@ -243,7 +253,7 @@ function boot(cfg, opts = {}) {
   {
     const h = boot({}, { answers: { [vid(40)]: ['ai', 'plain'] } });
     const c = h.card('ytlr-tile-renderer', tileData(vid(40)));
-    await until(() => h.badged(c), 3000);
+    t(n('expiry: the AI video is badged first'), await until(() => h.badged(c), 3000), h.requests.join());
     h.jump(61 * 60 * 1000);
     h.card('ytlr-tile-renderer', tileData(vid(41)));
     t(n('an hour later the AI video is asked again'), await until(() => h.count(vid(40)) === 2, 3000), h.requests.join());

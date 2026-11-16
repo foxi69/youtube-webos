@@ -635,8 +635,10 @@ export function buildAboutPage(page, h, checkbox, section) {
     installButton.style.display = newer && state.ipk && canReachInstaller(homebrew || 'unknown') ? 'block' : 'none';
     // Left out until the answer: which note is right depends on it, and a TV
     // with the Homebrew Channel needs none.
-    computerNote.textContent = homebrew ? computerInstallText(state.latest, homebrew) : '';
-    computerNote.style.display = newer && homebrew && (homebrew !== 'yes' || installFailed || !state.ipk) ? 'block' : 'none';
+    // A failed install points to the note ("below"): the general one until the answer.
+    const known = homebrew || (installFailed ? 'unknown' : null);
+    computerNote.textContent = known ? computerInstallText(state.latest, known) : '';
+    computerNote.style.display = newer && known && (known !== 'yes' || installFailed || !state.ipk) ? 'block' : 'none';
   };
   onUpdateState(render);
   detectHomebrew((answer) => {

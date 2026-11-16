@@ -152,6 +152,7 @@ function boot(webos, cfg = {}) {
       dispatchTrusted(doc.body, e);
       const tab = Array.prototype.find.call(doc.querySelectorAll('.ytaf-tab-btn'), (b) => b.textContent.trim() === 'UI Tweaks');
       if (tab) tab.click();
+      return !!tab;
     },
     // The panel's Fix Black Tile Previews checkbox (null when not offered).
     checkbox() {
@@ -183,8 +184,8 @@ function boot(webos, cfg = {}) {
     await wait(TICK);
     t('webOS 23: nothing cleared a second later either, and no stack is looked up',
       env.cleared() === '' && env.state.fromPoint.length === 0, env.cleared() + ' / ' + env.state.fromPoint.length);
-    env.openPanel();
-    t('webOS 23: the panel does not offer Fix Black Tile Previews',
+    const opened = env.openPanel();
+    t('webOS 23: the panel does not offer Fix Black Tile Previews', opened &&
       !!env.doc.querySelector('.ytaf-ui-container') && env.checkbox() === null);
     t('webOS 23: no page errors', env.errors.length === 0, env.errors.join(' | '));
     env.win.close();

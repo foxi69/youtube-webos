@@ -113,9 +113,17 @@ async function boot(cfg, segments, opts = {}) {
   win.Element.prototype.remove = function remove() { if (this.parentNode) this.parentNode.removeChild(this); };
   // The bar poll (every 250 ms, ~10 s in all) ten times as fast, so a test
   // can outlast it.
+  // `polls` holds the bar polls still running.
+  const polls = new Set();
   if (opts.fastPoll) {
     const realInterval = win.setInterval.bind(win);
-    win.setInterval = (fn, ms, ...args) => realInterval(fn, ms === 250 ? 25 : ms, ...args);
+    const realClear = win.clearInterval.bind(win);
+    win.setInterval = (fn, ms, ...args) => {
+      const id = realInterval(fn, ms === 250 ? 25 : ms, ...args);
+      if (ms === 250) polls.add(id);
+      return id;
+    };
+    win.clearInterval = (id) => { polls.delete(id); return realClear(id); };
   }
   const net = { segments, asked: [] };
   win.fetch = (resource) => {
@@ -199,7 +207,7 @@ async function boot(cfg, segments, opts = {}) {
     throw new Error('no switch "' + text + '" in the panel');
   };
   return { win, doc, errors, net, video, ...v, toasts, overlay, marks, rows, popupShown, labelsCss, playerState,
-    openPanel, closePanel, cycle, pickColor, toggle, sb: () => win.sponsorblock };
+    openPanel, closePanel, cycle, pickColor, toggle, polls: () => polls.size, sb: () => win.sponsorblock };
 }
 
 (async () => {
@@ -474,9 +482,10 @@ async function boot(cfg, segments, opts = {}) {
     env.doc.querySelector('.bar-host').remove();
     await wait(50);
     env.playerState(1);   // PLAYING again
-    // Past the poll's ten tries: only an observer re-armed on PLAYING sees
-    // the new bar.
-    await wait(1500);
+    // Past the poll's tries: only an observer re-armed on PLAYING sees the new bar.
+    const pollEnd = Date.now() + 5000;
+    while (env.polls() > 0 && Date.now() < pollEnd) await wait(25);
+    t(n('...the bar poll has run out'), env.polls() === 0, `${env.polls()} still running`);
     t(n('...nothing drawn while the bar is gone'), env.overlay() === null);
     env.doc.querySelector('ytlr-app').insertAdjacentHTML('beforeend', BAR_MULTI);
     await wait(100);

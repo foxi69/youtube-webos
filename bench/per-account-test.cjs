@@ -203,69 +203,6 @@ const ACCOUNT_B = { identityType: 'SIGNED_IN', obfuscatedGaiaId: '2222', accessT
     t('guest: no errors', errors.length === 0, errors.join(' | '));
   }
 
-  {
-    // An old shared store with the clock switch (showWatch) and an account
-    // that has its own clock: the account's value wins, and the old switch is
-    // written away as a clockMode once anything is saved.
-    const seed = { perAccountSettings: true, showWatch: true };
-    const first = boot(seed, ACCOUNT_A);
-    await wait(300);
-    const profile = profileKeys(first.win)[0];
-    const { win, errors } = boot(seed, ACCOUNT_A, { [profile]: { clockMode: 'datetime' } });
-    key(win, GREEN);
-    const clock = win.document.querySelector('.webOs-watch');
-    toggle(win, checkbox(win, RYD));
-    await wait(300);
-    t('showWatch: the account\'s own clock is kept', read(win, profile).clockMode === 'datetime', JSON.stringify(read(win, profile)));
-    const shared = read(win, CONFIG_KEY);
-    t('showWatch: the old switch becomes the shared clockMode', !('showWatch' in shared) && shared.clockMode === 'time', JSON.stringify(shared));
-    t('showWatch: the clock shows', !!clock);
-    t('showWatch: no errors', errors.length === 0, errors.join(' | '));
-  }
-
-  {
-    // The old switch off, with no account clock: the clock stays off.
-    const { win, errors } = boot({ showWatch: false }, ACCOUNT_A);
-    key(win, GREEN);
-    toggle(win, checkbox(win, RYD));
-    await wait(300);
-    const shared = read(win, CONFIG_KEY);
-    t('showWatch off: becomes clockMode off', !('showWatch' in shared) && shared.clockMode === 'off', JSON.stringify(shared));
-    t('showWatch off: no clock', !win.document.querySelector('.webOs-watch'));
-    t('showWatch off: no errors', errors.length === 0, errors.join(' | '));
-  }
-
-  // ---- DeArrow's old thumbnail switch (enableDeArrowThumbnails) in account sets ----
-  {
-    // An account set saved before the fallbacks, with the thumbnails off:
-    // it keeps YouTube's, though the shared set has no old switch.
-    const first = boot({ perAccountSettings: true }, ACCOUNT_A);
-    await wait(300);
-    const profile = profileKeys(first.win)[0];
-    const { win, errors } = boot({ perAccountSettings: true }, ACCOUNT_A,
-      { [profile]: { enableDeArrowThumbnails: false } });
-    key(win, GREEN);
-    toggle(win, checkbox(win, RYD));
-    await wait(300);
-    const saved = read(win, profile);
-    t('old DeArrow switch in an account set: its thumbnails stay off', saved.dearrowCrowdThumbnails === false &&
-      !('enableDeArrowThumbnails' in saved), JSON.stringify(saved));
-    t('old DeArrow switch in an account set: no errors', errors.length === 0, errors.join(' | '));
-  }
-  {
-    // A new account met after the start, from a shared set with the old switch off.
-    const { win, errors } = boot({ perAccountSettings: true, enableDeArrowThumbnails: false }, ACCOUNT_A);
-    await wait(300);
-    const before = profileKeys(win);
-    await chooseAccount(win, ACCOUNT_B);
-    await wait(300);
-    const added = profileKeys(win).filter((k) => !before.includes(k));
-    const b = added.length === 1 ? read(win, added[0]) : null;
-    t('old shared DeArrow switch: an account met later starts with the thumbnails off',
-      !!b && b.dearrowCrowdThumbnails === false, `${added.join()} ${JSON.stringify(b)}`);
-    t('old shared DeArrow switch: no errors', errors.length === 0, errors.join(' | '));
-  }
-
   // ---- A stored set that is not JSON ----
   {
     // Cut off mid-write: the app starts on the defaults, and the next change

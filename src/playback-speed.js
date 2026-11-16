@@ -422,7 +422,10 @@ export function createSpeedController({
     const from = own ? own.from : now;
     ownRanges.set(level, { from, last: now, until: now + OWN_RECORD_MS });
     ownRangeLevel = level;
-    if (level) {
+    // Kept for the next run only when it is a cap of the controller's own: a
+    // retained pick of the viewer's (720p kept at 1.5x) stays theirs after a
+    // restart, or its record would read as the cap and 1080p would replace it.
+    if (level && level !== lastPick) {
       try { win.localStorage.setItem(OWN_RANGE_KEY, JSON.stringify({ level, from, last: now })); } catch { /* storage denied */ }
     }
     player.setPlaybackQualityRange(quality, quality);
@@ -718,16 +721,21 @@ export function installSpeedFeature(win, { notify, configRead: cfgRead, getPlaye
   // the last few, newest last.
   let lastUserKeyAt = 0;
   const keyTimes = [];
+  // The time of the newest key press dropped from keyTimes: up to then the
+  // presses are no longer all known.
+  let droppedKeyAt = 0;
   const onKey = (evt) => {
     if (evt.isTrusted === false || evt[SYNTHETIC_KEY_FLAG]) return;
     lastUserKeyAt++;
     keyTimes.push(Date.now());
-    if (keyTimes.length > KEY_TIMES) keyTimes.shift();
+    if (keyTimes.length > KEY_TIMES) droppedKeyAt = keyTimes.shift();
   };
   win.addEventListener('keydown', onKey, true);
   const ctrl = createSpeedController({
     win, getPlayer, notify, configRead: cfgRead, codecs, userKeyAt: () => lastUserKeyAt,
-    keyPressedBetween: (from, to) => keyTimes.some((at) => at > from && at <= to)
+    // A span that reaches into the dropped presses may have had one: a record
+    // there counts as the viewer's, not as ours for want of a known key.
+    keyPressedBetween: (from, to) => droppedKeyAt > from || keyTimes.some((at) => at > from && at <= to)
   });
   const mseHook = installMseHook(win, {
     getSpeed: ctrl.getSpeed,

@@ -1766,7 +1766,7 @@ export {};
   // 15. CONFIG MIRROR
   //     Read straight from localStorage rather than importing config.js.
   //     A diagnostic tool should not depend on the subsystem it is
-  //     diagnosing: if config.js throws or is mid-migration, the monitor
+  //     diagnosing: if config.js throws, the monitor
   //     must still boot and still be able to say so.
   //     Defaults mirror config.js — keep in sync when adding options.
   // ===================================================================

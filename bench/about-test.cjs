@@ -429,6 +429,29 @@ const visible = (n) => !!n && n.style.display !== 'none';
     t(n(`...no page errors (${kind})`), env.errors.length === 0, env.errors.join(' | '));
   }
 
+  {
+    // The install fails before the TV answers: the note the error points to
+    // ("below") is there, the general one until the answer.
+    const now = Date.now();
+    const env = boot({
+      holdHomebrew: true,
+      storage: { 'ytaf-update-check': JSON.stringify({ at: now, latest: '99.0.0', ipk: { url: IPK, sha256: SHA }, notified: '99.0.0', notifiedAt: now }) }
+    });
+    await sleep(500);
+    const a = await env.about();
+    t(n('About, not answered yet: the install button is offered'), a.shown(a.install) && !a.shown(a.computer));
+    a.install.click();
+    const call = callsTo(env, INSTALL)[0];
+    if (call) call.answer({ returnValue: false, errorText: 'Bad hash' });
+    t(n('...the install fails: the note it points to is shown'), !!call && /\(below\)/.test(a.installStatus.textContent) &&
+      a.shown(a.computer) && a.computer.textContent.indexOf('Without the Homebrew Channel, install 99.0.0') === 0,
+      `${a.installStatus.textContent} | ${a.shown(a.computer)} ${a.computer.textContent}`);
+    env.answerHomebrew('no');
+    await sleep(20);
+    t(n('...answered no afterwards: the note that it is not installed'),
+      a.computer.textContent.indexOf('The Homebrew Channel is not installed on this TV') === 0, a.computer.textContent);
+  }
+
   // ---- A package that is not https ----
   {
     const env = boot({ listing: listing('99.0.0', { ipkUrl: 'http://example.com/a.ipk' }) });

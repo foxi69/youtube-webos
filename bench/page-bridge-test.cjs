@@ -134,7 +134,8 @@ const flags = (d) => d && `${+d.isWatch}${+d.isShorts}${+d.isAccountSelector}${+
     press(env.win, GREEN);
     await wait(30);
     const panel = env.doc.querySelector('.ytaf-ui-container');
-    return { env, guest: !!panel && panel.classList.contains('guest-mode') };
+    // null without a panel: no answer, so a missing panel fails either check.
+    return { env, guest: panel ? panel.classList.contains('guest-mode') : null };
   };
   {
     const identity = (type) => JSON.stringify({ data: { identityType: type } });

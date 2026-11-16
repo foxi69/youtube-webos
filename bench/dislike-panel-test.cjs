@@ -394,7 +394,14 @@ function key(win, target, name, code) {
     await go(win, '#/watch?v=vidBBBBBBBB');
     await wait(20);
     t(n('the cache keeps fifty videos: older ones are asked for again'),
-      b.asked.vidBBBBBBBB === before + 1 && b.asked.many0000049 === 1, `B ${before} -> ${b.asked.vidBBBBBBBB}`);
+      b.asked.vidBBBBBBBB === before + 1, `B ${before} -> ${b.asked.vidBBBBBBBB}`);
+    // B pushed out the oldest of the fifty: the second oldest is still kept, the oldest is asked for again.
+    await go(win, '#/watch?v=many0000001');
+    await wait(20);
+    await go(win, '#/watch?v=many0000000');
+    await wait(20);
+    t(n('...exactly fifty: the second oldest kept, the oldest gone'),
+      b.asked.many0000001 === 1 && b.asked.many0000000 === 2, `many1 ${b.asked.many0000001}, many0 ${b.asked.many0000000}`);
   }
 
   // ---- Answers that are not a count ----

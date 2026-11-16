@@ -43,8 +43,12 @@ const LETTERS = 'abcdefghijklmnopqrstuvwxyz0123456789,'.split('');
  * onSelect), or 'none'. `yt.native`: YouTube types a keyboard's keys itself.
  * `yt.classKeys`: keys are plain divs named by class, the query an <input>.
  */
+// Every boot's errors, checked once at the end.
+const allErrors = [];
+
 async function boot(yt = {}, cfg = {}) {
   const errors = [];
+  allErrors.push(errors);
   const vc = new VirtualConsole();
   vc.on('jsdomError', (e) => errors.push(e.message));
   vc.on('error', (...a) => errors.push(a.join(' ')));
@@ -265,8 +269,10 @@ async function boot(yt = {}, cfg = {}) {
     await until(() => b.query() === 'ok');
     t(n('instance-only keys: the third way works, both letters typed'),
       b.query() === 'ok' && b.state.presses.join() === 'o:click,o:pointer,o:click,o:instance,k:instance', b.state.presses.join());
-    b.press('!');   // no such key on this keyboard
-    t(n('a character with no on-screen key is let through'), b.query() === 'ok');
+    b.state.ytSaw.length = 0;
+    const through = b.press('!');   // no such key on this keyboard
+    t(n('a character with no on-screen key is let through to YouTube'),
+      through === true && b.state.ytSaw.join() === '!' && b.query() === 'ok', `${through} ${b.state.ytSaw.join()} ${b.query()}`);
   }
 
   // ---- YouTube types by itself ----
@@ -348,22 +354,27 @@ async function boot(yt = {}, cfg = {}) {
   // ---- When the module stays out ----
   {
     const b = await boot({ press: 'click' }, { keyboardSearch: false });
-    b.press('a');
+    const through = b.press('a');
     await wait(450);
-    t(n('setting off: nothing typed, the key is YouTube\'s'), b.query() === '' && !b.state.presses.length);
+    t(n('setting off: nothing typed, the key is YouTube\'s'), through === true && b.state.ytSaw.join() === 'a' &&
+      b.query() === '' && !b.state.presses.length, `${through} ${b.state.ytSaw.join()}`);
   }
   {
     const b = await boot({ press: 'click', page: 'WEB_PAGE_TYPE_BROWSE' });
-    b.press('a');
+    const through = b.press('a');
     await wait(450);
-    t(n('not the search page: nothing typed'), b.query() === '' && !b.state.presses.length);
+    t(n('not the search page: nothing typed, the key is YouTube\'s'), through === true && b.state.ytSaw.join() === 'a' &&
+      b.query() === '' && !b.state.presses.length, `${through} ${b.state.ytSaw.join()}`);
   }
   {
     const b = await boot({ press: 'click', noBox: true });
-    b.press('a');
+    const through = b.press('a');
     await wait(450);
-    t(n('no query box to watch: nothing pressed'), !b.state.presses.length, b.state.presses.join());
-    t(n('no console errors in any case'), !b.errors.length, b.errors[0]);
+    t(n('no query box to watch: nothing pressed, the key is YouTube\'s'), through === true && b.state.ytSaw.join() === 'a' &&
+      !b.state.presses.length, `${through} ${b.state.ytSaw.join()} ${b.state.presses.join()}`);
+    // Every case's boot, not only this one's.
+    const every = [].concat(...allErrors);
+    t(n('no console errors in any case'), !every.length, every[0]);
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);

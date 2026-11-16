@@ -213,13 +213,13 @@ export function setInlinePlayback(mode) {
 }
 
 export function initPreviews() {
-  const mode = configRead('videoPreviews');
-  if (mode === 'default') return;
-
-  // Delay by 2.5 seconds to ensure it applies after YouTube's initial load overrides
+  // Delay by 2.5 seconds to ensure it applies after YouTube's initial load
+  // overrides. The setting is read again then, so a change meanwhile stands.
+  // Default is applied too: a record forced earlier (another account's
+  // setting, say) is given back to YouTube at startup, not only on a change.
   setTimeout(() => {
-    setInlinePlayback(mode);
-  }, 2500); 
+    setInlinePlayback(configRead('videoPreviews'));
+  }, 2500);
 }
 
 // CSS rules live in auto-login.css and are scoped by body.ytaf-bypassing-login,
@@ -242,6 +242,14 @@ function shouldAutoSelectAccount() {
   return configRead('enableAutoLogin') && configRead('autoSelectAccount');
 }
 
+// Whether the selector is gone (a forced bypass never asks): the bypass is
+// then given up, and the page shown again.
+function selectorLeft(force) {
+    if (force || (document.body && document.body.classList.contains(SELECTORS.ACCOUNT_SELECTOR))) return false;
+    if (document.body) document.body.classList.remove(BYPASS_BODY_CLASS);
+    return true;
+}
+
 export function attemptActiveBypass(force = false) {
     if (!shouldAutoSelectAccount()) return;
     const isSelector = document.body && document.body.classList.contains(SELECTORS.ACCOUNT_SELECTOR);
@@ -262,9 +270,17 @@ export function attemptActiveBypass(force = false) {
             if (document.body) document.body.classList.remove(BYPASS_BODY_CLASS);
             return;
         }
+        // The viewer left the selector during the delay: the keys would go
+        // to whatever page is on screen now.
+        if (selectorLeft(force)) return;
         if (isGuestMode()) {
             sendKey(REMOTE_KEYS.DOWN);
-            setTimeout(() => { sendKey(REMOTE_KEYS.ENTER); finalizeBypass(); }, 200);
+            setTimeout(() => {
+                // ...also between the guest's Down and Enter.
+                if (selectorLeft(force)) return;
+                sendKey(REMOTE_KEYS.ENTER);
+                finalizeBypass();
+            }, 200);
         } else {
             sendKey(REMOTE_KEYS.ENTER);
             finalizeBypass();

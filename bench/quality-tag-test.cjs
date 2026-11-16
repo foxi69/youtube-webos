@@ -3,7 +3,7 @@
  * rule puts the quality the video plays in after the metadata line under the
  * title, follows the picture when the stream switches quality, and is
  * cleared off the watch page and on Off and At Start. The stored setting is
- * the old Show Video Quality Next to the Title switch, which carries over.
+ * Show Video Quality on Under Title.
  *
  * Usage: node bench/quality-tag-test.cjs [dist/webOSUserScripts/userScript.js]
  */
@@ -31,8 +31,7 @@ win.cancelAnimationFrame = () => {};
 win.localStorage.setItem('ytaf-configuration', win.JSON.stringify({
   enableAdBlock: false, enableLegacyEmojiFix: false, enableSponsorBlock: false,
   enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false,
-  // The old switch, as a stored configuration has it: it carries over as Under Title.
-  showQualityInTitle: true
+  showVideoQuality: 'title'
 }));
 if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
 win.eval(fs.readFileSync(bundlePath, 'utf8'));
@@ -91,9 +90,6 @@ function picture(w, h) {
 
   key(GREEN);
   await sleep(100);
-  const stored = JSON.parse(win.localStorage.getItem('ytaf-configuration'));
-  t('the old switch is stored as Under Title, and is gone', stored.showVideoQuality === 'title' &&
-    !('showQualityInTitle' in stored), JSON.stringify(stored));
   let value = step();
   t('Both: the tag stays', value === 'Both' && /content:"1080p"/.test(rule()), `${value} ${rule()}`);
   value = step();

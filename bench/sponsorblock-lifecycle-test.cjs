@@ -236,7 +236,11 @@ async function boot(cfg, segments, opts = {}) {
     }
     t(n('both servers failing: asked again after 5, 10, 20, 30, 30 minutes'), delays.join(' ') === '5 10 20 30 30',
       delays.join(' '));
-    t(n('...each time the official server, then the mirror'), env.net.asked.length === 11, String(env.net.asked.length));
+    // The first request is the open's; then five pairs, each official first.
+    const pairs = env.net.asked.slice(1);
+    t(n('...each time the official server, then the mirror'), env.net.asked.length === 11 &&
+      pairs.every((u, i) => u.indexOf(i % 2 === 0 ? 'https://sponsor.ajay.app/' : 'https://sponsorblock.inf.re/') === 0),
+      env.net.asked.join(' '));
     t(n('...the segments it had are kept'), env.lefts() === '5', env.lefts());
     env.net.status = 200;
     await env.fireRefresh();
@@ -272,7 +276,7 @@ async function boot(cfg, segments, opts = {}) {
   {
     const env = await boot({}, [], { status: 500, fastRetry: true });
     t(n('both servers failing at open: asked three times each, the official one first'), env.net.asked.length === 6 &&
-      env.net.asked.every((u, i) => (i % 2 === 0) === (u.indexOf('https://sponsor.ajay.app/') === 0)),
+      env.net.asked.every((u, i) => u.indexOf(i % 2 === 0 ? 'https://sponsor.ajay.app/' : 'https://sponsorblock.inf.re/') === 0),
       env.net.asked.join(' '));
     t(n('...then again in 5 minutes'), env.refreshes().join() === '5', JSON.stringify(env.refreshes()));
     env.net.status = 200;

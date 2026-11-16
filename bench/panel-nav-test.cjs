@@ -418,9 +418,12 @@ function boot() {
     shortcuts.style.display === 'block', describe(focused()));
   press(KEY.ESC);
   t(n('Escape closes it too'), !isOpen());
+  // A second green within the shortcut debounce would be dropped.
+  await wait(250);
   press(KEY.GREEN);
   tabs()[0].click();
   if (box) box.focus();
+  t(n('open again, the focus in the text box'), isOpen() && !!box && focused() === box, describe(focused()));
   press(KEY.BACK);
   t(n('Back closes it from the text box as well'), !!box && !isOpen());
 

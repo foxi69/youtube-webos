@@ -373,9 +373,11 @@ const HQ = (id) => url(id, 'hqdefault');
     const second = parse(home([shelf([tile('provensafe1'), tile('timeoutsafe')])]));
     t('Original: proven, the next response gets maxresdefault', tileUrl(homeItems(second)[0]) === MAX('provensafe1'),
       tileUrl(homeItems(second)[0]));
-    t('Original: nothing learned, it stays at hqdefault and is not asked again this session',
-      tileUrl(homeItems(second)[1]) === HQ('timeoutsafe') && heads.filter((u) => u.includes('timeoutsafe')).length === 1,
-      heads.join(' '));
+    t('Original: nothing learned, it stays at hqdefault', tileUrl(homeItems(second)[1]) === HQ('timeoutsafe'),
+      tileUrl(homeItems(second)[1]));
+    // A probe the second response queued would run in the next window.
+    await wait(SETTLE_MS);
+    t('...and is not asked again this session', heads.filter((u) => u.includes('timeoutsafe')).length === 1, heads.join(' '));
   }
   {
     // Smooth (SD): the ladder stops at sddefault.

@@ -176,7 +176,9 @@ function applyChrome87Downgrade(win) {
     rm(win.AbortSignal, 'any', 'AbortSignal.any');         // Chrome 116
     rm(win.AbortSignal.prototype, 'throwIfAborted', 'AbortSignal#throwIfAborted'); // Chrome 100
   }
-  if (win.crypto) rm(win.crypto, 'randomUUID', 'crypto.randomUUID'); // Chrome 92
+  // jsdom has it on Crypto.prototype, not on the instance.
+  if (win.Crypto) rm(win.Crypto.prototype, 'randomUUID', 'crypto.randomUUID'); // Chrome 92
+  if (win.crypto && typeof win.crypto.randomUUID !== 'undefined') throw new Error('crypto.randomUUID survived the Chrome 87 downgrade');
   rm(win.Element.prototype, 'checkVisibility', 'Element#checkVisibility'); // Chrome 105
   rm(win.HTMLElement.prototype, 'showPopover', 'HTMLElement#showPopover'); // Chrome 114
   return del;

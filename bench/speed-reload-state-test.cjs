@@ -367,6 +367,8 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
     await sleep(900);
     t('720p picked in an earlier session: the cap above 1x is 720p', log.ranges.join() === 'hd720,hd720',
       log.ranges.join());
+    t('the kept 720p is not stored as the speed\'s own cap for the next run',
+      !/hd720/.test(win.localStorage.getItem('ytaf-speed-own-range') || ''), win.localStorage.getItem('ytaf-speed-own-range'));
     log.ranges.length = 0;
     speed.setSpeed(1, { immediate: true });
     t('and back at 1x it is kept', log.ranges.join() === 'hd720', log.ranges.join());

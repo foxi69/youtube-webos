@@ -883,7 +883,9 @@ function applySchemaFilters(data, responseType, config) {
   const schema = SCHEMA_REGISTRY.paths[responseType];
   switch (responseType) {
     case 'SHORTS_SEQUENCE':
-        if (config.enableAdBlock && schema?.listPath) {
+        // Not gated on Ad Blocking: filterItemsOptimized checks each of its
+        // settings itself, and the emoji fix needs these entries too.
+        if (schema?.listPath) {
             const entries = getByPath(data, schema.listPath);
             if (Array.isArray(entries)) {
                 const oldLen = entries.length;
@@ -910,7 +912,9 @@ function applySchemaFilters(data, responseType, config) {
         const tabs = getByPath(data, schema.tabsPath);
         if (Array.isArray(tabs)) {
           for (let i = 0; i < tabs.length; i++) {
-            const gridContents = tabs[i].tabRenderer?.content?.sectionListRenderer?.contents || tabs[i].tabRenderer?.content?.tvSurfaceContentRenderer?.content?.sectionListRenderer?.contents;
+            // A null tab is passed over, so the tabs after it are still filtered.
+            const tab = tabs[i]?.tabRenderer?.content;
+            const gridContents = tab?.sectionListRenderer?.contents || tab?.tvSurfaceContentRenderer?.content?.sectionListRenderer?.contents;
             if (Array.isArray(gridContents)) processSectionListOptimized(gridContents, config, 'BROWSE_TAB_GENERIC');
           }
         }
@@ -962,7 +966,7 @@ function applySchemaFilters(data, responseType, config) {
       // own (Remove AI Videos, Remove Shorts and the Live / Upcoming /
       // Members-only badges were missing, so they did nothing there unless a
       // feed filter was on as well).
-      if (config.hideGuestPrompts || config.feedFilters || config.decorateItems ||
+      if (config.enableAdBlock || config.hideGuestPrompts || config.feedFilters || config.decorateItems ||
           config.removeAiVideos || config.removeGlobalShorts || config.removeMixes || config.badgeMask) {
          let pivotContents = getByPath(data, schema?.pivotPath);
          if (!pivotContents) {

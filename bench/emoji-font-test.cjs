@@ -173,6 +173,13 @@ async function legacyCases() {
     box.appendChild(h.doc.createTextNode(W(GRIN)));
     await h.frame();
     t(n('a text box is left alone'), box.querySelector('emoji-render') === null && box.textContent === W(GRIN));
+    // The same, added whole with the emoji already in it (the container scan).
+    const filled = h.doc.createElement('textarea');
+    filled.textContent = W(GRIN);
+    h.app.appendChild(filled);
+    await h.frame();
+    t(n('a text box added with an emoji in it is left alone'),
+      filled.querySelector('emoji-render') === null && filled.textContent === W(GRIN), JSON.stringify(filled.textContent));
     const own = h.title(W(GRIN), 'yt-icon');
     await h.frame();
     t(n('an element emoji are not drawn in is left alone'), own.querySelector('emoji-render') === null);
@@ -186,6 +193,17 @@ async function legacyCases() {
     h.app.appendChild(tile);
     await h.frame();
     t(n('a tile added whole: the title inside it is drawn'), h.shown(inner) === 'Tile [1f600]', JSON.stringify(h.shown(inner)));
+
+    // YouTube puts the drawn tile back (a row scrolled away and back): its
+    // hidden-text twin holds the wrapped emoji again, and must not be drawn.
+    for (let i = 0; i < 3; i++) {
+      h.app.removeChild(tile);
+      h.app.appendChild(tile);
+      await h.frame();
+    }
+    t(n('a drawn tile put back three times: still one image, nothing nested'),
+      inner.querySelectorAll('img').length === 1 && inner.querySelectorAll('.twemoji-hidden-text img, .twemoji-hidden-text .twemoji-hidden-text').length === 0,
+      inner.innerHTML);
 
     // Gone before the frame (a row scrolled away at once).
     const gone = h.title(`Gone ${W(GRIN)}`);
