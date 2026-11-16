@@ -354,7 +354,7 @@ const configOptions = new Map([
   ['enableDeArrow', { default: false, desc: 'DeArrow' }],
   ['dearrowShowBadge', { default: true, desc: 'Show the DeArrow Logo on Crowdsourced Titles/Thumbnails' }],
   ['dearrowCrowdTitles', { default: true, desc: 'Crowdsourced Titles' }],
-  // Every title shown, crowdsourced or YouTube's own (webOS 22+ build only).
+  // Every title shown, crowdsourced or YouTube's own (the legacy build: Title Case alone).
   ['dearrowTitleFormatting', { default: isEnglishUI ? 'title_case' : 'disable', desc: 'Title Formatting' }],
   ['dearrowCleanEmojis', { default: true, desc: 'Remove Emojis and Fancy Text' }],
   ['dearrowCrowdThumbnails', { default: true, desc: 'Crowdsourced Thumbnails' }],

@@ -40,10 +40,11 @@ const makeConfig = (env) => {
             ? {}
             : { [path.resolve(__dirname, 'src/perf_mon.js')]: false }),
           // DeArrow's title formatter: 48 KiB in the legacy build, where only
-          // webOS 5 and 6 could use it; that build formats no titles.
+          // webOS 5 and 6 could run it; that build has a smaller one that
+          // runs on all of them, with Title Case alone.
           ...(isModern
             ? {}
-            : { [path.resolve(__dirname, 'src/dearrow/formatter.js')]: path.resolve(__dirname, 'src/dearrow/formatter-absent.js') }),
+            : { [path.resolve(__dirname, 'src/dearrow/formatter.js')]: path.resolve(__dirname, 'src/dearrow/formatter-legacy.js') }),
           ...(isModern ? {
           // Strip global polyfills for modern build
           'core-js-pure': false,
