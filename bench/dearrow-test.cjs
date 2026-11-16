@@ -9,8 +9,8 @@
  * standing in; the Original and Blank fallbacks; lockups as well as tiles;
  * the badge; a known video rewritten inside the parse; a big answer that does
  * not evict the asked video; DeArrow switched off putting back what it
- * replaced; the old thumbnail switch carried over; the panel section; and
- * title formatting in the webOS 22+ build only.
+ * replaced; the panel section; and title formatting: every format in the
+ * webOS 22+ build, Title Case alone in the legacy one.
  *
  * Usage: node bench/dearrow-test.cjs [bundle] [legacy|modern]
  */
@@ -333,8 +333,8 @@ const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-d
     const rows = Array.from(win.document.querySelectorAll('#ytaf-page-ui-tweaks .label-text, #ytaf-page-ui-tweaks .shortcut-label'))
       .map((x) => x.textContent.trim());
     const formatting = rows.some((l) => l.indexOf('Title Formatting') !== -1);
-    t(modern ? 'title formatting offered in the webOS 22+ build' : 'no title formatting in the legacy build',
-      formatting === modern, rows.join('|'));
+    t('title formatting offered', formatting, rows.join('|'));
+    t('...and Remove Emojis and Fancy Text', rows.some((l) => l.indexOf('Remove Emojis and Fancy Text') !== -1), rows.join('|'));
     t('the thumbnail fallback row', rows.some((l) => l.indexOf('Without a Crowdsourced Thumbnail') !== -1), rows.join('|'));
     const fallbackRow = Array.from(win.document.querySelectorAll('#ytaf-page-ui-tweaks .shortcut-control-row'))
       .find((x) => x.textContent.indexOf('Without a Crowdsourced Thumbnail') !== -1);
@@ -887,14 +887,56 @@ const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-d
     t('no unhandled promise rejection while thumbnails are decided', unhandled.length === 0, unhandled.join(' | '));
   }
 
-  // ---- Title formatting (webOS 22+ build only) ----
+  // ---- Title formatting: every format on webOS 22+, Title Case alone in the legacy build ----
   {
     const f = boot({ dearrowTitleFormatting: 'sentence_case', dearrowCleanEmojis: true });
     const r = f.parse(browse([tile('downvoted01', 'THIS IS AN AMAZING VIDEO')]));
     await wait(200);
     const title = tileTitle(itemsOf(r)[0]);
     if (modern) t('Sentence case applies to YouTube\'s own titles', title === 'This is an amazing video', title);
-    else t('the legacy build leaves YouTube\'s titles as written', title === 'THIS IS AN AMAZING VIDEO', title);
+    else t('the legacy build has no Sentence case: the title stays as written', title === 'THIS IS AN AMAZING VIDEO', title);
+  }
+  {
+    const f = boot({ dearrowTitleFormatting: 'title_case', dearrowCleanEmojis: true });
+    const r = f.parse(browse([
+      tile('downvoted01', 'you WON\'T BELIEVE what NASA found on mars!!! \uD83D\uDE31'),
+      tile('downvoted02', 'the lord of the rings: return of the king')
+    ]));
+    await wait(200);
+    const [a, b] = itemsOf(r).map(tileTitle);
+    t('Title Case on both builds: shouting calmed, an acronym kept, the emoji and the exclamation marks gone',
+      a === 'You Won\'t Believe What NASA Found on Mars', a);
+    t('Title Case: small words inside stay small, the word after a colon is capital',
+      b === 'The Lord of the Rings: Return of the King', b);
+  }
+  {
+    const f = boot({ dearrowTitleFormatting: 'title_case', dearrowCleanEmojis: false });
+    const r = f.parse(browse([tile('downvoted01', 'top 10 anime betrayals \uD83D\uDE31')]));
+    await wait(200);
+    const title = tileTitle(itemsOf(r)[0]);
+    t('Remove Emojis and Fancy Text off: the emoji stays', title === 'Top 10 Anime Betrayals \uD83D\uDE31', title);
+  }
+  {
+    // Cycling the row in the panel: only what this build's formatter has.
+    const p = boot({ dearrowTitleFormatting: 'disable' });
+    const e = new p.win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
+    Object.defineProperty(e, 'keyCode', { get: () => 404, configurable: true });
+    dispatchTrusted(p.win.document.body, e);
+    await wait(50);
+    const panel = p.win.document.querySelector('.ytaf-ui-container');
+    for (let i = 0; i < 20; i++) panel.ensurePage(i);
+    const row = Array.from(panel.querySelectorAll('.shortcut-control-row')).filter((x) =>
+      (x.querySelector('.shortcut-label') || {}).textContent.trim() === 'Title Formatting')[0];
+    const seen = [];
+    if (row) {
+      for (let i = 0; i < 7; i++) {
+        row.click();
+        seen.push(row.querySelector('.current-value').textContent);
+      }
+    }
+    const distinct = seen.filter((v, i) => seen.indexOf(v) === i).sort();
+    t(modern ? 'the row steps through all six choices' : 'the legacy row steps through Disabled and Title Case only',
+      modern ? distinct.length === 6 : distinct.join('|') === 'Disabled|Title Case', seen.join(' > '));
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);

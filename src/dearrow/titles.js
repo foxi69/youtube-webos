@@ -1,11 +1,11 @@
 // DeArrow's titles: the crowdsourced one when it is trusted, else YouTube's
 // own, either formatted as Title Formatting says by the extension's own
-// formatter (formatter.js; the legacy build has none, and keeps titles as
-// written).
+// formatter (formatter.js; the legacy build has Title Case alone,
+// formatter-legacy.js).
 import { configRead } from '../config.js';
 import { formatTitleInternal, TitleFormatting, formattingSupported } from './formatter.js';
 
-/** Whether titles can be formatted here: the webOS 22+ build (formatter.js). */
+/** Whether titles can be formatted here. */
 export const titleFormattingSupported = formattingSupported;
 
 const FORMATTING = {
@@ -16,6 +16,15 @@ const FORMATTING = {
   first_letter_uppercase: TitleFormatting.FirstLetterUppercase,
   capitalize_words: TitleFormatting.CapitalizeWords
 };
+
+/** The Title Formatting choices this build's formatter has (all of them, or Disabled and Title Case). */
+export function titleFormatChoices(all) {
+  const out = {};
+  for (const key of Object.keys(all)) {
+    if (FORMATTING[key] !== undefined) out[key] = all[key];
+  }
+  return out;
+}
 
 /**
  * A submission DeArrow would show: not the original, and locked or voted

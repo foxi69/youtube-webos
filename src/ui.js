@@ -21,7 +21,7 @@ import { blockChannel, openFocusedLongPressMenu } from './long-press-menu.js';
 import { VERSION_LABEL } from './version.js';
 import { buildAboutPage } from './about.js';
 import { clearQueue, playNextInQueue } from './video-queue.js';
-import { titleFormattingSupported } from './dearrow/index.js';
+import { titleFormattingSupported, titleFormatChoices } from './dearrow/index.js';
 import { getSidebarEntries, hiddenIds, entryName, SIDEBAR_ENTRIES_EVENT } from './sidebar.js';
 import { onWebClientRefused } from './web-client.js';
 
@@ -1218,13 +1218,13 @@ function createOptionsPanel() {
     // DeArrow: the switch and the logo, then the title and thumbnail options,
     // greyed out while it is off (and the thumbnail fallback while
     // crowdsourced thumbnails are). Its own section here rather than a tab:
-    // a seventh tab does not fit the panel's width. Title formatting is in the
-    // webOS 22+ build only (dearrow/formatter.js).
+    // a seventh tab does not fit the panel's width. The legacy build has
+    // Title Case alone (dearrow/formatter-legacy.js).
     const elDeArrowBadge = createConfigCheckbox('dearrowShowBadge');
     const deArrowTitleRows = [createConfigCheckbox('dearrowCrowdTitles')];
     if (titleFormattingSupported) {
       deArrowTitleRows.push(
-        createAlignedCycleControl('dearrowTitleFormatting', dearrowTitleFormats),
+        createAlignedCycleControl('dearrowTitleFormatting', titleFormatChoices(dearrowTitleFormats)),
         createConfigCheckbox('dearrowCleanEmojis')
       );
     }
