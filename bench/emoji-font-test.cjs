@@ -173,6 +173,13 @@ async function legacyCases() {
     box.appendChild(h.doc.createTextNode(W(GRIN)));
     await h.frame();
     t(n('a text box is left alone'), box.querySelector('emoji-render') === null && box.textContent === W(GRIN));
+    // The same, added whole with the emoji already in it (the container scan).
+    const filled = h.doc.createElement('textarea');
+    filled.textContent = W(GRIN);
+    h.app.appendChild(filled);
+    await h.frame();
+    t(n('a text box added with an emoji in it is left alone'),
+      filled.querySelector('emoji-render') === null && filled.textContent === W(GRIN), JSON.stringify(filled.textContent));
     const own = h.title(W(GRIN), 'yt-icon');
     await h.frame();
     t(n('an element emoji are not drawn in is left alone'), own.querySelector('emoji-render') === null);

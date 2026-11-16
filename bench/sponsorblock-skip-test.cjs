@@ -105,6 +105,12 @@ async function boot(cfg, segments, opts = {}) {
   const v = fakeVideo(win, video, opts.duration || 600);
   if (opts.startAt) v.state.time = opts.startAt;
   if (opts.readyState !== undefined) v.state.ready = opts.readyState;
+  // opts.holdClock: the page's Date.now stands still, so a window the bundle
+  // times with it (the highlight's 4 s) cannot run out on a slow machine.
+  if (opts.holdClock) {
+    const held = win.Date.now();
+    win.Date.now = () => held;
+  }
   win.eval(code);
   // The handler starts a moment after the page (about 0.8 s): wait for its
   // request, then for the answer to be applied.
@@ -266,7 +272,8 @@ async function boot(cfg, segments, opts = {}) {
   {
     // A segment that starts right after the highlight: its skip is
     // SponsorBlock's own, not one to undo.
-    const env = await boot({ sbMode_highlight: 'auto_skip' }, [seg('poi_highlight', 120, 120, 'poi'), seg('sponsor', 122, 140)]);
+    const env = await boot({ sbMode_highlight: 'auto_skip' }, [seg('poi_highlight', 120, 120, 'poi'), seg('sponsor', 122, 140)],
+      { holdClock: true });
     await env.playTo(122.2);
     await wait(40);
     t(n('highlight, then a segment right after it: skipped, and not jumped back'), env.state.time === 140 &&
@@ -274,6 +281,15 @@ async function boot(cfg, segments, opts = {}) {
     await env.playTo(141);
     t(n('...and playback goes on after it'), env.state.time === 141 && env.state.seeks.join() === '120,140',
       env.state.seeks.join(','));
+  }
+  for (const once of [true, false]) {
+    // The highlight at the start of a segment: the highlight's own 'seeked'
+    // skips the segment; the skip's 'seeked' must not jump back to the highlight.
+    const env = await boot({ sbMode_highlight: 'auto_skip', skipSegmentsOnce: once },
+      [seg('poi_highlight', 120, 120, 'poi'), seg('sponsor', 120, 140)], { holdClock: true });
+    await wait(60);
+    t(n(`highlight at a segment's start (Skip Segments Once ${once ? 'on' : 'off'}): skipped, not jumped back`),
+      env.state.time === 140 && env.state.seeks.join() === '120,140', env.state.seeks.join(','));
   }
   {
     const env = await boot({ sbMode_highlight: 'ask' }, [seg('poi_highlight', 120, 120, 'poi')]);

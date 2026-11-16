@@ -238,7 +238,9 @@ const SMALL = { width: '640px', height: '360px', left: '100px', top: '50px' };
     await wait(700);
     t(n('browse page: no keep-alive keys'), env.keys.length === 0, env.keys.join(','));
     await env.page('SHORTS');
-    await wait(700);
+    // The pair: Yellow, then its second keycode 250 ms later.
+    const pairEnd = Date.now() + 3000;
+    while (env.keys.length < 2 && Date.now() < pairEnd) await wait(20);
     const k = env.keys.slice();
     t(n('Shorts playing: the keep-alive sends Yellow, then its second keycode'),
       k.length >= 2 && k[0] === YELLOW && k[1] === YELLOW_ALT, k.join(','));

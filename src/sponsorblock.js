@@ -1650,7 +1650,9 @@ class SponsorBlockHandler {
             if (Date.now() > until || this.video !== video || this.isDestroyed) {
                 video.removeEventListener('seeked', onSeeked);
             } else if (this.ownSkipTarget !== null && Math.abs(video.currentTime - this.ownSkipTarget) < 0.5) {
-                this.ownSkipTarget = null;
+                // A skip of SponsorBlock's own. Kept, not used up: the skip
+                // can start inside the highlight's own 'seeked' (a segment
+                // that begins at the highlight), and its own 'seeked' follows.
             } else if (Math.abs(video.currentTime - target) > 2) {
                 video.removeEventListener('seeked', onSeeked);
                 video.currentTime = target;

@@ -350,21 +350,24 @@ async function boot(yt = {}, cfg = {}) {
   // ---- When the module stays out ----
   {
     const b = await boot({ press: 'click' }, { keyboardSearch: false });
-    b.press('a');
+    const through = b.press('a');
     await wait(450);
-    t(n('setting off: nothing typed, the key is YouTube\'s'), b.query() === '' && !b.state.presses.length);
+    t(n('setting off: nothing typed, the key is YouTube\'s'), through === true && b.state.ytSaw.join() === 'a' &&
+      b.query() === '' && !b.state.presses.length, `${through} ${b.state.ytSaw.join()}`);
   }
   {
     const b = await boot({ press: 'click', page: 'WEB_PAGE_TYPE_BROWSE' });
-    b.press('a');
+    const through = b.press('a');
     await wait(450);
-    t(n('not the search page: nothing typed'), b.query() === '' && !b.state.presses.length);
+    t(n('not the search page: nothing typed, the key is YouTube\'s'), through === true && b.state.ytSaw.join() === 'a' &&
+      b.query() === '' && !b.state.presses.length, `${through} ${b.state.ytSaw.join()}`);
   }
   {
     const b = await boot({ press: 'click', noBox: true });
-    b.press('a');
+    const through = b.press('a');
     await wait(450);
-    t(n('no query box to watch: nothing pressed'), !b.state.presses.length, b.state.presses.join());
+    t(n('no query box to watch: nothing pressed, the key is YouTube\'s'), through === true && b.state.ytSaw.join() === 'a' &&
+      !b.state.presses.length, `${through} ${b.state.ytSaw.join()} ${b.state.presses.join()}`);
     t(n('no console errors in any case'), !b.errors.length, b.errors[0]);
   }
 

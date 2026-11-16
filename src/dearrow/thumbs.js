@@ -256,6 +256,9 @@ export function loadThumb(url, videoId) {
  * Drops every copy, freeing the blobs, and the draws still waiting for a slot;
  * a copy being drawn now is freed when it is done.
  */
+/** Changes when the thumbnails are forgotten (DeArrow or its thumbnails off, a wipe): a draw from before was dropped. */
+export const thumbsEpoch = () => epoch;
+
 export function forgetThumbs() {
   epoch++;
   waitingDraws.splice(0).forEach(dropDraw);

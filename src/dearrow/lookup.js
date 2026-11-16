@@ -26,7 +26,7 @@ import {
   THUMBNAIL_API
 } from './constants.js';
 import { videos, currentGeneration } from './state.js';
-import { loadThumb } from './thumbs.js';
+import { loadThumb, thumbsEpoch } from './thumbs.js';
 import { isTrusted, resolveTitle, crowdsourcedTitle } from './titles.js';
 
 const DEBUG = false;
@@ -182,7 +182,10 @@ async function resolveThumb(videoId, video, gen, show) {
   }
 
   const url = thumbnailUrl(videoId, time);
+  const drawnIn = thumbsEpoch();
   const ready = await loadThumb(url + '&generateNow=true', videoId);
+  // Dropped (the thumbnails were forgotten meanwhile): no start frame in its place.
+  if (drawnIn !== thumbsEpoch() || gen !== currentGeneration()) return;
   if (ready) {
     show(ready);
     return;

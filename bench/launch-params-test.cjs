@@ -50,7 +50,12 @@ function boot(launchParams, cfg = {}) {
   const vc = new VirtualConsole();
   vc.on('jsdomError', (e) => errors.push('jsdomError: ' + e.message));
   vc.on('error', (...a) => errors.push('console.error: ' + a.join(' ')));
-  for (const level of ['info', 'log', 'warn']) vc.on(level, (...a) => logs.push(level + ' ' + a.map(String).join(' ')));
+  // Objects as JSON, so a value inside a logged object shows in the privacy check.
+  const asText = (v) => {
+    if (v === null || typeof v !== 'object') return String(v);
+    try { return JSON.stringify(v); } catch { return String(v); }
+  };
+  for (const level of ['info', 'log', 'warn']) vc.on(level, (...a) => logs.push(level + ' ' + a.map(asText).join(' ')));
   const dom = new JSDOM('<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app></ytlr-app></body></html>',
     { runScripts: 'outside-only', url: 'https://www.youtube.com/tv', virtualConsole: vc, pretendToBeVisual: true });
   const win = dom.window;
