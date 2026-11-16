@@ -209,8 +209,9 @@ run(async () => {
 
       // The focus moves on: YouTube stops the preview. The page gets its
       // look back then, not at the next re-check a second later.
+      // Checked before anything else runs: after a wait, the re-check a second
+      // later could have given it back with the 'pause' listener gone.
       env.pause();
-      await wait(30);
       t('webOS 3: the preview stopped (the focus moved on): the surface page gets its black background back at once',
         env.cleared() === '' && env.style('browse').backgroundColor === 'rgb(0, 0, 0)',
         env.cleared() + ' / ' + env.style('browse').backgroundColor);
@@ -220,7 +221,6 @@ run(async () => {
 
       env.play();
       env.end();
-      await wait(30);
       t('webOS 3: a preview that ended: the background comes back at once too', env.cleared() === '', env.cleared());
       await wait(TICK);
 
@@ -282,7 +282,6 @@ run(async () => {
       await wait(TICK);
       t('setting off, then on: ...and kept so by the re-checks', env.cleared() === 'browse', env.cleared());
       env.pause();
-      await wait(30);
       t('setting off, then on: ...until it stops', env.cleared() === '', env.cleared());
       t('setting off: no page errors', env.errors.length === 0, env.errors.join(' | '));
       env.win.close();
