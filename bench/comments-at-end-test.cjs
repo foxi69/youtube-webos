@@ -102,4 +102,14 @@ run(async () => {
     await wait(SETTLE_MS);
     t(n('a key pressed just before the end: not opened'), env.clicks.length === 0, env.clicks.join());
   }
+  {
+    // The event with no detail (not the player's): ignored, and the listener goes on working.
+    const env = await boot();
+    env.win.dispatchEvent(new env.win.CustomEvent('yt-player-state-change'));
+    t(n('an event with no detail: no error'), env.errors.length === 0, env.errors.join(' | '));
+    env.state(1);
+    env.state(0);
+    await wait(SETTLE_MS);
+    t(n('...and the next end still opens the comments'), env.clicks.length === 1, env.clicks.join());
+  }
 });

@@ -82,6 +82,7 @@ export function noteQueuePlayability(status) {
 }
 
 window.addEventListener('yt-player-state-change', ({ detail }) => {
+  if (!detail) return;
   if (detail.state === 1 && opening && detail.videoId === opening.videoId) {
     opening = null;
     clearTimeout(refusalTimer);

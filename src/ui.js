@@ -1720,7 +1720,8 @@ window.addEventListener('keydown', (evt) => {
     if (!evt[SYNTHETIC_KEY_FLAG]) lastViewerKeyAt = Date.now();
 }, true);
 window.addEventListener('yt-player-state-change', ({ detail }) => {
-    const videoId = detail && detail.videoId;
+    if (!detail) return;
+    const videoId = detail.videoId;
     if (detail.state === 1 && videoId !== commentsOpenedFor) commentsOpenedFor = null;
     if (detail.state !== 0 || !configRead('openCommentsAtEnd') || !videoId) return;
     const endedAt = Date.now();
