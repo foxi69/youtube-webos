@@ -17,26 +17,17 @@
  * Frames are run by the test (requestAnimationFrame is queued), so "before
  * the frame" and "after it" are exact.
  */
-const fs = require('fs');
-const path = require('path');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, applyChrome87Downgrade, UA, setUserAgent } = require('./chrome38-env.cjs');
+const { createReporter, flavorFromArgs, readBundle, bootPage } = require('./harness.cjs');
 
-const ROOT = path.resolve(__dirname, '..');
-const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
 // `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
 // with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
-const modern = process.argv[3] === 'modern';
-const code = fs.readFileSync(bundlePath, 'utf8');
+const { modern } = flavorFromArgs();
+const code = readBundle();
 const tick = () => new Promise((r) => setTimeout(r, 0));
 // webOS 5 (2020): the legacy build, but past the TVs this fix is for.
 const UA_WEBOS5 = 'Mozilla/5.0 (Web0S; Linux/SmartTV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/68.0.3440.106 Safari/537.36 WebAppManager webOS.TV-2020';
 
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra !== undefined ? '\n     ' + extra : '')); }
-};
+const { t, run } = createReporter();
 
 const W = (e) => '\u200B' + e + '\u200C';   // as adblock.js wraps an emoji
 const GRIN = '\uD83D\uDE00';
@@ -45,38 +36,26 @@ const HEART_ON_FIRE = '\u2764\u200D\uD83D\uDD25';   // without the U+FE0F after 
 const CDN = 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/16.0.1/72x72/';
 
 function boot(opts = {}) {
-  const errors = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => errors.push(e.message));
-  vc.on('error', (...a) => errors.push(a.join(' ')));
-  const dom = new JSDOM(`<!doctype html><html><head></head><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app>${opts.html || ''}</ytlr-app></body></html>`,
-    { runScripts: 'outside-only', url: 'https://www.youtube.com/tv', virtualConsole: vc, pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, opts.ua || (modern ? UA.webos23 : UA.webos3));
-  win.launchParams = '{}';
-  win.XMLHttpRequest = class { open() {} send() {} setRequestHeader() {} getResponseHeader() { return null; } addEventListener() {} };
-  let frames = [];
-  win.requestAnimationFrame = (cb) => { frames.push(cb); return frames.length; };
-  win.cancelAnimationFrame = () => {};
-  win.localStorage.setItem('ytaf-configuration', JSON.stringify(Object.assign({
-    enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-    enableDeArrow: false, upgradeThumbnails: false, enableAutoLogin: false,
-    checkForUpdates: false, showWhatsNew: false, enableLegacyEmojiFix: true
-  }, opts.cfg)));
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  win.Element.prototype.remove = function remove() { if (this.parentNode) this.parentNode.removeChild(this); };
-  win.fetch = () => new Promise(() => {});
-  win.eval(code);
-  const doc = win.document;
+  const { win, doc, errors, frames } = bootPage({
+    code,
+    inner: opts.html || '',
+    userAgent: opts.ua,
+    raf: 'manual',
+    config: Object.assign({
+      enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
+      enableDeArrow: false, upgradeThumbnails: false, enableAutoLogin: false,
+      checkForUpdates: false, showWhatsNew: false, enableLegacyEmojiFix: true
+    }, opts.cfg),
+    fetch: 'pending'
+  });
   const app = doc.querySelector('ytlr-app');
   // The observers' records, then one frame.
   const frame = async () => {
     await tick();
-    const q = frames; frames = [];
-    for (const cb of q) cb(Date.now());
+    frames.pump();
     await tick();
   };
-  const pending = () => frames.length;
+  const pending = frames.pending;
   // What a title shows: text as is, an image as [src name].
   const shown = (el) => {
     let out = '';
@@ -292,8 +271,6 @@ async function modernCases() {
   t(n('no page errors'), h.errors.length === 0, h.errors.join(' | '));
 }
 
-(async () => {
+run(async () => {
   if (modern) await modernCases(); else await legacyCases();
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})().catch((e) => { console.log('FAIL harness: ' + (e && e.stack || e)); process.exit(1); });
+});

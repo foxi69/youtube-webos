@@ -13,55 +13,38 @@
  * The TV app's resolver is a stand-in in window._yttv that records what
  * reaches it.
  */
-const fs = require('fs');
-const path = require('path');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, applyChrome87Downgrade, UA, setUserAgent } = require('./chrome38-env.cjs');
+const { createReporter, flavorFromArgs, readBundle, bootPage, wait } = require('./harness.cjs');
 
-const ROOT = path.resolve(__dirname, '..');
-const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
 // `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
 // with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
-const modern = process.argv[3] === 'modern';
-const code = fs.readFileSync(bundlePath, 'utf8');
+const { modern } = flavorFromArgs();
+const code = readBundle();
 const URL = 'https://www.youtube.com/tv';
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const YEAR = 365 * 24 * 3600 * 1000;
 
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra !== undefined ? '\n     ' + extra : '')); }
-};
+const { t, run } = createReporter();
 
 async function boot(opts = {}) {
-  const errors = [];
   const warnings = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => errors.push(e.message));
-  vc.on('error', (...a) => errors.push(a.join(' ')));
-  vc.on('warn', (...a) => warnings.push(a.map(String).join(' ')));
-  const dom = new JSDOM('<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app></ytlr-app></body></html>',
-    { runScripts: 'outside-only', url: URL, virtualConsole: vc, pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, modern ? UA.webos23 : UA.webos3);
-  win.launchParams = '{}';
-  win.XMLHttpRequest = class { open() {} send() {} setRequestHeader() {} getResponseHeader() { return null; } addEventListener() {} };
-  win.localStorage.setItem('ytaf-configuration', JSON.stringify({
-    enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-    enableDeArrow: false, upgradeThumbnails: false, enableAutoLogin: false,
-    checkForUpdates: false, showWhatsNew: false, enableLegacyEmojiFix: false
-  }));
+  const { win, dom, errors, evaluate } = bootPage({
+    code,
+    url: URL,
+    console: { warn: (...a) => warnings.push(a.map(String).join(' ')) },
+    config: {
+      enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
+      enableDeArrow: false, upgradeThumbnails: false, enableAutoLogin: false,
+      checkForUpdates: false, showWhatsNew: false, enableLegacyEmojiFix: false
+    },
+    fetch: 'pending',
+    evaluate: false
+  });
   // YouTube's own cookies, as the page has them before the bundle.
   for (const c of opts.cookies || []) dom.cookieJar.setCookieSync(c, URL);
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  win.Element.prototype.remove = function remove() { if (this.parentNode) this.parentNode.removeChild(this); };
-  win.fetch = () => new Promise(() => {});
   const seen = [];
   const Resolver = function Resolver() {};
   Resolver.instance = { resolveCommand: (command, extra) => { seen.push({ command, extra }); return 'app'; } };
   win._yttv = { resolver: Resolver };
-  win.eval(code);
+  evaluate();
   await wait(30);
   const resolve = Resolver.instance.resolveCommand;
   const pref = () => {
@@ -76,7 +59,7 @@ const language = (lang) => ({ setClientSettingEndpoint: { settingDatas: [
   { clientSettingEnum: { item: 'I18N_LANGUAGE' }, stringValue: lang }
 ] } });
 
-(async () => {
+run(async () => {
   const f = modern ? 'modern' : 'legacy';
   const n = (s) => `${f}: ${s}`;
 
@@ -137,7 +120,4 @@ const language = (lang) => ({ setClientSettingEndpoint: { settingDatas: [
     t(n('nothing odd set a cookie'), h.pref() === null, h.cookies());
     t(n('untouched: no page errors'), h.errors.length === 0, h.errors.join(' | '));
   }
-
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})().catch((e) => { console.log('FAIL harness: ' + (e && e.stack || e)); process.exit(1); });
+});
