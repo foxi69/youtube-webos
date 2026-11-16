@@ -356,6 +356,10 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
     p.videoId = 'othervideo1';
     setQuality('large');
     emit(-1); emit(3); emit(1); pump(); pump();
+    // Called here too, not left to the play event alone: the reload's own
+    // watch notices the other video on its next tick (250 ms) and would drop
+    // the subtitles itself, so the replacement has to happen before that.
+    speed.capNext(p);
     await sleep(400);
     p.videoId = 'abcdefghijk';
     emit(1);
