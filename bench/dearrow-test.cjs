@@ -452,15 +452,6 @@ const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-d
       !!sw && shownThumb(el) === 'url("https://i.ytimg.com/vi/custom00001/hqdefault.jpg?v=later")', shownThumb(el));
   }
 
-  // ---- The old thumbnail switch carries over ----
-  {
-    const old = boot({ enableDeArrowThumbnails: false });
-    const r = old.parse(browse([tile('custom00001', 'Clickbait')]));
-    await waitFor(() => tileTitle(itemsOf(r)[0]) === 'the iPhone review', 2000);
-    await wait(50);
-    t('a TV that had DeArrow thumbnails off keeps YouTube\'s', tileThumb(itemsOf(r)[0]) === 'https://i.ytimg.com/vi/custom00001/hqdefault.jpg', tileThumb(itemsOf(r)[0]));
-  }
-
   // ---- Off: no request ----
   {
     const off = boot({ enableDeArrow: false });

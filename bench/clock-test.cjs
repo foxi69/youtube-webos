@@ -201,23 +201,12 @@ function boot(cfg, start, hold = false) {
     t(n('OLED-Care on again: black again'), env.el().classList.contains('oled-mode'));
   }
 
-  // ---- Off, and the old on/off switch ----
+  // ---- Off ----
   {
     const env = boot({}, MID);
     await sleep(100);
     t(n('Clock in UI off by default: no clock'), !env.el());
   }
-  {
-    const env = boot({ showWatch: true }, MID);
-    await sleep(100);
-    t(n('the old clock switch on: the clock shows the time'), env.text() === TIME.format(env.now()), env.text());
-  }
-  {
-    const env = boot({ showWatch: false }, MID);
-    await sleep(100);
-    t(n('the old clock switch off: no clock'), !env.el());
-  }
-
   // ---- Over a video ----
   {
     const env = boot({ clockMode: 'time' }, MID);

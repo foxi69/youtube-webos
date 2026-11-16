@@ -1766,7 +1766,7 @@ export {};
   // 15. CONFIG MIRROR
   //     Read straight from localStorage rather than importing config.js.
   //     A diagnostic tool should not depend on the subsystem it is
-  //     diagnosing: if config.js throws or is mid-migration, the monitor
+  //     diagnosing: if config.js throws, the monitor
   //     must still boot and still be able to say so.
   //     Defaults mirror config.js — keep in sync when adding options.
   // ===================================================================
@@ -1855,13 +1855,6 @@ export {};
     var parsed = nativeParse(raw);
     for (var k in parsed) {
       if (Object.prototype.hasOwnProperty.call(parsed, k)) merged[k] = parsed[k];
-    }
-    // A set stored before Video Previews still has the two settings it
-    // replaced; config.js migrateStored reads them so: keep in sync.
-    if (parsed && !('videoPreviews' in parsed) && ('forcePreviews' in parsed || 'mutePreviews' in parsed)) {
-      merged.videoPreviews = parsed.forcePreviews === 'force_off' ? 'off'
-        : parsed.mutePreviews ? 'muted'
-          : parsed.forcePreviews === 'force_on' ? 'sound' : 'default';
     }
   }
 
