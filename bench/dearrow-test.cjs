@@ -756,16 +756,18 @@ const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-d
     {
       const ids = crowdIds('rnd');
       const extra = {};
-      ids.forEach((id) => { extra[id] = { titles: [], thumbnails: [], randomTime: 0.5, videoDuration: 60 }; });
+      // A crowdsourced title and no crowdsourced thumbnail: the title on the
+      // tile shows the video is past its title decision, as in the checks above.
+      ids.forEach((id) => {
+        extra[id] = { titles: [{ title: 'Calm ' + id, original: false, votes: 1 }], thumbnails: [],
+          randomTime: 0.5, videoDuration: 60 };
+      });
       const { win, parse, pump, images, pendingImages, fetched } = boot({ dearrowThumbnailFallback: 'random' }, { extra, holdImages: true });
       const frames = (list) => list.filter((u) => ids.some((id) => u.includes('/vi/' + id + '/'))).length;
-      parse(browse(ids.map((id) => tile(id, 'Original ' + id))));
-      // No crowdsourced title to watch here: once every lookup is asked, a
-      // moment for each to reach its draw, then still four and no more.
-      const asked = await waitFor(() => allAsked(fetched, ids) && downloads(images, ids) === 4, 1500);
-      await wait(100);
-      t('random frames: four are drawn, five wait for a slot', asked && downloads(images, ids) === 4,
-        `${downloads(images, ids)} drawn`);
+      const answer = parse(browse(ids.map((id) => tile(id, 'Original ' + id))));
+      await waitFor(() => allAsked(fetched, ids) && downloads(images, ids) === 4, 1500);
+      t('random frames: all nine past their title, four are drawn, five wait for a slot',
+        await allQueued(answer, images, () => downloads(images, ids)), `${downloads(images, ids)} drawn`);
       // The start frames shown as stand-ins meanwhile are fetched before.
       const before = images.length;
       flip(win, pump, 'DeArrow', false);
