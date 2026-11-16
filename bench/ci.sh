@@ -187,6 +187,7 @@ run review-fixes-test "$B"
 run search-font-test "$B"
 run preview-autoopen-test "$B"
 run preview-countdown-test "$B"
+run preview-history-test "$B" legacy
 
 # The modern build. In a coverage run it goes to dist-modern/: c8 reads each
 # bundle on disk when it reports, so the legacy one must stay where its tests
@@ -211,7 +212,7 @@ for t in smoke adblock-test panel-test module-behaviour-test upstream-fixes-test
   pivot-filters-test settings-reset-test preview-handover-test speed-preview-test \
   whats-new-test guide-fit-test keyboard-search-test screensaver-test quality-tag-test \
   watch-time-test search-filter-test low-memory-style-test review-fixes-test \
-  search-font-test preview-autoopen-test preview-countdown-test sponsorblock-skip-test \
+  search-font-test preview-autoopen-test preview-countdown-test preview-history-test sponsorblock-skip-test \
   panel-nav-test fetch-hook-test most-replayed-bundle-test preview-fix-test \
   screensaver-cases-test subtitle-translate-test auto-login-test about-test \
   launch-params-test clock-test sponsorblock-bar-test sponsorblock-lifecycle-test \
