@@ -14,8 +14,10 @@ const ROOT = path.resolve(__dirname, '..');
 const { applyChrome38Downgrade } = require('./chrome38-env.cjs');
 const { createReporter } = require('./harness.cjs');
 
-// The summary line is this test's own (at the end).
-const { t, counts } = createReporter();
+// The summary line is this test's own.
+const { t, done } = createReporter({
+  summary: (pass, fail) => (fail ? `${fail} failed` : `all ${cases.length + 1} launch cases passed`)
+});
 
 const cases = [
   [{}, ['env_forceFullAnimation=1', 'env_enableWebSpeech=1', 'env_enableVoice=1']],
@@ -99,6 +101,4 @@ for (const [params, expects, forbidden] of cases) {
   const ok = waited && href.indexOf('https://www.youtube.com/tv') === 0 && !/Waiting/.test(w.document.documentElement.textContent);
   t('offline launch waits for the online event', ok, `waited ${waited} href ${href}`);
 }
-const { fail } = counts();
-console.log(fail ? `\n${fail} failed` : `\nall ${cases.length + 1} launch cases passed`);
-process.exit(fail ? 1 : 0);
+done();
