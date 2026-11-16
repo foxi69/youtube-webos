@@ -14,13 +14,10 @@
  *
  * Usage: node bench/dearrow-test.cjs [bundle] [legacy|modern]
  */
-const fs = require('fs');
 const crypto = require('crypto');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent, dispatchTrusted, applyChrome87Downgrade } = require('./chrome38-env.cjs');
+const { createReporter, bootPage, flavorFromArgs, wait, dispatchTrusted } = require('./harness.cjs');
 
-const bundlePath = process.argv[2] || 'dist/webOSUserScripts/userScript.js';
-const modern = process.argv[3] === 'modern';
+const { modern } = flavorFromArgs();
 const GREEN = 404;
 const pad = 'z'.repeat(600);
 const prefixOf = (id) => crypto.createHash('sha256').update(id).digest('hex').slice(0, 4);
@@ -38,13 +35,11 @@ const allQueued = async (answer, images, count) => {
   return titled && count() === 4;
 };
 
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra ? '\n     ' + extra : '')); }
-};
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-/** Resolves once `fn()` holds, or after `ms` with whatever it says then. */
+const { t, run } = createReporter();
+/**
+ * Resolves once `fn()` holds, or after `ms` with whatever it says then (the
+ * harness's until() answers true or false instead).
+ */
 function waitFor(fn, ms) {
   const end = Date.now() + ms;
   const poll = () => (fn() || Date.now() >= end ? Promise.resolve(fn()) : wait(10).then(poll));
@@ -82,16 +77,9 @@ function boot(cfg, opts = {}) {
   const pendingBranding = [];
   const pendingImages = [];
   const pendingHeads = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => errors.push(e.message));
-  const dom = new JSDOM('<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app></ytlr-app></body></html>',
-    { runScripts: 'outside-only', url: 'https://www.youtube.com/tv', virtualConsole: vc, pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, modern ? UA.webos23 : UA.webos3);
-  win.launchParams = '{}';
   // opts.head: what a HEAD of a thumbnail answers, after opts.head.delay ms:
   // its Content-Length (a small one is YouTube's grey placeholder, a missing size).
-  win.XMLHttpRequest = class {
+  const FakeXHR = class {
     open(method) { this._method = method; }
     send() {
       if (!opts.head || this._method !== 'HEAD') return;
@@ -103,17 +91,18 @@ function boot(cfg, opts = {}) {
     getResponseHeader(name) { return opts.head && name === 'Content-Length' ? String(opts.head.length) : null; }
     addEventListener(){}
   };
-  let rafQ = [];
-  win.requestAnimationFrame = (cb) => { rafQ.push(cb); return rafQ.length; };
-  win.cancelAnimationFrame = () => {};
-  const NS = win.JSON.stringify;
-  win.localStorage.setItem('ytaf-configuration', NS(Object.assign({
-    enableAdBlock: true, enableLegacyEmojiFix: false, enableSponsorBlock: false,
-    enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false,
-    enableDeArrow: true, dearrowTitleFormatting: 'disable', dearrowThumbnailFallback: 'original'
-  }, cfg)));
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  win.fetch = (url) => {
+  // The page's own JSON.stringify, taken before the bundle hooks JSON: it
+  // writes the configuration and, later, the responses given to parse().
+  let NS;
+  const writeConfig = (win) => {
+    NS = win.JSON.stringify;
+    win.localStorage.setItem('ytaf-configuration', NS(Object.assign({
+      enableAdBlock: true, enableLegacyEmojiFix: false, enableSponsorBlock: false,
+      enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false,
+      enableDeArrow: true, dearrowTitleFormatting: 'disable', dearrowThumbnailFallback: 'original'
+    }, cfg)));
+  };
+  const fakeFetch = (url) => {
     url = String(url);
     fetched.push(url);
     const byId = /[?&]videoID=([\w-]{11})/.exec(url);
@@ -134,49 +123,65 @@ function boot(cfg, opts = {}) {
     // A slow server, as a TV saw right after the app started (8 s).
     return opts.brandingDelay ? new Promise((r) => setTimeout(() => r(reply), opts.brandingDelay)) : Promise.resolve(reply);
   };
-  // Images: submitted frames and YouTube's load; random frames still rendering do not (204).
-  win.Image = class {
-    set src(url) {
-      images.push(url);
-      this._src = url;
-      const ytimg = new URL(url).hostname === 'i.ytimg.com';
-      const ok = ytimg || url.indexOf('time=12.5') !== -1 || (opts.randomReady && url.indexOf('time=') !== -1);
-      // The grey placeholder YouTube answers for a frame a live stream does not have.
-      const placeholder = url.indexOf('/vi/livestream1/hq') !== -1;
-      this.naturalWidth = placeholder ? 120 : ytimg ? 480 : 1280;
-      this.naturalHeight = placeholder ? 90 : ytimg ? 360 : 720;
-      const finish = () => (ok ? this.onload && this.onload() : this.onerror && this.onerror());
-      if (opts.holdImages) pendingImages.push({ url, finish });
-      else setTimeout(finish, opts.imageDelay || 0);
+  // After the environment of the build is applied, like the fetch above.
+  const stubs = (win) => {
+    // Images: submitted frames and YouTube's load; random frames still rendering do not (204).
+    win.Image = class {
+      set src(url) {
+        images.push(url);
+        this._src = url;
+        const ytimg = new URL(url).hostname === 'i.ytimg.com';
+        const ok = ytimg || url.indexOf('time=12.5') !== -1 || (opts.randomReady && url.indexOf('time=') !== -1);
+        // The grey placeholder YouTube answers for a frame a live stream does not have.
+        const placeholder = url.indexOf('/vi/livestream1/hq') !== -1;
+        this.naturalWidth = placeholder ? 120 : ytimg ? 480 : 1280;
+        this.naturalHeight = placeholder ? 90 : ytimg ? 360 : 720;
+        const finish = () => (ok ? this.onload && this.onload() : this.onerror && this.onerror());
+        if (opts.holdImages) pendingImages.push({ url, finish });
+        else setTimeout(finish, opts.imageDelay || 0);
+      }
+      get src() { return this._src; }
+    };
+    win.HTMLCanvasElement.prototype.getContext = function () {
+      const canvas = this;
+      return { drawImage: (img) => { canvas._src = img._src; } };
+    };
+    if (modern) {
+      win.HTMLCanvasElement.prototype.toBlob = function (done) {
+        const src = this._src;
+        setTimeout(() => done({ size: this.width * this.height, src }), 0);
+      };
+      win.URL.createObjectURL = (b) => 'blob:https://www.youtube.com/COPY#' + encodeURIComponent(b.src);
+      win.URL.revokeObjectURL = () => {};
+    } else {
+      // No toBlob, as on webOS 3 and 4: the data URL path.
+      win.HTMLCanvasElement.prototype.toBlob = undefined;
+      win.HTMLCanvasElement.prototype.toDataURL = function () {
+        return 'data:image/jpeg;base64,COPY' + encodeURIComponent(this._src);
+      };
     }
-    get src() { return this._src; }
-  };
-  win.HTMLCanvasElement.prototype.getContext = function () {
-    const canvas = this;
-    return { drawImage: (img) => { canvas._src = img._src; } };
-  };
-  if (modern) {
-    win.HTMLCanvasElement.prototype.toBlob = function (done) {
-      const src = this._src;
-      setTimeout(() => done({ size: this.width * this.height, src }), 0);
+    // jsdom lays nothing out: a tile is on screen only when render() says so.
+    win.HTMLElement.prototype.getBoundingClientRect = function () {
+      return this.__box || { left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 };
     };
-    win.URL.createObjectURL = (b) => 'blob:https://www.youtube.com/COPY#' + encodeURIComponent(b.src);
-    win.URL.revokeObjectURL = () => {};
-  } else {
-    // No toBlob, as on webOS 3 and 4: the data URL path.
-    win.HTMLCanvasElement.prototype.toBlob = undefined;
-    win.HTMLCanvasElement.prototype.toDataURL = function () {
-      return 'data:image/jpeg;base64,COPY' + encodeURIComponent(this._src);
-    };
-  }
-  // jsdom lays nothing out: a tile is on screen only when render() says so.
-  win.HTMLElement.prototype.getBoundingClientRect = function () {
-    return this.__box || { left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 };
   };
-  win.eval(fs.readFileSync(bundlePath, 'utf8'));
+  const { win, frames } = bootPage({
+    xhr: FakeXHR,
+    // Animation frames run when the test pumps them.
+    raf: 'manual',
+    setup: writeConfig,
+    // The legacy environment has no Element#remove here.
+    restoreRemove: false,
+    fetch: fakeFetch,
+    beforeEval: stubs,
+    // Page script errors only, and their messages as they are (without the
+    // harness's 'jsdomError: ' in front).
+    consoleErrors: false,
+    onError: (text) => errors.push(text.replace(/^jsdomError: /, ''))
+  });
   const parse = (obj) => win.JSON.parse(NS(obj));
   const config = () => JSON.parse(win.localStorage.getItem('ytaf-configuration'));
-  const pump = () => { const q = rafQ; rafQ = []; for (const cb of q) cb(Date.now()); };
+  const pump = () => { frames.pump(); };
   return { win, errors, fetched, images, parse, config, pump, pendingBranding, pendingImages, pendingHeads };
 }
 
@@ -229,7 +234,7 @@ function render(win, item, { onScreen = false } = {}) {
 const shownTitle = (el) => el.querySelector('yt-formatted-string').textContent;
 const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-details').style.backgroundImage);
 
-(async () => {
+run(async () => {
   // ---- Titles, by hash prefix ----
   {
     const { win, fetched, parse, errors } = boot({});
@@ -962,7 +967,4 @@ const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-d
     t(modern ? 'the row steps through all six choices' : 'the legacy row steps through Disabled and Title Case only',
       modern ? distinct.length === 6 : distinct.join('|') === 'Disabled|Title Case', seen.join(' > '));
   }
-
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})();
+});
