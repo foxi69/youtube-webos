@@ -2,36 +2,40 @@
  * Ad Blocking off must NOT take the emoji fix down with it (webOS 3/4 needs it
  * regardless), and Tracking Block must genuinely stop when Ad Blocking is off
  * rather than merely looking enabled.
+ *
+ *   node bench/dependency-test.cjs <legacy bundle>
+ *
+ * Only the legacy build has the emoji fix: the page is always the webOS 3 one
+ * in the Chrome 38 environment, whatever follows the bundle's path.
  */
-const fs = require('fs');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent, dispatchTrusted } = require('./chrome38-env.cjs');
-
-const bundlePath = process.argv[2] || 'dist/webOSUserScripts/userScript.js';
+const { createReporter, bootPage, trustedKey, wait } = require('./harness.cjs');
 
 function boot(cfg) {
-  const dom = new JSDOM('<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app></ytlr-app></body></html>',
-    { runScripts: 'outside-only', url: 'https://www.youtube.com/tv',
-      virtualConsole: new VirtualConsole(), pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, UA.webos3);
-  win.launchParams = '{}';
+  // The frames wait until the test runs them (pump), each called with 0.
   let rafQ = [];
-  win.requestAnimationFrame = (cb) => { rafQ.push(cb); return rafQ.length; };
-  win.cancelAnimationFrame = () => {};
   const opened = [];
-  win.XMLHttpRequest = class {
-    open(m, u) { opened.push(String(u)); } send() {} setRequestHeader() {}
-    getResponseHeader() { return null; } addEventListener() {}
-  };
-  const NS = win.JSON.stringify;
-  win.localStorage.setItem('ytaf-configuration', NS(Object.assign({
-    enableAdBlock: true, enableTrackingBlock: false, enableLegacyEmojiFix: true,
-    enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-    upgradeThumbnails: false, enableAutoLogin: false
-  }, cfg)));
-  applyChrome38Downgrade(win);
-  win.eval(fs.readFileSync(bundlePath, 'utf8'));
+  // The page's own JSON.stringify, from before the bundle hooks it.
+  let NS;
+  const { win } = bootPage({
+    modern: false,
+    xhr: class {
+      open(m, u) { opened.push(String(u)); } send() {} setRequestHeader() {}
+      getResponseHeader() { return null; } addEventListener() {}
+    },
+    config: Object.assign({
+      enableAdBlock: true, enableTrackingBlock: false, enableLegacyEmojiFix: true,
+      enableSponsorBlock: false, enableReturnYouTubeDislike: false,
+      upgradeThumbnails: false, enableAutoLogin: false
+    }, cfg),
+    setup(win) {
+      win.requestAnimationFrame = (cb) => { rafQ.push(cb); return rafQ.length; };
+      win.cancelAnimationFrame = () => {};
+      NS = win.JSON.stringify;
+    },
+    // The page stays without Element#remove, as before this test moved to the
+    // harness.
+    restoreRemove: false
+  });
   return { win, NS, opened, pump: () => { const q = rafQ; rafQ = []; for (const cb of q) cb(0); } };
 }
 
@@ -50,11 +54,10 @@ function emojiPayload(NS) {
 const shelfOf = (r) => r.contents.tvBrowseRenderer.content.tvSurfaceContentRenderer
   .content.sectionListRenderer.contents[0].shelfRenderer;
 
-let pass = 0, fail = 0;
-const t = (n, ok, extra) => { if (ok) { pass++; console.log('PASS ' + n); }
-  else { fail++; console.log('FAIL ' + n + (extra ? '\n     ' + extra : '')); } };
+const { t, run } = createReporter();
 
-setTimeout(() => {
+run(async () => {
+  await wait(500);
   // --- Ad Blocking OFF, emoji fix ON: emoji must still be wrapped ---
   {
     const { win, NS } = boot({ enableAdBlock: false, enableLegacyEmojiFix: true });
@@ -108,9 +111,7 @@ setTimeout(() => {
   // --- The settings UI must show Tracking Block as unavailable ---
   {
     const { win, pump } = boot({ enableAdBlock: false, enableTrackingBlock: true });
-    const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-    Object.defineProperty(e, 'keyCode', { get: () => 404, configurable: true });
-    dispatchTrusted(win.document.body, e);
+    trustedKey(win, 404);
     for (let i = 0; i < 20; i++) pump();
     const inputs = win.document.querySelectorAll('#ytaf-page-filters input[type=checkbox]');
     // Cosmetic Filtering order: Ad Block, Tracking Block, Shorts, LiveGames, MostRelevant
@@ -122,7 +123,4 @@ setTimeout(() => {
       tracking && tracking.closest('label').style.opacity);
     t('Ad Blocking checkbox itself stays enabled', inputs[0].disabled === false);
   }
-
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-}, 500);
+});
