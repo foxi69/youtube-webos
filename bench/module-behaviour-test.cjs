@@ -2,59 +2,58 @@
  * Behaviour of thumbnail-quality.js and return-dislike.js: thumbnail URLs are
  * upgraded in the parsed response and verified by probes, and the dislike
  * panel must still be detected by focus and navigate the same way.
+ *
+ *   node bench/module-behaviour-test.cjs <bundle> [legacy|modern]
+ *
+ * `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
+ * with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
  */
-const fs = require('fs');
-const path = require('path');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent, applyChrome87Downgrade } = require('./chrome38-env.cjs');
-
-const ROOT = path.resolve(__dirname, '..');
-const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
-// `modern`: the modern bundle (webOS 22 and newer), in jsdom's own engine with a
-// webOS 23 user agent, instead of the legacy one in a Chrome 38 environment.
-const modern = process.argv[3] === 'modern';
+const { createReporter, bootPage, wait } = require('./harness.cjs');
 
 function boot(cfg, html, url) {
-  const dom = new JSDOM(html, { runScripts: 'outside-only',
-    url: url || 'https://www.youtube.com/tv', virtualConsole: new VirtualConsole(),
-    pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, modern ? UA.webos23 : UA.webos3);
-  win.launchParams = '{}';
   const probed = [];
-  win.XMLHttpRequest = class {
-    open(m, u) { this._u = u; } send() { probed.push(this._u); if (this.onerror) this.onerror(); }
-    setRequestHeader() {} getResponseHeader() { return null; } addEventListener() {}
-  };
+  // The frames wait until the test runs them (pump), each called with 0.
   let rafQ = [];
-  win.requestAnimationFrame = (cb) => { rafQ.push(cb); return rafQ.length; };
-  win.cancelAnimationFrame = () => {};
-  win.fetch = () => Promise.reject(new Error('offline'));
-  win.Element.prototype.getBoundingClientRect = function () {
-    return { top: 0, left: 0, right: 200, bottom: 100, width: 200, height: 100, x: 0, y: 0 };
-  };
-  win.Element.prototype.scrollIntoView = function () {};
-  // jsdom never loads images, so the module's WebP feature-detect would await a
-  // promise that never settles and no upgrade would ever run. Resolve it as
-  // "no webp", which is the Chromium 38 answer anyway. Tiles on screen are
-  // probed by loading the image (thumbnail-quality.js imageExists), not by a
-  // HEAD request, so image loads count as probes too.
-  win.Image = class { set src(v) { probed.push(v); setTimeout(() => this.onerror && this.onerror(), 0); } };
-  win.localStorage.setItem('ytaf-configuration', win.JSON.stringify(Object.assign({
-    enableAdBlock: true, enableLegacyEmojiFix: false, enableSponsorBlock: false,
-    enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false
-  }, cfg)));
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  win.eval(fs.readFileSync(bundlePath, 'utf8'));
+  const { win } = bootPage({
+    html,
+    url,
+    xhr: class {
+      open(m, u) { this._u = u; } send() { probed.push(this._u); if (this.onerror) this.onerror(); }
+      setRequestHeader() {} getResponseHeader() { return null; } addEventListener() {}
+    },
+    config: Object.assign({
+      enableAdBlock: true, enableLegacyEmojiFix: false, enableSponsorBlock: false,
+      enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false
+    }, cfg),
+    // Before the environment is applied: the Chrome 38 one takes this fetch
+    // away again, so only the modern bundle sees it.
+    setup(win) {
+      win.requestAnimationFrame = (cb) => { rafQ.push(cb); return rafQ.length; };
+      win.cancelAnimationFrame = () => {};
+      win.fetch = () => Promise.reject(new Error('offline'));
+      win.Element.prototype.getBoundingClientRect = function () {
+        return { top: 0, left: 0, right: 200, bottom: 100, width: 200, height: 100, x: 0, y: 0 };
+      };
+      win.Element.prototype.scrollIntoView = function () {};
+      // jsdom never loads images, so the module's WebP feature-detect would await a
+      // promise that never settles and no upgrade would ever run. Resolve it as
+      // "no webp", which is the Chromium 38 answer anyway. Tiles on screen are
+      // probed by loading the image (thumbnail-quality.js imageExists), not by a
+      // HEAD request, so image loads count as probes too.
+      win.Image = class { set src(v) { probed.push(v); setTimeout(() => this.onerror && this.onerror(), 0); } };
+    },
+    // The legacy page stays without Element#remove, as before this test moved
+    // to the harness.
+    restoreRemove: false
+  });
   return { win, probed, pump: () => { const q = rafQ; rafQ = []; for (const cb of q) cb(0); } };
 }
 
-let pass = 0, fail = 0;
-const t = (n, ok, extra) => { if (ok) { pass++; console.log('PASS ' + n); }
-  else { fail++; console.log('FAIL ' + n + (extra ? '\n     ' + extra : '')); } };
-const tick = () => new Promise((r) => setTimeout(r, 0));
+const { t, run } = createReporter();
+const tick = () => wait(0);
 
-setTimeout(async () => {
+run(async () => {
+  await wait(500);
   // ---- thumbnail-quality: URLs are rewritten in the parsed response ----
   // The module works inside adblock.js's JSON.parse hook, on the response
   // before the app sees it, and verifies unproven rungs with background probes.
@@ -75,7 +74,7 @@ setTimeout(async () => {
     const out = win.JSON.parse(tileResponse(win.JSON.stringify, ['abc123XYZ_-']));
     t('eager mode: tile rewritten to maxresdefault',
       urlsOf(out)[0] === 'https://i.ytimg.com/vi/abc123XYZ_-/maxresdefault.jpg', urlsOf(out)[0]);
-    await new Promise((r) => setTimeout(r, 1500));
+    await wait(1500);
     t('eager mode: the unproven rung is verified', probed.some((u) => /abc123XYZ_-\/maxresdefault/.test(u)),
       'probed: ' + probed.slice(0, 4).join(' | '));
   }
@@ -86,7 +85,7 @@ setTimeout(async () => {
     const out = win.JSON.parse(tileResponse(win.JSON.stringify, ['safe0000000']));
     t('safe mode: unproven rung is not drawn',
       urlsOf(out)[0] === 'https://i.ytimg.com/vi/safe0000000/hqdefault.jpg', urlsOf(out)[0]);
-    await new Promise((r) => setTimeout(r, 1500));
+    await wait(1500);
     t('safe mode: a probe asks for the higher rung',
       probed.some((u) => /safe0000000\/maxresdefault/.test(u)), 'probed: ' + probed.slice(0, 4).join(' | '));
     t('safe mode: the rung it already has is never probed',
@@ -97,7 +96,7 @@ setTimeout(async () => {
     const { win, probed } = boot({ upgradeThumbnails: false, thumbnailQualityMode: 'eager' }, html);
     await tick();
     const out = win.JSON.parse(tileResponse(win.JSON.stringify, ['off00000000']));
-    await new Promise((r) => setTimeout(r, 1500));
+    await wait(1500);
     t('switched off: response left alone and nothing probed',
       /off00000000\/hqdefault/.test(urlsOf(out)[0]) && !probed.some((u) => /off00000000/.test(u)),
       urlsOf(out)[0] + ' / probed: ' + probed.join(' | '));
@@ -119,10 +118,10 @@ setTimeout(async () => {
     const frozen = win.performance.now();
     Object.defineProperty(win.performance, 'now', { value: () => frozen, configurable: true });
     win.JSON.parse(tileResponse(win.JSON.stringify, rendered));
-    await new Promise((r) => setTimeout(r, 200));
+    await wait(200);
     const fresh = ['newtile0000', 'newtile0001', 'newtile0002', 'newtile0003'];
     win.JSON.parse(tileResponse(win.JSON.stringify, fresh));
-    await new Promise((r) => setTimeout(r, 500));
+    await wait(500);
     const reached = fresh.filter((id) => probed.some((u) => u.indexOf('/' + id + '/') !== -1));
     t('thumbnails: a new parse\'s tiles are probed before the idle delay once the on-screen budget is spent',
       reached.length === fresh.length, 'probed: ' + reached.join(',') + ' of ' + probed.length + ' probes');
@@ -134,7 +133,7 @@ setTimeout(async () => {
       '<!doctype html><html><body class="WEB_PAGE_TYPE_WATCH"><ytlr-app>' +
       '<div id="ytlr-player__player-container"><video></video></div></ytlr-app></body></html>',
       'https://www.youtube.com/tv#/watch?v=dQw4w9WgXcQ');
-    await new Promise((r) => setTimeout(r, 900));
+    await wait(900);
     const d = win.document;
     const ryd = win.returnYouTubeDislike;
     t('RYD instance created', !!ryd);
@@ -227,7 +226,7 @@ setTimeout(async () => {
       pauseVideo() {}, playVideo() {}, isInline: () => false, addEventListener() {}
     });
     win.dispatchEvent(new win.CustomEvent('yt-navigate-finish', { detail: { pageType: 'watch' } }));
-    await new Promise((r) => setTimeout(r, 300));
+    await wait(300);
     pump(); pump();
     t(`force max quality from ${start}: ${want ? 'upgrades' : 'leaves it'}`, set === want, `set=${set}`);
   }
@@ -248,14 +247,11 @@ setTimeout(async () => {
       pauseVideo() { paused++; }, playVideo() {}, isInline: () => false, addEventListener() {}
     });
     win.dispatchEvent(new win.CustomEvent('yt-navigate-finish', { detail: { pageType: 'watch' } }));
-    await new Promise((r) => setTimeout(r, 300));
+    await wait(300);
     pump(); pump();
-    await new Promise((r) => setTimeout(r, 700));
+    await wait(700);
     const toast = /quality upgraded/i.test(win.document.body.textContent);
     if (moves) t(`force max quality, ${name}: no request, no pause, no toast`, set === 0 && paused === 0 && !toast, `set=${set} paused=${paused} toast=${toast}`);
     else t(`force max quality, ${name}: asked, but no "upgraded" toast`, set > 0 && !toast, `set=${set} toast=${toast}`);
   }
-
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-}, 500);
+});
