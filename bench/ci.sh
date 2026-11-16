@@ -108,6 +108,7 @@ run polyfill-conformance
 run launch-test
 run release-bump-test
 run appinfo-test
+run harness-test
 run yt-tv-snapshot-test
 run smoke "$B" legacy
 run webos-version-test "$B" legacy
