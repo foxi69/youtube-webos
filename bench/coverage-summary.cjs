@@ -18,8 +18,9 @@ const DIR = path.resolve(__dirname, '../coverage');
 // The floor: coverage over src/ (both builds) below this fails the run, so a
 // change cannot take tests away, or add untested code, unnoticed. Raise it
 // as coverage grows; it sits a little under the figures it was set at
-// (2026-11: lines 90.9%, functions 89.3%, branches 78.6%).
-const FLOOR = { lines: 90, functions: 88, branches: 77 };
+// (2026-11-16: lines 94.1%, functions 92.5%, branches 82.6%, the same in
+// four runs on main in a row).
+const FLOOR = { lines: 93.5, functions: 92, branches: 82 };
 // Keys look like "youtube-webos/src/ui.js" (the package name, from webpack)
 // or "src/ui.js" (a file a test required itself).
 const srcName = (file) => file.replace(/\\/g, '/').replace(/^[^/]+\/(?=src\/)/, '');
