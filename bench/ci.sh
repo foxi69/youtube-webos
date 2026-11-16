@@ -156,6 +156,7 @@ run preview-fix-test "$B" legacy
 run screensaver-cases-test "$B" legacy
 run subtitle-translate-test "$B" legacy
 run auto-login-test "$B" legacy
+run whos-watching-test "$B" legacy
 run about-test "$B" legacy
 run launch-params-test "$B" legacy
 run clock-test "$B" legacy
@@ -214,7 +215,8 @@ for t in smoke adblock-test panel-test module-behaviour-test upstream-fixes-test
   dislike-panel-test keyboard-search-cases-test adblock-cases-test shortcut-actions-test \
   page-bridge-test comments-fix-test rows-ahead-test lang-settings-fix-test app-quality-fix-test \
   emoji-font-test ai-filter-cases-test speed-cases-test thumbnail-quality-test \
-  video-quality-cases-test dearrow-cases-test; do
+  video-quality-cases-test dearrow-cases-test \
+  whos-watching-test; do
   run "$t" "$M" modern
 done
 run dearrow-test "$M" modern

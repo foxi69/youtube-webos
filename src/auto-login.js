@@ -1,5 +1,6 @@
 import { configRead, configAddChangeListener } from './config.js';
 import { SELECTORS, REMOTE_KEYS, isGuestMode, sendKey, invalidateGuestModeCache } from './utils';
+import { ResolveCommandRegistry } from './app_api/index';
 import './auto-login.css';
 
 const STORAGE_KEY = 'yt.leanback.default::recurring_actions';
@@ -251,6 +252,42 @@ function selectorLeft(force) {
     if (document.body) document.body.classList.remove(BYPASS_BODY_CLASS);
     return true;
 }
+
+/**
+ * "Who's watching?" answered before it is shown: YouTube opens the selector
+ * with a startAccountSelectorCommand, and the answer a pick of the same
+ * account gives (onIdentityChanged, isSameIdentity) goes back in its place, so
+ * the app carries on to the command's nextEndpoint with the account it has.
+ * As Bolli YouTube does it (github.com/aktiwers/bolli-youtube, GPL-3.0,
+ * player/tv-page.ts). Nothing is shown, hidden or pressed, so nothing depends
+ * on timing; the key presses below stay for a selector that comes up all the
+ * same (the hook not in yet, or YouTube opening it another way).
+ */
+function answerAccountSelector(resolveCommand, payload, extra) {
+  const command = payload.startAccountSelectorCommand;
+  // Only in the window after a start or a relaunch, and once in it, as the
+  // key presses: later, opening the selector is the viewer's choice.
+  if (!shouldAutoSelectAccount() || !command || typeof command !== 'object' || Date.now() > bypassUntil) {
+    return resolveCommand(payload, extra);
+  }
+  bypassUntil = 0;
+  console.info('[Auto Login] Account selector answered with the current account');
+  return resolveCommand({
+    onIdentityChanged: {
+      identityActionContext: {
+        nextEndpoint: command.nextEndpoint,
+        eventTrigger: 'ACCOUNT_EVENT_TRIGGER_WHOS_WATCHING',
+        reloadRequired: undefined
+      },
+      isSameIdentity: true
+    },
+    commandMetadata: { webCommandMetadata: { clientAction: true } }
+  });
+}
+
+ResolveCommandRegistry.getInstance()
+  .then((registry) => registry.setHook('startAccountSelectorCommand', answerAccountSelector))
+  .catch((err) => console.warn('[Auto Login] No command hook for the account selector:', err && err.message));
 
 export function attemptActiveBypass(force = false) {
     if (!shouldAutoSelectAccount()) return;
