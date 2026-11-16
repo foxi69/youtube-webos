@@ -191,6 +191,12 @@ import(MODULE).then(({ readCaptions, keepCaptions, readQualityRecord }) => {
   t('an expired record is not read',
     readQualityRecord(storage({ quality: 720, previousQuality: 720 }, Date.now() - 1), Date.now()) === null);
   t('no record, nothing read', readQualityRecord(storage(null), Date.now()) === null);
+  const until = Date.now() + 5000;
+  const finite = readQualityRecord(storage({ quality: 720, previousQuality: 720 }, until), Date.now());
+  t('a record\'s expiry is read', finite && finite.expires === until, JSON.stringify(finite));
+  const noExpiry = { getItem: () => JSON.stringify({ data: JSON.stringify({ quality: 720, previousQuality: 720 }), creation: 1234 }) };
+  const open = readQualityRecord(noExpiry, Date.now());
+  t('...and one without an expiry never expires', open && open.level === 'hd720' && open.expires === Infinity, String(open && open.expires));
   t('no storage, nothing read', readQualityRecord(undefined, Date.now()) === null);
 
   console.log(`${passed} passed, ${failed} failed`);

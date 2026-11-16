@@ -100,6 +100,24 @@ function applyChrome38Downgrade(win) {
     }
   }
 
+  // Chrome 38 has EventTarget, but `new EventTarget()` only works from Chrome
+  // 64: before that it throws "Illegal constructor", and custom-event-target.ts
+  // falls back to its stand-in. Left constructible here, with Reflect removed
+  // above, Babel's `class extends EventTarget` threw instead, and the Tracking
+  // Block's fetch hook never ran in any legacy test.
+  if (win.EventTarget) {
+    const proto = win.EventTarget.prototype;
+    const Illegal = function EventTarget() { throw new win.TypeError('Illegal constructor'); };
+    Illegal.prototype = proto;
+    win.EventTarget = Illegal;
+    del.push('new EventTarget()');
+  }
+  // The event constructors the app uses are left as they are: Chrome 38 has
+  // them all (MDN browser-compat-data: Event and CustomEvent from Chrome 15;
+  // MouseEvent, KeyboardEvent, FocusEvent, UIEvent and WheelEvent from 26).
+  // So keyboard-search.js's document.createEvent('MouseEvents') fallback does
+  // not run on a webOS 3 TV either.
+
   // Chrome 38 has Element#webkitMatchesSelector; restore it so polyfills.js can find it.
   if (!win.Element.prototype.matches) {
     win.Element.prototype.webkitMatchesSelector = function (sel) {
@@ -111,6 +129,61 @@ function applyChrome38Downgrade(win) {
   return del;
 }
 module.exports = { applyChrome38Downgrade };
+
+/**
+ * Chrome 87 / webOS 22 environment: removes the JS built-ins and DOM APIs
+ * Chromium 87 does not ship, for the modern bundle (the oldest TV it serves
+ * is webOS 22). That build has no polyfills, so a bundle that uses one of
+ * these throws on the TV; without this it passed on Node 22.
+ *
+ * "First Chrome version" from MDN browser-compat-data. Syntax (class static
+ * blocks 94, the RegExp v flag 112, ...) cannot be removed here; babel's
+ * `chrome 87` target lowers it.
+ */
+function applyChrome87Downgrade(win) {
+  const del = [];
+  const rm = (obj, prop, label) => {
+    if (obj && prop in obj) {
+      try { delete obj[prop]; if (!(prop in obj)) del.push(label); } catch { /* non-configurable */ }
+    }
+  };
+  const A = win.Array.prototype;
+  rm(A, 'at', 'Array#at');                                // Chrome 92
+  rm(A, 'findLast', 'Array#findLast');                    // Chrome 97
+  rm(A, 'findLastIndex', 'Array#findLastIndex');          // Chrome 97
+  rm(A, 'toSorted', 'Array#toSorted');                    // Chrome 110
+  rm(A, 'toReversed', 'Array#toReversed');                // Chrome 110
+  rm(A, 'toSpliced', 'Array#toSpliced');                  // Chrome 110
+  rm(A, 'with', 'Array#with');                            // Chrome 110
+  rm(win.Array, 'fromAsync', 'Array.fromAsync');          // Chrome 121
+  rm(win.String.prototype, 'at', 'String#at');            // Chrome 92
+  rm(win.String.prototype, 'isWellFormed', 'String#isWellFormed'); // Chrome 111
+  rm(win.String.prototype, 'toWellFormed', 'String#toWellFormed'); // Chrome 111
+  rm(win.Object, 'hasOwn', 'Object.hasOwn');              // Chrome 93
+  rm(win.Object, 'groupBy', 'Object.groupBy');            // Chrome 117
+  rm(win.Map, 'groupBy', 'Map.groupBy');                  // Chrome 117
+  rm(win.Promise, 'withResolvers', 'Promise.withResolvers'); // Chrome 119
+  for (const m of ['union', 'intersection', 'difference', 'symmetricDifference', 'isSubsetOf', 'isSupersetOf', 'isDisjointFrom']) {
+    rm(win.Set.prototype, m, 'Set#' + m);                 // Chrome 122
+  }
+  const typed = win.Uint8Array && Object.getPrototypeOf(win.Uint8Array.prototype);
+  for (const m of ['at', 'findLast', 'findLastIndex', 'toSorted', 'toReversed', 'with']) {
+    rm(typed, m, 'TypedArray#' + m);                      // Chrome 92-110
+  }
+  rm(win, 'structuredClone', 'structuredClone');          // Chrome 98
+  if (win.AbortSignal) {
+    rm(win.AbortSignal, 'timeout', 'AbortSignal.timeout'); // Chrome 103
+    rm(win.AbortSignal, 'any', 'AbortSignal.any');         // Chrome 116
+    rm(win.AbortSignal.prototype, 'throwIfAborted', 'AbortSignal#throwIfAborted'); // Chrome 100
+  }
+  // jsdom has it on Crypto.prototype, not on the instance.
+  if (win.Crypto) rm(win.Crypto.prototype, 'randomUUID', 'crypto.randomUUID'); // Chrome 92
+  if (win.crypto && typeof win.crypto.randomUUID !== 'undefined') throw new Error('crypto.randomUUID survived the Chrome 87 downgrade');
+  rm(win.Element.prototype, 'checkVisibility', 'Element#checkVisibility'); // Chrome 105
+  rm(win.HTMLElement.prototype, 'showPopover', 'HTMLElement#showPopover'); // Chrome 114
+  return del;
+}
+module.exports.applyChrome87Downgrade = applyChrome87Downgrade;
 
 /**
  * jsdom 30 removed the top-level `userAgent` constructor option, so setting it

@@ -14,7 +14,6 @@ import { applySidebar, sidebarHookRequired } from './sidebar.js';
 
 const DEBUG = false;
 const EMOJI_DEBUG = false; 
-const FORCE_FALLBACK = false;
 
 let isFetchHooked = false;
 let isXHRHooked = false;
@@ -431,11 +430,6 @@ const SCHEMA_REGISTRY = {
 
 let origParse = JSON.parse;
 let isHooked = false;
-// Whether hookedParse is still somewhere in the JSON.parse chain. Hooks
-// installed after ours (force-codec.js, subtitle-translate.js) wrap it, so
-// switching off must not write origParse back over them - it just turns the
-// hook into a pass-through instead.
-let isInstalled = false;
 
 // --- CORE FUNCTIONS ---
 
@@ -751,7 +745,7 @@ function hookedParse(text, reviver) {
   // (localStorage reads, config, per-tile metadata) and none of them can be a
   // filterable response, so those calls must cost as close to nothing as
   // possible on top of the native parse.
-  if (!isHooked || typeof text !== 'string' || text.length < 500) {
+  if (typeof text !== 'string' || text.length < 500) {
     return origParse.call(this, text, reviver);
   }
   return parseAndFilter(this, text, reviver);
@@ -840,10 +834,7 @@ function filterResponse(data, text) {
     return;
   }
 
-  if (FORCE_FALLBACK) {
-    if (DEBUG) debugLog('FORCE_FALLBACK active. Using fallback filters.');
-    if (!Array.isArray(data)) applyFallbackFilters(data, flags);
-  } else if (responseType && SCHEMA_REGISTRY.paths[responseType]) {
+  if (responseType && SCHEMA_REGISTRY.paths[responseType]) {
     if (DEBUG) debugLog(`Schema Match: [${responseType}]`);
     applySchemaFilters(data, responseType, flags);
   } else if (responseType === 'ACTION' || responseType === 'PLAYER') {
@@ -892,7 +883,9 @@ function applySchemaFilters(data, responseType, config) {
   const schema = SCHEMA_REGISTRY.paths[responseType];
   switch (responseType) {
     case 'SHORTS_SEQUENCE':
-        if (config.enableAdBlock && schema?.listPath) {
+        // Not gated on Ad Blocking: filterItemsOptimized checks each of its
+        // settings itself, and the emoji fix needs these entries too.
+        if (schema?.listPath) {
             const entries = getByPath(data, schema.listPath);
             if (Array.isArray(entries)) {
                 const oldLen = entries.length;
@@ -919,7 +912,9 @@ function applySchemaFilters(data, responseType, config) {
         const tabs = getByPath(data, schema.tabsPath);
         if (Array.isArray(tabs)) {
           for (let i = 0; i < tabs.length; i++) {
-            const gridContents = tabs[i].tabRenderer?.content?.sectionListRenderer?.contents || tabs[i].tabRenderer?.content?.tvSurfaceContentRenderer?.content?.sectionListRenderer?.contents;
+            // A null tab is passed over, so the tabs after it are still filtered.
+            const tab = tabs[i]?.tabRenderer?.content;
+            const gridContents = tab?.sectionListRenderer?.contents || tab?.tvSurfaceContentRenderer?.content?.sectionListRenderer?.contents;
             if (Array.isArray(gridContents)) processSectionListOptimized(gridContents, config, 'BROWSE_TAB_GENERIC');
           }
         }
@@ -971,7 +966,7 @@ function applySchemaFilters(data, responseType, config) {
       // own (Remove AI Videos, Remove Shorts and the Live / Upcoming /
       // Members-only badges were missing, so they did nothing there unless a
       // feed filter was on as well).
-      if (config.hideGuestPrompts || config.feedFilters || config.decorateItems ||
+      if (config.enableAdBlock || config.hideGuestPrompts || config.feedFilters || config.decorateItems ||
           config.removeAiVideos || config.removeGlobalShorts || config.removeMixes || config.badgeMask) {
          let pivotContents = getByPath(data, schema?.pivotPath);
          if (!pivotContents) {
@@ -1791,6 +1786,8 @@ function fixPreviewCommands(data, allowHandover) {
   }
 }
 
+const hasOwn = Object.prototype.hasOwnProperty;
+
 function findObjects(haystack, needlesArray, maxDepth = 10) {
   if (!haystack || typeof haystack !== 'object' || maxDepth <= 0 || !needlesArray.length) return {};
   const results = {};
@@ -1811,7 +1808,8 @@ function findObjects(haystack, needlesArray, maxDepth = 10) {
       // The first value that is there is kept, and counted once: a null is
       // passed over, so it neither ends the search early nor hides a real
       // value met further down (a flat guide `items` after an `items: null`).
-      if (results[needle] === undefined && currentObj[needle] != null) {
+      // Own properties only: a list's inherited entries() is no `entries`.
+      if (results[needle] === undefined && currentObj[needle] != null && hasOwn.call(currentObj, needle)) {
         results[needle] = currentObj[needle];
         foundCount++;
       }
@@ -1830,44 +1828,19 @@ function findObjects(haystack, needlesArray, maxDepth = 10) {
 }
 
 /**
- * Is the JSON.parse hook needed? Always: besides the filters that have a
- * setting it keeps tile previews from opening by themselves
- * (fixPreviewCommands), which has none.
+ * Installs the JSON.parse hook, once, when the module loads. It stays in for
+ * good: besides the filters that have a setting it keeps tile previews from
+ * opening by themselves (fixPreviewCommands), which has none, and every
+ * setting it reads is looked up on each response (cfgFlags).
  */
-export function parseHookRequired() {
-  return true;
-}
-
-/** Install or remove the JSON.parse hook to match the current settings. */
-export function syncAdblockHook() {
-  if (parseHookRequired()) initAdblock();
-  else destroyAdblock();
-}
-
-export function initAdblock() {
-  if (isHooked) return;
+function initAdblock() {
   if (DEBUG) console.info('[AdBlock] Initializing hybrid hook (Debug Mode: ' + DEBUG + ')');
 
   isHooked = true;
-  if (isInstalled) return;
-
   origParse = JSON.parse;
   // Assigned directly rather than wrapped in a forwarding closure: that
   // wrapper added a call frame to every JSON.parse in the app.
   JSON.parse = hookedParse;
-  isInstalled = true;
-}
-
-export function destroyAdblock() {
-  if (!isHooked) return;
-  if (DEBUG) console.info('[AdBlock] Restoring JSON.parse');
-  
-  isHooked = false;
-  // Only unwind when nothing was stacked on top of us since.
-  if (JSON.parse === hookedParse) {
-    JSON.parse = origParse;
-    isInstalled = false;
-  }
 }
 
 initAdblock();

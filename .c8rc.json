@@ -6,12 +6,14 @@
   "reporter": [
     "text",
     "html",
-    "json-summary"
+    "json-summary",
+    "json"
   ],
   "reports-dir": "coverage",
   "temp-directory": "coverage/tmp",
   "include": [
     "dist/webOSUserScripts/userScript.js",
+    "dist-modern/webOSUserScripts/userScript.js",
     "src/**"
   ]
 }

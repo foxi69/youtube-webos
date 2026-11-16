@@ -1,5 +1,5 @@
 import { logoStyles, timeRemainingModes, thumbnailQualityModes, videoCodecModes, uiThemes, clockModes, startPageModes, minVideoLengthModes, seekStepModes, maxVideoAgeModes, searchUploadDateModes, dearrowTitleFormats, dearrowThumbnailFallbacks } from './config.js';
-import { configAddChangeListener, configRead, configWrite, configGetDesc, segmentTypes, configGetDefault, shortcutActions, sbModes, sbModesHighlight, forcePreviewModes, configGetProfileStatus } from './config.js';
+import { configAddChangeListener, configRead, configWrite, configGetDesc, segmentTypes, configGetDefault, shortcutActions, sbModes, sbModesHighlight, videoPreviewModes, configGetProfileStatus } from './config.js';
 import './ui.css';
 import './auto-login.js';
 import './return-dislike.js';
@@ -9,7 +9,7 @@ import { initMathLetters } from './math-letters.js';
 import { initPlaybackSpeed, stepSpeed, resetSpeed } from './playback-speed.js';
 import sponsorBlockUI from './Sponsorblock-UI.js';
 import { sendKey, REMOTE_KEYS, COLOR_CODE_MAP, isGuestMode, invalidateGuestModeCache, isWatchPage, isShortsPage, isSearchPage, SELECTORS, getVideo, SYNTHETIC_KEY_FLAG } from './utils.js';
-import { syncAdblockHook, initTrackingBlock, destroyTrackingBlock } from './adblock.js';
+import { initTrackingBlock, destroyTrackingBlock } from './adblock.js';
 import logoOrangeUrl from './icons/logo-orange.png';
 import logoBlueUrl from './icons/logo-blue.png';
 import logoRedUrl from './icons/logo-red.png';
@@ -573,7 +573,7 @@ function createShortcutControl(keyIdentifier) {
 }
 
 function createPreviewControl(key) {
-  return createAlignedCycleControl(key, forcePreviewModes);
+  return createAlignedCycleControl(key, videoPreviewModes);
 }
 
 // A percentage stepped with Left/Right and clamped at both ends.
@@ -926,16 +926,8 @@ function createOptionsPanel() {
         evt.preventDefault(); evt.stopPropagation(); return;
       } else if (dir === 'up' || dir === 'down') {
         moveFocus(dir);
-        const postFocus = document.activeElement;
 
-        if (dir === 'up' && preFocus !== postFocus) {
-            if (preFocus.closest('.ytaf-settings-page') && postFocus.classList.contains('ytaf-tab-btn')) {
-                const activeTabBtn = tabBtns[activePage];
-                if (activeTabBtn) activeTabBtn.focus();
-            }
-        }
-
-        if (preFocus === postFocus) {
+        if (preFocus === document.activeElement) {
           const activeTabBtn = tabBtns[activePage];
           const focusables = [activeTabBtn].concat(pageFocusables(pages[activePage])).filter(Boolean);
           
@@ -1197,9 +1189,8 @@ function createOptionsPanel() {
         createElement('div', { text: 'Adjusts opacity of black background underneath videos (Requires OLED-care mode)', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
         createOpacityControl('uiBrightness', 10, 40, 100),
         createElement('div', { text: 'Dims the YouTube menus and thumbnails; never the playing video or this panel', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
-  	  createPreviewControl('forcePreviews'),
-  	  createElement('div', { text: 'Sets YouTube\'s own "previews with sound" setting on app load. No effect where YouTube shows no previews', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
-  	  createConfigCheckbox('mutePreviews'),
+  	  createPreviewControl('videoPreviews'),
+  	  createElement('div', { text: 'Default leaves the previews to YouTube\'s own setting. Off and With sound set it; Without sound turns previews on and mutes them. No effect where YouTube shows no previews', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   	  createConfigCheckbox('continuePreviews'),
   	  createElement('div', { text: 'OK on a tile whose preview is playing carries that playback on, full screen, instead of loading the video again', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   	  ...(isLegacyWebOS() ? [
@@ -1944,7 +1935,6 @@ function handleShortcutAction(action) {
       if (endOledBlackout()) {
           showNotification('OLED Mode Deactivated');
       } else {
-          if (optionsPanelVisible) showOptionsPanel(false);
           // Below the notification container (1200) so the toasts - this
           // feature's own included - are not painted behind the blackout, and
           // above the settings panel (1000). The clock (1199) is hidden by the
@@ -2499,11 +2489,8 @@ if (!configRead('foxThemeApplied')) {
 applyTheme(configRead('uiTheme'));
 configAddChangeListener('uiTheme', (evt) => applyTheme(evt.detail.newValue));
 
-configAddChangeListener('enableAdBlock', () => {
-  syncAdblockHook();
-  // Tracking Block is gated on Ad Blocking, so its network hooks follow too.
-  syncTrackingBlock();
-});
+// Tracking Block is gated on Ad Blocking, so its network hooks follow it.
+configAddChangeListener('enableAdBlock', () => syncTrackingBlock());
 
 function syncTrackingBlock() {
   // Greyed out in the panel while Ad Blocking is off, so off then as well.
@@ -2512,28 +2499,6 @@ function syncTrackingBlock() {
 }
 
 configAddChangeListener('enableTrackingBlock', syncTrackingBlock);
-
-// The emoji fix lives on the same JSON.parse hook, so toggling it has to be
-// able to install that hook even with Ad Blocking off.
-configAddChangeListener('enableLegacyEmojiFix', () => syncAdblockHook());
-configAddChangeListener('hideGuestSignInPrompts', () => syncAdblockHook());
-configAddChangeListener('hideEndcards', () => syncAdblockHook());
-// Max Thumbnail Quality rewrites URLs inside the same JSON.parse hook.
-configAddChangeListener('upgradeThumbnails', () => syncAdblockHook());
-// Load Rows Ahead raises the continuation threshold inside the same hook.
-configAddChangeListener('loadRowsAhead', () => syncAdblockHook());
-// Hide Left Menu Entries filters the guide response in the same hook.
-configAddChangeListener('hiddenSidebarEntries', () => syncAdblockHook());
-// "Are you still watching?" (Bypass Nag Screens) and the subtitle start state
-// are rewritten in the same hook.
-configAddChangeListener('enableAutoLogin', () => syncAdblockHook());
-configAddChangeListener('disableAutoCaptions', () => syncAdblockHook());
-// Original audio, the long-press menu and DeArrow are rewrites in the same hook.
-configAddChangeListener('forceOriginalAudio', () => syncAdblockHook());
-configAddChangeListener('extendLongPressMenu', () => syncAdblockHook());
-configAddChangeListener('enableDeArrow', () => syncAdblockHook());
-// Open Playing Previews Without Reloading clears a flag in the same hook.
-configAddChangeListener('continuePreviews', () => syncAdblockHook());
 
 configAddChangeListener('videoShelfOpacity', () => {
   // Cheap update — rewrites the one-rule opacity <style> and toggles the
@@ -2656,7 +2621,6 @@ onWebClientRefused(() => showNotification('YouTube refused the AI label and Most
 
 // Apply initial states on boot
 syncUiBrightness();
-syncAdblockHook();
 syncTrackingBlock();
 
 // Startup hint. It used to fire a fixed 2s after the script loaded and stay

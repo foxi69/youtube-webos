@@ -10,9 +10,12 @@
  */
 const fs = require('fs');
 const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent, dispatchTrusted } = require('./chrome38-env.cjs');
+const { applyChrome38Downgrade, UA, setUserAgent, dispatchTrusted, applyChrome87Downgrade } = require('./chrome38-env.cjs');
 
 const bundlePath = process.argv[2] || 'dist/webOSUserScripts/userScript.js';
+// `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
+// with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
+const modern = process.argv[3] === 'modern';
 const GREEN = 404;
 const CONFIG_KEY = 'ytaf-configuration';
 const IDENTITY_KEY = 'yt.leanback.default::last-identity-used';
@@ -25,7 +28,7 @@ function boot(shared, identity, extraStorage = {}) {
   const dom = new JSDOM('<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app></ytlr-app></body></html>',
     { runScripts: 'outside-only', url: 'https://www.youtube.com/tv', virtualConsole: vc, pretendToBeVisual: true });
   const win = dom.window;
-  setUserAgent(win, UA.webos3);
+  setUserAgent(win, modern ? UA.webos23 : UA.webos3);
   win.launchParams = '{}';
   win.XMLHttpRequest = class { open(){} send(){} setRequestHeader(){} getResponseHeader(){return null;} addEventListener(){} };
   win.fetch = () => Promise.reject(new Error('offline'));
@@ -40,7 +43,7 @@ function boot(shared, identity, extraStorage = {}) {
   }, shared)));
   if (identity) win.localStorage.setItem(IDENTITY_KEY, NS({ data: identity }));
   for (const [k, v] of Object.entries(extraStorage)) win.localStorage.setItem(k, NS(v));
-  applyChrome38Downgrade(win);
+  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
   win.eval(fs.readFileSync(bundlePath, 'utf8'));
   const pump = () => { for (let i = 0; i < 10; i++) { const q = rafQ; rafQ = []; for (const cb of q) cb(Date.now()); } };
   return { win, NS, errors, pump };
@@ -198,69 +201,6 @@ const ACCOUNT_B = { identityType: 'SIGNED_IN', obfuscatedGaiaId: '2222', accessT
     t('guest: a change is not stored', profileKeys(win).length === 0 && read(win, CONFIG_KEY).enableReturnYouTubeDislike === true,
       profileKeys(win).join() + ' shared=' + read(win, CONFIG_KEY).enableReturnYouTubeDislike);
     t('guest: no errors', errors.length === 0, errors.join(' | '));
-  }
-
-  {
-    // An old shared store with the clock switch (showWatch) and an account
-    // that has its own clock: the account's value wins, and the old switch is
-    // written away as a clockMode once anything is saved.
-    const seed = { perAccountSettings: true, showWatch: true };
-    const first = boot(seed, ACCOUNT_A);
-    await wait(300);
-    const profile = profileKeys(first.win)[0];
-    const { win, errors } = boot(seed, ACCOUNT_A, { [profile]: { clockMode: 'datetime' } });
-    key(win, GREEN);
-    const clock = win.document.querySelector('.webOs-watch');
-    toggle(win, checkbox(win, RYD));
-    await wait(300);
-    t('showWatch: the account\'s own clock is kept', read(win, profile).clockMode === 'datetime', JSON.stringify(read(win, profile)));
-    const shared = read(win, CONFIG_KEY);
-    t('showWatch: the old switch becomes the shared clockMode', !('showWatch' in shared) && shared.clockMode === 'time', JSON.stringify(shared));
-    t('showWatch: the clock shows', !!clock);
-    t('showWatch: no errors', errors.length === 0, errors.join(' | '));
-  }
-
-  {
-    // The old switch off, with no account clock: the clock stays off.
-    const { win, errors } = boot({ showWatch: false }, ACCOUNT_A);
-    key(win, GREEN);
-    toggle(win, checkbox(win, RYD));
-    await wait(300);
-    const shared = read(win, CONFIG_KEY);
-    t('showWatch off: becomes clockMode off', !('showWatch' in shared) && shared.clockMode === 'off', JSON.stringify(shared));
-    t('showWatch off: no clock', !win.document.querySelector('.webOs-watch'));
-    t('showWatch off: no errors', errors.length === 0, errors.join(' | '));
-  }
-
-  // ---- DeArrow's old thumbnail switch (enableDeArrowThumbnails) in account sets ----
-  {
-    // An account set saved before the fallbacks, with the thumbnails off:
-    // it keeps YouTube's, though the shared set has no old switch.
-    const first = boot({ perAccountSettings: true }, ACCOUNT_A);
-    await wait(300);
-    const profile = profileKeys(first.win)[0];
-    const { win, errors } = boot({ perAccountSettings: true }, ACCOUNT_A,
-      { [profile]: { enableDeArrowThumbnails: false } });
-    key(win, GREEN);
-    toggle(win, checkbox(win, RYD));
-    await wait(300);
-    const saved = read(win, profile);
-    t('old DeArrow switch in an account set: its thumbnails stay off', saved.dearrowCrowdThumbnails === false &&
-      !('enableDeArrowThumbnails' in saved), JSON.stringify(saved));
-    t('old DeArrow switch in an account set: no errors', errors.length === 0, errors.join(' | '));
-  }
-  {
-    // A new account met after the start, from a shared set with the old switch off.
-    const { win, errors } = boot({ perAccountSettings: true, enableDeArrowThumbnails: false }, ACCOUNT_A);
-    await wait(300);
-    const before = profileKeys(win);
-    await chooseAccount(win, ACCOUNT_B);
-    await wait(300);
-    const added = profileKeys(win).filter((k) => !before.includes(k));
-    const b = added.length === 1 ? read(win, added[0]) : null;
-    t('old shared DeArrow switch: an account met later starts with the thumbnails off',
-      !!b && b.dearrowCrowdThumbnails === false, `${added.join()} ${JSON.stringify(b)}`);
-    t('old shared DeArrow switch: no errors', errors.length === 0, errors.join(' | '));
   }
 
   // ---- A stored set that is not JSON ----

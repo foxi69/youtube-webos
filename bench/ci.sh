@@ -4,7 +4,8 @@
 #
 #   npm test            release builds (minified)
 #   npm run coverage    the same under c8, with unminified, source-mapped builds,
-#                       and with the page already loaded when the bundle runs (--late)
+#                       and with the page already loaded when the bundle runs (--late);
+#                       the modern build goes to dist-modern/, so both are measured
 #
 # Also tools/fork-watch-test.py (Python; skipped without it, outside CI).
 #
@@ -32,17 +33,43 @@ for arg in "$@"; do
 done
 
 build() { echo "=== build $*"; npx webpack --mode=production --stats errors-warnings "${env[@]}" "$@"; }
-# The last line of each test; on a failure its FAIL lines too, with the line
-# under each, so the CI log says which case failed.
-run() {
-  echo "--- $1"
-  local out status=0
-  out="$(node "bench/$1.cjs" "${@:2}" 2>&1)" || status=$?
-  printf '%s\n' "$out" | grep -v '^[[:space:]]*$' | tail -n 1
-  if [ "$status" -ne 0 ]; then
-    printf '%s\n' "$out" | grep -A1 '^FAIL' || printf '%s\n' "$out" | tail -n 20
-    return "$status"
-  fi
+# The tests run side by side, CI_JOBS at a time (the number of CPUs by
+# default; CI_JOBS=1 runs them one after another): `run` queues one, `flush`
+# runs the queue and waits, before each build replaces the bundle the queued
+# tests read. Each test's last line is printed in queue order, with its time;
+# on a failure its FAIL lines too, with the line under each, so the CI log
+# says which case failed.
+JOBS="${CI_JOBS:-$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)}"
+queue=()
+run() { queue+=("$*"); }
+flush() {
+  [ ${#queue[@]} -eq 0 ] && return 0
+  local dir i status=0
+  dir="$(mktemp -d)"
+  for i in "${!queue[@]}"; do
+    while [ "$(jobs -rp | wc -l)" -ge "$JOBS" ]; do wait -n || true; done
+    (
+      set +e
+      read -r -a args <<< "${queue[$i]}"
+      start=$SECONDS
+      node "bench/${args[0]}.cjs" "${args[@]:1}" > "$dir/$i.out" 2>&1
+      echo "$? $((SECONDS - start))" > "$dir/$i.rc"
+    ) &
+  done
+  wait
+  for i in "${!queue[@]}"; do
+    local name="${queue[$i]%% *}" rc secs
+    read -r rc secs < "$dir/$i.rc"
+    echo "--- $name (${secs}s)"
+    grep -v '^[[:space:]]*$' "$dir/$i.out" | tail -n 1
+    if [ "$rc" -ne 0 ]; then
+      grep -A1 '^FAIL' "$dir/$i.out" || tail -n 20 "$dir/$i.out"
+      status=1
+    fi
+  done
+  rm -rf "$dir"
+  queue=()
+  return "$status"
 }
 
 # tools/fork-watch.py with GitHub's API faked. It needs Python 3: without it
@@ -83,6 +110,7 @@ run release-bump-test
 run appinfo-test
 run yt-tv-snapshot-test
 run smoke "$B" legacy
+run webos-version-test "$B" legacy
 run adblock-test "$B" legacy
 run new-features-test "$B"
 run dependency-test "$B"
@@ -101,7 +129,7 @@ run most-replayed-test
 run speed-audio-offer-test
 run speed-restore-test
 run speed-keep-state-test
-run speed-reload-state-test "$B"
+run speed-reload-state-test "$B" legacy
 run speed-legacy-decoder-test
 run speed-core-test
 run speed-engine-test
@@ -120,27 +148,87 @@ run quality-tag-test "$B"
 run watch-time-test "$B"
 run search-filter-test "$B"
 run sponsorblock-labels-test "$B"
+run sponsorblock-skip-test "$B" legacy
+run panel-nav-test "$B" legacy
+run fetch-hook-test "$B" legacy
+run most-replayed-bundle-test "$B" legacy
+run preview-fix-test "$B" legacy
+run screensaver-cases-test "$B" legacy
+run subtitle-translate-test "$B" legacy
+run auto-login-test "$B" legacy
+run about-test "$B" legacy
+run launch-params-test "$B" legacy
+run clock-test "$B" legacy
+run sponsorblock-bar-test "$B" legacy
+run sponsorblock-lifecycle-test "$B" legacy
+run dislike-panel-test "$B" legacy
+run keyboard-search-cases-test "$B" legacy
+run math-letters-test
+run adblock-cases-test "$B" legacy
+run shortcut-actions-test "$B" legacy
+run page-bridge-test "$B" legacy
+run comments-fix-test "$B" legacy
+run rows-ahead-test "$B" legacy
+run lang-settings-fix-test "$B" legacy
+run app-quality-fix-test "$B" legacy
+run emoji-font-test "$B" legacy
+run ai-filter-cases-test "$B" legacy
+run speed-uninstall-test
+run speed-cases-test "$B" legacy
+run thumbnail-quality-test "$B" legacy
+run video-quality-cases-test "$B" legacy
+run dearrow-cases-test "$B" legacy
 run low-memory-style-test "$B"
 run review-fixes-test "$B"
 run search-font-test "$B"
 run preview-autoopen-test "$B"
 run preview-countdown-test "$B"
 
-# Coverage stops here: c8 reads the bundle on disk when it reports, so that
-# must still be the build the tests ran (the modern build reuses the path).
+# The modern build. In a coverage run it goes to dist-modern/: c8 reads each
+# bundle on disk when it reports, so the legacy one must stay where its tests
+# ran it.
+flush
+M="$B"
 if [ ${#env[@]} -eq 0 ]; then
   build --env modern
-  run modern-smoke "$B"
-  run appinfo-test
-  run dearrow-test "$B" modern
-  run ai-filter-test "$B" modern
-  run quality-reload-test "$B"
-  run speed-reload-state-test "$B"
-  run handover-quality-test "$B"
+else
+  build --env modern --output-path dist-modern
+  M=dist-modern/webOSUserScripts/userScript.js
+fi
+run modern-smoke "$M"
+run webos-version-test "$M" modern
+run appinfo-test
+# The modern build has its own code paths (no polyfills.js, emoji-font.js or
+# buffer-limit; ES2020 output), so the bundle tests run on it too, in a
+# Chrome 87 environment (webOS 22). Left out: dependency-test (the emoji
+# fix), speed-legacy-install-test and emoji-loop-test, legacy-only modules.
+for t in smoke adblock-test panel-test module-behaviour-test upstream-fixes-test \
+  new-features-test feed-features-test dislike-timing-test per-account-test \
+  pivot-filters-test settings-reset-test preview-handover-test speed-preview-test \
+  whats-new-test guide-fit-test keyboard-search-test screensaver-test quality-tag-test \
+  watch-time-test search-filter-test low-memory-style-test review-fixes-test \
+  search-font-test preview-autoopen-test preview-countdown-test sponsorblock-skip-test \
+  panel-nav-test fetch-hook-test most-replayed-bundle-test preview-fix-test \
+  screensaver-cases-test subtitle-translate-test auto-login-test about-test \
+  launch-params-test clock-test sponsorblock-bar-test sponsorblock-lifecycle-test \
+  dislike-panel-test keyboard-search-cases-test adblock-cases-test shortcut-actions-test \
+  page-bridge-test comments-fix-test rows-ahead-test lang-settings-fix-test app-quality-fix-test \
+  emoji-font-test ai-filter-cases-test speed-cases-test thumbnail-quality-test \
+  video-quality-cases-test dearrow-cases-test; do
+  run "$t" "$M" modern
+done
+run dearrow-test "$M" modern
+run ai-filter-test "$M" modern
+run quality-reload-test "$M"
+run speed-reload-state-test "$M" modern
+run handover-quality-test "$M"
 
-  # perf_mon is a dev tool, not part of the app.
+flush
+# perf_mon is a dev tool, not part of the app, and not measured.
+if [ ${#env[@]} -eq 0 ]; then
   build --env perf
   run perfmon-test "$B" legacy
+  flush
 fi
 
 echo "=== all tests passed"

@@ -144,7 +144,7 @@ const configs = [
   {
     // `ignores` field must be in the very bottom config.
     // src/vendor: third-party code, kept as its authors wrote it.
-    ignores: ['dist/**/*', '**/*-polyfill.*', 'src/vendor/**/*']
+    ignores: ['dist/**/*', 'dist-modern/**/*', '**/*-polyfill.*', 'src/vendor/**/*']
   }
 ] as const satisfies Linter.Config[];
 

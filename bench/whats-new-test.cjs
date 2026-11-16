@@ -7,9 +7,12 @@
  */
 const fs = require('fs');
 const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent } = require('./chrome38-env.cjs');
+const { applyChrome38Downgrade, UA, setUserAgent, applyChrome87Downgrade } = require('./chrome38-env.cjs');
 
 const bundlePath = process.argv[2] || 'dist/webOSUserScripts/userScript.js';
+// `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
+// with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
+const modern = process.argv[3] === 'modern';
 const INSTALLED = JSON.parse(fs.readFileSync('package.json', 'utf8')).version;
 const SEEN = 'ytaf-seen-version';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -26,14 +29,14 @@ function boot(bodyClass, storage, setup) {
   const dom = new JSDOM(`<!doctype html><html><body class="${bodyClass}"><ytlr-app></ytlr-app></body></html>`,
     { runScripts: 'outside-only', url: 'https://www.youtube.com/tv', virtualConsole: new VirtualConsole(), pretendToBeVisual: true });
   const win = dom.window;
-  setUserAgent(win, UA.webos3);
+  setUserAgent(win, modern ? UA.webos23 : UA.webos3);
   win.launchParams = '{}';
   win.XMLHttpRequest = class { open() {} send() {} setRequestHeader() {} getResponseHeader() { return null; } addEventListener() {} };
   win.requestAnimationFrame = () => 1;
   win.cancelAnimationFrame = () => {};
   for (const k of Object.keys(storage)) win.localStorage.setItem(k, storage[k]);
   if (setup) setup(win);
-  applyChrome38Downgrade(win);
+  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
   win.eval(fs.readFileSync(bundlePath, 'utf8'));
   return win;
 }

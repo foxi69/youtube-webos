@@ -115,11 +115,24 @@ function stop() {
   unclear();
 }
 
-// A preview starting: clear at once, then keep up with YouTube's re-renders.
-function onPlaying(evt) {
-  if (!(evt.target instanceof HTMLVideoElement) || !enabled() || !isPreviewPage()) return;
+// Clear at once, then keep up with YouTube's re-renders.
+function start() {
   tick();
   if (!timer) timer = setInterval(tick, TICK_MS);
+}
+
+// A preview starting.
+function onPlaying(evt) {
+  if (!(evt.target instanceof HTMLVideoElement) || !enabled() || !isPreviewPage()) return;
+  start();
+}
+
+// A preview stopping: what was cleared gets its look back at once, not at the
+// next re-check up to a second later (until then the stopped video's hole
+// shows through it).
+function onStopped(evt) {
+  if (!timer || !(evt.target instanceof HTMLVideoElement)) return;
+  tick();
 }
 
 function sync() {
@@ -127,11 +140,20 @@ function sync() {
   if (!enabled() || !isPreviewPage()) stop();
 }
 
+// The setting switched: turned on while a preview plays, that preview is
+// fixed now rather than from the next one.
+function onSettingChange() {
+  sync();
+  if (enabled() && isPreviewPage() && !timer && playingVideo()) start();
+}
+
 export function initPreviewFix() {
   legacy = isLegacyWebOS();
   if (!legacy) return;
   document.addEventListener('playing', onPlaying, true);
+  document.addEventListener('pause', onStopped, true);
+  document.addEventListener('ended', onStopped, true);
   window.addEventListener('ytaf-page-update', sync);
-  configAddChangeListener('fixBlackPreviews', sync);
+  configAddChangeListener('fixBlackPreviews', onSettingChange);
   sync();
 }

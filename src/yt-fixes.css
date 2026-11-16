@@ -63,8 +63,8 @@ ytlr-tile-renderer[style*='width: 12.75rem; height: 21.25rem;']
  * Fix Black Tile Previews (webOS 3-6, #67): what preview-fix.js finds drawing
  * over the middle of the playing preview (on an OLED C9, the browse page's
  * full-screen ytlr-surface-page with its black background) loses its
- * background, shadow and images while the preview plays, so nothing covers
- * the punched-through video.
+ * background, shadow and images (img, canvas, svg) while the preview plays,
+ * so nothing covers the punched-through video.
  */
 html.ytaf-pfix-clear .ytaf-pfix-cleared {
   background-color: transparent !important;
@@ -73,6 +73,7 @@ html.ytaf-pfix-clear .ytaf-pfix-cleared {
 }
 
 html.ytaf-pfix-clear img.ytaf-pfix-cleared,
-html.ytaf-pfix-clear canvas.ytaf-pfix-cleared {
+html.ytaf-pfix-clear canvas.ytaf-pfix-cleared,
+html.ytaf-pfix-clear svg.ytaf-pfix-cleared {
   opacity: 0 !important;
 }

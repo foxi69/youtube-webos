@@ -248,6 +248,24 @@ import(MODULE).then(({ watchPosition }) => {
       `seeks ${s.player.seeks.join()}, caps ${caps}`);
   }
 
+  {
+    // onEnd: the check ending by itself, not stopped by the caller.
+    const ends = [];
+    const a = setup({ state: 3, t: AT, vt: AT });
+    watchPosition(a.win, a.player, AT, () => {}, null, 'abcdefghijk', () => ends.push('25 s'));
+    a.run(30000);
+    const b = setup({ state: 3, t: AT, vt: AT });
+    watchPosition(b.win, b.player, AT, () => {}, null, 'abcdefghijk', () => ends.push('other video'));
+    b.player.videoId = 'otherother1';
+    b.run(500);
+    const c = setup({ state: 3, t: AT, vt: AT });
+    const stop = watchPosition(c.win, c.player, AT, () => {}, null, 'abcdefghijk', () => ends.push('stopped'));
+    stop();
+    c.run(30000);
+    t('onEnd runs when the check ends by itself, not when it is stopped',
+      ends.join() === '25 s,other video', ends.join());
+  }
+
   console.log(`${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);
 }).catch((err) => {

@@ -110,8 +110,9 @@ export function keepCaptions(win, player, saved, userKeyAt, { videoId, keyAt }) 
 /**
  * The yt-player-quality record: `level` the quality it names ('hd720'...),
  * null for 4320 (Force Max Quality's, video-quality.js, or a range of Max) or
- * a height not known; `at` when it was written. Null without a valid record,
- * undefined when storage access is denied (the caller keeps its known pick).
+ * a height not known; `at` when it was written, `expires` when it expires.
+ * Null without a valid record, undefined when storage access is denied (the
+ * caller keeps its known pick).
  * YouTube writes this for manual picks and quality range calls alike.
  */
 export function readQualityRecord(storage, now) {
@@ -129,7 +130,7 @@ export function readQualityRecord(storage, now) {
         if (QUALITY_HEIGHTS[name] === data.quality) level = name;
       }
     }
-    return { level, at: Number(record.creation) || 0 };
+    return { level, at: Number(record.creation) || 0, expires: Number(record.expiration) || Infinity };
   } catch {
     // A missing, expired or malformed record names no selection.
     return null;

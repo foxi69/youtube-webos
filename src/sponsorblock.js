@@ -148,6 +148,9 @@ class SponsorBlockHandler {
         this.activeCategories = new Set();
         this.isProcessing = false;
         this.isSkipping = false;
+        // Where the last skip of a segment went (for autoJumpToHighlight).
+        this.ownSkipTarget = null;
+        this._highlightGuard = null;
         this.isDestroyed = false;
         this.skippedSegmentIndices = new Set();
         this.tempWhitelistIndex = -1; // Whitelist segment when using shortcut
@@ -639,6 +642,9 @@ class SponsorBlockHandler {
 
         this.log('info', `Executing chain skip: ${chain.chainDescription}`);
 
+        // Booked like the other skips, so the highlight's seek guard
+        // (autoJumpToHighlight) does not take it for YouTube's resume seek.
+        this.ownSkipTarget = chain.endTime;
         video.currentTime = chain.endTime;
         this.lastSkipTime = chain.endTime;
         this.hasPerformedChainSkip = true;
@@ -874,6 +880,7 @@ class SponsorBlockHandler {
     _unbindVideo() {
         const old = this.video;
         if (!old) return;
+        this._endHighlightGuard();
         this.leaveMutedSegment();
         this.stopHighFreqLoop();
         if (this.isTimeListenerActive) {
@@ -1607,6 +1614,7 @@ class SponsorBlockHandler {
 
         this.isSkipping = true;
         this._armSkipWatchdog();
+        this.ownSkipTarget = jumpTarget;
         this.video.currentTime = jumpTarget;
 
         if (!this.isLegacyWebOSVer) {
@@ -1635,21 +1643,40 @@ class SponsorBlockHandler {
 
     // Auto Skip to Start: on a partly watched video YouTube's resume seek lands
     // right after a jump made at load and undoes it, so a seek away from the
-    // highlight in the first few seconds is answered with one re-jump.
+    // highlight in the first few seconds is answered with one re-jump. A
+    // segment skipped meanwhile (one right after the highlight) is no such seek.
     autoJumpToHighlight() {
         if (!this.jumpToNextHighlight()) return;
         const video = this.video;
         const target = this.highlightSegment.segment[0];
         const until = Date.now() + 4000;
+        this.ownSkipTarget = null;
+        this._endHighlightGuard();
         const onSeeked = () => {
             if (Date.now() > until || this.video !== video || this.isDestroyed) {
-                video.removeEventListener('seeked', onSeeked);
+                this._endHighlightGuard();
+            } else if (this.ownSkipTarget !== null && Math.abs(video.currentTime - this.ownSkipTarget) < 0.5) {
+                // A skip of SponsorBlock's own. Kept, not used up: the skip
+                // can start inside the highlight's own 'seeked' (a segment
+                // that begins at the highlight), and its own 'seeked' follows.
             } else if (Math.abs(video.currentTime - target) > 2) {
-                video.removeEventListener('seeked', onSeeked);
+                this._endHighlightGuard();
                 video.currentTime = target;
             }
         };
         video.addEventListener('seeked', onSeeked);
+        // Taken off when its window ends, also when no seek comes at all.
+        const timer = setTimeout(() => this._endHighlightGuard(), 4000);
+        this._highlightGuard = { video, onSeeked, timer };
+    }
+
+    /** Takes off autoJumpToHighlight's 'seeked' listener, if it is on. */
+    _endHighlightGuard() {
+        const guard = this._highlightGuard;
+        if (!guard) return;
+        this._highlightGuard = null;
+        clearTimeout(guard.timer);
+        guard.video.removeEventListener('seeked', guard.onSeeked);
     }
 
     jumpToNextHighlight() {
@@ -1694,6 +1721,7 @@ class SponsorBlockHandler {
             if (this.video) {
                 this.isSkipping = true;
                 this.lastSkipTime = this.video.currentTime;
+                this.ownSkipTarget = this.currentManualSegment.end;
                 this.video.currentTime = this.currentManualSegment.end;
 
                 this.clearManualNotification();
@@ -1855,6 +1883,7 @@ class SponsorBlockHandler {
         this.isDestroyed = true;
         this.log('info', 'Destroying instance.');
         this.clearRefresh();
+        this._endHighlightGuard();
 
         this.toggleTimeListener(false);
         

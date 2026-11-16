@@ -11,10 +11,13 @@
 const fs = require('fs');
 const path = require('path');
 const { JSDOM, VirtualConsole } = require('jsdom');
-const { UA, setUserAgent, dispatchTrusted } = require('./chrome38-env.cjs');
+const { UA, setUserAgent, dispatchTrusted, applyChrome38Downgrade, applyChrome87Downgrade } = require('./chrome38-env.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
+// `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
+// with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
+const modern = process.argv[3] === 'modern';
 const bundle = fs.readFileSync(bundlePath, 'utf8');
 
 let pass = 0, fail = 0;
@@ -31,12 +34,22 @@ const writeQuality = (win, height, previous) => win.localStorage.setItem('yt-pla
   creation: Date.now(), expiration: Date.now() + 1e9
 }));
 
-function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = false } = {}) {
+// A trusted key press, as the remote sends: the speed keys too.
+const pressKey = (win) => dispatchTrusted(win.document.body, new win.KeyboardEvent('keydown', { bubbles: true }));
+
+// lateRecord: the record follows each range call by 50 ms (true) or that many ms.
+// reloadTrack: the subtitles YouTube's reload turns on (else it toggles them).
+// oldRecord: a height already recorded a minute before the app started: the
+// viewer's pick of an earlier session, or with oldOwn the speed cap that
+// session asked for (stored by the controller) half a second, or that many ms,
+// before.
+function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = false, reloadTrack, oldRecord, oldOwn = false } = {}) {
   const dom = new JSDOM('<body class="WEB_PAGE_TYPE_WATCH"><div id="ytlr-player__player-container-player"><video></video></div></body>',
     { runScripts: 'outside-only', url: 'https://www.youtube.com/tv#/watch?v=abcdefghijk',
       virtualConsole: new VirtualConsole(), pretendToBeVisual: true });
   const win = dom.window;
-  setUserAgent(win, UA.webos23);
+  setUserAgent(win, modern ? UA.webos23 : UA.webos3);
+  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
   win.launchParams = '{}';
   win.fetch = () => Promise.reject(new Error('offline'));
   win.XMLHttpRequest = class {
@@ -55,6 +68,16 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
     enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
     upgradeThumbnails: false, enableAutoLogin: false, forceHighResVideo: force
   }));
+  if (oldRecord) {
+    win.localStorage.setItem('yt-player-quality', JSON.stringify({
+      data: JSON.stringify({ quality: oldRecord, previousQuality: 2160 }),
+      creation: Date.now() - 60000, expiration: Date.now() + 1e9
+    }));
+    if (oldOwn) {
+      const at = Date.now() - 60000 - (oldOwn === true ? 500 : oldOwn);
+      win.localStorage.setItem('ytaf-speed-own-range', JSON.stringify({ level: 'hd' + oldRecord, from: at, last: at }));
+    }
+  }
   win.eval(bundle);
   // The viewer's pick in YouTube's menu, made after the app started (Force Max
   // Quality writes its own record at start).
@@ -68,6 +91,7 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
   const addEventListener = p.addEventListener.bind(p);
   Object.assign(p, {
     track: {},
+    reloadTrack,
     videoId: 'abcdefghijk',
     addEventListener(type, callback, ...args) {
       if (type === 'onStateChange') onStateChange = callback;
@@ -83,7 +107,7 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
         try { if (HEIGHTS[a]) writeQuality(win, HEIGHTS[a], 2160); } catch { /* storage denied */ }
       };
       // On a TV the record follows the call a moment later.
-      if (lateRecord) win.setTimeout(write, 50); else write();
+      if (lateRecord) win.setTimeout(write, lateRecord === true ? 50 : lateRecord); else write();
     },
     getPlaybackQuality: () => quality,
     getAvailableQualityLevels: () => ['hd2160', 'hd1080', 'hd720', 'auto'],
@@ -95,7 +119,8 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
       log.reloads++;
       // YouTube starts the reloaded video with its own subtitles choice.
       state = 3;
-      this.track = EN === this.track ? {} : EN;
+      if (this.reloadTrack !== undefined) this.track = this.reloadTrack;
+      else this.track = EN === this.track ? {} : EN;
       if (!manualPlayback) win.setTimeout(() => { state = 1; }, 300);
     }
   });
@@ -285,6 +310,198 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
     win.close();
   }
   {
+    // Subtitles off; YouTube's reload turns its default ones on. A second
+    // speed key while the first reload still buffers: once the video plays,
+    // the subtitles from before the first reload are put back.
+    const { win, p, speed, emit } = boot(0, { manualPlayback: true, reloadTrack: EN });
+    pressKey(win);
+    speed.setSpeed(1.5, { immediate: true });
+    pressKey(win);
+    speed.setSpeed(2, { immediate: true });
+    emit(1);
+    await sleep(600);
+    t('a second speed change while the first reload buffers still keeps the subtitles off',
+      !p.track.languageCode, JSON.stringify(p.track));
+    win.close();
+  }
+  {
+    // A reload that never played: another video was opened while it buffered.
+    // Back on the first video the viewer turns subtitles on, and the next speed
+    // change keeps them on, not the off state from before that reload.
+    const { win, p, speed, emit } = boot(0, { manualPlayback: true, reloadTrack: EN });
+    pressKey(win);
+    speed.setSpeed(1.5, { immediate: true });
+    p.videoId = 'othervideo1';
+    await sleep(400);
+    p.videoId = 'abcdefghijk';
+    emit(1);
+    pressKey(win);
+    p.track = EN;
+    // This time YouTube's reload drops them.
+    p.reloadTrack = {};
+    pressKey(win);
+    speed.setSpeed(2, { immediate: true });
+    emit(1);
+    await sleep(600);
+    t('a reload that never played does not hand its subtitles to a later speed change',
+      p.track === EN, JSON.stringify(p.track));
+    win.close();
+  }
+  {
+    // The same, but the next video starts below the cap: capNext replaces the
+    // reload's watch at once, which ends it without its onEnd.
+    const { win, p, speed, emit, pump, setQuality } = boot(0, { manualPlayback: true, reloadTrack: EN });
+    pressKey(win);
+    speed.setSpeed(1.5, { immediate: true });
+    p.videoId = 'othervideo1';
+    setQuality('large');
+    emit(-1); emit(3); emit(1); pump(); pump();
+    // Called here too, not left to the play event alone: the reload's own
+    // watch notices the other video on its next tick (250 ms) and would drop
+    // the subtitles itself, so the replacement has to happen before that.
+    speed.capNext(p);
+    await sleep(400);
+    p.videoId = 'abcdefghijk';
+    emit(1);
+    pressKey(win);
+    p.track = EN;
+    p.reloadTrack = {};
+    pressKey(win);
+    speed.setSpeed(2, { immediate: true });
+    emit(1);
+    await sleep(600);
+    t('a reload replaced by the next video\'s cap check does not hand its subtitles on either',
+      p.track === EN, JSON.stringify(p.track));
+    win.close();
+  }
+  {
+    // The last session ended at 1.5x: its 1080p cap is still recorded when the
+    // app starts. No pick of the viewer's: back at 1x is Auto.
+    const { win, log, speed } = boot(0, { oldRecord: 1080, oldOwn: true });
+    speed.setSpeed(1.5, { immediate: true });
+    await sleep(900);
+    log.ranges.length = 0;
+    speed.setSpeed(1, { immediate: true });
+    t('the own cap of the last session is no pick: back at 1x is Auto', log.ranges.join() === 'auto',
+      log.ranges.join());
+    win.close();
+  }
+  {
+    // 720p picked in an earlier session: YouTube still plays it at 1x after a
+    // restart (webOS 25), so it is the viewer's pick.
+    const { win, log, speed } = boot(0, { oldRecord: 720 });
+    speed.setSpeed(1.5, { immediate: true });
+    await sleep(900);
+    t('720p picked in an earlier session: the cap above 1x is 720p', log.ranges.join() === 'hd720,hd720',
+      log.ranges.join());
+    t('the kept 720p is not stored as the speed\'s own cap for the next run',
+      !/hd720/.test(win.localStorage.getItem('ytaf-speed-own-range') || ''), win.localStorage.getItem('ytaf-speed-own-range'));
+    log.ranges.length = 0;
+    speed.setSpeed(1, { immediate: true });
+    t('and back at 1x it is kept', log.ranges.join() === 'hd720', log.ranges.join());
+    win.close();
+  }
+  {
+    // 1080p picked in an earlier session, not the speed's own record.
+    const { win, log, speed } = boot(0, { oldRecord: 1080 });
+    speed.setSpeed(1.5, { immediate: true });
+    await sleep(900);
+    log.ranges.length = 0;
+    speed.setSpeed(1, { immediate: true });
+    t('1080p picked in an earlier session is kept back at 1x', log.ranges.join() === 'hd1080', log.ranges.join());
+    win.close();
+  }
+  {
+    // That session capped at 1080p, and two minutes later the viewer picked 1080p.
+    const { win, log, speed } = boot(0, { oldRecord: 1080, oldOwn: 120000 });
+    speed.setSpeed(1.5, { immediate: true });
+    await sleep(900);
+    log.ranges.length = 0;
+    speed.setSpeed(1, { immediate: true });
+    t('a record long after the cap of the last session is a pick: kept back at 1x', log.ranges.join() === 'hd1080',
+      log.ranges.join());
+    win.close();
+  }
+  {
+    // YouTube records the cap more than a second after the call.
+    const { win, log, speed } = boot(0, { lateRecord: 1200 });
+    speed.setSpeed(1.5, { immediate: true });
+    await sleep(2200);
+    log.ranges.length = 0;
+    pressKey(win);
+    speed.setSpeed(1, { immediate: true });
+    t('the cap recorded over a second late is no pick: back at 1x is Auto', log.ranges.join() === 'auto',
+      log.ranges.join());
+    win.close();
+  }
+  {
+    // Force Max Quality on, the cap recorded late: Max back at 1x, and the
+    // next playing state is not held back for this video.
+    const { win, log, speed } = boot(0, { lateRecord: 1200, force: true });
+    speed.setSpeed(1.5, { immediate: true });
+    await sleep(2200);
+    log.ranges.length = 0;
+    pressKey(win);
+    speed.setSpeed(1, { immediate: true });
+    t('Force Max Quality on, the cap recorded late: back at 1x is Max', log.ranges.join() === 'highres',
+      log.ranges.join());
+    win.close();
+  }
+  {
+    // The viewer picks 1080p in the menu (keys pressed) after the cap: that is a pick.
+    const { win, log, speed } = boot(0, { lateRecord: 1200 });
+    speed.setSpeed(1.5, { immediate: true });
+    await sleep(2200);
+    pressKey(win);
+    writeQuality(win, 1080, 2160);
+    await sleep(10);
+    log.ranges.length = 0;
+    speed.setSpeed(1, { immediate: true });
+    t('1080p picked by the viewer after the cap is kept back at 1x', log.ranges.join() === 'hd1080',
+      log.ranges.join());
+    win.close();
+  }
+  {
+    // The position check runs every 250 ms for 25 s after a reload: while the
+    // picture is at the cap, the stored record is not read on every tick.
+    const { win, p, log, speed } = boot(0);
+    let reads = 0;
+    const getItem = win.Storage.prototype.getItem;
+    win.Storage.prototype.getItem = function (key) {
+      if (key === 'yt-player-quality') reads++;
+      return getItem.call(this, key);
+    };
+    speed.setSpeed(1.5, { immediate: true });
+    await sleep(800);
+    reads = 0;
+    await sleep(1500);
+    t('at the cap, the position check does not read the quality record', reads === 0, `${reads} reads`);
+    // YouTube falls to 720p: the cap is set again (after 2 s of it).
+    log.ranges.length = 0;
+    p.getPlaybackQuality = () => 'hd720';
+    await sleep(2600);
+    t('fallen below the cap, the cap is set again', log.ranges.join() === 'hd1080', log.ranges.join());
+    win.close();
+  }
+  {
+    // A 480p pick kept by a speed change holds Force Max Quality off for that
+    // video while it plays. Left for Home and opened again later, the video is
+    // forced as any other.
+    const { win, log, speed, emit, pump } = boot(480, { force: true });
+    speed.setSpeed(1.5, { immediate: true });
+    speed.setSpeed(1, { immediate: true });
+    await sleep(900);
+    win.document.body.className = 'WEB_PAGE_TYPE_BROWSE';
+    await sleep(50);
+    win.document.body.className = 'WEB_PAGE_TYPE_WATCH';
+    await sleep(50);
+    log.ranges.length = 0;
+    emit(-1); emit(3); emit(1); pump(); pump();
+    t('the same video opened again after leaving it gets Force Max Quality', log.ranges.includes('highres'),
+      log.ranges.join());
+    win.close();
+  }
+  {
     // A 720p pick at 1.5x; on a TV the next video then started at 480p, though YouTube holds 720p at 1x.
     const { win, p, speed, log, emit, pump, setQuality } = boot(720);
     speed.setSpeed(1.5, { immediate: true });
@@ -347,6 +564,16 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
     await sleep(2600);
     t('without a pick a next video at 480p above 1x gets the 1080p cap',
       log.ranges.join() === 'hd1080' && p.getPlaybackQuality() === 'hd1080', log.ranges.join());
+    // Raised, the check runs on for the rest of its 25 s: the stored record is not read on every tick.
+    let reads = 0;
+    const getItem = win.Storage.prototype.getItem;
+    win.Storage.prototype.getItem = function (key) {
+      if (key === 'yt-player-quality') reads++;
+      return getItem.call(this, key);
+    };
+    await sleep(1500);
+    win.Storage.prototype.getItem = getItem;
+    t('at the cap, the next video\'s check does not read the quality record', reads === 0, `${reads} reads`);
     // A video whose top is 720p gets that, not a 1080p it does not have.
     p.videoId = 'nextvideo02';
     p.getAvailableQualityLevels = () => ['hd720', 'large', 'auto'];

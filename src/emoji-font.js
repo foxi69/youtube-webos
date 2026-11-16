@@ -77,12 +77,20 @@ function renderTokens(target, tokens) {
   }
 }
 
+// Our own output: a wrapper already done, or the hidden-text twin inside it,
+// whose text is the wrapped emoji again. A tile YouTube puts back is scanned
+// whole, and without this each pass nested another image in the twin.
+function isGenerated(el) {
+  const cls = el.classList;
+  return cls.contains('twemoji-injected') || cls.contains('twemoji-hidden-text');
+}
+
 function queueTextNode(node) {
   const val = node.nodeValue;
   if (!val || !HAS_WRAPPED_EMOJI_RE.test(val)) return;
 
   const parent = node.parentElement;
-  if (!parent || parent.classList.contains('twemoji-injected') || !ALLOWED_EMOJI_TAGS.has(parent.tagName)) return;
+  if (!parent || isGenerated(parent) || !ALLOWED_EMOJI_TAGS.has(parent.tagName)) return;
 
   textNodesToProcess.add(node);
 }
@@ -101,7 +109,7 @@ function processTextNode(textNode) {
   if (!textNode.parentNode) return;
 
   const parent = textNode.parentNode;
-  if (parent.classList?.contains('twemoji-injected')) return;
+  if (parent.nodeType === 1 && isGenerated(parent)) return;
 
   let currentNode = textNode;
   let match = WRAPPED_EMOJI_RE.exec(currentNode.nodeValue || '');
@@ -170,9 +178,10 @@ function processTextNode(textNode) {
   }
 }
 
+// Any added element is scanned, whatever its own tag: YouTube adds a tile
+// or a row whole, with the titles inside. queueTextNode keeps only text
+// whose own parent is an element emoji are drawn in.
 function scanElement(el) {
-    if (!ALLOWED_EMOJI_TAGS.has(el.tagName) && el.tagName !== 'BODY' && el.tagName !== 'YTLR-APP') return;
-    
     const textContent = el.textContent;
     if (!textContent || !HAS_WRAPPED_EMOJI_RE.test(textContent)) return;
     try {

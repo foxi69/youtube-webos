@@ -10,9 +10,12 @@
  */
 const fs = require('fs');
 const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent, dispatchTrusted } = require('./chrome38-env.cjs');
+const { applyChrome38Downgrade, UA, setUserAgent, dispatchTrusted, applyChrome87Downgrade } = require('./chrome38-env.cjs');
 
 const bundlePath = process.argv[2] || 'dist/webOSUserScripts/userScript.js';
+// `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
+// with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
+const modern = process.argv[3] === 'modern';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 let passed = 0;
@@ -40,7 +43,7 @@ win.localStorage.setItem('ytaf-configuration', JSON.stringify({ enableAdBlock: f
 win.Element.prototype.getBoundingClientRect = function () {
   return { top: 0, left: 0, right: 40, bottom: 40, width: 40, height: 40, x: 0, y: 0 };
 };
-applyChrome38Downgrade(win);
+if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
 win.eval(fs.readFileSync(bundlePath, 'utf8'));
 
 const doc = win.document;

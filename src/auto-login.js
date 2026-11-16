@@ -169,12 +169,45 @@ function disablePromoUpsell(enable = true) {
   }
 }
 
-export function setInlinePlayback(mode) {
-  if (mode === 'disabled') return;
-  
-  const isEnabled = mode === 'force_on';
+const INLINE_PLAYBACK_KEY = 'yt.leanback.default::inline-playback-enabled';
+// YouTube's own record as it was before Video Previews first forced it
+// ({ value: the raw record, or null for none}), put back on Default.
+const INLINE_PLAYBACK_SAVED_KEY = 'ytaf-inline-playback-saved';
+
+function restoreInlinePlayback() {
   try {
-    localStorage.setItem('yt.leanback.default::inline-playback-enabled', JSON.stringify({ data: isEnabled }));
+    const saved = localStorage.getItem(INLINE_PLAYBACK_SAVED_KEY);
+    if (saved === null) return;
+    let value = null;
+    try {
+      value = JSON.parse(saved).value;
+    } catch {
+      value = null;
+    }
+    if (typeof value === 'string') localStorage.setItem(INLINE_PLAYBACK_KEY, value);
+    else localStorage.removeItem(INLINE_PLAYBACK_KEY);
+    // Only once YouTube's record is back: a refused write keeps the backup
+    // for the next Default.
+    localStorage.removeItem(INLINE_PLAYBACK_SAVED_KEY);
+    console.info('[Auto Login] Inline playback (previews) given back to YouTube\'s own setting');
+  } catch (error) {
+    console.error('[Auto Login] Failed to restore inline playback setting:', error);
+  }
+}
+
+/** Video Previews' part in YouTube's own setting: Off forces it off, Without and With sound on. */
+export function setInlinePlayback(mode) {
+  if (mode === 'default') {
+    restoreInlinePlayback();
+    return;
+  }
+
+  const isEnabled = mode !== 'off';
+  try {
+    if (localStorage.getItem(INLINE_PLAYBACK_SAVED_KEY) === null) {
+      localStorage.setItem(INLINE_PLAYBACK_SAVED_KEY, JSON.stringify({ value: localStorage.getItem(INLINE_PLAYBACK_KEY) }));
+    }
+    localStorage.setItem(INLINE_PLAYBACK_KEY, JSON.stringify({ data: isEnabled }));
     console.info(`[Auto Login] Inline playback (previews) forced to: ${isEnabled}`);
   } catch (error) {
     console.error('[Auto Login] Failed to update inline playback setting:', error);
@@ -182,13 +215,13 @@ export function setInlinePlayback(mode) {
 }
 
 export function initPreviews() {
-  const mode = configRead('forcePreviews');
-  if (mode === 'disabled') return;
-
-  // Delay by 2.5 seconds to ensure it applies after YouTube's initial load overrides
+  // Delay by 2.5 seconds to ensure it applies after YouTube's initial load
+  // overrides. The setting is read again then, so a change meanwhile stands.
+  // Default is applied too: a record forced earlier (another account's
+  // setting, say) is given back to YouTube at startup, not only on a change.
   setTimeout(() => {
-    setInlinePlayback(mode);
-  }, 2500); 
+    setInlinePlayback(configRead('videoPreviews'));
+  }, 2500);
 }
 
 // CSS rules live in auto-login.css and are scoped by body.ytaf-bypassing-login,
@@ -211,6 +244,14 @@ function shouldAutoSelectAccount() {
   return configRead('enableAutoLogin') && configRead('autoSelectAccount');
 }
 
+// Whether the selector is gone (a forced bypass never asks): the bypass is
+// then given up, and the page shown again.
+function selectorLeft(force) {
+    if (force || (document.body && document.body.classList.contains(SELECTORS.ACCOUNT_SELECTOR))) return false;
+    if (document.body) document.body.classList.remove(BYPASS_BODY_CLASS);
+    return true;
+}
+
 export function attemptActiveBypass(force = false) {
     if (!shouldAutoSelectAccount()) return;
     const isSelector = document.body && document.body.classList.contains(SELECTORS.ACCOUNT_SELECTOR);
@@ -231,9 +272,17 @@ export function attemptActiveBypass(force = false) {
             if (document.body) document.body.classList.remove(BYPASS_BODY_CLASS);
             return;
         }
+        // The viewer left the selector during the delay: the keys would go
+        // to whatever page is on screen now.
+        if (selectorLeft(force)) return;
         if (isGuestMode()) {
             sendKey(REMOTE_KEYS.DOWN);
-            setTimeout(() => { sendKey(REMOTE_KEYS.ENTER); finalizeBypass(); }, 200);
+            setTimeout(() => {
+                // ...also between the guest's Down and Enter.
+                if (selectorLeft(force)) return;
+                sendKey(REMOTE_KEYS.ENTER);
+                finalizeBypass();
+            }, 200);
         } else {
             sendKey(REMOTE_KEYS.ENTER);
             finalizeBypass();
@@ -253,9 +302,12 @@ function setupActiveBypassListener() {
     window.addEventListener('ytaf-page-update', (evt) => {
         if (evt.detail && evt.detail.isAccountSelector) {
             attemptActiveBypass();
-        } 
+        }
     });
     pageObserverAttached = true;
+    // utils.js reports the page state it starts on before this listener is
+    // in: a selector already on screen would otherwise never be reported.
+    if (document.body && document.body.classList.contains(SELECTORS.ACCOUNT_SELECTOR)) attemptActiveBypass();
 }
 
 export function initAutoLogin() {
@@ -293,6 +345,6 @@ configAddChangeListener('autoSelectAccount', ({ detail }) => {
   if (detail.newValue && configRead('enableAutoLogin')) disableWhosWatching(true);
 });
 
-configAddChangeListener('forcePreviews', ({ detail }) => {
+configAddChangeListener('videoPreviews', ({ detail }) => {
   setInlinePlayback(detail.newValue);
 });

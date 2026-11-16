@@ -8,7 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const { JSDOM, VirtualConsole } = require('jsdom');
 const ROOT = path.resolve(__dirname, '..');
-const { applyChrome38Downgrade, UA, setUserAgent } = require('./chrome38-env.cjs');
+const { applyChrome38Downgrade, UA, setUserAgent, applyChrome87Downgrade } = require('./chrome38-env.cjs');
 
 const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
 const legacyMode = process.argv[3] !== 'modern';
@@ -53,6 +53,8 @@ win.XMLHttpRequest = class { open(){} send(){ this.onerror && this.onerror(); } 
 if (legacyMode) {
   const removed = applyChrome38Downgrade(win);
   console.log(`[env] downgraded ${removed.length} APIs to Chrome 38 baseline`);
+} else {
+  applyChrome87Downgrade(win);
 }
 
 const code = fs.readFileSync(bundlePath, 'utf8');

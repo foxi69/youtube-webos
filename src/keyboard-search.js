@@ -136,16 +136,9 @@ function centreOf(el) {
   return { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 };
 }
 
+// new MouseEvent() is in Chrome 26 and later, so on every webOS this serves.
 function dispatchMouse(el, type, at) {
-  let evt;
-  try {
-    evt = new MouseEvent(type, { bubbles: true, cancelable: true, view: window, clientX: at.clientX, clientY: at.clientY, button: 0 });
-  } catch {
-    // Engines without the MouseEvent constructor.
-    evt = document.createEvent('MouseEvents');
-    evt.initMouseEvent(type, true, true, window, 1, 0, 0, at.clientX, at.clientY, false, false, false, false, 0, null);
-  }
-  el.dispatchEvent(evt);
+  el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window, clientX: at.clientX, clientY: at.clientY, button: 0 }));
 }
 
 // Ways of pressing an on-screen key, tried in order until one changes the

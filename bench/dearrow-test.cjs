@@ -17,13 +17,26 @@
 const fs = require('fs');
 const crypto = require('crypto');
 const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent, dispatchTrusted } = require('./chrome38-env.cjs');
+const { applyChrome38Downgrade, UA, setUserAgent, dispatchTrusted, applyChrome87Downgrade } = require('./chrome38-env.cjs');
 
 const bundlePath = process.argv[2] || 'dist/webOSUserScripts/userScript.js';
 const modern = process.argv[3] === 'modern';
 const GREEN = 404;
 const pad = 'z'.repeat(600);
 const prefixOf = (id) => crypto.createHash('sha256').update(id).digest('hex').slice(0, 4);
+// Every one of these videos has had its lookup started (its prefix asked for):
+// a wait on the four downloads alone can end with the rest still in title
+// resolution, where a settings change drops them before they reach the queue.
+const allAsked = (fetched, ids) => ids.every((id) => fetched.some((u) => u.endsWith('/' + prefixOf(id))));
+// Every tile of the answer shows its crowdsourced title ('Calm ...'): each
+// video is past its title decision, where its thumbnail decision starts, so
+// after a moment each has asked for its thumbnail: four download and the
+// rest wait for a slot. That is the state the queue checks start from.
+const allQueued = async (answer, images, count) => {
+  const titled = await waitFor(() => itemsOf(answer).every((item) => /^Calm /.test(tileTitle(item))), 2000);
+  await wait(30);
+  return titled && count() === 4;
+};
 
 let pass = 0, fail = 0;
 const t = (name, ok, extra) => {
@@ -99,7 +112,7 @@ function boot(cfg, opts = {}) {
     enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false,
     enableDeArrow: true, dearrowTitleFormatting: 'disable', dearrowThumbnailFallback: 'original'
   }, cfg)));
-  if (!modern) applyChrome38Downgrade(win);
+  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
   win.fetch = (url) => {
     url = String(url);
     fetched.push(url);
@@ -452,15 +465,6 @@ const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-d
       !!sw && shownThumb(el) === 'url("https://i.ytimg.com/vi/custom00001/hqdefault.jpg?v=later")', shownThumb(el));
   }
 
-  // ---- The old thumbnail switch carries over ----
-  {
-    const old = boot({ enableDeArrowThumbnails: false });
-    const r = old.parse(browse([tile('custom00001', 'Clickbait')]));
-    await waitFor(() => tileTitle(itemsOf(r)[0]) === 'the iPhone review', 2000);
-    await wait(50);
-    t('a TV that had DeArrow thumbnails off keeps YouTube\'s', tileThumb(itemsOf(r)[0]) === 'https://i.ytimg.com/vi/custom00001/hqdefault.jpg', tileThumb(itemsOf(r)[0]));
-  }
-
   // ---- Off: no request ----
   {
     const off = boot({ enableDeArrow: false });
@@ -671,6 +675,240 @@ const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-d
     t('the same correction does not layer an original thumbnail over the DeArrow Start frame',
       shownThumb(el) === 'url("https://i.ytimg.com/vi/downvoted01/hq1.jpg")', shownThumb(el));
     win.close();
+  }
+
+  // ---- Thumbnails waiting for a draw slot when the settings change or everything is wiped ----
+  {
+    /** Nine videos with a crowdsourced thumbnail each, under prefixes of their own. */
+    const crowdIds = (tag) => {
+      const ids = [], prefixes = new Set();
+      for (let i = 0; ids.length < 9; i++) {
+        const id = tag + String(i).padStart(8, '0');
+        if (!prefixes.has(prefixOf(id))) { prefixes.add(prefixOf(id)); ids.push(id); }
+      }
+      return ids;
+    };
+    const crowdExtra = (ids) => {
+      const extra = {};
+      ids.forEach((id) => { extra[id] = { titles: [{ title: 'Calm ' + id, original: false, votes: 1 }],
+        thumbnails: [{ timestamp: 12.5, original: false, votes: 1 }] }; });
+      return extra;
+    };
+    /** Flips a switch on the UI Tweaks page. */
+    const flip = (win, pump, label, on) => {
+      if (!win.document.querySelector('#ytaf-page-ui-tweaks')) {
+        const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
+        Object.defineProperty(e, 'keyCode', { get: () => GREEN, configurable: true });
+        dispatchTrusted(win.document.body, e);
+        for (let i = 0; i < 20; i++) pump();
+      }
+      const input = Array.from(win.document.querySelectorAll('#ytaf-page-ui-tweaks label'))
+        .find((l) => l.querySelector('.label-text')?.textContent === label)?.querySelector('input');
+      if (!input) throw new Error(label + ' switch missing');
+      input.checked = on;
+      input.dispatchEvent(new win.Event('change'));
+    };
+    const downloads = (images, ids) => images.filter((u) => ids.some((id) => u.includes('videoID=' + id))).length;
+
+    for (const change of ['DeArrow switched off', 'Crowdsourced Titles switched off']) {
+      const ids = crowdIds(change[0] === 'D' ? 'off' : 'set');
+      const { win, parse, pump, images, pendingImages, fetched } = boot({}, { extra: crowdExtra(ids), holdImages: true });
+      const answer = parse(browse(ids.map((id) => tile(id, 'Original ' + id))));
+      await waitFor(() => allAsked(fetched, ids) && downloads(images, ids) === 4, 1500);
+      t(`${change}: all nine past their title, four thumbnails download, five wait for a slot`,
+        await allQueued(answer, images, () => downloads(images, ids)), images.join(' '));
+      flip(win, pump, change.split(' switched')[0], false);
+      await wait(50);
+      pendingImages.splice(0).forEach((item) => { item.finish(); });
+      await wait(300);
+      t(`${change}: the thumbnails that waited are not downloaded after it`, downloads(images, ids) === 4,
+        `${downloads(images, ids)} downloads`);
+      win.close();
+    }
+
+    // The same tiles shown again after the change ask for their thumbnails again: the draws still waiting
+    // belong to the new generation then, and are downloaded when a slot opens rather than dropped.
+    {
+      const ids = crowdIds('ask');
+      const { win, parse, pump, images, pendingImages, fetched } = boot({}, { extra: crowdExtra(ids), holdImages: true });
+      const page = () => browse(ids.map((id) => tile(id, 'Original ' + id)));
+      const answer = parse(page());
+      await waitFor(() => allAsked(fetched, ids) && downloads(images, ids) === 4, 1500);
+      t('asked again: all nine past their title, four thumbnails download, five wait for a slot',
+        await allQueued(answer, images, () => downloads(images, ids)), images.join(' '));
+      flip(win, pump, 'Crowdsourced Titles', false);
+      // The settings refresh (a new generation, every video to decide again) runs a tick after the change.
+      await wait(50);
+      parse(page());
+      await wait(300);
+      for (let i = 0; i < 4 && downloads(images, ids) < 9; i++) {
+        pendingImages.splice(0).forEach((item) => { item.finish(); });
+        await waitFor(() => pendingImages.length > 0 || downloads(images, ids) === 9, 500);
+      }
+      t('shown again after the change: the thumbnails that waited for a slot are downloaded',
+        downloads(images, ids) === 9, `${downloads(images, ids)} downloads`);
+      pendingImages.splice(0).forEach((item) => { item.finish(); });
+      win.close();
+    }
+
+    // Random frames waiting for a slot when DeArrow is switched off: the draws
+    // dropped then do not fetch the start frame in their place.
+    {
+      const ids = crowdIds('rnd');
+      const extra = {};
+      // A crowdsourced title and no crowdsourced thumbnail: the title on the
+      // tile shows the video is past its title decision, as in the checks above.
+      ids.forEach((id) => {
+        extra[id] = { titles: [{ title: 'Calm ' + id, original: false, votes: 1 }], thumbnails: [],
+          randomTime: 0.5, videoDuration: 60 };
+      });
+      const { win, parse, pump, images, pendingImages, fetched } = boot({ dearrowThumbnailFallback: 'random' }, { extra, holdImages: true });
+      const frames = (list) => list.filter((u) => ids.some((id) => u.includes('/vi/' + id + '/'))).length;
+      const answer = parse(browse(ids.map((id) => tile(id, 'Original ' + id))));
+      await waitFor(() => allAsked(fetched, ids) && downloads(images, ids) === 4, 1500);
+      t('random frames: all nine past their title, four are drawn, five wait for a slot',
+        await allQueued(answer, images, () => downloads(images, ids)), `${downloads(images, ids)} drawn`);
+      // The start frames shown as stand-ins meanwhile are fetched before.
+      const before = images.length;
+      flip(win, pump, 'DeArrow', false);
+      await wait(50);
+      pendingImages.splice(0).forEach((item) => { item.finish(); });
+      await wait(300);
+      pendingImages.splice(0).forEach((item) => { item.finish(); });
+      const after = images.slice(before);
+      t('...DeArrow switched off: no start frame fetched for the dropped or failed draws', frames(after) === 0 &&
+        downloads(images, ids) === 4, after.join(' '));
+      win.close();
+    }
+
+    // Too many videos remembered: everything is wiped (DeArrow stays on).
+    {
+      const ids = crowdIds('wip');
+      const { win, parse, images, pendingImages, fetched } = boot({}, { extra: crowdExtra(ids), holdImages: true });
+      const made = [];
+      const revoked = [];
+      if (modern) {
+        const make = win.URL.createObjectURL;
+        win.URL.createObjectURL = (b) => { const url = make(b); made.push(url); return url; };
+        win.URL.revokeObjectURL = (u) => { revoked.push(u); };
+      }
+      const answer = parse(browse(ids.map((id) => tile(id, 'Original ' + id))));
+      await waitFor(() => allAsked(fetched, ids) && downloads(images, ids) === 4, 1500);
+      t('wiped: all nine past their title, four thumbnails download, five wait for a slot',
+        await allQueued(answer, images, () => downloads(images, ids)), images.join(' '));
+      const filler = [];
+      for (let i = 0; i < 1000; i++) filler.push(tile('fil' + String(i).padStart(8, '0'), 'Filler ' + i));
+      parse(browse(filler));
+      // The next response finds 1000 videos remembered and wipes them all first.
+      parse(browse([tile('afterwipe01', 'After the wipe')]));
+      pendingImages.splice(0).forEach((item) => { item.finish(); });
+      await wait(300);
+      t('wiped: the thumbnails that waited for a slot are not downloaded after it', downloads(images, ids) === 4,
+        `${downloads(images, ids)} downloads`);
+      if (modern) {
+        t('wiped: a copy drawn for a video from before the wipe is freed, not kept',
+          made.length > 0 && made.every((u) => revoked.includes(u)), `made ${made.length}, revoked ${revoked.length}`);
+      }
+      win.close();
+    }
+  }
+
+  // ---- The sweep reads where every tile is before it writes any ----
+  // A tile's box (getBoundingClientRect) read after a write to another tile
+  // makes the browser lay the page out again, once per tile.
+  {
+    const ids = ['custom00001', 'swpcrowd001', 'swpcrowd002', 'swpcrowd003'];
+    const extra = {};
+    ids.slice(1).forEach((id) => { extra[id] = { titles: [{ title: 'Calm ' + id, original: false, votes: 1 }], thumbnails: [] }; });
+    const { win, parse, errors } = boot({}, { extra });
+    const items = ids.map((id) => tile(id, 'Loud ' + id));
+    const els = items.map((item) => render(win, item, { onScreen: true }));
+    const observer = new win.MutationObserver(() => {});
+    observer.observe(win.document.querySelector('ytlr-app'), { attributes: true, childList: true, characterData: true, subtree: true });
+    let reads = 0;
+    let afterWrite = 0;
+    let sweeping = false;
+    const box = win.HTMLElement.prototype.getBoundingClientRect;
+    win.HTMLElement.prototype.getBoundingClientRect = function () {
+      reads++;
+      const written = observer.takeRecords().length > 0;
+      if (!sweeping) {
+        // The first read of a sweep: what was written before it is not the sweep's.
+        sweeping = true;
+        Promise.resolve().then(() => { sweeping = false; });
+      } else if (written) {
+        afterWrite++;
+      }
+      return box.call(this);
+    };
+    parse(browse(items));
+    await waitFor(() => els.every((el, i) => shownTitle(el) === (i ? 'Calm ' + ids[i] : 'the iPhone review')), 2000);
+    t('the sweep gives every tile on screen its title', els.every((el, i) => shownTitle(el) === (i ? 'Calm ' + ids[i] : 'the iPhone review')),
+      els.map(shownTitle).join(' | '));
+    t('the sweep reads no tile\'s box after writing to another', reads >= ids.length && afterWrite === 0,
+      `${reads} reads, ${afterWrite} after a write`);
+    t('no jsdomError (sweep)', errors.length === 0, errors[0]);
+    win.close();
+  }
+
+  // ---- A failure while a thumbnail is decided stays inside DeArrow ----
+  // The thumbnail is decided after the title, without the lookup waiting for
+  // it: a throw there (writing the stored response, loading an image) must
+  // not reach the page as an unhandled promise rejection.
+  {
+    const unhandled = [];
+    const onUnhandled = (reason) => { unhandled.push(String(reason && reason.message || reason)); };
+    process.on('unhandledRejection', onUnhandled);
+
+    // The stored response refuses DeArrow's thumbnail (YouTube's own goes in).
+    const refusing = boot({});
+    const r = refusing.parse(browse([tile('custom00001', 'Clickbait')]));
+    const holder = itemsOf(r)[0].tileRenderer.header.tileHeaderRenderer.thumbnail;
+    let list = holder.thumbnails;
+    let refusals = 0;
+    Object.defineProperty(holder, 'thumbnails', {
+      configurable: true,
+      get: () => list,
+      set(value) {
+        if (value[0] && value[0].url.indexOf('https://i.ytimg.com/') !== 0) {
+          refusals++;
+          throw new TypeError('read-only thumbnail');
+        }
+        list = value;
+      }
+    });
+    t('a stored response refusing the thumbnail: the write is tried (and throws)', await waitFor(() => refusals > 0, 2000),
+      refusing.images.join(' '));
+    await wait(50);
+    t('...the title is still decided',
+      tileTitle(itemsOf(r)[0]) === 'the iPhone review', tileTitle(itemsOf(r)[0]));
+    refusing.win.close();
+
+    // An image the TV refuses to load (its src setter throws) for YouTube's frames.
+    const refused = boot({ dearrowThumbnailFallback: 'start' }, { brandingDelay: 1700 });
+    const ImageClass = refused.win.Image;
+    let imageRefusals = 0;
+    refused.win.Image = class extends ImageClass {
+      set src(url) {
+        if (url.indexOf('https://i.ytimg.com/') === 0) {
+          imageRefusals++;
+          throw new Error('image refused');
+        }
+        super.src = url;
+      }
+      get src() { return super.src; }
+    };
+    const el = render(refused.win, tile('nosubmit001', 'Nothing submitted'), { onScreen: true });
+    refused.parse(browse([tile('nosubmit001', 'Nothing submitted')]));
+    t('an image the TV refuses: the frame is tried (and throws)', await waitFor(() => imageRefusals > 0, 4000));
+    await wait(100);
+    t('a frame that cannot load leaves YouTube\'s thumbnail',
+      shownThumb(el) === 'url("https://i.ytimg.com/vi/nosubmit001/hqdefault.jpg")', shownThumb(el));
+    refused.win.close();
+
+    await wait(50);
+    process.removeListener('unhandledRejection', onUnhandled);
+    t('no unhandled promise rejection while thumbnails are decided', unhandled.length === 0, unhandled.join(' | '));
   }
 
   // ---- Title formatting (webOS 22+ build only) ----

@@ -51,7 +51,6 @@ export function getWebOSVersion() {
   const chromeMatch = ua.match(/Chrome\/(\d+)/);
   if (chromeMatch) {
     const chromeVersion = parseInt(chromeMatch[1], 10);
-    console.info(`[WebOSUtils] Detected Chrome version: ${chromeVersion} (simulator mode)`);
     simulatorMode = true;
 
     if (chromeVersion >= 120) {
@@ -61,6 +60,7 @@ export function getWebOSVersion() {
     } else {
       cachedWebOSVersion = 6;
     }
+    console.info(`[WebOSUtils] Detected webOS ${cachedWebOSVersion} via Chrome version: ${chromeVersion} (simulator mode)`);
     return cachedWebOSVersion;
   }
 

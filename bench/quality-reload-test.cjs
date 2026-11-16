@@ -11,7 +11,7 @@
 const fs = require('fs');
 const path = require('path');
 const { JSDOM, VirtualConsole } = require('jsdom');
-const { UA, setUserAgent } = require('./chrome38-env.cjs');
+const { UA, setUserAgent, applyChrome87Downgrade } = require('./chrome38-env.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
@@ -30,6 +30,7 @@ async function run(ua, ready, startAt) {
       virtualConsole: new VirtualConsole(), pretendToBeVisual: true });
   const win = dom.window;
   setUserAgent(win, ua);
+  applyChrome87Downgrade(win);   // the oldest engine the modern build serves
   win.launchParams = '{}';
   win.fetch = () => Promise.reject(new Error('offline'));
   win.XMLHttpRequest = class {

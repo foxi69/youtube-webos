@@ -26,7 +26,7 @@ import {
   THUMBNAIL_API
 } from './constants.js';
 import { videos, currentGeneration } from './state.js';
-import { loadThumb } from './thumbs.js';
+import { loadThumb, thumbsEpoch } from './thumbs.js';
 import { isTrusted, resolveTitle, crowdsourcedTitle } from './titles.js';
 
 const DEBUG = false;
@@ -182,7 +182,10 @@ async function resolveThumb(videoId, video, gen, show) {
   }
 
   const url = thumbnailUrl(videoId, time);
+  const drawnIn = thumbsEpoch();
   const ready = await loadThumb(url + '&generateNow=true', videoId);
+  // Dropped (the thumbnails were forgotten meanwhile): no start frame in its place.
+  if (drawnIn !== thumbsEpoch() || gen !== currentGeneration()) return;
   if (ready) {
     show(ready);
     return;
@@ -194,9 +197,13 @@ async function resolveThumb(videoId, video, gen, show) {
     if (!delays.length) return;
     setTimeout(async () => {
       if (gen !== currentGeneration()) return;
-      const later = await loadThumb(url, videoId);
-      if (later) show(later);
-      else retry(delays.slice(1));
+      try {
+        const later = await loadThumb(url, videoId);
+        if (later) show(later);
+        else retry(delays.slice(1));
+      } catch (e) {
+        if (DEBUG) console.info('[DeArrow] Random frame retry failed for', videoId, e.message);
+      }
     }, delays[0]);
   };
   retry(RANDOM_FRAME_RETRIES_MS);
@@ -223,6 +230,8 @@ async function resolve(videoId, video) {
   onChange(video);
 
   video.thumbDecided = false;
+  // Not awaited, so a failure in it (loading an image, writing the stored
+  // responses) is caught here: the thumbnail stays as it was.
   resolveThumb(videoId, video, gen, (thumb, crowdsourced) => {
     if (gen !== currentGeneration()) return;
     video.thumbDecided = true;
@@ -230,6 +239,8 @@ async function resolve(videoId, video) {
     video.thumb = thumb;
     video.crowdThumb = !!thumb && !!crowdsourced;
     if (changed) onChange(video);
+  }).catch((e) => {
+    if (DEBUG) console.info('[DeArrow] Thumbnail not decided for', videoId, e.message);
   });
 }
 
@@ -258,11 +269,15 @@ function showEarlyFrame(videoId, video) {
   const gen = currentGeneration();
   return setTimeout(async () => {
     if (video.thumbDecided || gen !== currentGeneration()) return;
-    const copy = await loadThumb(url, videoId);
-    if (!copy || video.thumbDecided || video.thumb || gen !== currentGeneration()) return;
-    video.thumb = copy;
-    video.crowdThumb = false;
-    onChange(video);
+    try {
+      const copy = await loadThumb(url, videoId);
+      if (!copy || video.thumbDecided || video.thumb || gen !== currentGeneration()) return;
+      video.thumb = copy;
+      video.crowdThumb = false;
+      onChange(video);
+    } catch (e) {
+      if (DEBUG) console.info('[DeArrow] Early frame not shown for', videoId, e.message);
+    }
   }, EARLY_FRAME_MS);
 }
 

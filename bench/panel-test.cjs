@@ -9,9 +9,12 @@
  */
 const fs = require('fs');
 const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent, dispatchTrusted } = require('./chrome38-env.cjs');
+const { applyChrome38Downgrade, UA, setUserAgent, dispatchTrusted, applyChrome87Downgrade } = require('./chrome38-env.cjs');
 
 const bundlePath = process.argv[2] || 'dist/webOSUserScripts/userScript.js';
+// `modern`: the modern bundle (webOS 22 and newer), in jsdom's own engine with a
+// webOS 23 user agent, instead of the legacy one in a Chrome 38 environment.
+const modern = process.argv[3] === 'modern';
 const GREEN = 404;
 
 function boot(bodyClass = 'WEB_PAGE_TYPE_BROWSE', extraHtml = '', setup = null) {
@@ -21,7 +24,7 @@ function boot(bodyClass = 'WEB_PAGE_TYPE_BROWSE', extraHtml = '', setup = null) 
   const dom = new JSDOM('<!doctype html><html><body class="' + bodyClass + '"><ytlr-app></ytlr-app>' + extraHtml + '</body></html>',
     { runScripts: 'outside-only', url: 'https://www.youtube.com/tv', virtualConsole: vc, pretendToBeVisual: true });
   const win = dom.window;
-  setUserAgent(win, UA.webos3);
+  setUserAgent(win, modern ? UA.webos23 : UA.webos3);
   win.launchParams = '{}';
   win.XMLHttpRequest = class { open(){} send(){} setRequestHeader(){} getResponseHeader(){return null;} addEventListener(){} };
   let rafQ = [];
@@ -30,10 +33,10 @@ function boot(bodyClass = 'WEB_PAGE_TYPE_BROWSE', extraHtml = '', setup = null) 
   win.localStorage.setItem('ytaf-configuration', win.JSON.stringify({
     enableAdBlock: true, enableLegacyEmojiFix: true, enableSponsorBlock: true,
     enableReturnYouTubeDislike: true, upgradeThumbnails: false, enableAutoLogin: true,
-    enableScrollSeek: true, showTimeRemaining: true, logoStyle: 'premium'
+    enableScrollSeek: true, timeRemainingMode: 'both', logoStyle: 'premium'
   }));
   if (setup) setup(win);
-  applyChrome38Downgrade(win);
+  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
   win.eval(fs.readFileSync(bundlePath, 'utf8'));
   return { win, errors, pump: () => { const q = rafQ; rafQ = []; for (const cb of q) cb(Date.now()); } };
 }
@@ -193,8 +196,7 @@ setTimeout(async () => {
     const text = () => (win.document.getElementById('ytaf-time-remaining') || {}).textContent || '';
     await new Promise((r) => setTimeout(r, 1100));
     t('remaining time shown on a normal video', /ends /.test(text()), text());
-    // The config above still has the old on/off switch: on becomes Both.
-    t('old showTimeRemaining: true shows both halves', /"-59:45 · ends [^"]+"/.test(text()), text());
+    t('Both shows both halves', /"-59:45 · ends [^"]+"/.test(text()), text());
     live = true;
     await new Promise((r) => setTimeout(r, 1100));
     t('remaining time hidden on a live stream', !/ends /.test(text()), text());
@@ -206,7 +208,6 @@ setTimeout(async () => {
       '<div idomkey="time-label"><span idomkey="duration"></span></div><video></video>',
       (w) => {
         const c = JSON.parse(w.localStorage.getItem('ytaf-configuration'));
-        delete c.showTimeRemaining;
         c.timeRemainingMode = 'end';
         w.localStorage.setItem('ytaf-configuration', JSON.stringify(c));
       });

@@ -9,9 +9,12 @@
  */
 const fs = require('fs');
 const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent, dispatchTrusted } = require('./chrome38-env.cjs');
+const { applyChrome38Downgrade, UA, setUserAgent, dispatchTrusted, applyChrome87Downgrade } = require('./chrome38-env.cjs');
 
 const bundlePath = process.argv[2] || 'dist/webOSUserScripts/userScript.js';
+// `modern`: the modern bundle (webOS 22 and newer), in jsdom's own engine with a
+// webOS 23 user agent, instead of the legacy one in a Chrome 38 environment.
+const modern = process.argv[3] === 'modern';
 const GREEN = 404;
 const ENTER = 13;
 const RIGHT = 39;
@@ -39,7 +42,7 @@ function boot(cfg, opts = {}) {
     enableAdBlock: true, enableLegacyEmojiFix: false, enableSponsorBlock: false,
     enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false
   }, cfg)));
-  applyChrome38Downgrade(win);
+  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
   // After the downgrade, which takes fetch away (Chrome 38 had none): the
   // bundle's polyfill then leaves this one in place.
   win.fetch = opts.fetch || (() => Promise.reject(new Error('offline')));
@@ -840,6 +843,19 @@ const ids = (r) => itemsOf(r).map((i) => (i.tileRenderer || i.lockupViewModel).c
     b = boot({ startPage: 'home' }, { url: 'https://www.youtube.com/tv#/' });
     await wait(20);
     t('Start Page Home changes nothing', b.win.location.hash === '#/', b.win.location.hash);
+    // The viewer moves before Home is up (still on "Who's watching", say), then comes back to Home:
+    // Home showing up after that is no plain start any more.
+    b = boot({ startPage: 'subscriptions' }, { bodyClass: 'WEB_PAGE_TYPE_ACCOUNT_SELECTOR', url: 'https://www.youtube.com/tv#/?env_forceFullAnimation=1' });
+    await wait(20);
+    t('Start Page waits while Home is not up yet', b.win.location.hash === '#/?env_forceFullAnimation=1', b.win.location.hash);
+    b.win.location.hash = '#/search';
+    await wait(20);
+    b.win.location.hash = '#/';
+    await wait(20);
+    b.win.document.body.className = 'WEB_PAGE_TYPE_BROWSE';
+    await wait(20);
+    t('Start Page leaves a viewer who went somewhere before Home was up where they are',
+      b.win.location.hash === '#/', b.win.location.hash);
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);

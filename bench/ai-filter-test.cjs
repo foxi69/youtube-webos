@@ -2,7 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent, dispatchTrusted } = require('./chrome38-env.cjs');
+const { applyChrome38Downgrade, UA, setUserAgent, dispatchTrusted, applyChrome87Downgrade } = require('./chrome38-env.cjs');
 const ROOT = path.resolve(__dirname, '..');
 const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
 const legacy = process.argv[3] !== 'modern';
@@ -88,7 +88,7 @@ function boot(cfg, opts) {
   }, cfg)));
   if (opts.aiStore !== undefined) win.localStorage.setItem('ytaf-ai-videos', opts.aiStore);
   if (opts.notAiStore !== undefined) win.localStorage.setItem('ytaf-not-ai-videos', opts.notAiStore);
-  if (legacy) applyChrome38Downgrade(win);
+  if (legacy) applyChrome38Downgrade(win); else applyChrome87Downgrade(win);
   win.eval(fs.readFileSync(bundlePath, 'utf8'));
   const doc = win.document;
   const makeLockupData = (id, contentType, commandId) => ({

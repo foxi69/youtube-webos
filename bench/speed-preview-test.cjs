@@ -13,9 +13,12 @@
  */
 const fs = require('fs');
 const { JSDOM, VirtualConsole } = require('jsdom');
-const { UA, setUserAgent } = require('./chrome38-env.cjs');
+const { UA, setUserAgent, applyChrome38Downgrade, applyChrome87Downgrade } = require('./chrome38-env.cjs');
 
 const bundlePath = process.argv[2] || 'dist/webOSUserScripts/userScript.js';
+// `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
+// with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
+const modern = process.argv[3] === 'modern';
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 // RESUME_AFTER_PAGE_MS in playback-speed.js, with room for the page-update
 // event, which the page's MutationObserver sends a moment after the class.
@@ -35,7 +38,9 @@ function boot() {
   const dom = new JSDOM('<!doctype html><html><body class="WEB_PAGE_TYPE_WATCH"><ytlr-app></ytlr-app></body></html>',
     { runScripts: 'outside-only', url: 'https://www.youtube.com/tv#/watch?v=aaaaaaaaaaa', virtualConsole: vc, pretendToBeVisual: true });
   const win = dom.window;
-  setUserAgent(win, UA.webos23);
+  setUserAgent(win, modern ? UA.webos23 : UA.webos3);
+  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
+  win.Element.prototype.remove = function remove() { if (this.parentNode) this.parentNode.removeChild(this); };
   win.launchParams = '{}';
   win.XMLHttpRequest = class { open(){} send(){} setRequestHeader(){} getResponseHeader(){return null;} addEventListener(){} };
   win.fetch = () => new Promise(() => {});

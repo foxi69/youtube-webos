@@ -9,10 +9,13 @@
 const fs = require('fs');
 const path = require('path');
 const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent, dispatchTrusted } = require('./chrome38-env.cjs');
+const { applyChrome38Downgrade, UA, setUserAgent, dispatchTrusted, applyChrome87Downgrade } = require('./chrome38-env.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
+// `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
+// with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
+const modern = process.argv[3] === 'modern';
 const GREEN = 404;
 const LABEL = 'Open Playing Previews Without Reloading';
 
@@ -47,7 +50,7 @@ function boot(cfg, storage = {}, tectonic) {
   win.fetch = () => Promise.reject(new Error('offline'));
   win.localStorage.setItem('ytaf-configuration', win.JSON.stringify(cfg));
   for (const k of Object.keys(storage)) win.localStorage.setItem(k, storage[k]);
-  applyChrome38Downgrade(win);
+  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
   if (tectonic) win.tectonicConfig = tectonic;
   win.eval(fs.readFileSync(bundlePath, 'utf8'));
   return { win, errors };

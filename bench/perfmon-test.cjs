@@ -95,7 +95,7 @@ function findRoot() {
 }
 const visible = () => { const r = findRoot(); return !!r && r.style.display !== 'none'; };
 
-setTimeout(() => {
+setTimeout(async () => {
   t('bundle loads without throwing', !threw, threw && String(threw.message));
   t('no "require is not defined"', !(threw && /require is not defined/.test(String(threw.message))),
     threw && String(threw.message));
@@ -135,6 +135,7 @@ setTimeout(() => {
   const thumbs = win.__PERF.features().filter((f) => f.key === 'upgradeThumbnails')[0];
   t('Max Thumbnail Quality counts the tiles above hqdefault', !!thumbs && thumbs.state === 'firing' && /^2 of 3 tiles/.test(thumbs.detail),
     thumbs && thumbs.state + ': ' + thumbs.detail);
+
 
   // The cluster starts hidden.
 

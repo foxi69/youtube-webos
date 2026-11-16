@@ -2,8 +2,9 @@ import { configRead, configAddChangeListener } from './config.js';
 import { isWatchPage, isShortsPage, getVideo } from './utils.js';
 
 /**
- * Mute Video Previews: the previews that play when a tile on the home screen
- * or in search is focused start with sound; with this on they are muted.
+ * Video Previews, Without sound: the previews that play when a tile on the
+ * home screen or in search is focused start with sound; with this they are
+ * muted.
  *
  * The TV app plays previews and real playback in one shared <video>, and a
  * preview that is opened carries on in it, so the mute is undone as soon as
@@ -18,7 +19,7 @@ function isPreview() {
 }
 
 function update(video) {
-  const shouldMute = configRead('mutePreviews') && isPreview();
+  const shouldMute = configRead('videoPreviews') === 'muted' && isPreview();
   if (shouldMute) {
     if (video && !video.muted) {
       video.muted = true;
@@ -41,4 +42,4 @@ document.addEventListener('playing', onPlay, true);
 document.addEventListener('volumechange', onPlay, true);
 
 window.addEventListener('ytaf-page-update', () => update(getVideo()));
-configAddChangeListener('mutePreviews', () => update(isPreview() ? getVideo() : null));
+configAddChangeListener('videoPreviews', () => update(isPreview() ? getVideo() : null));

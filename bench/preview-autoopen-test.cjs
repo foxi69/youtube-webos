@@ -2,7 +2,7 @@
  * Tile previews never open full screen by themselves: every preview command's
  * autotransitionDelayMs becomes -1 and its forceSeamlessAutotransition false,
  * with no setting and every other use of the JSON.parse hook off
- * (adblock.js, stopPreviewAutoOpen). And Mute Video Previews mutes again when
+ * (adblock.js, stopPreviewAutoOpen). And Video Previews, Without sound, mutes again when
  * YouTube unmutes the video on a volume change (mute-previews.js).
  *
  * The field values are a webOS 25 TV's (2026-11-14): the preview starts 3 s
@@ -11,10 +11,13 @@
 const fs = require('fs');
 const path = require('path');
 const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent } = require('./chrome38-env.cjs');
+const { applyChrome38Downgrade, UA, setUserAgent, applyChrome87Downgrade } = require('./chrome38-env.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
+// `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
+// with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
+const modern = process.argv[3] === 'modern';
 
 // Every setting that once kept the JSON.parse hook installed, off.
 const ALL_OFF = {
@@ -24,7 +27,7 @@ const ALL_OFF = {
   enableLegacyEmojiFix: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
   upgradeThumbnails: false, enableAutoLogin: false, loadRowsAhead: false,
   disableAutoCaptions: false, forceOriginalAudio: false, extendLongPressMenu: false,
-  enableDeArrow: false, hiddenSidebarEntries: [], mutePreviews: false
+  enableDeArrow: false, hiddenSidebarEntries: [], videoPreviews: 'default'
 };
 // The left menu's entries already learnt: until then the left menu keeps the
 // hook installed by itself (sidebarHookRequired), which would hide the hook
@@ -87,7 +90,7 @@ function boot(cfg, early) {
   win.localStorage.setItem('ytaf-sidebar-entries', LEARNT_SIDEBAR);
   // The first home screen, parsed by YouTube's page before the userScript ran.
   if (early) win.pendingEarlyBrowse = win.Promise.resolve({ response: win.JSON.parse(win.JSON.stringify(early)) });
-  applyChrome38Downgrade(win);
+  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
   win.fetch = () => Promise.reject(new Error('offline'));
   const nativeParse = win.JSON.parse;
   win.eval(fs.readFileSync(bundlePath, 'utf8'));
@@ -168,8 +171,8 @@ async function responses() {
 }
 
 async function mute() {
-  const run = async (mutePreviews) => {
-    const { win, errors } = boot(Object.assign({}, ALL_OFF, { mutePreviews }));
+  const run = async (mute) => {
+    const { win, errors } = boot(Object.assign({}, ALL_OFF, { videoPreviews: mute ? 'muted' : 'sound' }));
     const video = win.document.createElement('video');
     win.document.body.appendChild(video);
     const fire = (type) => video.dispatchEvent(new win.Event(type));
@@ -196,8 +199,9 @@ async function mute() {
   t('mute on: no page errors', on.errors.length === 0, on.errors.join(' | '));
 
   const offRun = await run(false);
-  t('control, mute off: playing leaves the sound on', offRun.afterPlaying === false);
-  t('control, mute off: a volume change leaves the sound on', offRun.afterVolume === false);
+  t('control, With sound: playing leaves the sound on', offRun.afterPlaying === false);
+  t('control, With sound: a volume change leaves the sound on', offRun.afterVolume === false);
+  t('control, With sound: no page errors', offRun.errors.length === 0, offRun.errors.join(' | '));
 }
 
 (async () => {
