@@ -1,31 +1,24 @@
-/** Behaviour tests for learned AI labels, persistence, card badges and removal. */
-const fs = require('fs');
-const path = require('path');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent, dispatchTrusted, applyChrome87Downgrade } = require('./chrome38-env.cjs');
-const ROOT = path.resolve(__dirname, '..');
-const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
-const legacy = process.argv[3] !== 'modern';
+/**
+ * Behaviour tests for learned AI labels, persistence, card badges and removal.
+ *
+ * Usage: node bench/ai-filter-test.cjs <bundle> [legacy|modern]
+ */
+const { createReporter, bootPage, trustedKey, wait, dispatchTrusted } = require('./harness.cjs');
 const BADGE = 'data-ytaf-ai-badge';
-const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => { if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra ? '\n     ' + extra : '')); } };
+// The summary line and the exit code are this test's own (at the end).
+const { t, counts } = createReporter();
 const wrap = (contents) => ({ contents: { twoColumnWatchNextResults: { results: { results: { contents } } } } });
 const aiBody = wrap([{ videoPrimaryInfoRenderer: { badges: [{ metadataBadgeRenderer: {
   icon: { iconType: 'INFO' }, label: 'AI', accessibilityData: { label: 'AI: Content was made with AI' } } }] } }]);
 const plainBody = wrap([{ videoPrimaryInfoRenderer: {} }]);
 function boot(cfg, opts) {
   opts = opts || {};
-  const dom = new JSDOM('<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app><div id="root"></div></ytlr-app></body></html>',
-    { runScripts: 'outside-only', url: 'https://www.youtube.com/tv#/', virtualConsole: new VirtualConsole(), pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, legacy ? UA.webos3 : UA.webos23);
-  win.launchParams = '{}';
+  let win;
+  let NS;
   // opts.fakeClock: the page's Date.now and setTimeout on a clock the test
   // moves (clock.advance), so a timing case depends on no scheduler.
   let clock = null;
-  if (opts.fakeClock) {
+  const fakeClock = () => {
     let now = 1e12;
     let seq = 0;
     const timers = new Map();
@@ -48,14 +41,14 @@ function boot(cfg, opts) {
         now = end;
       }
     };
-  }
+  };
   const requests = [];
   // When each request started (the page's Date.now()), in the order of `requests`.
   const startedAt = [];
   // opts.held: the ids whose answers wait for release(id), not for a delay.
   const heldAnswers = {};
   const answers = opts.answers || {};
-  win.XMLHttpRequest = class {
+  const FakeXHR = class {
     open(m, u) { this.url = u; }
     setRequestHeader() {}
     getResponseHeader() { return null; }
@@ -78,18 +71,33 @@ function boot(cfg, opts) {
     }
   };
   const release = (id) => { const respond = heldAnswers[id]; delete heldAnswers[id]; if (respond) respond(); };
-  const NS = win.JSON.stringify;
-  win.localStorage.setItem('ytaf-configuration', NS(Object.assign({
-    enableAdBlock: true, enableTrackingBlock: false, removeGlobalShorts: false,
-    removeLiveVideos: false, removeAiVideos: false, removeTopLiveGames: false,
-    removeMostRelevant: false, markAiVideos: false, hideGuestSignInPrompts: false,
-    hideEndcards: false, enableLegacyEmojiFix: false, enableSponsorBlock: false,
-    enableReturnYouTubeDislike: false, upgradeThumbnails: false
-  }, cfg)));
-  if (opts.aiStore !== undefined) win.localStorage.setItem('ytaf-ai-videos', opts.aiStore);
-  if (opts.notAiStore !== undefined) win.localStorage.setItem('ytaf-not-ai-videos', opts.notAiStore);
-  if (legacy) applyChrome38Downgrade(win); else applyChrome87Downgrade(win);
-  win.eval(fs.readFileSync(bundlePath, 'utf8'));
+  // The page of the build the command line names (the legacy bundle with a
+  // webOS 3 user agent in the Chrome 38 environment, the modern one with
+  // webOS 23 in the Chrome 87 one), its XMLHttpRequest the one above.
+  bootPage({
+    url: 'https://www.youtube.com/tv#/',
+    inner: '<div id="root"></div>',
+    consoleErrors: false,
+    restoreRemove: false,
+    xhr: false,
+    config: Object.assign({
+      enableAdBlock: true, enableTrackingBlock: false, removeGlobalShorts: false,
+      removeLiveVideos: false, removeAiVideos: false, removeTopLiveGames: false,
+      removeMostRelevant: false, markAiVideos: false, hideGuestSignInPrompts: false,
+      hideEndcards: false, enableLegacyEmojiFix: false, enableSponsorBlock: false,
+      enableReturnYouTubeDislike: false, upgradeThumbnails: false
+    }, cfg),
+    storage: Object.assign({},
+      opts.aiStore !== undefined ? { 'ytaf-ai-videos': opts.aiStore } : null,
+      opts.notAiStore !== undefined ? { 'ytaf-not-ai-videos': opts.notAiStore } : null),
+    setup(w) {
+      win = w;
+      if (opts.fakeClock) fakeClock();
+      win.XMLHttpRequest = FakeXHR;
+      // The page's JSON.stringify as it is before the bundle runs.
+      NS = win.JSON.stringify;
+    }
+  });
   const doc = win.document;
   const makeLockupData = (id, contentType, commandId) => ({
     contentId: id, contentType: contentType || 'LOCKUP_CONTENT_TYPE_VIDEO',
@@ -132,9 +140,7 @@ const watchBadge = (win, el) => {
   return { observed, stop: () => observer.disconnect() };
 };
 const openMarkBox = async (h) => {
-  const event = new h.win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-  Object.defineProperty(event, 'keyCode', { get: () => 404, configurable: true });
-  dispatchTrusted(h.doc.body, event);
+  trustedKey(h.win, 404);
   await wait(20);
   return h.doc.querySelector('#ytaf-mark-ai');
 };
@@ -541,6 +547,7 @@ function resultItems(win, out, surface) {
     h.close();
   }
 
+  const { pass, fail } = counts();
   console.log(`AI filter tests: ${pass} passed, ${fail} failed`);
   process.exitCode = fail ? 1 : 0;
 })().catch((e) => { console.error(e); process.exit(1); });
