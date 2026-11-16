@@ -181,6 +181,25 @@ export function isGuestMode() {
   }
 }
 
+/**
+ * Whether YouTube's "Autoplay next video" is on for the account in use. The
+ * TV app keeps it by account in AUTONAV_FOR_LIVING_ROOM ({gaia id: bool}),
+ * the guest's in AUTONAV_FOR_SIGN_OUT. Not known (no record, no account):
+ * on, YouTube's default.
+ */
+export function isAutoplayOn() {
+  try {
+    const read = (key) => JSON.parse(window.localStorage.getItem('yt.leanback.default::' + key) || 'null');
+    const identity = read('last-identity-used');
+    const id = identity && identity.data && identity.data.effectiveObfuscatedGaiaId;
+    const record = isGuestMode() ? read('AUTONAV_FOR_SIGN_OUT') : read('AUTONAV_FOR_LIVING_ROOM');
+    const on = record && record.data && record.data[isGuestMode() ? 'guest' : id];
+    return on !== false;
+  } catch {
+    return true;
+  }
+}
+
 // Define Property Descriptor factory to reduce object allocation
 const createDescriptor = (val) => ({ get: () => val });
 

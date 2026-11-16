@@ -284,6 +284,8 @@ const configOptions = new Map([
   ['sbMode_hook', { default: 'seek_bar', desc: 'Hook/Greetings' }],
   ['sbMode_highlight', { default: 'seek_bar', desc: 'Highlight' }],
   ['hideEndcards', { default: false, desc: 'Hide Endcards' }],
+  // ui.js: the comments panel at the end of a watched video, autoplay off only.
+  ['openCommentsAtEnd', { default: false, desc: 'Open Comments at the End of a Video' }],
   // The player responses say whether subtitles start on; this says off.
   ['disableAutoCaptions', { default: false, desc: "Don't Turn On Subtitles by Themselves" }],
   // Drops the dubbed audio tracks from the player response, so the original plays.

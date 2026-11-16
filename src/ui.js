@@ -8,7 +8,7 @@ import { initLogoStyle } from './logo-style.js';
 import { initMathLetters } from './math-letters.js';
 import { initPlaybackSpeed, stepSpeed, resetSpeed } from './playback-speed.js';
 import sponsorBlockUI from './Sponsorblock-UI.js';
-import { sendKey, REMOTE_KEYS, COLOR_CODE_MAP, isGuestMode, invalidateGuestModeCache, isWatchPage, isShortsPage, isSearchPage, SELECTORS, getVideo, SYNTHETIC_KEY_FLAG } from './utils.js';
+import { sendKey, REMOTE_KEYS, COLOR_CODE_MAP, isGuestMode, invalidateGuestModeCache, isWatchPage, isShortsPage, isSearchPage, SELECTORS, getVideo, SYNTHETIC_KEY_FLAG, isAutoplayOn } from './utils.js';
 import { initTrackingBlock, destroyTrackingBlock } from './adblock.js';
 import logoOrangeUrl from './icons/logo-orange.png';
 import logoBlueUrl from './icons/logo-blue.png';
@@ -1122,6 +1122,8 @@ function createOptionsPanel() {
   createAlignedCycleControl('timeRemainingMode', timeRemainingModes),
   createConfigCheckbox('showMostReplayed'),
   createConfigCheckbox('hideEndcards'),
+  createConfigCheckbox('openCommentsAtEnd'),
+  createElement('div', { text: 'Only with autoplay off: with it on, opening them would stop the countdown to the next video', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   createConfigCheckbox('enableScrollSeek'),
   createAlignedCycleControl('seekStep', seekStepModes),
   createConfigCheckbox('enableReturnYouTubeDislike')]));
@@ -1704,6 +1706,39 @@ function toggleCommentsLogic() {
             showNotification(isLiveChat ? 'Live Chat Unavailable' : 'Comments Unavailable');
         }
 }
+
+// Open Comments at the End of a Video. With autoplay on, opening the panel
+// stops the countdown to the next video for good (webOS 25), so it opens only
+// with autoplay off. Not when the viewer pressed a key just before the end
+// (leaving, most likely), and once a video: closed, it stays closed.
+const END_KEY_WINDOW_MS = 3000;
+const END_OPEN_DELAY_MS = 1000;
+let lastViewerKeyAt = 0;
+let commentsOpenedFor = null;
+let endTimer = null;
+window.addEventListener('keydown', (evt) => {
+    if (!evt[SYNTHETIC_KEY_FLAG]) lastViewerKeyAt = Date.now();
+}, true);
+window.addEventListener('yt-player-state-change', ({ detail }) => {
+    const videoId = detail && detail.videoId;
+    if (detail.state === 1 && videoId !== commentsOpenedFor) commentsOpenedFor = null;
+    if (detail.state !== 0 || !configRead('openCommentsAtEnd') || !videoId) return;
+    const endedAt = Date.now();
+    clearTimeout(endTimer);
+    endTimer = setTimeout(() => {
+        endTimer = null;
+        if (lastViewerKeyAt > endedAt - END_KEY_WINDOW_MS) return;
+        if (!isWatchPage() || isShortsPage() || !window.location.hash.includes(videoId)) return;
+        if (commentsOpenedFor === videoId || isEngagementPanelVisible() || isAutoplayOn()) return;
+        // No button (comments turned off, or none): nothing, and no toast.
+        const target = findPlayerButton((d) => isCommentsButton(d) && !d.isDisabled) ||
+            resolveCached('comments', COMMENT_SELECTORS);
+        const button = target && target.closest('yt-button-container, ytlr-button');
+        if (!button) return;
+        commentsOpenedFor = videoId;
+        triggerInternal(button, 'Comments at the end');
+    }, END_OPEN_DELAY_MS);
+});
 
 function toggleDescriptionLogic() {
     let target = findPlayerButton(isDescriptionButton);
