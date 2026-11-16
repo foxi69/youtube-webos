@@ -547,6 +547,22 @@ export function createSpeedController({
   // 60 fps (480p30: 45). Raised as it starts, the <video> stayed at 0 (8 of 8
   // times); raised once it has played (the watch's 2 s), it did not. A watch
   // already on this video (its speed reload) is left to do it.
+  // Once a video: its watch raises it up to three times in 25 s, and a fall
+  // after that is the line's (a slow one), not the start's. Watched again at
+  // every later play, it was raised, and so loaded again, over and over.
+  // Once a playback, though, not once an id: another video played in
+  // between (any quality), the same video opened again gets its turn again.
+  let nextCappedVideoId = null;
+  let lastPlayedVideoId = null;
+  /** Every play, at any speed: a different video ends the last one's once. */
+  function notePlay(player) {
+    let videoId;
+    try { videoId = player.getVideoData().video_id; } catch { return; }
+    if (videoId && videoId !== lastPlayedVideoId) {
+      lastPlayedVideoId = videoId;
+      nextCappedVideoId = null;
+    }
+  }
   function capNext(player) {
     if (!belowCap(player)) return;
     let videoId = null;
@@ -559,6 +575,8 @@ export function createSpeedController({
     if (keptCaptions && !keptCaptions.landed && keptCaptions.videoId === watchedVideoId && watchedVideoId !== videoId) {
       keptCaptions = null;
     }
+    if (videoId === nextCappedVideoId) return;
+    nextCappedVideoId = videoId;
     if (stopPositionWatch) stopPositionWatch();
     watchedVideoId = videoId;
     // No position to restore (null): a seek the viewer makes as it starts is theirs.
@@ -696,6 +714,7 @@ export function createSpeedController({
     capQuality,
     setRange,
     capNext,
+    notePlay,
     keepsQuality,
     clearQualityPick,
     leaveVideo,
@@ -830,11 +849,13 @@ export function initPlaybackSpeed() {
     // quality YouTube picks: 2160p on a 4K TV, capped once it plays, or one
     // below the cap (capNext).
     window.addEventListener('yt-player-state-change', ({ detail }) => {
-      if (!detail || detail.state !== 1 || !speedCapsQuality()) return;
+      if (!detail || detail.state !== 1) return;
       const player =
         document.getElementById(SELECTORS.PLAYER_ID) ||
         document.querySelector('.html5-video-player');
       if (!player) return;
+      speedInstance.controller.notePlay(player);
+      if (!speedCapsQuality()) return;
       if (ABOVE_1080.includes(player.getPlaybackQuality())) {
         speedInstance.controller.setRange(player, speedInstance.controller.capQuality());
       } else {
