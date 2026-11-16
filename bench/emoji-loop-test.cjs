@@ -8,39 +8,27 @@
  * many mutation records the emoji observer generates.
  *
  * On a page nothing is touching, a correct implementation converges to zero.
+ *
+ * Usage: node bench/emoji-loop-test.cjs [bundle] [frames]   (the legacy bundle)
  */
-const fs = require('fs');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent } = require('./chrome38-env.cjs');
+const { bootPage } = require('./harness.cjs');
 
-const bundlePath = process.argv[2] || 'dist/webOSUserScripts/userScript.js';
+// The second argument is the number of frames here, not the build: this is
+// always the legacy bundle (the emoji fix is only in it).
 const FRAMES = +(process.argv[3] || 60);
 
-const dom = new JSDOM(
-  '<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app></ytlr-app></body></html>',
-  { runScripts: 'outside-only', url: 'https://www.youtube.com/tv',
-    virtualConsole: new VirtualConsole(), pretendToBeVisual: true }
-);
-const win = dom.window;
-setUserAgent(win, UA.webos3);
-win.launchParams = '{}';
-win.XMLHttpRequest = class { open(){} send(){} setRequestHeader(){} getResponseHeader(){return null;} addEventListener(){} };
-
-// Drive rAF manually so "one frame" is deterministic.
-let rafQueue = [];
-win.requestAnimationFrame = (cb) => { rafQueue.push(cb); return rafQueue.length; };
-win.cancelAnimationFrame = () => {};
-function pumpFrame() {
-  const q = rafQueue; rafQueue = [];
-  for (const cb of q) cb(Date.now());
-}
-
-win.localStorage.setItem('ytaf-configuration', win.JSON.stringify({
-  enableLegacyEmojiFix: true, enableAdBlock: true, enableSponsorBlock: false,
-  enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false
-}));
-applyChrome38Downgrade(win);
-win.eval(fs.readFileSync(bundlePath, 'utf8'));
+// webOS 3 in the Chrome 38 environment as it is, without Element#remove.
+// rAF is driven manually (pumpFrame) so "one frame" is deterministic.
+const { win, frames } = bootPage({
+  modern: false,
+  raf: 'manual',
+  config: {
+    enableLegacyEmojiFix: true, enableAdBlock: true, enableSponsorBlock: false,
+    enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false
+  },
+  restoreRemove: false
+});
+const pumpFrame = frames.pump;
 
 setTimeout(() => {
   // Independent observer that counts everything the emoji observer would see.

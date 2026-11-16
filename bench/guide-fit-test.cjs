@@ -3,17 +3,16 @@
  * all (the check every 2 s forced a layout each time); a guide YouTube makes
  * again takes the old one's observer with it; on, an open guide fits the page.
  *
- * Usage: node bench/guide-fit-test.cjs [bundle]
+ * Usage: node bench/guide-fit-test.cjs [bundle] [legacy|modern]
  */
-const fs = require('fs');
 const { JSDOM, VirtualConsole } = require('jsdom');
-const { UA, setUserAgent, applyChrome87Downgrade } = require('./chrome38-env.cjs');
+const { applyChrome87Downgrade } = require('./chrome38-env.cjs');
+const { flavorFromArgs, readBundle, silentXHR, wait, UA, setUserAgent } = require('./harness.cjs');
 
-const bundlePath = process.argv[2] || 'dist/webOSUserScripts/userScript.js';
-// `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
-// with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
-const modern = process.argv[3] === 'modern';
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment.
+// The legacy one runs with no environment applied (see boot), so the page is
+// set up here and not by bootPage; the user agent is webOS 23 on both.
+const { modern } = flavorFromArgs();
 
 let passed = 0;
 let failed = 0;
@@ -43,7 +42,7 @@ function boot(cfg, width) {
   setUserAgent(win, UA.webos23);
   if (modern) applyChrome87Downgrade(win);
   win.launchParams = '{}';
-  win.XMLHttpRequest = class { open() {} send() {} setRequestHeader() {} getResponseHeader() { return null; } addEventListener() {} };
+  win.XMLHttpRequest = silentXHR();
   win.fetch = () => new Promise(() => {});
   win.localStorage.setItem('ytaf-configuration', JSON.stringify(Object.assign({
     enableAdBlock: false, checkForUpdates: false, showWhatsNew: false
@@ -60,26 +59,26 @@ function boot(cfg, width) {
   const guide = guideEl(win, width);
   win.document.querySelector('ytlr-app').appendChild(guide);
   // No Chromium 38 downgrade: it takes ResizeObserver, and the feature with it.
-  win.eval(fs.readFileSync(bundlePath, 'utf8'));
+  win.eval(readBundle());
   return { win, guide, observers, errors };
 }
 
 (async () => {
   {
     const { win, guide, observers } = boot({ fitPageBesideGuide: false }, 400);
-    await sleep(500);
+    await wait(500);
     t('off: the guide is never measured', guide.measured === 0, guide.measured + ' measurements');
     t('off: the page is left alone', !win.document.documentElement.hasAttribute('data-ytaf-guide-open'));
     // YouTube makes the guide again.
     guide.parentNode.removeChild(guide);
     win.document.querySelector('ytlr-app').appendChild(guideEl(win, 156));
-    await sleep(300);
+    await wait(300);
     const live = observers.filter((o) => o.live).length;
     t('a guide made again: only its own observer is left', observers.length === 2 && live === 1, `${observers.length} observers, ${live} live`);
   }
   {
     const { win, errors } = boot({ fitPageBesideGuide: true }, 400);
-    await sleep(300);
+    await wait(300);
     t('on: an open guide fits the page beside it', win.document.documentElement.hasAttribute('data-ytaf-guide-open'));
     t('no jsdomError', errors.length === 0, errors[0]);
   }

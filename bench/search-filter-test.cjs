@@ -4,42 +4,30 @@
  * one that carries params, other request bodies and Any Time are left alone,
  * and player requests still get isInlinePlaybackNoAd.
  *
- * Usage: node bench/search-filter-test.cjs [dist/webOSUserScripts/userScript.js]
+ * Usage: node bench/search-filter-test.cjs [bundle] [legacy|modern]
  */
-const fs = require('fs');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent, applyChrome87Downgrade } = require('./chrome38-env.cjs');
+const { createReporter, bootPage } = require('./harness.cjs');
 
-const bundlePath = process.argv[2] || 'dist/webOSUserScripts/userScript.js';
-// `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
-// with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
-const modern = process.argv[3] === 'modern';
+const { t, done } = createReporter();
 
+// The bundle of the command line: `modern` is the modern one (webOS 22 and
+// newer), in a Chrome 87 environment with a webOS 23 user agent, instead of
+// the legacy one in a Chrome 38 one. Only page script errors are collected,
+// and the environment is left without Element#remove.
 function boot(searchUploadDate, enableAdBlock = true) {
-  const errors = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => errors.push(e.message));
-  const dom = new JSDOM('<!doctype html><html><body class="WEB_PAGE_TYPE_SEARCH"><ytlr-app></ytlr-app></body></html>',
-    { runScripts: 'outside-only', url: 'https://www.youtube.com/tv', virtualConsole: vc, pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, modern ? UA.webos23 : UA.webos3);
-  win.launchParams = '{}';
-  win.XMLHttpRequest = class { open(){} send(){} setRequestHeader(){} getResponseHeader(){return null;} addEventListener(){} };
-  win.localStorage.setItem('ytaf-configuration', win.JSON.stringify({
-    enableAdBlock, enableLegacyEmojiFix: false, enableSponsorBlock: false,
-    enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false,
-    searchUploadDate
-  }));
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  win.eval(fs.readFileSync(bundlePath, 'utf8'));
+  const { win, errors } = bootPage({
+    bodyClass: 'WEB_PAGE_TYPE_SEARCH',
+    config: {
+      enableAdBlock, enableLegacyEmojiFix: false, enableSponsorBlock: false,
+      enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false,
+      searchUploadDate
+    },
+    consoleErrors: false,
+    restoreRemove: false
+  });
   return { win, errors, send: (body) => JSON.parse(win.JSON.stringify(body)) };
 }
 
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra ? '\n     ' + extra : '')); }
-};
 const context = { client: { clientName: 'TVHTML5', clientVersion: '7.20250101.00.00' } };
 
 {
@@ -77,5 +65,4 @@ const context = { client: { clientName: 'TVHTML5', clientVersion: '7.20250101.00
   t('Any Time: no filter', !('params' in send({ context, query: 'nasa' })));
 }
 
-console.log(`\n${pass} passed, ${fail} failed`);
-process.exit(fail ? 1 : 0);
+done();
