@@ -76,9 +76,8 @@ function boot(cfg, early) {
     consoleErrors: false,
     // The legacy environment has no Element#remove here.
     restoreRemove: false,
+    raf: 'none',
     setup: (w) => {
-      w.requestAnimationFrame = () => 0;
-      w.cancelAnimationFrame = () => {};
       // The first home screen, parsed by YouTube's page before the userScript ran.
       if (early) w.pendingEarlyBrowse = w.Promise.resolve({ response: w.JSON.parse(w.JSON.stringify(early)) });
     },

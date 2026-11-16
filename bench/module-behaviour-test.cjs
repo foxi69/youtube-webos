@@ -12,9 +12,7 @@ const { createReporter, bootPage, wait } = require('./harness.cjs');
 
 function boot(cfg, html, url) {
   const probed = [];
-  // The frames wait until the test runs them (pump), each called with 0.
-  let rafQ = [];
-  const { win } = bootPage({
+  const { win, frames } = bootPage({
     html,
     url,
     xhr: class {
@@ -25,11 +23,12 @@ function boot(cfg, html, url) {
       enableAdBlock: true, enableLegacyEmojiFix: false, enableSponsorBlock: false,
       enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false
     }, cfg),
+    // The frames wait until the test runs them (pump), each called with 0.
+    raf: 'manual',
+    frameTime: 0,
     // Before the environment is applied: the Chrome 38 one takes this fetch
     // away again, so only the modern bundle sees it.
     setup(win) {
-      win.requestAnimationFrame = (cb) => { rafQ.push(cb); return rafQ.length; };
-      win.cancelAnimationFrame = () => {};
       win.fetch = () => Promise.reject(new Error('offline'));
       win.Element.prototype.getBoundingClientRect = function () {
         return { top: 0, left: 0, right: 200, bottom: 100, width: 200, height: 100, x: 0, y: 0 };
@@ -46,7 +45,7 @@ function boot(cfg, html, url) {
     // to the harness.
     restoreRemove: false
   });
-  return { win, probed, pump: () => { const q = rafQ; rafQ = []; for (const cb of q) cb(0); } };
+  return { win, probed, pump: frames.pump };
 }
 
 const { t, run } = createReporter();

@@ -22,10 +22,7 @@ function boot(cfg, storage = {}) {
     config: cfg,
     storage,
     // No frame ever runs.
-    setup(win) {
-      win.requestAnimationFrame = () => 0;
-      win.cancelAnimationFrame = () => {};
-    },
+    raf: 'none',
     fetch: () => Promise.reject(new Error('offline')),
     // The legacy page stays without Element#remove, as before this test moved
     // to the harness.

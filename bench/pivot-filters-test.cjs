@@ -31,11 +31,8 @@ function boot(cfg, aiIds) {
     // Videos ai-content-filter.js found labelled "AI" (ai-video-store.js).
     storage: { 'ytaf-ai-videos': JSON.stringify((aiIds || []).map((id) => ({ id, expiresAt: Date.now() + 864e5 }))) },
     // No frame ever runs.
-    setup(win) {
-      win.requestAnimationFrame = () => 0;
-      win.cancelAnimationFrame = () => {};
-      NS = win.JSON.stringify;
-    },
+    raf: 'none',
+    setup(win) { NS = win.JSON.stringify; },
     fetch: () => Promise.reject(new Error('offline')),
     // The legacy page stays without Element#remove, as before this test moved
     // to the harness.

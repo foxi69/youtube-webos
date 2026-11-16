@@ -37,13 +37,10 @@ function boot(cfg, storage = {}, tectonic) {
     consoleErrors: false,
     // The legacy environment has no Element#remove here.
     restoreRemove: false,
+    raf: 'none',
     // Before the environment of the build is applied: on the legacy build
     // this fetch is taken away with jsdom's, and the bundle's polyfill runs.
-    setup: (w) => {
-      w.requestAnimationFrame = () => 0;
-      w.cancelAnimationFrame = () => {};
-      w.fetch = () => Promise.reject(new Error('offline'));
-    },
+    setup: (w) => { w.fetch = () => Promise.reject(new Error('offline')); },
     beforeEval: (w) => { if (tectonic) w.tectonicConfig = tectonic; }
   });
   return { win, errors };

@@ -30,7 +30,9 @@ async function run(scenario) {
     consoleErrors: false,
     restoreRemove: false,
     xhr: failingXHR(),
+    // The frames run when the test pumps them, each with a time of 0.
     raf: 'manual',
+    frameTime: 0,
     config: {
       forceHighResVideo: true, enableAdBlock: false, enableSponsorBlock: false,
       enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false
