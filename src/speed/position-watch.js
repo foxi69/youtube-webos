@@ -39,6 +39,10 @@ const STALL_BACK_S = 0.5;
 // RESUME_TICKS (3 s) is over four times the 0.7 s measured.
 const RESUME_TICKS = 12;
 const RESUME_MIN_S = 0.5;
+// After a seek of the watch's own (the reload did not start where it should
+// go on), the place to come back to is that seek's target; the check waits
+// this many ticks first, for the seek to land, so it is not sent twice.
+const RESUME_HOLD_TICKS = 2;
 // The last position this close to the end, then near 0: the video looped.
 const LOOP_END_S = 1;
 
@@ -68,6 +72,7 @@ export function watchPosition(win, player, at, onPlaying, quality, targetId, onE
   let resumeAt = null;
   let resumeTicks = 0;
   let resumeKeys = 0;
+  let resumeHold = 0;
   // The position on the tick before, to tell a loop from a reload.
   let lastNow = null;
   const keys = () => (quality && typeof quality.keys === 'function' ? quality.keys() : 0);
@@ -77,11 +82,12 @@ export function watchPosition(win, player, at, onPlaying, quality, targetId, onE
   };
   // keysBefore: the count before the cap was set, so a key pressed while it
   // is set is the viewer's.
-  const armResume = (pos, keysBefore) => {
+  const armResume = (pos, keysBefore, hold) => {
     if (onShorts()) return;
     resumeAt = pos;
     resumeTicks = 0;
     resumeKeys = keysBefore;
+    resumeHold = hold || 0;
   };
   const looped = (now) => {
     if (lastNow === null || typeof player.getDuration !== 'function') return false;
@@ -128,6 +134,9 @@ export function watchPosition(win, player, at, onPlaying, quality, targetId, onE
     // No video named: it may be another one already, so nothing is corrected
     // on this tick; the check goes on.
     if (namesVideos && !id) {
+      // The wait for the cap's reload runs on meanwhile: it ends on time, and
+      // nothing is moved while no video is named.
+      if (resumeAt !== null && ++resumeTicks > RESUME_TICKS) resumeAt = null;
       if (++ticks >= WATCH_TICKS) end();
       return;
     }
@@ -135,10 +144,14 @@ export function watchPosition(win, player, at, onPlaying, quality, targetId, onE
     if (resumeAt !== null) {
       if (++resumeTicks > RESUME_TICKS || keys() !== resumeKeys || looped(now) || onShorts()) {
         resumeAt = null;
+      } else if (resumeHold > 0) {
+        resumeHold--;
       } else if (state !== 1 && now <= OFF_BY_S && resumeAt - now > RESUME_MIN_S) {
-        // The cap's reload started it over: back where it was set.
-        player.seekTo(resumeAt, true);
+        // The cap's reload started it over: back where it was set. Once: a
+        // player that cannot seek is not asked again on every tick.
+        const to = resumeAt;
         resumeAt = null;
+        try { player.seekTo(to, true); } catch { /* left where it is */ }
       }
     }
     lastNow = now;
@@ -150,9 +163,12 @@ export function watchPosition(win, player, at, onPlaying, quality, targetId, onE
         const target = at !== null && Math.abs(now - at) > OFF_BY_S ? at : null;
         if (target !== null) player.seekTo(target, true);
         const keysBefore = keys();
-        // onPlaying may set the cap (playback-speed.js), which can reload. Not
-        // armed after a seek of our own: its position is not known yet.
-        if (onPlaying() === true && quality && target === null) armResume(now, keysBefore);
+        // onPlaying may set the cap (playback-speed.js), which can reload.
+        // After a seek of our own the place to come back to is its target.
+        if (onPlaying() === true && quality) {
+          if (target === null) armResume(now, keysBefore);
+          else armResume(target, keysBefore, RESUME_HOLD_TICKS);
+        }
       }
       low = quality && quality.isLow() ? low + 1 : 0;
       if (low >= LOW_TICKS && caps < MAX_CAPS) {

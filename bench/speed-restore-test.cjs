@@ -244,6 +244,102 @@ runTest(() => import(MODULE).then(({ watchPosition }) => {
     t('no cap set: a loop after a speed change is not moved on', s.player.seeks.length === 0, s.player.seeks.join());
   }
   {
+    // The same two with the page buffering at 0 right after, as a reload shows
+    // it: a wait that was started all the same would move it now.
+    const s = setup({ state: 1, t: 3, vt: 3 });
+    let caps = 0;
+    watchPosition(s.win, s.player, null, () => {}, { isLow: () => caps === 0, setCap: () => { caps++; }, keys: () => 0 }, 'abcdefghijk');
+    s.run(2250);
+    s.player.state = 3;
+    s.player.time = 0;
+    s.run(1000);
+    t('a cap call that set no range: buffering at 0 after it is not moved', caps === 1 && s.player.seeks.length === 0,
+      `caps ${caps}, seeks ${s.player.seeks.join()}`);
+    const b = setup({ state: 1, t: 40, vt: 40 });
+    watchPosition(b.win, b.player, 40, () => {}, { isLow: () => false, setCap: () => {}, keys: () => 0 }, 'abcdefghijk');
+    b.run(500);
+    b.player.state = 3;
+    b.player.time = 0;
+    b.run(1000);
+    t('no cap set at the first play: buffering at 0 after it is not moved', b.player.seeks.length === 0, b.player.seeks.join());
+  }
+  {
+    // The video not named for longer than the wait (4 s), then back at 0 and
+    // buffering: the wait ran out meanwhile.
+    const s = setup({ state: 1, t: 3, vt: 3 });
+    let caps = 0;
+    watchPosition(s.win, s.player, null, () => {}, { isLow: () => caps === 0, setCap: () => { caps++; return true; }, keys: () => 0 }, 'abcdefghijk');
+    s.run(2250);
+    const id = s.player.videoId;
+    s.player.videoId = null;
+    s.run(4000);
+    s.player.videoId = id;
+    s.player.state = 3;
+    s.player.time = 0;
+    s.run(1000);
+    t('the video not named for longer than the wait: nothing is moved after it', caps === 1 && s.player.seeks.length === 0,
+      `caps ${caps}, seeks ${s.player.seeks.join()}`);
+    // Not named for a second only: the reload within the wait is still put back.
+    const b = setup({ state: 1, t: 3, vt: 3 });
+    let capsB = 0;
+    watchPosition(b.win, b.player, null, () => {}, { isLow: () => capsB === 0, setCap: () => { capsB++; return true; }, keys: () => 0 }, 'abcdefghijk');
+    b.run(2250);
+    const at = b.player.time;
+    b.player.videoId = null;
+    b.run(1000);
+    b.player.videoId = 'abcdefghijk';
+    b.player.state = 3;
+    b.player.time = 0;
+    b.run(500);
+    t('...not named for a second: the start over is still put back', b.player.seeks.join() === String(at), b.player.seeks.join());
+  }
+  {
+    // A player whose seekTo throws: asked once, and the check goes on.
+    const s = setup({ state: 1, t: 3, vt: 3 });
+    let caps = 0;
+    let asked = 0;
+    s.player.seekTo = () => { asked++; throw new Error('no seek'); };
+    let threw = null;
+    const watch = watchPosition(s.win, s.player, null, () => {}, { isLow: () => caps === 0, setCap: () => { caps++; return true; }, keys: () => 0 }, 'abcdefghijk');
+    s.run(2250);
+    s.player.state = 3;
+    s.player.time = 0;
+    try { s.run(2000); } catch (e) { threw = e; }
+    t('a seek that throws is asked for once, and the check goes on', !threw && asked === 1 && watch.running() === true,
+      `threw ${threw && threw.message}, asked ${asked}`);
+  }
+  {
+    // The speed change's reload started at 0 instead of 5 s: the watch seeks to
+    // 5 s, the cap set as it plays reloads to 0 again: back to 5 s.
+    const s = setup({ state: 1, t: 0.1, vt: 0.1 });
+    watchPosition(s.win, s.player, 5, () => true, { isLow: () => false, setCap: () => true, keys: () => 0 }, 'abcdefghijk');
+    s.run(250);
+    t('first play away from its place: moved there', s.player.seeks.join() === '5', s.player.seeks.join());
+    // The seek still under way on the next two ticks (buffering near 0): not sent again.
+    s.player.state = 3;
+    s.run(500);
+    t('...the seek under way is not sent a second time', s.player.seeks.join() === '5', s.player.seeks.join());
+    // It landed and plays; then the cap's reload starts it over.
+    s.player.state = 1;
+    s.player.time = 5.2;
+    s.run(250);
+    s.player.state = 3;
+    s.player.time = 0;
+    s.run(500);
+    t('...the cap\'s reload after it is put back to the same place', s.player.seeks.join() === '5,5', s.player.seeks.join());
+    // With no cap set at that first play, nothing comes after the first seek.
+    const b = setup({ state: 1, t: 0.1, vt: 0.1 });
+    watchPosition(b.win, b.player, 5, () => false, { isLow: () => false, setCap: () => false, keys: () => 0 }, 'abcdefghijk');
+    b.run(250);
+    b.player.state = 1;
+    b.player.time = 5.2;
+    b.run(250);
+    b.player.state = 3;
+    b.player.time = 0;
+    b.run(1000);
+    t('...and with no cap set, a start over after it is left alone', b.player.seeks.join() === '5', b.player.seeks.join());
+  }
+  {
     // The cap set (a range really asked for), no reload, then it loops on playing.
     const s = setup({ state: 1, t: 0.2, vt: 0.2 });
     let caps = 0;
