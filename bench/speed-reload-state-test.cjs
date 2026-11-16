@@ -502,6 +502,32 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
     win.close();
   }
   {
+    // A next video raised once; when its watch is over (25 s) it falls again
+    // (a slow line) and a pause and play follow: left alone, not raised and
+    // so loaded again at every play.
+    const { p, speed, log, emit, pump, setQuality } = boot(0);
+    speed.setSpeed(1.5, { immediate: true });
+    await sleep(900);
+    p.videoId = 'nextvideo02';
+    setQuality('large');
+    log.ranges.length = 0;
+    emit(-1); emit(3); emit(1); pump(); pump();
+    for (let i = 0; i < 80 && !log.ranges.length; i++) await sleep(50);
+    t('a next video below the cap is raised once it has played', log.ranges.join() === 'hd1080', log.ranges.join());
+    await sleep(25500);
+    setQuality('large');
+    log.ranges.length = 0;
+    emit(2); emit(1); pump(); pump();
+    await sleep(2800);
+    t('fallen again after its watch, a later play does not raise it once more', log.ranges.length === 0, log.ranges.join());
+    // Another video gets its own turn.
+    p.videoId = 'nextvideo03';
+    setQuality('large');
+    emit(-1); emit(3); emit(1); pump(); pump();
+    for (let i = 0; i < 80 && !log.ranges.length; i++) await sleep(50);
+    t('the video after it is raised in its turn', log.ranges.join() === 'hd1080', log.ranges.join());
+  }
+  {
     // A 720p pick; the reloaded video plays, then falls to 480p while its watch runs.
     const { win, speed, log, setQuality } = boot(720);
     speed.setSpeed(1.5, { immediate: true });

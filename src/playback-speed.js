@@ -547,6 +547,10 @@ export function createSpeedController({
   // 60 fps (480p30: 45). Raised as it starts, the <video> stayed at 0 (8 of 8
   // times); raised once it has played (the watch's 2 s), it did not. A watch
   // already on this video (its speed reload) is left to do it.
+  // Once a video: its watch raises it up to three times in 25 s, and a fall
+  // after that is the line's (a slow one), not the start's. Watched again at
+  // every later play, it was raised, and so loaded again, over and over.
+  let nextCappedVideoId = null;
   function capNext(player) {
     if (!belowCap(player)) return;
     let videoId = null;
@@ -554,6 +558,8 @@ export function createSpeedController({
     // Unnamed, it may be the reload's video: the next play tries again.
     if (!videoId) return;
     if (stopPositionWatch && stopPositionWatch.running() && watchedVideoId === videoId) return;
+    if (videoId === nextCappedVideoId) return;
+    nextCappedVideoId = videoId;
     if (stopPositionWatch) stopPositionWatch();
     watchedVideoId = videoId;
     // No position to restore (null): a seek the viewer makes as it starts is theirs.
