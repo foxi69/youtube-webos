@@ -558,6 +558,11 @@ export function createSpeedController({
     // Unnamed, it may be the reload's video: the next play tries again.
     if (!videoId) return;
     if (stopPositionWatch && stopPositionWatch.running() && watchedVideoId === videoId) return;
+    // A stop by hand does not call the watch's onEnd: the subtitles of the
+    // replaced video's reload that never played are dropped here instead.
+    if (keptCaptions && !keptCaptions.landed && keptCaptions.videoId === watchedVideoId && watchedVideoId !== videoId) {
+      keptCaptions = null;
+    }
     if (videoId === nextCappedVideoId) return;
     nextCappedVideoId = videoId;
     if (stopPositionWatch) stopPositionWatch();

@@ -157,6 +157,28 @@ try:
 except urllib.error.HTTPError as err:
     check('new_commits: a 502 on one branch skips it', False, f'raised {err.code}')
 
+# --- new_commits(): a branch with no commit in common with our main is read by its own commits ---
+api = Api({
+    '/repos/dev/youtube-webos/branches': [{'name': 'main'}, {'name': 'same'}],
+    # No route for main's compare: a 404 (None), as GitHub answers for unrelated histories.
+    '/repos/dev/youtube-webos/commits': lambda params: [
+        commit('b' * 40, 'Rewritten history: a new fix'),
+        commit('c' * 40, 'Ours already'),
+        commit('d' * 40, 'Seen before'),
+    ] if params.get('sha') == 'main' else None,
+    '/repos/me/youtube-webos/compare/main...dev:same': {'ahead_by': 0, 'total_commits': 0, 'commits': []},
+})
+fw.request = api
+known = {('d' * 40)[:12]: '2026-11-01'}
+found = fw.new_commits(FORK, NOW - dt.timedelta(days=30), set(), known, '2026-11-11', {'Ours already'})
+check('new_commits: an unrelated branch is read by its own commits',
+      [c['title'] for c in found] == ['Rewritten history: a new fix'], found)
+asked = [c for c in api.calls if c[1] == '/repos/dev/youtube-webos/commits']
+check('new_commits: ...asked since the cutoff, for that branch only',
+      len(asked) == 1 and asked[0][3].get('sha') == 'main' and asked[0][3].get('since') == '2026-10-12T12:00:00Z', asked)
+check('new_commits: ...and a branch that compares with nothing ahead asks for none',
+      not any(c[3] and c[3].get('sha') == 'same' for c in asked), asked)
+
 # --- a fork that could not be read in full is read again in the next run ---
 check('new_commits: the fork with the failed compare is kept for a retry', fw.FAILED == {'dev/youtube-webos'}, fw.FAILED)
 api = Api({('PATCH', '/repos/me/youtube-webos/issues/1'): {}})
