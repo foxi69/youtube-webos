@@ -16,15 +16,12 @@
 const path = require('path');
 const { pathToFileURL } = require('url');
 const { JSDOM } = require('jsdom');
+const { createReporter } = require('./harness.cjs');
 
 const MODULE = pathToFileURL(path.resolve(__dirname, '..', 'src/math-letters.js')).href;
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra !== undefined ? '\n     ' + extra : '')); }
-};
+const { t, run } = createReporter();
 
 let fresh = 0;
 /** A jsdom page as the globals the module sees, and the module loaded anew. */
@@ -55,7 +52,7 @@ function watchWrites(win) {
 }
 const hasMath = (s) => s.indexOf('\uD835') !== -1;
 
-(async () => {
+run(async () => {
   // ---- What is replaced, what is not ----
   {
     const { doc, init } = await load(
@@ -185,7 +182,4 @@ const hasMath = (s) => s.indexOf('\uD835') !== -1;
     t('no MutationObserver: does nothing, throws nothing',
       !threw && doc.getElementById('p').textContent === '\u{1D400}', threw && threw.message);
   }
-
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})();
+});

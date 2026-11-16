@@ -12,18 +12,13 @@
  * navigates to is read from jsdom's Location, whose navigation the test
  * replaces with a recorder (jsdom itself does not navigate).
  */
-const fs = require('fs');
 const path = require('path');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, applyChrome87Downgrade, UA, setUserAgent } = require('./chrome38-env.cjs');
+const { createReporter, flavorFromArgs, readBundle, bootPage, wait: sleep } = require('./harness.cjs');
 
-const ROOT = path.resolve(__dirname, '..');
-const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
 // `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
 // with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
-const modern = process.argv[3] === 'modern';
-const code = fs.readFileSync(bundlePath, 'utf8');
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const { modern } = flavorFromArgs();
+const code = readBundle();
 
 // jsdom's wrapper -> implementation map (its path moved in jsdom 30), and the
 // URL serializer of the whatwg-url copy jsdom uses.
@@ -35,45 +30,35 @@ function jsdomUtils() {
 }
 const { serializeURL } = require(require.resolve('whatwg-url', { paths: [path.dirname(require.resolve('jsdom/package.json'))] }));
 
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra !== undefined ? '\n     ' + extra : '')); }
-};
+const { t, run } = createReporter();
 
 const ENV = ['env_forceFullAnimation', 'env_enableWebSpeech', 'env_enableVoice'];
 
 /** The bundle started with `launchParams` (a string, or undefined for none). */
 function boot(launchParams, cfg = {}) {
-  const errors = [];
   const logs = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => errors.push('jsdomError: ' + e.message));
-  vc.on('error', (...a) => errors.push('console.error: ' + a.join(' ')));
   // Objects as JSON, so a value inside a logged object shows in the privacy check.
   const asText = (v) => {
     if (v === null || typeof v !== 'object') return String(v);
     try { return JSON.stringify(v); } catch { return String(v); }
   };
-  for (const level of ['info', 'log', 'warn']) vc.on(level, (...a) => logs.push(level + ' ' + a.map(asText).join(' ')));
-  const dom = new JSDOM('<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app></ytlr-app></body></html>',
-    { runScripts: 'outside-only', url: 'https://www.youtube.com/tv', virtualConsole: vc, pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, modern ? UA.webos23 : UA.webos3);
-  if (launchParams !== undefined) win.launchParams = launchParams;
-  win.XMLHttpRequest = class { open() {} send() {} setRequestHeader() {} getResponseHeader() { return null; } addEventListener() {} };
-  win.fetch = () => new Promise(() => {});
-  win.requestAnimationFrame = (cb) => win.setTimeout(() => cb(Date.now()), 0);
-  win.cancelAnimationFrame = () => {};
-  win.localStorage.setItem('ytaf-configuration', JSON.stringify(Object.assign({
-    enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false, enableDeArrow: false,
-    upgradeThumbnails: false, enableAutoLogin: false, checkForUpdates: false, showWhatsNew: false
-  }, cfg)));
+  const keep = (level) => (...a) => logs.push(level + ' ' + a.map(asText).join(' '));
   const navigations = [];
-  jsdomUtils().implForWrapper(win.location)._locationObjectSetterNavigate = (url) => { navigations.push(serializeURL(url)); };
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  win.Element.prototype.remove = function remove() { if (this.parentNode) this.parentNode.removeChild(this); };
-  win.eval(code);
+  const { win, errors } = bootPage({
+    code,
+    console: { info: keep('info'), log: keep('log'), warn: keep('warn') },
+    launchParams: launchParams === undefined ? null : launchParams,
+    raf: 'timer',
+    config: Object.assign({
+      enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false, enableDeArrow: false,
+      upgradeThumbnails: false, enableAutoLogin: false, checkForUpdates: false, showWhatsNew: false
+    }, cfg),
+    setup(win) {
+      // Set before the environment, which takes it away again on the legacy build.
+      win.fetch = () => new Promise(() => {});
+      jsdomUtils().implForWrapper(win.location)._locationObjectSetterNavigate = (url) => { navigations.push(serializeURL(url)); };
+    }
+  });
 
   // A relaunch: the address it navigated to, or null for none.
   const relaunch = (detail) => {
@@ -89,7 +74,7 @@ const params = (url) => (url ? [...url.searchParams].map(([k, v]) => `${k}=${v}`
 const yt = (url) => !!url && url.origin === 'https://www.youtube.com' && url.pathname === '/tv' && url.hash === '#/';
 const envFlags = () => ENV.map((k) => `${k}=1`);
 
-(async () => {
+run(async () => {
   const f = modern ? 'modern' : 'legacy';
   const n = (s) => `${f}: ${s}`;
 
@@ -207,7 +192,4 @@ const envFlags = () => ENV.map((k) => `${k}=1`);
     const warnings = e.logs.filter((l) => /Failed to parse launchParams/.test(l)).length;
     t(n('...warned once, not on every read'), warnings === 1, String(warnings));
   }
-
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})().catch((e) => { console.log('FAIL harness: ' + (e && e.stack || e)); process.exit(1); });
+});
