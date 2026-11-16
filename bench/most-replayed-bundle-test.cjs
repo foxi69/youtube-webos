@@ -158,7 +158,7 @@ function toggleSetting(win) {
 
   // ---- The graph for the playing video ----
   {
-    const env = boot({ answers: { [A]: heatmap(VALUES_A), [B]: heatmap(VALUES_B), [D]: NONE, [E]: heatmap(VALUES_B), [F]: NONE } });
+    const env = boot({ answers: { [A]: heatmap(VALUES_A), [B]: heatmap(VALUES_B), [E]: heatmap(VALUES_B), [F]: NONE } });
     const { doc, win, lookups, state, box, rule } = env;
     const host = doc.querySelector(HOST);
     const track = host.querySelector('[idomkey="progress-bar"]');
@@ -229,10 +229,14 @@ function toggleSetting(win) {
     // The viewer moves on before C's answer: it is not drawn for D.
     state.id = D;
     await wait(TICK);
+    // D's own answer is held back too, so that it cannot clear a stale C graph.
     env.answer(lookups[before], heatmap(VALUES_A));
     await wait(TICK);
     t(n('an answer that comes after the video changed is not drawn'), rule() === '', rule());
-    t(n('a video without a heatmap: nothing drawn'), lookups[lookups.length - 1].videoId === D && rule() === '', rule());
+    const forD = lookups[lookups.length - 1];
+    env.answer(forD, NONE);
+    await wait(TICK);
+    t(n('a video without a heatmap: nothing drawn'), forD.videoId === D && rule() === '', rule());
 
     state.id = B;
     await wait(TICK * 2);

@@ -202,9 +202,11 @@ const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-d
     }
     const el = render(win, ids[0], 'Loud ' + ids[0]);
     const first = parse(browse(ids.map((id) => tile(id, 'Loud ' + id))));
-    await waitFor(() => itemsOf(first).every((item) => item.tileRenderer.header.tileHeaderRenderer.thumbnail.thumbnails[0].url.includes('COPY')), 3000);
+    const thumbUrls = () => itemsOf(first).map((item) => item.tileRenderer.header.tileHeaderRenderer.thumbnail.thumbnails[0].url);
+    const allCopied = await waitFor(() => thumbUrls().length === 4 && thumbUrls().every((url) => url.includes('COPY')), 3000);
     await waitFor(() => shownTitle(el) === 'Calm ' + ids[0], 1000);
-    t('four videos decided, their copies kept', shownTitle(el) === 'Calm ' + ids[0], shownTitle(el));
+    t('four videos decided, their copies kept', allCopied && shownTitle(el) === 'Calm ' + ids[0],
+      `${shownTitle(el)} / ${thumbUrls().map((url) => url.slice(0, 40)).join(' ')}`);
     const asked = fetched.length;
     // The next response finds the copies at their budget: everything starts over.
     const next = parse(browse([tile(ids[0], 'Loud ' + ids[0])]));

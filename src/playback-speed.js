@@ -718,16 +718,21 @@ export function installSpeedFeature(win, { notify, configRead: cfgRead, getPlaye
   // the last few, newest last.
   let lastUserKeyAt = 0;
   const keyTimes = [];
+  // The time of the newest key press dropped from keyTimes: up to then the
+  // presses are no longer all known.
+  let droppedKeyAt = 0;
   const onKey = (evt) => {
     if (evt.isTrusted === false || evt[SYNTHETIC_KEY_FLAG]) return;
     lastUserKeyAt++;
     keyTimes.push(Date.now());
-    if (keyTimes.length > KEY_TIMES) keyTimes.shift();
+    if (keyTimes.length > KEY_TIMES) droppedKeyAt = keyTimes.shift();
   };
   win.addEventListener('keydown', onKey, true);
   const ctrl = createSpeedController({
     win, getPlayer, notify, configRead: cfgRead, codecs, userKeyAt: () => lastUserKeyAt,
-    keyPressedBetween: (from, to) => keyTimes.some((at) => at > from && at <= to)
+    // A span that reaches into the dropped presses may have had one: a record
+    // there counts as the viewer's, not as ours for want of a known key.
+    keyPressedBetween: (from, to) => droppedKeyAt > from || keyTimes.some((at) => at > from && at <= to)
   });
   const mseHook = installMseHook(win, {
     getSpeed: ctrl.getSpeed,
