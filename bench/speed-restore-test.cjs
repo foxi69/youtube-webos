@@ -171,6 +171,101 @@ runTest(() => import(MODULE).then(({ watchPosition }) => {
     t('a few times at most', caps === 3, caps);
   }
   {
+    // A next video raised a few seconds in (null: it plays already): the
+    // cap's reload starts it again from 0 (webOS 25), so it is put back.
+    const s = setup({ state: 1, t: 0.5, vt: 0.5 });
+    let caps = 0;
+    watchPosition(s.win, s.player, null, () => {}, { isLow: () => caps === 0, setCap: () => { caps++; } });
+    s.run(1750);
+    s.player.time = 3;
+    s.run(250);
+    t('low for 2 s: the cap is set', caps === 1, caps);
+    s.player.state = 3;
+    s.player.time = 0;
+    s.run(1000);
+    s.player.state = 1;
+    s.player.time = 0.2;
+    s.run(250);
+    t('started over from 0: put back where the cap was set', s.player.seeks.join() === '3', s.player.seeks.join());
+    s.run(5000);
+    t('once', s.player.seeks.length === 1, s.player.seeks.join());
+  }
+  {
+    // Raised 1.5 s in: also put back, not played again from 0.
+    const s = setup({ state: 1, t: 0.2, vt: 0.2 });
+    let caps = 0;
+    watchPosition(s.win, s.player, null, () => {}, { isLow: () => caps === 0, setCap: () => { caps++; } });
+    s.run(1750);
+    s.player.time = 1.5;
+    s.run(250);
+    s.player.state = 3;
+    s.player.time = 0;
+    s.run(500);
+    t('raised 1.5 s in: put back to 1.5 s', s.player.seeks.join() === '1.5', s.player.seeks.join());
+  }
+  {
+    // A key of the viewer's after the cap is set: what follows is theirs.
+    const s = setup({ state: 1, t: 0.5, vt: 0.5 });
+    let caps = 0;
+    let keys = 0;
+    watchPosition(s.win, s.player, null, () => {}, { isLow: () => caps === 0, setCap: () => { caps++; }, keys: () => keys });
+    s.run(1750);
+    s.player.time = 3;
+    s.run(250);
+    keys++;
+    s.player.state = 3;
+    s.player.time = 0;
+    s.run(1000);
+    s.player.state = 1;
+    s.run(1000);
+    t('a key pressed after the raise: the start over is left alone', caps === 1 && s.player.seeks.length === 0, `caps ${caps}, seeks ${s.player.seeks.join()}`);
+  }
+  {
+    // The cap set without a reload: nothing to put back.
+    const s = setup({ state: 1, t: 0.5, vt: 0.5 });
+    let caps = 0;
+    watchPosition(s.win, s.player, null, () => {}, { isLow: () => caps === 0, setCap: () => { caps++; } });
+    s.run(2000);
+    s.player.time = 4;
+    s.run(12000);
+    s.player.state = 2;
+    s.player.time = 0;
+    s.run(500);
+    s.player.state = 1;
+    s.run(500);
+    t('no reload: nothing seeks, also not at a later stop', caps === 1 && s.player.seeks.length === 0, `caps ${caps}, seeks ${s.player.seeks.join()}`);
+  }
+  {
+    // The viewer's own seek back right after the cap (not to the start) stays.
+    const s = setup({ state: 1, t: 30, vt: 30 });
+    let caps = 0;
+    watchPosition(s.win, s.player, null, () => {}, { isLow: () => caps === 0, setCap: () => { caps++; } });
+    s.run(2000);
+    s.player.state = 3;
+    s.player.time = 20;
+    s.run(500);
+    s.player.state = 1;
+    s.run(500);
+    t('a seek back of the viewer is left alone', caps === 1 && s.player.seeks.length === 0, `caps ${caps}, seeks ${s.player.seeks.join()}`);
+  }
+  {
+    // The speed reload's own cap (onPlaying) at a position a few seconds in.
+    const s = setup({ state: 3, t: 3.5, vt: 3.5 });
+    let sets = 0;
+    watchPosition(s.win, s.player, 3.5, () => { sets++; }, { isLow: () => false, setCap: () => {} });
+    s.run(250);
+    s.player.state = 1;
+    s.run(250);
+    t('the reload plays where it should: onPlaying runs, no seek', sets === 1 && s.player.seeks.length === 0, s.player.seeks.join());
+    s.player.state = 3;
+    s.player.time = 0;
+    s.run(500);
+    s.player.state = 1;
+    s.player.time = 0.1;
+    s.run(250);
+    t('its cap starting it over is put back too', s.player.seeks.join() === '3.5', s.player.seeks.join());
+  }
+  {
     const s = setup({ state: 3, t: AT, vt: 0 });
     s.player.getCurrentTime = () => { throw new Error('player gone'); };
     watchPosition(s.win, s.player, AT, () => {});

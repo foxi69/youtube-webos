@@ -26,6 +26,15 @@ const LOW_TICKS = 8; // 2 s
 const MAX_CAPS = 3;
 const OFF_BY_S = 2;
 const STALL_BACK_S = 0.5;
+// After the cap is set: how long a reload it causes is waited for (10 s).
+// Such a reload a few seconds into a video starts it again from 0 (webOS 25:
+// raised at 3.0 s, played on from 0.0; at 7.9 s it kept its place), so a
+// video that starts over is put back where the cap was set, while it still
+// loads: buffering there at once stops the picture for a moment, where a
+// seek once it plays again added a second wait. Not after a key press of
+// the viewer's (a seek of theirs), and not for less than RESUME_MIN_S.
+const RESUME_TICKS = 40;
+const RESUME_MIN_S = 0.5;
 
 /**
  * @param {Window} win
@@ -33,7 +42,8 @@ const STALL_BACK_S = 0.5;
  * @param {number|null} at the position the reload should continue from, in
  *   seconds; null for a video that plays already (only stalls are corrected)
  * @param {() => void} onPlaying runs once, when the video first plays
- * @param {{isLow: () => boolean, setCap: () => void}} [quality] the speed's quality cap
+ * @param {{isLow: () => boolean, setCap: () => void, keys?: () => number}} [quality]
+ *   the speed's quality cap; keys counts the viewer's key presses
  * @param {string} [targetId] the video the speed changed on (else the one the player names now)
  * @param {() => void} [onEnd] runs when the check ends by itself (25 s, another
  *   video, a player that throws), not when the caller stops it
@@ -46,6 +56,16 @@ export function watchPosition(win, player, at, onPlaying, quality, targetId, onE
   let played = false;
   let low = 0;
   let caps = 0;
+  // Where the cap was last set, while its reload may still come (null: none).
+  let resumeAt = null;
+  let resumeTicks = 0;
+  let resumeKeys = 0;
+  const keys = () => (quality && typeof quality.keys === 'function' ? quality.keys() : 0);
+  const armResume = (pos) => {
+    resumeAt = pos;
+    resumeTicks = 0;
+    resumeKeys = keys();
+  };
 
   const namesVideos = typeof player.getVideoData === 'function';
   const idOf = () => {
@@ -89,17 +109,33 @@ export function watchPosition(win, player, at, onPlaying, quality, targetId, onE
       return;
     }
 
+    if (resumeAt !== null) {
+      if (++resumeTicks > RESUME_TICKS || keys() !== resumeKeys) {
+        resumeAt = null;
+      } else if (now <= OFF_BY_S && resumeAt - now > RESUME_MIN_S) {
+        // The cap's reload started it over: back where it was set.
+        player.seekTo(resumeAt, true);
+        resumeAt = null;
+      }
+    }
+
     if (state === 1) {
       stalled = 0;
       if (!played) {
         played = true;
-        if (at !== null && Math.abs(now - at) > OFF_BY_S) player.seekTo(at, true);
+        const target = at !== null && Math.abs(now - at) > OFF_BY_S ? at : null;
+        if (target !== null) player.seekTo(target, true);
         onPlaying();
+        // onPlaying may set the cap (playback-speed.js), which can reload. Not
+        // armed after a seek of our own: its position is not known yet.
+        if (quality && target === null) armResume(now);
       }
       low = quality && quality.isLow() ? low + 1 : 0;
       if (low >= LOW_TICKS && caps < MAX_CAPS) {
         low = 0;
         caps++;
+        // Armed first: a key pressed while the cap is set is the viewer's.
+        armResume(now);
         quality.setCap();
       }
     } else {

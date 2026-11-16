@@ -515,7 +515,8 @@ export function createSpeedController({
       // Below the cap or the viewer's lower pick (720p picked, fallen to 480p),
       // as capNext judges it: a pick at or above what plays is not a fall.
       isLow: () => currentSpeed > CAP_ABOVE && belowCap(player),
-      setCap
+      setCap,
+      keys: userKeyAt
     }, videoId, () => {
       // Never played (another video opened, or the check gave up): those
       // subtitles belong to that reload only, not to a later one of the video.
@@ -579,13 +580,16 @@ export function createSpeedController({
     nextCappedVideoId = videoId;
     if (stopPositionWatch) stopPositionWatch();
     watchedVideoId = videoId;
-    // No position to restore (null): a seek the viewer makes as it starts is theirs.
+    // No position to restore (null): a seek the viewer makes as it starts is
+    // theirs. The raise's own reload starting the video over is undone by the
+    // watch (where the cap was set), unless the viewer pressed a key since.
     stopPositionWatch = watchPosition(win, player, null, () => {}, {
       isLow: () => currentSpeed > CAP_ABOVE && belowCap(player),
       setCap() {
         const target = capFor(player);
         if (target) setRange(player, target);
-      }
+      },
+      keys: userKeyAt
     }, videoId);
   }
 
