@@ -497,18 +497,20 @@ export function createSpeedController({
 
   function restorePosition(player, at, videoId, kept) {
     if (stopPositionWatch) stopPositionWatch();
+    // True when it set a range (the watch then knows the video may reload).
     const setCap = () => {
-      if (currentSpeed > CAP_ABOVE) {
-        // The cap, or the most the video has below it (capFor reads the pick first).
-        const cap = capFor(player) || capQuality();
-        qualityPickVideoId = lastPick ? videoId : null;
-        setRange(player, cap);
-      }
+      if (currentSpeed <= CAP_ABOVE) return false;
+      // The cap, or the most the video has below it (capFor reads the pick first).
+      const cap = capFor(player) || capQuality();
+      qualityPickVideoId = lastPick ? videoId : null;
+      setRange(player, cap);
+      return true;
     };
     const onPlaying = () => {
-      setCap();
+      const capped = setCap();
       kept.landed = true;
       stopCaptions = keepCaptions(win, player, kept.captions, userKeyAt, kept);
+      return capped;
     };
     watchedVideoId = videoId;
     stopPositionWatch = watchPosition(win, player, at, onPlaying, {
@@ -587,7 +589,9 @@ export function createSpeedController({
       isLow: () => currentSpeed > CAP_ABOVE && belowCap(player),
       setCap() {
         const target = capFor(player);
-        if (target) setRange(player, target);
+        if (!target) return false;
+        setRange(player, target);
+        return true;
       },
       keys: userKeyAt
     }, videoId);

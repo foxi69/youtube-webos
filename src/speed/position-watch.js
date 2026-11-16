@@ -26,24 +26,32 @@ const LOW_TICKS = 8; // 2 s
 const MAX_CAPS = 3;
 const OFF_BY_S = 2;
 const STALL_BACK_S = 0.5;
-// After the cap is set: how long a reload it causes is waited for (10 s).
-// Such a reload a few seconds into a video starts it again from 0 (webOS 25:
-// raised at 3.0 s, played on from 0.0; at 7.9 s it kept its place), so a
-// video that starts over is put back where the cap was set, while it still
-// loads: buffering there at once stops the picture for a moment, where a
-// seek once it plays again added a second wait. Not after a key press of
-// the viewer's (a seek of theirs), and not for less than RESUME_MIN_S.
-const RESUME_TICKS = 40;
+// A cap that was really set (setCap returned true) reloads the video; a few
+// seconds into it that reload starts it again from 0 (webOS 25: raised at
+// 3.0 s, on from 0.0; at 7.9 s it kept its place), so it is put back where
+// the cap was set, while it still loads: buffering there at once stops the
+// picture for a moment, where a seek once it plays again added a second
+// wait. Only a start over while not playing counts: on the TV the reload
+// read 0 in state 3 (buffering) 0.3-0.7 s after the call, three times of
+// three, before it played again. A video that plays on from 0 by itself (a
+// loop: Shorts, a repeated video) is no reload, and Shorts are left out.
+// Not after a key press of the viewer's, nor for less than RESUME_MIN_S.
+// RESUME_TICKS (3 s) is over four times the 0.7 s measured.
+const RESUME_TICKS = 12;
 const RESUME_MIN_S = 0.5;
+// The last position this close to the end, then near 0: the video looped.
+const LOOP_END_S = 1;
 
 /**
  * @param {Window} win
  * @param {object} player YouTube's player
  * @param {number|null} at the position the reload should continue from, in
  *   seconds; null for a video that plays already (only stalls are corrected)
- * @param {() => void} onPlaying runs once, when the video first plays
- * @param {{isLow: () => boolean, setCap: () => void, keys?: () => number}} [quality]
- *   the speed's quality cap; keys counts the viewer's key presses
+ * @param {() => boolean|void} onPlaying runs once, when the video first plays;
+ *   true when it set the quality cap (which can reload the video)
+ * @param {{isLow: () => boolean, setCap: () => boolean|void, keys?: () => number}} [quality]
+ *   the speed's quality cap: setCap returns true when it set a range; keys
+ *   counts the viewer's key presses
  * @param {string} [targetId] the video the speed changed on (else the one the player names now)
  * @param {() => void} [onEnd] runs when the check ends by itself (25 s, another
  *   video, a player that throws), not when the caller stops it
@@ -60,11 +68,26 @@ export function watchPosition(win, player, at, onPlaying, quality, targetId, onE
   let resumeAt = null;
   let resumeTicks = 0;
   let resumeKeys = 0;
+  // The position on the tick before, to tell a loop from a reload.
+  let lastNow = null;
   const keys = () => (quality && typeof quality.keys === 'function' ? quality.keys() : 0);
-  const armResume = (pos) => {
+  const onShorts = () => {
+    const body = win.document && win.document.body;
+    return !!body && !!body.classList && body.classList.contains('WEB_PAGE_TYPE_SHORTS');
+  };
+  // keysBefore: the count before the cap was set, so a key pressed while it
+  // is set is the viewer's.
+  const armResume = (pos, keysBefore) => {
+    if (onShorts()) return;
     resumeAt = pos;
     resumeTicks = 0;
-    resumeKeys = keys();
+    resumeKeys = keysBefore;
+  };
+  const looped = (now) => {
+    if (lastNow === null || typeof player.getDuration !== 'function') return false;
+    let duration;
+    try { duration = player.getDuration(); } catch { return false; }
+    return duration > 0 && lastNow >= duration - LOOP_END_S && now <= OFF_BY_S;
   };
 
   const namesVideos = typeof player.getVideoData === 'function';
@@ -110,14 +133,15 @@ export function watchPosition(win, player, at, onPlaying, quality, targetId, onE
     }
 
     if (resumeAt !== null) {
-      if (++resumeTicks > RESUME_TICKS || keys() !== resumeKeys) {
+      if (++resumeTicks > RESUME_TICKS || keys() !== resumeKeys || looped(now) || onShorts()) {
         resumeAt = null;
-      } else if (now <= OFF_BY_S && resumeAt - now > RESUME_MIN_S) {
+      } else if (state !== 1 && now <= OFF_BY_S && resumeAt - now > RESUME_MIN_S) {
         // The cap's reload started it over: back where it was set.
         player.seekTo(resumeAt, true);
         resumeAt = null;
       }
     }
+    lastNow = now;
 
     if (state === 1) {
       stalled = 0;
@@ -125,18 +149,17 @@ export function watchPosition(win, player, at, onPlaying, quality, targetId, onE
         played = true;
         const target = at !== null && Math.abs(now - at) > OFF_BY_S ? at : null;
         if (target !== null) player.seekTo(target, true);
-        onPlaying();
+        const keysBefore = keys();
         // onPlaying may set the cap (playback-speed.js), which can reload. Not
         // armed after a seek of our own: its position is not known yet.
-        if (quality && target === null) armResume(now);
+        if (onPlaying() === true && quality && target === null) armResume(now, keysBefore);
       }
       low = quality && quality.isLow() ? low + 1 : 0;
       if (low >= LOW_TICKS && caps < MAX_CAPS) {
         low = 0;
         caps++;
-        // Armed first: a key pressed while the cap is set is the viewer's.
-        armResume(now);
-        quality.setCap();
+        const keysBefore = keys();
+        if (quality.setCap() === true) armResume(now, keysBefore);
       }
     } else {
       const video = win.document.querySelector('video');

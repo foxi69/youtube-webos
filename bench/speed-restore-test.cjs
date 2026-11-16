@@ -175,7 +175,7 @@ runTest(() => import(MODULE).then(({ watchPosition }) => {
     // cap's reload starts it again from 0 (webOS 25), so it is put back.
     const s = setup({ state: 1, t: 0.5, vt: 0.5 });
     let caps = 0;
-    watchPosition(s.win, s.player, null, () => {}, { isLow: () => caps === 0, setCap: () => { caps++; } });
+    watchPosition(s.win, s.player, null, () => {}, { isLow: () => caps === 0, setCap: () => { caps++; return true; } });
     s.run(1750);
     s.player.time = 3;
     s.run(250);
@@ -194,7 +194,7 @@ runTest(() => import(MODULE).then(({ watchPosition }) => {
     // Raised 1.5 s in: also put back, not played again from 0.
     const s = setup({ state: 1, t: 0.2, vt: 0.2 });
     let caps = 0;
-    watchPosition(s.win, s.player, null, () => {}, { isLow: () => caps === 0, setCap: () => { caps++; } });
+    watchPosition(s.win, s.player, null, () => {}, { isLow: () => caps === 0, setCap: () => { caps++; return true; } });
     s.run(1750);
     s.player.time = 1.5;
     s.run(250);
@@ -208,7 +208,7 @@ runTest(() => import(MODULE).then(({ watchPosition }) => {
     const s = setup({ state: 1, t: 0.5, vt: 0.5 });
     let caps = 0;
     let keys = 0;
-    watchPosition(s.win, s.player, null, () => {}, { isLow: () => caps === 0, setCap: () => { caps++; }, keys: () => keys });
+    watchPosition(s.win, s.player, null, () => {}, { isLow: () => caps === 0, setCap: () => { caps++; return true; }, keys: () => keys });
     s.run(1750);
     s.player.time = 3;
     s.run(250);
@@ -220,11 +220,85 @@ runTest(() => import(MODULE).then(({ watchPosition }) => {
     s.run(1000);
     t('a key pressed after the raise: the start over is left alone', caps === 1 && s.player.seeks.length === 0, `caps ${caps}, seeks ${s.player.seeks.join()}`);
   }
+  // A 7 s video that loops by itself (Shorts, a repeated video) at 1.5x.
+  const loopRun = (s, ticks) => {
+    for (let i = 0; i < ticks; i++) {
+      s.run(250);
+      s.player.time += 0.25 * 1.5;
+      if (s.player.time >= 7) s.player.time = 0.05;
+    }
+  };
+  {
+    // Below the cap, the call sets no range (setCap: nothing); it loops.
+    const s = setup({ state: 1, t: 0.2, vt: 0.2 });
+    let caps = 0;
+    watchPosition(s.win, s.player, null, () => {}, { isLow: () => caps === 0, setCap: () => { caps++; }, keys: () => 0 }, 'abcdefghijk');
+    loopRun(s, 26);
+    t('a cap call that set no range: a loop is not moved on', s.player.seeks.length === 0, s.player.seeks.join());
+  }
+  {
+    // A speed change 4 s into it, no cap at all; it loops.
+    const s = setup({ state: 1, t: 4, vt: 4 });
+    watchPosition(s.win, s.player, 4, () => {}, { isLow: () => false, setCap: () => {}, keys: () => 0 }, 'abcdefghijk');
+    loopRun(s, 20);
+    t('no cap set: a loop after a speed change is not moved on', s.player.seeks.length === 0, s.player.seeks.join());
+  }
+  {
+    // The cap set (a range really asked for), no reload, then it loops on playing.
+    const s = setup({ state: 1, t: 0.2, vt: 0.2 });
+    let caps = 0;
+    watchPosition(s.win, s.player, null, () => {}, { isLow: () => caps === 0, setCap: () => { caps++; return true; }, keys: () => 0 }, 'abcdefghijk');
+    loopRun(s, 26);
+    t('the cap set, the video loops while playing: not moved on', caps === 1 && s.player.seeks.length === 0, `caps ${caps}, seeks ${s.player.seeks.join()}`);
+  }
+  {
+    // The loop passes through buffering at 0, from the end of the video.
+    const s = setup({ state: 1, t: 5.6, vt: 5.6 });
+    s.player.getDuration = () => 7;
+    let caps = 0;
+    watchPosition(s.win, s.player, null, () => {}, { isLow: () => caps === 0, setCap: () => { caps++; return true; }, keys: () => 0 }, 'abcdefghijk');
+    s.run(2000);
+    t('raised near the end', caps === 1, caps);
+    s.player.time = 6.6;
+    s.run(250);
+    s.player.state = 3;
+    s.player.time = 0;
+    s.run(500);
+    s.player.state = 1;
+    s.run(500);
+    t('a loop from the end (buffering at 0) is no reload: not moved on', s.player.seeks.length === 0, s.player.seeks.join());
+  }
+  {
+    // The same start over in mid-video (not from its end) is the reload: put back.
+    const s = setup({ state: 1, t: 2.5, vt: 2.5 });
+    s.player.getDuration = () => 60;
+    let caps = 0;
+    watchPosition(s.win, s.player, null, () => {}, { isLow: () => caps === 0, setCap: () => { caps++; return true; }, keys: () => 0 }, 'abcdefghijk');
+    s.run(1750);
+    s.player.time = 3;
+    s.run(250);
+    s.player.state = 3;
+    s.player.time = 0;
+    s.run(500);
+    t('with a duration known, a start over mid-video is still put back', s.player.seeks.join() === '3', s.player.seeks.join());
+  }
+  {
+    // While playing, 0 is never taken for the reload (it reads 0 buffering).
+    const s = setup({ state: 1, t: 0.5, vt: 0.5 });
+    let caps = 0;
+    watchPosition(s.win, s.player, null, () => {}, { isLow: () => caps === 0, setCap: () => { caps++; return true; } });
+    s.run(1750);
+    s.player.time = 3;
+    s.run(250);
+    s.player.time = 0.1;
+    s.run(1000);
+    t('back at 0 while playing: not moved (only a loading start over is)', s.player.seeks.length === 0, s.player.seeks.join());
+  }
   {
     // The cap set without a reload: nothing to put back.
     const s = setup({ state: 1, t: 0.5, vt: 0.5 });
     let caps = 0;
-    watchPosition(s.win, s.player, null, () => {}, { isLow: () => caps === 0, setCap: () => { caps++; } });
+    watchPosition(s.win, s.player, null, () => {}, { isLow: () => caps === 0, setCap: () => { caps++; return true; } });
     s.run(2000);
     s.player.time = 4;
     s.run(12000);
@@ -239,7 +313,7 @@ runTest(() => import(MODULE).then(({ watchPosition }) => {
     // The viewer's own seek back right after the cap (not to the start) stays.
     const s = setup({ state: 1, t: 30, vt: 30 });
     let caps = 0;
-    watchPosition(s.win, s.player, null, () => {}, { isLow: () => caps === 0, setCap: () => { caps++; } });
+    watchPosition(s.win, s.player, null, () => {}, { isLow: () => caps === 0, setCap: () => { caps++; return true; } });
     s.run(2000);
     s.player.state = 3;
     s.player.time = 20;
@@ -252,7 +326,7 @@ runTest(() => import(MODULE).then(({ watchPosition }) => {
     // The speed reload's own cap (onPlaying) at a position a few seconds in.
     const s = setup({ state: 3, t: 3.5, vt: 3.5 });
     let sets = 0;
-    watchPosition(s.win, s.player, 3.5, () => { sets++; }, { isLow: () => false, setCap: () => {} });
+    watchPosition(s.win, s.player, 3.5, () => { sets++; return true; }, { isLow: () => false, setCap: () => {} });
     s.run(250);
     s.player.state = 1;
     s.run(250);

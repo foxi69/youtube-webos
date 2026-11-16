@@ -575,7 +575,7 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
   }
   // The raise's reload starts the video over (webOS 25: raised at 3.0 s, on
   // from 0.0). viewer(p, win) runs as the cap is set: the viewer's own doing.
-  const raiseRun = async (at, viewer) => {
+  const raiseRun = async (at, viewer, { shorts = false } = {}) => {
     const { win, p, speed, log, emit, pump, setQuality } = boot(0);
     speed.setSpeed(1.5, { immediate: true });
     await sleep(900);
@@ -591,6 +591,7 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
       win.setTimeout(() => { if (!viewer) time = 0; emit(3); }, 50);
       win.setTimeout(() => { emit(1); }, 700);
     };
+    if (shorts) win.document.body.className = 'WEB_PAGE_TYPE_SHORTS';
     p.videoId = 'raisevideo1';
     setQuality('large');
     log.ranges.length = 0;
@@ -619,6 +620,12 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
     // Without a key, a seek of theirs elsewhere (33 s) is not a start over.
     const r = await raiseRun(3, () => 33);
     t('a seek of the viewer\'s ahead during the raise stays', r.seeks === '', r.seeks);
+  }
+  {
+    // On Shorts (they loop by themselves) a start over is never moved on.
+    const r = await raiseRun(3, null, { shorts: true });
+    t('on Shorts the raise still comes', r.ranges === 'hd1080', r.ranges);
+    t('on Shorts a start over after the raise is not moved on', r.seeks === '', r.seeks);
   }
   {
     // A 720p pick; the reloaded video plays, then falls to 480p while its watch runs.
