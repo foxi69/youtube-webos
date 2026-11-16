@@ -112,7 +112,7 @@ async function boot(cfg, opts = {}) {
   win.localStorage.setItem('ytaf-configuration', JSON.stringify(Object.assign({
     enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
     enableDeArrow: false, upgradeThumbnails: false, enableAutoLogin: false,
-    checkForUpdates: false, showWhatsNew: false, showQualityOnStart: false
+    checkForUpdates: false, showWhatsNew: false, showVideoQuality: 'off'
   }, cfg)));
   if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
   // Chrome 23 has it; the Chrome 38 environment takes it away all the same
