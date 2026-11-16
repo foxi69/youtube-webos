@@ -24,6 +24,19 @@ const modern = process.argv[3] === 'modern';
 const GREEN = 404;
 const pad = 'z'.repeat(600);
 const prefixOf = (id) => crypto.createHash('sha256').update(id).digest('hex').slice(0, 4);
+// Every one of these videos has had its lookup started (its prefix asked for):
+// a wait on the four downloads alone can end with the rest still in title
+// resolution, where a settings change drops them before they reach the queue.
+const allAsked = (fetched, ids) => ids.every((id) => fetched.some((u) => u.endsWith('/' + prefixOf(id))));
+// Every tile of the answer shows its crowdsourced title ('Calm ...'): each
+// video is past its title decision, where its thumbnail decision starts, so
+// after a moment each has asked for its thumbnail: four download and the
+// rest wait for a slot. That is the state the queue checks start from.
+const allQueued = async (answer, images, count) => {
+  const titled = await waitFor(() => itemsOf(answer).every((item) => /^Calm /.test(tileTitle(item))), 2000);
+  await wait(30);
+  return titled && count() === 4;
+};
 
 let pass = 0, fail = 0;
 const t = (name, ok, extra) => {
@@ -699,10 +712,11 @@ const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-d
 
     for (const change of ['DeArrow switched off', 'Crowdsourced Titles switched off']) {
       const ids = crowdIds(change[0] === 'D' ? 'off' : 'set');
-      const { win, parse, pump, images, pendingImages } = boot({}, { extra: crowdExtra(ids), holdImages: true });
-      parse(browse(ids.map((id) => tile(id, 'Original ' + id))));
-      await waitFor(() => downloads(images, ids) === 4, 1500);
-      t(`${change}: four thumbnails download, five wait for a slot`, downloads(images, ids) === 4, images.join(' '));
+      const { win, parse, pump, images, pendingImages, fetched } = boot({}, { extra: crowdExtra(ids), holdImages: true });
+      const answer = parse(browse(ids.map((id) => tile(id, 'Original ' + id))));
+      await waitFor(() => allAsked(fetched, ids) && downloads(images, ids) === 4, 1500);
+      t(`${change}: all nine past their title, four thumbnails download, five wait for a slot`,
+        await allQueued(answer, images, () => downloads(images, ids)), images.join(' '));
       flip(win, pump, change.split(' switched')[0], false);
       await wait(50);
       pendingImages.splice(0).forEach((item) => { item.finish(); });
@@ -716,10 +730,12 @@ const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-d
     // belong to the new generation then, and are downloaded when a slot opens rather than dropped.
     {
       const ids = crowdIds('ask');
-      const { win, parse, pump, images, pendingImages } = boot({}, { extra: crowdExtra(ids), holdImages: true });
+      const { win, parse, pump, images, pendingImages, fetched } = boot({}, { extra: crowdExtra(ids), holdImages: true });
       const page = () => browse(ids.map((id) => tile(id, 'Original ' + id)));
-      parse(page());
-      await waitFor(() => downloads(images, ids) === 4, 1500);
+      const answer = parse(page());
+      await waitFor(() => allAsked(fetched, ids) && downloads(images, ids) === 4, 1500);
+      t('asked again: all nine past their title, four thumbnails download, five wait for a slot',
+        await allQueued(answer, images, () => downloads(images, ids)), images.join(' '));
       flip(win, pump, 'Crowdsourced Titles', false);
       // The settings refresh (a new generation, every video to decide again) runs a tick after the change.
       await wait(50);
@@ -740,12 +756,18 @@ const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-d
     {
       const ids = crowdIds('rnd');
       const extra = {};
-      ids.forEach((id) => { extra[id] = { titles: [], thumbnails: [], randomTime: 0.5, videoDuration: 60 }; });
-      const { win, parse, pump, images, pendingImages } = boot({ dearrowThumbnailFallback: 'random' }, { extra, holdImages: true });
+      // A crowdsourced title and no crowdsourced thumbnail: the title on the
+      // tile shows the video is past its title decision, as in the checks above.
+      ids.forEach((id) => {
+        extra[id] = { titles: [{ title: 'Calm ' + id, original: false, votes: 1 }], thumbnails: [],
+          randomTime: 0.5, videoDuration: 60 };
+      });
+      const { win, parse, pump, images, pendingImages, fetched } = boot({ dearrowThumbnailFallback: 'random' }, { extra, holdImages: true });
       const frames = (list) => list.filter((u) => ids.some((id) => u.includes('/vi/' + id + '/'))).length;
-      parse(browse(ids.map((id) => tile(id, 'Original ' + id))));
-      t('random frames: four are drawn, five wait for a slot', await waitFor(() => downloads(images, ids) === 4, 1500),
-        `${downloads(images, ids)} drawn`);
+      const answer = parse(browse(ids.map((id) => tile(id, 'Original ' + id))));
+      await waitFor(() => allAsked(fetched, ids) && downloads(images, ids) === 4, 1500);
+      t('random frames: all nine past their title, four are drawn, five wait for a slot',
+        await allQueued(answer, images, () => downloads(images, ids)), `${downloads(images, ids)} drawn`);
       // The start frames shown as stand-ins meanwhile are fetched before.
       const before = images.length;
       flip(win, pump, 'DeArrow', false);
@@ -762,7 +784,7 @@ const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-d
     // Too many videos remembered: everything is wiped (DeArrow stays on).
     {
       const ids = crowdIds('wip');
-      const { win, parse, images, pendingImages } = boot({}, { extra: crowdExtra(ids), holdImages: true });
+      const { win, parse, images, pendingImages, fetched } = boot({}, { extra: crowdExtra(ids), holdImages: true });
       const made = [];
       const revoked = [];
       if (modern) {
@@ -770,8 +792,10 @@ const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-d
         win.URL.createObjectURL = (b) => { const url = make(b); made.push(url); return url; };
         win.URL.revokeObjectURL = (u) => { revoked.push(u); };
       }
-      parse(browse(ids.map((id) => tile(id, 'Original ' + id))));
-      await waitFor(() => downloads(images, ids) === 4, 1500);
+      const answer = parse(browse(ids.map((id) => tile(id, 'Original ' + id))));
+      await waitFor(() => allAsked(fetched, ids) && downloads(images, ids) === 4, 1500);
+      t('wiped: all nine past their title, four thumbnails download, five wait for a slot',
+        await allQueued(answer, images, () => downloads(images, ids)), images.join(' '));
       const filler = [];
       for (let i = 0; i < 1000; i++) filler.push(tile('fil' + String(i).padStart(8, '0'), 'Filler ' + i));
       parse(browse(filler));

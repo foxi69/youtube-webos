@@ -17,7 +17,7 @@
  */
 const fs = require('fs');
 const { JSDOM, VirtualConsole } = require('jsdom');
-const { UA, setUserAgent, dispatchTrusted, applyChrome87Downgrade } = require('./chrome38-env.cjs');
+const { UA, setUserAgent, dispatchTrusted, applyChrome38Downgrade, applyChrome87Downgrade } = require('./chrome38-env.cjs');
 
 const bundle = fs.readFileSync(process.argv[2] || 'dist/webOSUserScripts/userScript.js', 'utf8');
 // `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
@@ -38,8 +38,10 @@ const t = (n, ok, extra) => { if (ok) { pass++; console.log('PASS ' + n); }
 async function boot(cfg, { html, url, speed = 1, fetch, prepare }) {
   const dom = new JSDOM(html, { runScripts: 'outside-only', url, virtualConsole: new VirtualConsole(), pretendToBeVisual: true });
   const win = dom.window;
-  setUserAgent(win, UA.webos23);
-  if (modern) applyChrome87Downgrade(win);
+  setUserAgent(win, modern ? UA.webos23 : UA.webos3);
+  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
+  // Chrome 23 has it; the Chrome 38 environment takes it away all the same.
+  win.Element.prototype.remove = function remove() { if (this.parentNode) this.parentNode.removeChild(this); };
   win.launchParams = '{}';
   win.fetch = fetch || (() => Promise.reject(new Error('offline')));
   win.XMLHttpRequest = class { open() {} send() { if (this.onerror) this.onerror(); } setRequestHeader() {} getResponseHeader() { return null; } addEventListener() {} };
@@ -66,8 +68,9 @@ async function boot(cfg, { html, url, speed = 1, fetch, prepare }) {
   win.qualityToasts = [];
   new win.MutationObserver((records) => {
     for (const record of records) {
-      for (const node of record.addedNodes) {
-        if (/Playing in/.test(node.textContent || '')) win.qualityToasts.push(win.document.body.className);
+      // By index: the Chrome 38 environment takes a NodeList's iterator away.
+      for (let i = 0; i < record.addedNodes.length; i++) {
+        if (/Playing in/.test(record.addedNodes[i].textContent || '')) win.qualityToasts.push(win.document.body.className);
       }
     }
   }).observe(win.document.documentElement, { childList: true, subtree: true });

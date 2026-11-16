@@ -355,7 +355,8 @@ function boot(cfg = {}, { live = false, page = 'WEB_PAGE_TYPE_WATCH' } = {}) {
     t('at 1x the audio offer is left as it is', /ac-3/.test(mimes(parse(offer()))), mimes(parse(offer())));
     speed.setSpeed(1.5, { immediate: true });
     const fast = parse(offer());
-    t('off 1x the audio the engine cannot stretch is left out', !/ac-3/.test(mimes(fast)) && /mp4a/.test(mimes(fast)), mimes(fast));
+    t('off 1x the audio the engine cannot stretch is left out, the video and the other audio kept',
+      mimes(fast) === 'video/mp4; codecs="avc1.640028" | audio/mp4; codecs="mp4a.40.2"', mimes(fast));
     // The next video starts at 2160p: capped once it plays.
     p.videoId = 'nextvideo01';
     quality('hd2160');

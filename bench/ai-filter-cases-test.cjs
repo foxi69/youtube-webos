@@ -208,9 +208,13 @@ function boot(cfg, opts = {}) {
     h.root().removeChild(row);
     t(n('a card removed from the page loses its badge'), await until(() => !h.badged(c), 3000));
     // YouTube puts the element back for a plain video: no badge, not even briefly.
+    // Every change of the attribute, by its old value: one with none before
+    // is the badge put on, even if it went again in the same task.
     let flashed = false;
-    const obs = new h.win.MutationObserver(() => { if (h.badged(c)) flashed = true; });
-    obs.observe(c, { attributes: true, attributeFilter: [BADGE] });
+    const obs = new h.win.MutationObserver((records) => {
+      if (records.some((r) => r.oldValue === null)) flashed = true;
+    });
+    obs.observe(c, { attributes: true, attributeFilter: [BADGE], attributeOldValue: true });
     h.recycle(c, tileData(vid(21)));
     h.root().appendChild(c);
     t(n('...put back for a plain video, it is looked up'), await until(() => h.count(vid(21)) === 1, 3000), h.requests.join());

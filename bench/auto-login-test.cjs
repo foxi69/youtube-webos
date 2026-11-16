@@ -217,16 +217,21 @@ async function boot(cfg, opts = {}) {
 
   {
     // A guest leaves the selector between Down and Enter: no Enter on the next page.
+    // The 200 ms from Down to Enter is held, and run by the test once the
+    // page has changed: no race between the test's leaving and the Enter.
     const env = await boot({ enableAutoLogin: true, autoSelectAccount: true },
-      { identity: { identityType: 'UNAUTHENTICATED_IDENTITY_TYPE_GUEST' } });
+      { identity: { identityType: 'UNAUTHENTICATED_IDENTITY_TYPE_GUEST' }, holdMs: 200 });
     env.openSelector();
-    // Left the moment Down is sent, before the 200 ms to Enter.
-    for (let i = 0; i < 400 && !env.keys.length; i++) await wait(1);
+    // (Other 200 ms timeouts of the page are held with it: the settings' write.)
+    for (let i = 0; i < 2000 && !env.keys.length; i++) await wait(1);
     const before = env.keys.map((k) => k.code).join();
     env.win.document.body.className = 'WEB_PAGE_TYPE_BROWSE';
-    await pageMs(1000);
+    await pageMs(100);
+    t(n('a guest, Down sent: the Enter is waiting'), before === '40' && env.held.length >= 1, `${before} held=${env.held.length}`);
+    env.held.splice(0).forEach((fn) => { fn(); });
+    await pageMs(100);
     t(n('a guest leaving between Down and Enter: Down only, nothing left hidden'),
-      before === '40' && env.keys.map((k) => k.code).join() === '40' && !env.bypassing(), JSON.stringify(env.keys));
+      env.keys.map((k) => k.code).join() === '40' && !env.bypassing(), JSON.stringify(env.keys));
     env.win.close();
   }
 
@@ -395,6 +400,27 @@ async function boot(cfg, opts = {}) {
     await wait(20);
     t(n('previews With sound, set to Default before the start-up write: not forced on'),
       back === 'Default' && startup === 1 && env.read(INLINE) === null, `${back} ${startup} held ${env.store.getItem(INLINE)}`);
+    env.win.close();
+  }
+  {
+    // Default's write of YouTube's record refused: the backup is kept, and
+    // the next Default puts the record back.
+    const own = { data: false, expiration: 9e12, creation: 7 };
+    const env = await boot({ enableAutoLogin: false, videoPreviews: 'default' },
+      { holdMs: 2500, storage: { [INLINE]: { data: true }, 'ytaf-inline-playback-saved': { value: JSON.stringify(own) } } });
+    const proto = env.win.Storage.prototype;
+    const realSet = proto.setItem;
+    proto.setItem = function setItem(k, v) {
+      if (k === INLINE) throw new Error('quota');
+      return realSet.call(this, k, v);
+    };
+    env.held.forEach((fn) => { fn(); });
+    const kept = env.read('ytaf-inline-playback-saved') !== null;
+    proto.setItem = realSet;
+    env.held.forEach((fn) => { fn(); });
+    t(n('previews Default, the write refused: the backup is kept, and given back next time'),
+      kept && JSON.stringify(env.read(INLINE)) === JSON.stringify(own) && env.read('ytaf-inline-playback-saved') === null,
+      `${kept} ${env.store.getItem(INLINE)}`);
     env.win.close();
   }
   {

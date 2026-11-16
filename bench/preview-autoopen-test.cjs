@@ -201,6 +201,7 @@ async function mute() {
   const offRun = await run(false);
   t('control, With sound: playing leaves the sound on', offRun.afterPlaying === false);
   t('control, With sound: a volume change leaves the sound on', offRun.afterVolume === false);
+  t('control, With sound: no page errors', offRun.errors.length === 0, offRun.errors.join(' | '));
 }
 
 (async () => {

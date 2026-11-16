@@ -246,6 +246,8 @@ export function createSpeedController({
   let keptCaptions = null;
   // Stops the caption checks of the last reload (player-state.js).
   let stopCaptions = () => {};
+  // The check that puts YouTube's own speed menu in line after a reload.
+  let rateTimer = null;
   // When this controller asked for each quality level ({ from, last, until }
   // by level), the level it asked for last, and the viewer's last pick read
   // from YouTube's record (see viewerPick), with the record it was read from.
@@ -480,7 +482,9 @@ export function createSpeedController({
     // line with the real speed once the reloaded video has started.
     const setRate = player.__ytafOriginalSetPlaybackRate;
     if (setRate && typeof player.getPlaybackRate === 'function') {
-      win.setTimeout(() => {
+      if (rateTimer !== null) win.clearTimeout(rateTimer);
+      rateTimer = win.setTimeout(() => {
+        rateTimer = null;
         try {
           if (player.getPlaybackRate() !== currentSpeed)
             setRate.call(player, currentSpeed);
@@ -550,6 +554,11 @@ export function createSpeedController({
     // Unnamed, it may be the reload's video: the next play tries again.
     if (!videoId) return;
     if (stopPositionWatch && stopPositionWatch.running() && watchedVideoId === videoId) return;
+    // A stop by hand does not call the watch's onEnd: the subtitles of the
+    // replaced video's reload that never played are dropped here instead.
+    if (keptCaptions && !keptCaptions.landed && keptCaptions.videoId === watchedVideoId && watchedVideoId !== videoId) {
+      keptCaptions = null;
+    }
     if (stopPositionWatch) stopPositionWatch();
     watchedVideoId = videoId;
     // No position to restore (null): a seek the viewer makes as it starts is theirs.
@@ -634,6 +643,10 @@ export function createSpeedController({
 
   /** Ends what a reload left running: the reload waiting, its position and subtitle checks. */
   function dispose() {
+    if (rateTimer !== null) {
+      win.clearTimeout(rateTimer);
+      rateTimer = null;
+    }
     if (pending) {
       win.clearTimeout(pending.timer);
       pending = null;
