@@ -13,22 +13,15 @@
  * - SponsorBlock drew and listed mute segments while "Allow segments that mute
  *   audio" is off, where they are neither muted nor skipped.
  *
- * Usage: node bench/review-fixes-test.cjs [dist/webOSUserScripts/userScript.js]
+ * Usage: node bench/review-fixes-test.cjs [dist/webOSUserScripts/userScript.js] [legacy|modern]
  */
-const fs = require('fs');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { UA, setUserAgent, dispatchTrusted, applyChrome38Downgrade, applyChrome87Downgrade } = require('./chrome38-env.cjs');
+const {
+  createReporter, bootPage, failingXHR, trustedKey, dispatchTrusted, wait: sleep, until
+} = require('./harness.cjs');
 
-const bundle = fs.readFileSync(process.argv[2] || 'dist/webOSUserScripts/userScript.js', 'utf8');
-// `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
-// with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
-const modern = process.argv[3] === 'modern';
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const VIDEO = 'abcdefghijk';
 
-let pass = 0, fail = 0;
-const t = (n, ok, extra) => { if (ok) { pass++; console.log('PASS ' + n); }
-  else { fail++; console.log('FAIL ' + n + (extra ? '\n     ' + extra : '')); } };
+const { t, run } = createReporter();
 
 /**
  * Boots the bundle once the page has loaded (readyState 'complete'), as on a
@@ -36,47 +29,50 @@ const t = (n, ok, extra) => { if (ok) { pass++; console.log('PASS ' + n); }
  * that many times faster.
  */
 async function boot(cfg, { html, url, speed = 1, fetch, prepare }) {
-  const dom = new JSDOM(html, { runScripts: 'outside-only', url, virtualConsole: new VirtualConsole(), pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, modern ? UA.webos23 : UA.webos3);
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  // Chrome 23 has it; the Chrome 38 environment takes it away all the same.
-  win.Element.prototype.remove = function remove() { if (this.parentNode) this.parentNode.removeChild(this); };
-  win.launchParams = '{}';
-  win.fetch = fetch || (() => Promise.reject(new Error('offline')));
-  win.XMLHttpRequest = class { open() {} send() { if (this.onerror) this.onerror(); } setRequestHeader() {} getResponseHeader() { return null; } addEventListener() {} };
-  win.requestAnimationFrame = (cb) => setTimeout(() => cb(0), 1);
-  win.cancelAnimationFrame = (id) => clearTimeout(id);
-  if (speed !== 1) {
-    const st = win.setTimeout.bind(win);
-    const si = win.setInterval.bind(win);
-    win.setTimeout = (fn, ms, ...a) => st(fn, (ms || 0) / speed, ...a);
-    win.setInterval = (fn, ms, ...a) => si(fn, (ms || 0) / speed, ...a);
-  }
-  win.localStorage.setItem('ytaf-configuration', JSON.stringify(Object.assign({
-    enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-    upgradeThumbnails: false, enableAutoLogin: false
-  }, cfg)));
-  // How often the page looks for the player: the attach poll's heartbeat.
-  win.playerLookups = 0;
-  const byId = win.document.getElementById.bind(win.document);
-  win.document.getElementById = (id) => {
-    if (id === 'ytlr-player__player-container-player') win.playerLookups++;
-    return byId(id);
-  };
-  // Every "Playing in ..." toast put on the page, with the page it came on.
-  win.qualityToasts = [];
-  new win.MutationObserver((records) => {
-    for (const record of records) {
-      // By index: the Chrome 38 environment takes a NodeList's iterator away.
-      for (let i = 0; i < record.addedNodes.length; i++) {
-        if (/Playing in/.test(record.addedNodes[i].textContent || '')) win.qualityToasts.push(win.document.body.className);
+  const page = bootPage({
+    html,
+    url,
+    xhr: failingXHR(),
+    config: Object.assign({
+      enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
+      upgradeThumbnails: false, enableAutoLogin: false
+    }, cfg),
+    fetch: fetch || (() => Promise.reject(new Error('offline'))),
+    // After the environment of the build is applied.
+    beforeEval: (win) => {
+      win.requestAnimationFrame = (cb) => setTimeout(() => cb(0), 1);
+      win.cancelAnimationFrame = (id) => clearTimeout(id);
+      if (speed !== 1) {
+        const st = win.setTimeout.bind(win);
+        const si = win.setInterval.bind(win);
+        win.setTimeout = (fn, ms, ...a) => st(fn, (ms || 0) / speed, ...a);
+        win.setInterval = (fn, ms, ...a) => si(fn, (ms || 0) / speed, ...a);
       }
-    }
-  }).observe(win.document.documentElement, { childList: true, subtree: true });
-  if (prepare) prepare(win);
+      // How often the page looks for the player: the attach poll's heartbeat.
+      win.playerLookups = 0;
+      const byId = win.document.getElementById.bind(win.document);
+      win.document.getElementById = (id) => {
+        if (id === 'ytlr-player__player-container-player') win.playerLookups++;
+        return byId(id);
+      };
+      // Every "Playing in ..." toast put on the page, with the page it came on.
+      win.qualityToasts = [];
+      new win.MutationObserver((records) => {
+        for (const record of records) {
+          // By index: the Chrome 38 environment takes a NodeList's iterator away.
+          for (let i = 0; i < record.addedNodes.length; i++) {
+            if (/Playing in/.test(record.addedNodes[i].textContent || '')) win.qualityToasts.push(win.document.body.className);
+          }
+        }
+      }).observe(win.document.documentElement, { childList: true, subtree: true });
+      if (prepare) prepare(win);
+    },
+    // Evaluated below, once the page has loaded.
+    evaluate: false
+  });
+  const win = page.win;
   if (win.document.readyState !== 'complete') await new Promise((r) => win.addEventListener('load', r));
-  win.eval(bundle);
+  page.evaluate();
   return win;
 }
 
@@ -100,22 +96,12 @@ function makePlayer(win, state) {
   return p;
 }
 
-/** Waits until `check()` holds, at most `ms`; resolves with whether it did. */
-async function until(check, ms) {
-  const end = Date.now() + ms;
-  while (!check()) {
-    if (Date.now() > end) return false;
-    await sleep(10);
-  }
-  return true;
-}
-
 function openVideo(win) {
   win.location.hash = '#/watch?v=' + VIDEO;
   win.document.body.className = 'WEB_PAGE_TYPE_WATCH';
 }
 
-(async () => {
+run(async () => {
   // ---- The first video after more than a minute on Home with no player ----
   {
     const win = await boot({}, { html: '<body class="WEB_PAGE_TYPE_BROWSE"></body>', url: 'https://www.youtube.com/tv#/', speed: 400 });
@@ -211,9 +197,7 @@ function openVideo(win) {
     t(`SponsorBlock, muting ${muting ? 'on: the skip and the mute segment' : 'off: the skip segment alone'} on the seek bar and in the list`,
       bars.join('|') === wantBars.join('|') && rows.join('|') === wantRows.join('|'), `bars=${bars.join('|')} rows=${rows.join('|')}`);
     // Switched during the video, in the panel: the bar and the list follow at once.
-    const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-    Object.defineProperty(e, 'keyCode', { get: () => 404, configurable: true }); // green: the panel
-    dispatchTrusted(win.document.body, e);
+    trustedKey(win, 404); // green: the panel
     // The SponsorBlock page is built a frame after the panel opens.
     await until(() => Array.from(win.document.querySelectorAll('label .label-text')).some((l) => l.textContent === 'Allow segments that mute audio'), 2000);
     const label = Array.from(win.document.querySelectorAll('label'))
@@ -308,7 +292,4 @@ function openVideo(win) {
     }
     win.close();
   }
-
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})().catch((e) => { console.error(e); process.exit(1); });
+});
