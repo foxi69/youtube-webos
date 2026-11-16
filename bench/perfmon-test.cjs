@@ -8,12 +8,19 @@
  *   6. charges YouTube's own timers to YouTube, not to the mod
  *   7. reads an account's own settings with Separate Settings for Each Account on
  *   8. counts past 64/s, and lists critical findings first
+ *
+ *   node bench/perfmon-test.cjs <perf bundle> [legacy|modern]
+ *
+ * The page is set up here and not by the harness's bootPage: `modern` runs
+ * the bundle in jsdom's own environment, with nothing taken away, and the
+ * storage is filled after the Chrome 38 environment is applied.
  */
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent } = require('./chrome38-env.cjs');
+const { applyChrome38Downgrade } = require('./chrome38-env.cjs');
+const { createReporter, silentXHR, UA, setUserAgent, wait } = require('./harness.cjs');
 
 const bundlePath = process.argv[2];
 const legacy = process.argv[3] !== 'modern';
@@ -31,7 +38,7 @@ setUserAgent(win, legacy ? UA.webos3 : UA.webos23);
 win.launchParams = '{}';
 if (!win.requestAnimationFrame) win.requestAnimationFrame = (cb) => win.setTimeout(() => cb(Date.now()), 16);
 if (!win.cancelAnimationFrame) win.cancelAnimationFrame = (i) => win.clearTimeout(i);
-win.XMLHttpRequest = class { open(){} send(){} setRequestHeader(){} getResponseHeader(){return null;} addEventListener(){} };
+win.XMLHttpRequest = silentXHR();
 if (legacy) applyChrome38Downgrade(win);
 
 // Separate Settings for Each Account on, and an account whose own SponsorBlock
@@ -63,11 +70,7 @@ try { win.eval(fs.readFileSync(bundlePath, 'utf8')); } catch (e) { threw = e; }
 vm.runInContext('setTimeout(function ytTick() {}, 0);', dom.getInternalVMContext(),
   { filename: 'https://www.youtube.com/s/_/kabuki/base.js' });
 
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra ? '\n     ' + extra : '')); }
-};
+const { t, done, run } = createReporter();
 
 // jsdom (correctly, per spec) makes isTrusted an unforgeable own property on
 // every Event, so a harness can never simulate a real remote press. perf_mon
@@ -95,13 +98,14 @@ function findRoot() {
 }
 const visible = () => { const r = findRoot(); return !!r && r.style.display !== 'none'; };
 
-setTimeout(async () => {
+run(async () => {
+  await wait(600);
   t('bundle loads without throwing', !threw, threw && String(threw.message));
   t('no "require is not defined"', !(threw && /require is not defined/.test(String(threw.message))),
     threw && String(threw.message));
   t('no jsdomError during load', errors.length === 0, errors[0]);
   t('__PERF installed', !!win.__PERF);
-  if (!win.__PERF) { console.log(`\n${pass} passed, ${fail} failed`); process.exit(1); }
+  if (!win.__PERF) return done();
   win.__PERF.options.requireTrustedKeys = false;
 
   const entries = Object.keys(win.__PERF.ledger).map((k) => win.__PERF.ledger[k]);
@@ -181,7 +185,4 @@ setTimeout(async () => {
   const beforeSlow = visible();
   key(48);
   t('presses outside the 1.5s window do not toggle', visible() === beforeSlow);
-
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-}, 600);
+});
