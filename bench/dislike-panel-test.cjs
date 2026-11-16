@@ -13,25 +13,17 @@
  * Chrome 87 (webOS 22) does, so the modern run gets a stand-in the test
  * drives, and the legacy run (Chrome 38, none) injects without one.
  */
-const fs = require('fs');
-const path = require('path');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, applyChrome87Downgrade, UA, setUserAgent, dispatchTrusted } = require('./chrome38-env.cjs');
+const { createReporter, flavorFromArgs, readBundle, bootPage, dispatchTrusted, wait } = require('./harness.cjs');
 
-const ROOT = path.resolve(__dirname, '..');
-const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
-const modern = process.argv[3] === 'modern';
-const code = fs.readFileSync(bundlePath, 'utf8');
+// `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
+// with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
+const { modern } = flavorFromArgs();
+const code = readBundle();
 
 const API = 'https://returnyoutubedislikeapi.com/votes?videoId=';
 const DASH = '—';
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra !== undefined ? '\n     ' + extra : '')); }
-};
+const { t, run } = createReporter();
 
 /**
  * The bundle on a watch page. `answer(id, n)` says what the API does with the
@@ -42,27 +34,21 @@ const t = (name, ok, extra) => {
  * IntersectionObserver first reports, modern only).
  */
 async function boot(answer, opts = {}) {
-  const errors = [];
   const rydErrors = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => { if (!/Not implemented: navigation/.test(e.message)) errors.push(e.message); });
-  vc.on('error', (...a) => errors.push(a.join(' ')));
-  vc.on('log', (...a) => { const s = a.map(String).join(' '); if (/^\[RYD:[^\]]*\] \[ERROR\]/.test(s)) rydErrors.push(s); });
-  const dom = new JSDOM('<!doctype html><html><head></head><body class="WEB_PAGE_TYPE_WATCH"><ytlr-app>' +
-    '<div id="ytlr-player__player-container"><video></video></div></ytlr-app></body></html>',
-  { runScripts: 'outside-only', url: 'https://www.youtube.com/tv#' + (opts.hash || '/watch?v=' + (opts.video || 'vidAAAAAAAA')),
-    virtualConsole: vc, pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, modern ? UA.webos23 : UA.webos3);
-  win.launchParams = '{}';
-  win.XMLHttpRequest = class { open() {} send() {} setRequestHeader() {} getResponseHeader() { return null; } addEventListener() {} };
-  win.localStorage.setItem('ytaf-configuration', JSON.stringify(Object.assign({
-    enableReturnYouTubeDislike: true, enableAdBlock: false, enableSponsorBlock: false,
-    enableDeArrow: false, upgradeThumbnails: false, enableAutoLogin: false,
-    checkForUpdates: false, showWhatsNew: false, enableLegacyEmojiFix: false
-  }, opts.config)));
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  win.Element.prototype.remove = function remove() { if (this.parentNode) this.parentNode.removeChild(this); };
+  const { win, errors, evaluate } = bootPage({
+    code,
+    bodyClass: 'WEB_PAGE_TYPE_WATCH',
+    inner: '<div id="ytlr-player__player-container"><video></video></div>',
+    url: 'https://www.youtube.com/tv#' + (opts.hash || '/watch?v=' + (opts.video || 'vidAAAAAAAA')),
+    ignoreNavigation: true,
+    console: { log: (...a) => { const s = a.map(String).join(' '); if (/^\[RYD:[^\]]*\] \[ERROR\]/.test(s)) rydErrors.push(s); } },
+    config: Object.assign({
+      enableReturnYouTubeDislike: true, enableAdBlock: false, enableSponsorBlock: false,
+      enableDeArrow: false, upgradeThumbnails: false, enableAutoLogin: false,
+      checkForUpdates: false, showWhatsNew: false, enableLegacyEmojiFix: false
+    }, opts.config),
+    evaluate: false
+  });
   const scrolled = [];
   win.Element.prototype.scrollIntoView = function () { scrolled.push(this); };
   if (opts.hl) win.ytcfg = { get: (k) => (k === 'HL' ? opts.hl : undefined) };
@@ -109,7 +95,7 @@ async function boot(answer, opts = {}) {
     const body = typeof a === 'object' ? (a.body || {}) : { id, dislikes: a };
     return Promise.resolve({ ok: status === 200, status, json: () => Promise.resolve(body) });
   };
-  win.eval(code);
+  evaluate();
   await wait(650);   // handleHashChange runs 500 ms after load
   return {
     win, errors, rydErrors, requests, asked, scrolled, ios,
@@ -217,7 +203,7 @@ function key(win, target, name, code) {
   return dispatchTrusted(target, e);   // false: the press was taken
 }
 
-(async () => {
+run(async () => {
   const f = modern ? 'modern' : 'legacy';
   const n = (s) => `${f}: ${s}`;
   const counts = { vidAAAAAAAA: 4321 };
@@ -620,7 +606,4 @@ function key(win, target, name, code) {
     t(n('switched off: no request and no factoid'), !b.requests.length && !factoidEl(win), b.requests.join());
     t(n('switched off: Down in the panel still moves the focus'), win.document.activeElement === p.items[1]);
   }
-
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})();
+});

@@ -13,17 +13,12 @@
  * XMLHttpRequest the test answers); the bar's and track's boxes are set by
  * the test, as jsdom lays nothing out.
  */
-const fs = require('fs');
-const path = require('path');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, applyChrome87Downgrade, UA, setUserAgent, dispatchTrusted } = require('./chrome38-env.cjs');
+const { createReporter, flavorFromArgs, readBundle, bootPage, trustedKey, wait } = require('./harness.cjs');
 
-const ROOT = path.resolve(__dirname, '..');
-const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
 // `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
 // with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
-const modern = process.argv[3] === 'modern';
-const code = fs.readFileSync(bundlePath, 'utf8');
+const { modern } = flavorFromArgs();
+const code = readBundle();
 const LABEL = 'Show Most Replayed Graph Above the Seek Bar';
 const GREEN = 404;
 const TICK = 300;   // a little over the module's 250 ms
@@ -31,13 +26,8 @@ const DURATION = 200;
 
 const A = 'vidAAAAAAAA', B = 'vidBBBBBBBB', C = 'vidCCCCCCCC', D = 'vidDDDDDDDD';
 const E = 'vidEEEEEEEE', F = 'vidFFFFFFFF';
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-let pass = 0, fail = 0;
-const t = (name, ok, extra) => {
-  if (ok) { pass++; console.log('PASS ' + name); }
-  else { fail++; console.log('FAIL ' + name + (extra !== undefined ? '\n     ' + extra : '')); }
-};
+const { t, run } = createReporter();
 
 // A `next` answer with the heatmap in its current shape: ten 10 s markers.
 const heatmap = (values) => ({ frameworkUpdates: { entityBatchUpdate: { mutations: [
@@ -59,30 +49,9 @@ const BAR = '<ytlr-multi-markers-player-bar-renderer><div idomkey="progress-bar"
  * waits for the test (`answer`).
  */
 function boot({ on = true, bar = BAR, video = A, answers = {} } = {}) {
-  const errors = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => errors.push('jsdomError: ' + (e.stack || e.message)));
-  vc.on('error', (...a) => errors.push('console.error: ' + a.map(String).join(' ')));
-  const dom = new JSDOM('<!doctype html><html><head></head><body class="WEB_PAGE_TYPE_WATCH"><ytlr-app>' +
-    `<div id="ytlr-player__player-container-player"><video></video></div>${bar}</ytlr-app></body></html>`,
-  { runScripts: 'outside-only', url: `https://www.youtube.com/tv#/watch?v=${video}`, virtualConsole: vc, pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, modern ? UA.webos23 : UA.webos3);
-  win.launchParams = '{}';
-  win.localStorage.setItem('ytaf-configuration', JSON.stringify({
-    enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-    enableDeArrow: false, upgradeThumbnails: false, enableAutoLogin: false,
-    checkForUpdates: false, showWhatsNew: false, showMostReplayed: on
-  }));
-  if (!win.requestAnimationFrame) win.requestAnimationFrame = (cb) => win.setTimeout(() => cb(Date.now()), 16);
-  if (!win.cancelAnimationFrame) win.cancelAnimationFrame = (id) => win.clearTimeout(id);
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  // Chrome 23 has it; the Chrome 38 environment takes it away all the same.
-  win.Element.prototype.remove = function remove() { if (this.parentNode) this.parentNode.removeChild(this); };
-
   // The heatmap lookups: the `next` requests that ask for the markers.
   const lookups = [];
-  win.XMLHttpRequest = class {
+  const Next = class {
     open(method, url) { this.method = method; this.url = String(url); }
     setRequestHeader() {}
     getResponseHeader() { return null; }
@@ -104,7 +73,20 @@ function boot({ on = true, bar = BAR, video = A, answers = {} } = {}) {
     x.onload();
   }
 
-  const doc = win.document;
+  const { win, doc, errors, evaluate } = bootPage({
+    code,
+    bodyClass: 'WEB_PAGE_TYPE_WATCH',
+    inner: `<div id="ytlr-player__player-container-player"><video></video></div>${bar}`,
+    url: `https://www.youtube.com/tv#/watch?v=${video}`,
+    errorStacks: true,
+    xhr: Next,
+    config: {
+      enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
+      enableDeArrow: false, upgradeThumbnails: false, enableAutoLogin: false,
+      checkForUpdates: false, showWhatsNew: false, showMostReplayed: on
+    },
+    evaluate: false
+  });
   const state = { id: video, live: false };
   doc.getElementById('ytlr-player__player-container-player').getVideoData = () =>
     ({ video_id: state.id, isLive: state.live });
@@ -117,8 +99,8 @@ function boot({ on = true, bar = BAR, video = A, answers = {} } = {}) {
   const rect = win.Element.prototype.getBoundingClientRect;
   win.Element.prototype.getBoundingClientRect = function () { return boxes.get(this) || rect.call(this); };
 
-  win.eval(code);
-  const rule = () => { const el = doc.getElementById('ytaf-most-replayed'); return el ? el.textContent : ''; };
+  evaluate();
+  const rule =() => { const el = doc.getElementById('ytaf-most-replayed'); return el ? el.textContent : ''; };
   return { win, doc, errors, lookups, answer, state, box, rule };
 }
 
@@ -134,9 +116,7 @@ function graphPath(rule) {
 function toggleSetting(win) {
   const doc = win.document;
   if (!doc.querySelector('.ytaf-ui-container')) {
-    const green = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-    Object.defineProperty(green, 'keyCode', { get: () => GREEN, configurable: true });
-    dispatchTrusted(doc.body, green);
+    trustedKey(win, GREEN);
   }
   const panel = doc.querySelector('.ytaf-ui-container');
   if (!panel) throw new Error('the settings panel did not open');
@@ -151,7 +131,7 @@ function toggleSetting(win) {
   return input.checked;
 }
 
-(async () => {
+run(async () => {
   const f = modern ? 'modern' : 'legacy';
   const n = (s) => `${f}: ${s}`;
   const HOST = 'ytlr-multi-markers-player-bar-renderer';
@@ -327,7 +307,4 @@ function toggleSetting(win) {
     t(n('no bar yet: no console.error / jsdomError'), env.errors.length === 0, env.errors.slice(0, 3).join(' || '));
     env.win.close();
   }
-
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})().catch((e) => { console.log('FAIL harness: ' + (e && e.stack || e)); process.exit(1); });
+});
