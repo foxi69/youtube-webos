@@ -62,7 +62,15 @@ export class FetchRegistry extends CustomEventTarget<EventMap> {
       typeof Response === 'function' && resource instanceof Response;
     if (!isRequest && !isResponse) return null;
 
-    const blob = await resource.clone().blob();
+    // A body that cannot be read as a blob (the fetch polyfill throws for a
+    // FormData one on webOS 3) is not dumped: the dump is only for the log,
+    // and its failure must not reject the request.
+    let blob: Blob;
+    try {
+      blob = await resource.clone().blob();
+    } catch {
+      return null;
+    }
     if (!blob.size) return null;
 
     const fr = new FileReader();

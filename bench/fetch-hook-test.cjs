@@ -360,6 +360,13 @@ async function nativeFetchTv() {
   t(n('debug, an empty body: no body line'), !r.error && r.res.status === 204 &&
     !debugLine(env.debug, 'Request Body') && !debugLine(env.debug, 'Response Body'),
     env.debug.map((a) => a[0]).join(' | '));
+  // A body that cannot be read for the dump: the request goes out all the same.
+  const unreadable = new Request(ORIGIN + '/youtubei/v1/unreadable', { method: 'POST', body: 'x' });
+  unreadable.clone = () => { throw new Error('no clone'); };
+  before = fetched.length;
+  r = await call(win, unreadable);
+  t(n('debug: a body that cannot be dumped does not stop the request'), !r.error && fetched.length === before + 1 &&
+    fetched[before].resource === unreadable, describe(r));
   win.__ytaf_debug__ = false;
 
   // ---- The Tracking Block back on ----
