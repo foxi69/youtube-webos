@@ -52,6 +52,8 @@ function boot(cfg, { head = () => big, image = () => ({ width: 1280 }), stored, 
   const errors = [];
   const heads = [];
   const images = [];
+  // Both kinds of probe, in the order they started: 'head <url>' or 'image <url>'.
+  const probes = [];
   const vc = new VirtualConsole();
   vc.on('jsdomError', (e) => { errors.push(e.message); allErrors.push(e.message); });
   const dom = new JSDOM(`<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app>${html}</ytlr-app></body></html>`,
@@ -68,6 +70,7 @@ function boot(cfg, { head = () => big, image = () => ({ width: 1280 }), stored, 
     send() {
       if (this._method !== 'HEAD') { if (this.onerror) setTimeout(() => this.onerror(), 0); return; }
       heads.push(this._url);
+      probes.push('head ' + this._url);
       const answer = head(this._url);
       setTimeout(() => {
         if (answer.error) { if (this.onerror) this.onerror(); return; }
@@ -86,6 +89,7 @@ function boot(cfg, { head = () => big, image = () => ({ width: 1280 }), stored, 
   win.Image = class {
     set src(url) {
       images.push(url);
+      probes.push('image ' + url);
       this._src = url;
       const answer = image(url);
       this.naturalWidth = answer.width || 0;
@@ -135,7 +139,7 @@ function boot(cfg, { head = () => big, image = () => ({ width: 1280 }), stored, 
     if (!row) throw new Error('Thumbnail Strategy row missing');
     for (let i = 0; i < 3 && row.querySelector('.current-value').textContent !== names[mode]; i++) row.click();
   };
-  return { win, errors, heads, images, parse, pump, toggle, strategy };
+  return { win, errors, heads, images, probes, parse, pump, toggle, strategy };
 }
 
 const url = (id, name = 'hqdefault') => `https://i.ytimg.com/vi/${id}/${name}.jpg`;
@@ -443,13 +447,17 @@ const HQ = (id) => url(id, 'hqdefault');
     for (let i = 0; i < 10; i++) ids.push('queuedvid' + String(i).padStart(2, '0'));
     const html = [ids[8], ids[9]].map((id) =>
       `<ytlr-thumbnail-details style="background-image: url(&quot;${MAX(id)}&quot;)"></ytlr-thumbnail-details>`).join('');
-    const { parse, heads, images } = boot({}, { html });
+    const { parse, heads, images, probes } = boot({}, { html });
     parse(home([shelf(ids.map((id) => tile(id)))]));
     await wait(100);
     t('the tiles on screen are probed first, by their image', images.includes(MAX(ids[8])) && images.includes(MAX(ids[9])) &&
       !heads.includes(MAX(ids[8])), `images ${images.join(' ')} heads ${heads.join(' ')}`);
     await wait(SETTLE_MS + 1500);
     t('the others by a HEAD once the surface is quiet', ids.slice(0, 8).every((id) => heads.includes(MAX(id))), heads.join(' '));
+    // One history of both: the two on screen before any HEAD.
+    const firstHead = probes.findIndex((p) => p.indexOf('head ') === 0);
+    const onScreen = [ids[8], ids[9]].map((id) => probes.indexOf('image ' + MAX(id)));
+    t('...both images before every HEAD', firstHead !== -1 && onScreen.every((i) => i !== -1 && i < firstHead), probes.join(' | '));
   }
   {
     // A HEAD that cannot even be opened: nothing learned.

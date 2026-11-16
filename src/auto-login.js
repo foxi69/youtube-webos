@@ -178,7 +178,6 @@ function restoreInlinePlayback() {
   try {
     const saved = localStorage.getItem(INLINE_PLAYBACK_SAVED_KEY);
     if (saved === null) return;
-    localStorage.removeItem(INLINE_PLAYBACK_SAVED_KEY);
     let value = null;
     try {
       value = JSON.parse(saved).value;
@@ -187,6 +186,9 @@ function restoreInlinePlayback() {
     }
     if (typeof value === 'string') localStorage.setItem(INLINE_PLAYBACK_KEY, value);
     else localStorage.removeItem(INLINE_PLAYBACK_KEY);
+    // Only once YouTube's record is back: a refused write keeps the backup
+    // for the next Default.
+    localStorage.removeItem(INLINE_PLAYBACK_SAVED_KEY);
     console.info('[Auto Login] Inline playback (previews) given back to YouTube\'s own setting');
   } catch (error) {
     console.error('[Auto Login] Failed to restore inline playback setting:', error);

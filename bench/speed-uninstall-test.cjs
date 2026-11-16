@@ -89,6 +89,12 @@ function makePlayer() {
     getAvailableQualityLevels: () => ['hd1080', 'hd720'],
     setPlaybackQualityRange() {},
     seekTo() {},
+    // YouTube's own speed menu bound (native-menu.js): a reload puts it in
+    // line 2.5 s later.
+    rate: 1,
+    rateSets: 0,
+    getPlaybackRate() { return this.rate; },
+    __ytafOriginalSetPlaybackRate(rate) { this.rateSets++; this.rate = rate; },
     loadVideoById() {
       state = 3;
       this.track = EN;
@@ -117,18 +123,20 @@ import(MODULE).then(async ({ installSpeedFeature }) => {
     JSON.stringify(player.track));
   const checks = [...live.values()];
   t('the subtitle and position checks are running before the uninstall',
-    checks.includes('timeout 5000') && checks.includes('interval 250'), checks.join());
+    checks.includes('timeout 5000') && checks.includes('interval 250') && checks.includes('timeout 2500'), checks.join());
 
   feature.uninstall();
   const left = [...live.values()];
-  t('uninstalled: no subtitle or position check is left', left.length === 0, left.join());
+  t('uninstalled: no subtitle, position or speed menu check is left', left.length === 0, left.join());
 
   // YouTube's captions module turns them on again a moment later.
   player.track = EN;
   const sets = player.sets;
-  await wait(1200);
+  const rateSets = player.rateSets;
+  await wait(2500);
   t('uninstalled: the player\'s subtitles are left alone', player.track === EN && player.sets === sets,
     `${JSON.stringify(player.track)}, ${player.sets - sets} sets`);
+  t('uninstalled: the speed menu is not set afterwards', player.rateSets === rateSets, `${player.rateSets - rateSets} sets`);
 
   t('no jsdomError', errors.length === 0, errors[0]);
   console.log(`${passed} passed, ${failed} failed`);

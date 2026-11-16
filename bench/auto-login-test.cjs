@@ -398,6 +398,27 @@ async function boot(cfg, opts = {}) {
     env.win.close();
   }
   {
+    // Default's write of YouTube's record refused: the backup is kept, and
+    // the next Default puts the record back.
+    const own = { data: false, expiration: 9e12, creation: 7 };
+    const env = await boot({ enableAutoLogin: false, videoPreviews: 'default' },
+      { holdMs: 2500, storage: { [INLINE]: { data: true }, 'ytaf-inline-playback-saved': { value: JSON.stringify(own) } } });
+    const proto = env.win.Storage.prototype;
+    const realSet = proto.setItem;
+    proto.setItem = function setItem(k, v) {
+      if (k === INLINE) throw new Error('quota');
+      return realSet.call(this, k, v);
+    };
+    env.held.forEach((fn) => { fn(); });
+    const kept = env.read('ytaf-inline-playback-saved') !== null;
+    proto.setItem = realSet;
+    env.held.forEach((fn) => { fn(); });
+    t(n('previews Default, the write refused: the backup is kept, and given back next time'),
+      kept && JSON.stringify(env.read(INLINE)) === JSON.stringify(own) && env.read('ytaf-inline-playback-saved') === null,
+      `${kept} ${env.store.getItem(INLINE)}`);
+    env.win.close();
+  }
+  {
     // A cold start on Default over a record forced earlier (another account's
     // setting, say): YouTube's own record is given back at start-up.
     const own = { data: false, expiration: 9e12, creation: 7 };

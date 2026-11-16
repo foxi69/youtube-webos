@@ -47,6 +47,16 @@ function fakeResolver() {
  * The bundle on a page with body class `opts.page` (the home screen by
  * default). `opts.before(win)` runs just before the bundle.
  */
+// jsdom's wrapper -> implementation map (its path moved in jsdom 30), and the
+// URL serializer of the whatwg-url copy jsdom uses (as in launch-params-test).
+function jsdomUtils() {
+  for (const p of ['jsdom/lib/generated/idl/utils.js', 'jsdom/lib/jsdom/living/generated/utils.js']) {
+    try { return require(p); } catch { /* the next layout */ }
+  }
+  throw new Error('jsdom internals not found');
+}
+const { serializeURL } = require(require.resolve('whatwg-url', { paths: [path.dirname(require.resolve('jsdom/package.json'))] }));
+
 function boot(cfg = {}, opts = {}) {
   const errors = [];
   const warnings = [];
@@ -75,10 +85,13 @@ function boot(cfg = {}, opts = {}) {
   win.fetch = () => new Promise(() => {});
   const pageEvents = [];
   win.addEventListener('ytaf-page-update', (e) => pageEvents.push(e.detail));
+  // Where the page is sent (location.href): recorded, not followed.
+  const navigations = [];
+  jsdomUtils().implForWrapper(win.location)._locationObjectSetterNavigate = (url) => { navigations.push(serializeURL(url)); };
   if (opts.before) opts.before(win);
   win.eval(code);
   const toasts = () => (win.document.querySelector('.ytaf-notification-container') || {}).textContent || '';
-  return { win, doc: win.document, errors, warnings, logs, pageEvents, toasts };
+  return { win, doc: win.document, errors, warnings, logs, pageEvents, toasts, navigations };
 }
 
 // A trusted key press (keydown and keyup) of the remote on the focused element.
@@ -196,16 +209,15 @@ const flags = (d) => d && `${+d.isWatch}${+d.isShorts}${+d.isAccountSelector}${+
   {
     // A relaunch with a target goes to it; a plain one (the app icon) stays.
     const env = boot();
-    const went = [];
     const errorsBefore = env.errors.length;
     const relaunch = (detail) => env.doc.dispatchEvent(new env.win.CustomEvent('webOSRelaunch', { detail }));
-    const realInfo = env.win.console.info;
-    env.win.console.info = (...args) => { if (args[0] === 'handleLaunch') went.push(args[1]); return realInfo.apply(env.win.console, args); };
+    const before = env.navigations.length;
     relaunch({ displayAffinity: 0 });
-    t(n('a plain relaunch: no navigation'), went.length === 0, JSON.stringify(went));
+    t(n('a plain relaunch: no navigation'), env.navigations.length === before, JSON.stringify(env.navigations.slice(before)));
     relaunch({ contentTarget: 'v=abcdefghijk' });
-    t(n('a relaunch with a video: handled as a launch'), went.length === 1 && went[0].indexOf('contentTarget') !== -1,
-      JSON.stringify(went));
+    const went = env.navigations.slice(before);
+    t(n('a relaunch with a video: the page goes to that video'), went.length === 1 &&
+      new URL(went[0]).searchParams.get('v') === 'abcdefghijk' && new URL(went[0]).pathname === '/tv', JSON.stringify(went));
     t(n('relaunch: no page errors'), env.errors.length === errorsBefore, env.errors.join(' | '));
   }
 
