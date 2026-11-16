@@ -13,18 +13,13 @@
  */
 const path = require('path');
 const { pathToFileURL } = require('url');
+const { createReporter } = require('./harness.cjs');
 
 const MODULE = pathToFileURL(path.resolve(__dirname, '../src/speed/legacy-decoder.js')).href;
 const CONTAINERS = pathToFileURL(path.resolve(__dirname, '../src/speed/containers.js')).href;
 const ENGINE = pathToFileURL(path.resolve(__dirname, '../src/speed/audio-engine.js')).href;
 
-let passed = 0;
-let failed = 0;
-const t = (name, ok, extra) => {
-  if (ok) passed++;
-  else failed++;
-  console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${ok || extra === undefined ? '' : ' -> ' + extra}`);
-};
+const { t, run } = createReporter();
 
 const RATE = 44100;
 const DUR = Math.round((1024 / RATE) * 1e6);
@@ -143,7 +138,7 @@ function ramp(out, first, end) {
   return expect === end * 1024 ? true : `ends at sample ${expect}, expected ${end * 1024}`;
 }
 
-(async () => {
+run(async () => {
   const mod = await import(MODULE);
 
   // ---- What it takes ----
@@ -374,7 +369,4 @@ function ramp(out, first, end) {
     const opusOnly = { adaptiveFormats: [{ mimeType: 'audio/webm; codecs="opus"' }] };
     t('a video with no AAC keeps its offer (and plays at 1x)', keepStretchableAudio(opusOnly, LEGACY_STRETCHABLE_AUDIO_RE) === 0 && opusOnly.adaptiveFormats.length === 1);
   }
-
-  console.log(`\n${passed} passed, ${failed} failed`);
-  process.exit(failed ? 1 : 0);
-})();
+});

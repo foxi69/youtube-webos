@@ -13,6 +13,7 @@
  */
 const path = require('path');
 const { pathToFileURL } = require('url');
+const { createReporter } = require('./harness.cjs');
 
 // mse-hook.js imports '../custom-event-target' (a .ts file) without its extension.
 require('./ts-resolve.cjs');
@@ -20,13 +21,7 @@ require('./ts-resolve.cjs');
 const LIMIT = pathToFileURL(path.resolve(__dirname, '../src/hooks/buffer-limit.js')).href;
 const MSE = pathToFileURL(path.resolve(__dirname, '../src/speed/mse-hook.js')).href;
 
-let passed = 0;
-let failed = 0;
-const t = (name, ok, extra) => {
-  if (ok) passed++;
-  else failed++;
-  console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${ok || extra === undefined ? '' : ' -> ' + extra}`);
-};
+const { t, run } = createReporter();
 
 const ranges = (list) => ({ length: list.length, start: (i) => list[i][0], end: (i) => list[i][1] });
 
@@ -107,7 +102,7 @@ let fresh = 0;
 /** A new instance of buffer-limit.js (its state is per module). */
 const loadLimit = () => import(`${LIMIT}?${++fresh}`);
 
-(async () => {
+run(async () => {
   // ---- Trimming ----
   {
     const g = installGlobals();
@@ -266,10 +261,4 @@ const loadLimit = () => import(`${LIMIT}?${++fresh}`);
     t('speed hook: a SourceBuffer lacking appendWindowStart still gets made', err === null, err && err.message);
     hook2.uninstall();
   }
-
-  console.log(`\n${passed} passed, ${failed} failed`);
-  process.exit(failed ? 1 : 0);
-})().catch((e) => {
-  console.error(e);
-  process.exit(1);
 });

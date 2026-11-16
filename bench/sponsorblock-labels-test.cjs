@@ -12,20 +12,14 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const { createReporter } = require('./harness.cjs');
 
 const SRC = path.join(__dirname, '..', 'src', 'sponsorblock-labels.js');
 
-let passed = 0;
-let failed = 0;
+const { t, done } = createReporter();
 
 function check(name, cond, extra) {
-  if (cond) {
-    passed++;
-    console.log(`  ok   ${name}`);
-  } else {
-    failed++;
-    console.log(`  FAIL ${name}${extra ? ` -- ${extra}` : ''}`);
-  }
+  t(name, cond, extra);
 }
 
 function eq(name, actual, expected) {
@@ -319,5 +313,4 @@ console.log('\nturning an option on mid-video takes effect immediately');
   check('badge appears on the same data', css().indexOf('content:"Sponsor"') !== -1, css());
 }
 
-console.log(`\n${passed} passed, ${failed} failed\n`);
-process.exit(failed === 0 ? 0 : 1);
+done();

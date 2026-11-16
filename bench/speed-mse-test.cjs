@@ -13,6 +13,7 @@
  */
 const path = require('path');
 const { pathToFileURL } = require('url');
+const { createReporter } = require('./harness.cjs');
 const {
   box, bytes, mp4Init, mp4Fragment, audioSampleEntry, esds, ASC, frameBytes, MP4_TIMESCALE, webmInit, cluster
 } = require('./speed-fixtures.cjs');
@@ -22,13 +23,7 @@ require('./ts-resolve.cjs');
 
 const MSE = pathToFileURL(path.resolve(__dirname, '../src/speed/mse-hook.js')).href;
 
-let passed = 0;
-let failed = 0;
-const t = (name, ok, extra) => {
-  if (ok) passed++;
-  else failed++;
-  console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${ok || extra === undefined ? '' : ' -> ' + extra}`);
-};
+const { t, run } = createReporter();
 
 const ranges = (list) => ({ length: list.length, start: (i) => list[i][0], end: (i) => list[i][1] });
 const accessor = (proto, prop, field) =>
@@ -151,7 +146,7 @@ const mdhdTimescale = (u8) => {
   return null;
 };
 
-(async () => {
+run(async () => {
   const { SpeedTimeMap, isSupportedSpeed } = await import(MSE);
 
   // ---- The time map ----
@@ -420,10 +415,4 @@ const mdhdTimescale = (u8) => {
     t('uninstall: the originals are back', env.win.MediaSource.prototype.addSourceBuffer !== proto &&
       Object.getOwnPropertyDescriptor(env.win.HTMLMediaElement.prototype, 'src').get.toString().includes('this[field]'));
   }
-
-  console.log(`\n${passed} passed, ${failed} failed`);
-  process.exit(failed ? 1 : 0);
-})().catch((e) => {
-  console.error(e);
-  process.exit(1);
 });

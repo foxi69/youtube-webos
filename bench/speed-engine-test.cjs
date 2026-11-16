@@ -15,16 +15,11 @@
  */
 const path = require('path');
 const { pathToFileURL } = require('url');
+const { createReporter } = require('./harness.cjs');
 
 const ENGINE = pathToFileURL(path.resolve(__dirname, '../src/speed/audio-engine.js')).href;
 
-let passed = 0;
-let failed = 0;
-const t = (name, ok, extra) => {
-  if (ok) passed++;
-  else failed++;
-  console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${ok || extra === undefined ? '' : ' -> ' + extra}`);
-};
+const { t, run: runTest } = createReporter();
 
 const RATE = 48000;
 const FRAME = 1024;
@@ -193,7 +188,7 @@ const max = (a) => a.reduce((m, v) => Math.max(m, v), 0);
 /** Every offset under `limit`, and at least one measured (none would prove nothing). */
 const within = (off, limit) => off.length > 0 && max(off) < limit;
 
-(async () => {
+runTest(async () => {
   const { AudioEngine } = await import(ENGINE);
   const tick = () => new Promise((r) => setImmediate(r));
 
@@ -497,10 +492,4 @@ const within = (off, limit) => off.length > 0 && max(off) < limit;
     t(`a ${jump} s jump without an event: no error`, env.errors.length === 0, env.errors.map(String).join());
     env.engine.destroy();
   }
-
-  console.log(`\n${passed} passed, ${failed} failed`);
-  process.exit(failed ? 1 : 0);
-})().catch((e) => {
-  console.error(e);
-  process.exit(1);
 });

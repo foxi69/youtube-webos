@@ -8,16 +8,11 @@
  */
 const path = require('path');
 const { pathToFileURL } = require('url');
+const { createReporter } = require('./harness.cjs');
 
 const MODULE = pathToFileURL(path.resolve(__dirname, '../src/speed/player-state.js')).href;
 
-let passed = 0;
-let failed = 0;
-const t = (name, ok, extra) => {
-  if (ok) passed++;
-  else failed++;
-  console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${ok || extra === undefined ? '' : ' -> ' + extra}`);
-};
+const { t, run: runTest } = createReporter();
 
 const EN = { languageCode: 'en', vss_id: '.en', kind: '' };
 const EN_AUTO = { languageCode: 'en', vss_id: 'a.en', kind: 'asr' };
@@ -56,7 +51,7 @@ function storage(data, expiration = Date.now() + 1e9) {
   return { getItem: () => value };
 }
 
-import(MODULE).then(({ readCaptions, keepCaptions, readQualityRecord }) => {
+runTest(() => import(MODULE).then(({ readCaptions, keepCaptions, readQualityRecord }) => {
   {
     // Turned off by hand, then the reload turns the default track back on.
     const s = setup({});
@@ -198,10 +193,4 @@ import(MODULE).then(({ readCaptions, keepCaptions, readQualityRecord }) => {
   const open = readQualityRecord(noExpiry, Date.now());
   t('...and one without an expiry never expires', open && open.level === 'hd720' && open.expires === Infinity, String(open && open.expires));
   t('no storage, nothing read', readQualityRecord(undefined, Date.now()) === null);
-
-  console.log(`${passed} passed, ${failed} failed`);
-  process.exit(failed ? 1 : 0);
-}).catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+}));
