@@ -13,6 +13,9 @@ reports worth a look). When anything is new, one
 issue (label "fork-watch") is opened with the findings, so it arrives as a
 GitHub notification. Nothing is merged or pushed - porting stays a decision.
 
+A branch with no commit in common with our main (a fork that rewrote its
+history, as NicholasBly did at 0.8.5) cannot be compared: its own commits
+since the last run are read instead.
 Forks of forks are followed too, to any depth: the forks API only lists
 direct forks, so the tree is walked from each root.
 
@@ -260,6 +263,16 @@ def is_bot(commit):
     return login.endswith('[bot]') or commit['commit']['author']['name'].endswith('[bot]')
 
 
+def unrelated_commits(fork, branch, cutoff):
+    """A branch GitHub cannot compare with our main (no commit in common: the
+    fork rewrote its history, as NicholasBly did at 0.8.5, or it is a fork of
+    such a one; a 404 from the compare): its own commits since `cutoff`. The
+    caller leaves out what is ours by title, as nothing is by sha."""
+    since = cutoff.strftime('%Y-%m-%dT%H:%M:%SZ')
+    return get_all(f"/repos/{fork['full_name']}/commits", {'sha': branch, 'since': since},
+                   limit=MAX_COMPARE_COMMITS) or []
+
+
 def new_commits(fork, cutoff, seen, known, today, ours):
     """Commits on the fork's branches that are not in our main, newer than `cutoff`
     and not reported before. `seen` holds shas handled in this run, shared
@@ -280,9 +293,13 @@ def new_commits(fork, cutoff, seen, known, today, ours):
             print(f"{fork['full_name']} {branch['name']}: compare failed ({err.code}), skipped")
             FAILED.add(fork['full_name'])
             continue
-        if not cmp or not cmp.get('ahead_by'):
+        if cmp is None:
+            commits = unrelated_commits(fork, branch['name'], cutoff)
+        elif not cmp.get('ahead_by'):
             continue
-        for c in cmp.get('commits', []):
+        else:
+            commits = cmp.get('commits', [])
+        for c in commits:
             if len(c.get('parents', [])) > 1:
                 continue  # merge commits carry no change of their own
             when = parse_time(c['commit']['committer']['date'])
