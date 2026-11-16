@@ -215,6 +215,21 @@ async function boot(cfg, opts = {}) {
     env.win.close();
   }
 
+  {
+    // A guest leaves the selector between Down and Enter: no Enter on the next page.
+    const env = await boot({ enableAutoLogin: true, autoSelectAccount: true },
+      { identity: { identityType: 'UNAUTHENTICATED_IDENTITY_TYPE_GUEST' } });
+    env.openSelector();
+    // Left the moment Down is sent, before the 200 ms to Enter.
+    for (let i = 0; i < 400 && !env.keys.length; i++) await wait(1);
+    const before = env.keys.map((k) => k.code).join();
+    env.win.document.body.className = 'WEB_PAGE_TYPE_BROWSE';
+    await pageMs(1000);
+    t(n('a guest leaving between Down and Enter: Down only, nothing left hidden'),
+      before === '40' && env.keys.map((k) => k.code).join() === '40' && !env.bypassing(), JSON.stringify(env.keys));
+    env.win.close();
+  }
+
   // ---- The selector already on screen when the bundle starts ----
   {
     // A start without launch parameters: the page-state event that reports

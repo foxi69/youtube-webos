@@ -242,6 +242,14 @@ function shouldAutoSelectAccount() {
   return configRead('enableAutoLogin') && configRead('autoSelectAccount');
 }
 
+// Whether the selector is gone (a forced bypass never asks): the bypass is
+// then given up, and the page shown again.
+function selectorLeft(force) {
+    if (force || (document.body && document.body.classList.contains(SELECTORS.ACCOUNT_SELECTOR))) return false;
+    if (document.body) document.body.classList.remove(BYPASS_BODY_CLASS);
+    return true;
+}
+
 export function attemptActiveBypass(force = false) {
     if (!shouldAutoSelectAccount()) return;
     const isSelector = document.body && document.body.classList.contains(SELECTORS.ACCOUNT_SELECTOR);
@@ -264,13 +272,15 @@ export function attemptActiveBypass(force = false) {
         }
         // The viewer left the selector during the delay: the keys would go
         // to whatever page is on screen now.
-        if (!force && !(document.body && document.body.classList.contains(SELECTORS.ACCOUNT_SELECTOR))) {
-            if (document.body) document.body.classList.remove(BYPASS_BODY_CLASS);
-            return;
-        }
+        if (selectorLeft(force)) return;
         if (isGuestMode()) {
             sendKey(REMOTE_KEYS.DOWN);
-            setTimeout(() => { sendKey(REMOTE_KEYS.ENTER); finalizeBypass(); }, 200);
+            setTimeout(() => {
+                // ...also between the guest's Down and Enter.
+                if (selectorLeft(force)) return;
+                sendKey(REMOTE_KEYS.ENTER);
+                finalizeBypass();
+            }, 200);
         } else {
             sendKey(REMOTE_KEYS.ENTER);
             finalizeBypass();
