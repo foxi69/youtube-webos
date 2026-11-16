@@ -43,8 +43,12 @@ const LETTERS = 'abcdefghijklmnopqrstuvwxyz0123456789,'.split('');
  * onSelect), or 'none'. `yt.native`: YouTube types a keyboard's keys itself.
  * `yt.classKeys`: keys are plain divs named by class, the query an <input>.
  */
+// Every boot's errors, checked once at the end.
+const allErrors = [];
+
 async function boot(yt = {}, cfg = {}) {
   const errors = [];
+  allErrors.push(errors);
   const vc = new VirtualConsole();
   vc.on('jsdomError', (e) => errors.push(e.message));
   vc.on('error', (...a) => errors.push(a.join(' ')));
@@ -368,7 +372,9 @@ async function boot(yt = {}, cfg = {}) {
     await wait(450);
     t(n('no query box to watch: nothing pressed, the key is YouTube\'s'), through === true && b.state.ytSaw.join() === 'a' &&
       !b.state.presses.length, `${through} ${b.state.ytSaw.join()} ${b.state.presses.join()}`);
-    t(n('no console errors in any case'), !b.errors.length, b.errors[0]);
+    // Every case's boot, not only this one's.
+    const every = [].concat(...allErrors);
+    t(n('no console errors in any case'), !every.length, every[0]);
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);

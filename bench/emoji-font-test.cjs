@@ -194,6 +194,17 @@ async function legacyCases() {
     await h.frame();
     t(n('a tile added whole: the title inside it is drawn'), h.shown(inner) === 'Tile [1f600]', JSON.stringify(h.shown(inner)));
 
+    // YouTube puts the drawn tile back (a row scrolled away and back): its
+    // hidden-text twin holds the wrapped emoji again, and must not be drawn.
+    for (let i = 0; i < 3; i++) {
+      h.app.removeChild(tile);
+      h.app.appendChild(tile);
+      await h.frame();
+    }
+    t(n('a drawn tile put back three times: still one image, nothing nested'),
+      inner.querySelectorAll('img').length === 1 && inner.querySelectorAll('.twemoji-hidden-text img, .twemoji-hidden-text .twemoji-hidden-text').length === 0,
+      inner.innerHTML);
+
     // Gone before the frame (a row scrolled away at once).
     const gone = h.title(`Gone ${W(GRIN)}`);
     await tick();

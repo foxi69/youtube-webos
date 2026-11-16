@@ -966,7 +966,7 @@ function applySchemaFilters(data, responseType, config) {
       // own (Remove AI Videos, Remove Shorts and the Live / Upcoming /
       // Members-only badges were missing, so they did nothing there unless a
       // feed filter was on as well).
-      if (config.hideGuestPrompts || config.feedFilters || config.decorateItems ||
+      if (config.enableAdBlock || config.hideGuestPrompts || config.feedFilters || config.decorateItems ||
           config.removeAiVideos || config.removeGlobalShorts || config.removeMixes || config.badgeMask) {
          let pivotContents = getByPath(data, schema?.pivotPath);
          if (!pivotContents) {

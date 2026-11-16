@@ -213,14 +213,12 @@ export function setInlinePlayback(mode) {
 }
 
 export function initPreviews() {
-  if (configRead('videoPreviews') === 'default') return;
-
   // Delay by 2.5 seconds to ensure it applies after YouTube's initial load
-  // overrides. The setting is read again then: a change meanwhile (Default
-  // included) was applied by the change listener and must stand.
+  // overrides. The setting is read again then, so a change meanwhile stands.
+  // Default is applied too: a record forced earlier (another account's
+  // setting, say) is given back to YouTube at startup, not only on a change.
   setTimeout(() => {
-    const mode = configRead('videoPreviews');
-    if (mode !== 'default') setInlinePlayback(mode);
+    setInlinePlayback(configRead('videoPreviews'));
   }, 2500);
 }
 
@@ -261,6 +259,12 @@ export function attemptActiveBypass(force = false) {
         // The option may have been turned off during the delay; stop and unhide the selector
         if (!shouldAutoSelectAccount()) {
             bypassUntil = Date.now() + BYPASS_WINDOW_MS;
+            if (document.body) document.body.classList.remove(BYPASS_BODY_CLASS);
+            return;
+        }
+        // The viewer left the selector during the delay: the keys would go
+        // to whatever page is on screen now.
+        if (!force && !(document.body && document.body.classList.contains(SELECTORS.ACCOUNT_SELECTOR))) {
             if (document.body) document.body.classList.remove(BYPASS_BODY_CLASS);
             return;
         }

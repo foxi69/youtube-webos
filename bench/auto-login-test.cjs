@@ -95,7 +95,12 @@ async function boot(cfg, opts = {}) {
   const st = win.setTimeout.bind(win);
   const si = win.setInterval.bind(win);
   const ci = win.clearInterval.bind(win);
-  win.setTimeout = (fn, ms, ...a) => st(fn, (ms || 0) / SPEED, ...a);
+  // opts.holdMs: the timeouts of that length are held, for the test to run (held).
+  const held = [];
+  win.setTimeout = (fn, ms, ...a) => {
+    if (opts.holdMs !== undefined && ms === opts.holdMs) { held.push(() => fn(...a)); return -held.length; }
+    return st(fn, (ms || 0) / SPEED, ...a);
+  };
   // Every interval the page sets, and whether it is still running. The
   // minute's ones are not started: the test runs them when it wants.
   const intervals = [];
@@ -159,7 +164,7 @@ async function boot(cfg, opts = {}) {
     }
     throw new Error('no control "' + text + '" in the panel');
   };
-  return { win, store, errors, warnings, keys, read, lastFired, firedNear, alwaysAsk, intervals, bypassing, openSelector,
+  return { win, store, errors, warnings, held, keys, read, lastFired, firedNear, alwaysAsk, intervals, bypassing, openSelector,
     pressGreen, toggle, cycle, checkbox, openTab };
 }
 
@@ -195,6 +200,18 @@ async function boot(cfg, opts = {}) {
     await pageMs(2000);
     t(n('...and the selector shown again once done'), !env.bypassing());
     t(n('on: no page errors'), env.errors.length === 0, env.errors.join(' | '));
+    env.win.close();
+  }
+
+  {
+    // The viewer leaves the selector during the delay: no key goes to the page now on screen.
+    const env = await boot({ enableAutoLogin: true, autoSelectAccount: true });
+    env.openSelector();
+    await wait(5);
+    env.win.document.body.className = 'WEB_PAGE_TYPE_BROWSE';
+    await pageMs(1000);
+    t(n('the selector left during the delay: nothing pressed, nothing left hidden'),
+      env.keys.length === 0 && !env.bypassing(), JSON.stringify(env.keys));
     env.win.close();
   }
 
@@ -350,15 +367,31 @@ async function boot(cfg, opts = {}) {
     env.win.close();
   }
   {
-    // Set back to Default before the delayed start-up write: that write must not force the old mode.
-    const env = await boot({ enableAutoLogin: false, videoPreviews: 'sound' });
+    // Set back to Default before the delayed start-up write: that write must
+    // not force the old mode. The write is held until Default is set, so the
+    // order cannot come about by the machine's timing.
+    const env = await boot({ enableAutoLogin: false, videoPreviews: 'sound' }, { holdMs: 2500 });
     env.pressGreen();
     await wait(20);
     await env.openTab(5);   // UI Tweaks
     const back = env.cycle(LABEL_PREVIEWS);
-    await pageMs(3000);
+    const startup = env.held.length;
+    env.held.forEach((fn) => { fn(); });
+    await wait(20);
     t(n('previews With sound, set to Default before the start-up write: not forced on'),
-      back === 'Default' && env.read(INLINE) === null, `${back} ${env.store.getItem(INLINE)}`);
+      back === 'Default' && startup === 1 && env.read(INLINE) === null, `${back} ${startup} held ${env.store.getItem(INLINE)}`);
+    env.win.close();
+  }
+  {
+    // A cold start on Default over a record forced earlier (another account's
+    // setting, say): YouTube's own record is given back at start-up.
+    const own = { data: false, expiration: 9e12, creation: 7 };
+    const env = await boot({ enableAutoLogin: false, videoPreviews: 'default' },
+      { storage: { [INLINE]: { data: true }, 'ytaf-inline-playback-saved': { value: JSON.stringify(own) } } });
+    await pageMs(3000);
+    t(n('previews Default at a cold start over a forced record: YouTube\'s own given back'),
+      JSON.stringify(env.read(INLINE)) === JSON.stringify(own) && env.read('ytaf-inline-playback-saved') === null,
+      env.store.getItem(INLINE));
     env.win.close();
   }
   {
