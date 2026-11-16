@@ -8,6 +8,7 @@
  */
 const path = require('path');
 const { pathToFileURL } = require('url');
+const { createReporter } = require('./harness.cjs');
 
 const MODULE = pathToFileURL(path.resolve(__dirname, '../src/speed/containers.js')).href;
 
@@ -24,15 +25,9 @@ const offer = () => [
   audio('audio/mp4; codecs="iamf.001.001.Opus"')
 ];
 
-let passed = 0;
-let failed = 0;
-const t = (name, ok) => {
-  if (ok) passed++;
-  else failed++;
-  console.log(`${ok ? 'PASS' : 'FAIL'} ${name}`);
-};
+const { t, run } = createReporter();
 
-import(MODULE).then(({ keepStretchableAudio, allowSpeedMenuOnSurround }) => {
+run(() => import(MODULE).then(({ keepStretchableAudio, allowSpeedMenuOnSurround }) => {
   {
     const sd = { adaptiveFormats: offer() };
     const removed = keepStretchableAudio(sd);
@@ -69,7 +64,4 @@ import(MODULE).then(({ keepStretchableAudio, allowSpeedMenuOnSurround }) => {
     undo();
     t('undone: nothing left behind', !('isMultiChannelAudio' in {}));
   }
-
-  console.log(`${passed} passed, ${failed} failed`);
-  process.exit(failed ? 1 : 0);
-});
+}));

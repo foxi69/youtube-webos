@@ -13,20 +13,14 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const { createReporter } = require('./harness.cjs');
 
 const SRC = path.join(__dirname, '..', 'src', 'force-codec.js');
 
-let passed = 0;
-let failed = 0;
+const { t, done } = createReporter();
 
 function check(name, cond, extra) {
-  if (cond) {
-    passed++;
-    console.log(`  ok   ${name}`);
-  } else {
-    failed++;
-    console.log(`  FAIL ${name}${extra ? ` -- ${extra}` : ''}`);
-  }
+  t(name, cond, extra);
 }
 
 function eq(name, actual, expected) {
@@ -252,5 +246,4 @@ console.log('\nnested playerResponse and malformed input');
   eq('non-object json still parses', m.sandbox.JSON.parse('42'), 42);
 }
 
-console.log(`\n${passed} passed, ${failed} failed\n`);
-process.exit(failed === 0 ? 0 : 1);
+done();

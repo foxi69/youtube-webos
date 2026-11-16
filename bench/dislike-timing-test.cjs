@@ -16,9 +16,7 @@
 const { createReporter, bootPage, wait } = require('./harness.cjs');
 
 function boot(fetchImpl, hl) {
-  // Animation frames the cases run themselves, each with a time of 0.
-  let rafQ = [];
-  const { win } = bootPage({
+  const { win, frames } = bootPage({
     bodyClass: 'WEB_PAGE_TYPE_WATCH',
     inner: '<div id="ytlr-player__player-container"><video></video></div>',
     url: 'https://www.youtube.com/tv#/watch?v=dQw4w9WgXcQ',
@@ -28,16 +26,15 @@ function boot(fetchImpl, hl) {
     },
     // The legacy environment has no Element#remove here.
     restoreRemove: false,
-    setup: (w) => {
-      w.requestAnimationFrame = (cb) => { rafQ.push(cb); return rafQ.length; };
-      w.cancelAnimationFrame = () => {};
-    },
+    // Animation frames the cases run themselves (pump), each with a time of 0.
+    raf: 'manual',
+    frameTime: 0,
     // AFTER the downgrade: it deletes window.fetch (Chrome 38 has none), which
     // would wipe the mock and hand the request to the whatwg-fetch polyfill.
     fetch: fetchImpl,
     beforeEval: (w) => { if (hl) w.ytcfg = { get: (k) => (k === 'HL' ? hl : undefined) }; }
   });
-  return { win, pump: () => { const q = rafQ; rafQ = []; for (const cb of q) cb(0); } };
+  return { win, pump: frames.pump };
 }
 
 // A description panel shaped like YouTube's, mounted when the user opens it.

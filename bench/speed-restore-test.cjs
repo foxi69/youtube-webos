@@ -8,16 +8,11 @@
  */
 const path = require('path');
 const { pathToFileURL } = require('url');
+const { createReporter } = require('./harness.cjs');
 
 const MODULE = pathToFileURL(path.resolve(__dirname, '../src/speed/position-watch.js')).href;
 
-let passed = 0;
-let failed = 0;
-const t = (name, ok, extra) => {
-  if (ok) passed++;
-  else failed++;
-  console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${ok || extra === undefined ? '' : ' -> ' + extra}`);
-};
+const { t, run: runTest } = createReporter();
 
 /** A fake player and <video> on fake timers; run(ms) moves the clock. */
 function setup(start) {
@@ -55,7 +50,7 @@ function setup(start) {
   return { win, player, video, run, timers };
 }
 
-import(MODULE).then(({ watchPosition }) => {
+runTest(() => import(MODULE).then(({ watchPosition }) => {
   const AT = 11.2;
 
   {
@@ -265,10 +260,4 @@ import(MODULE).then(({ watchPosition }) => {
     t('onEnd runs when the check ends by itself, not when it is stopped',
       ends.join() === '25 s,other video', ends.join());
   }
-
-  console.log(`${passed} passed, ${failed} failed`);
-  process.exit(failed ? 1 : 0);
-}).catch((err) => {
-  console.log(`FAIL could not run: ${err && err.message}`);
-  process.exit(1);
-});
+}));

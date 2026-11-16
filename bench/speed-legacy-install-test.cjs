@@ -11,65 +11,61 @@
  *
  * Usage: node bench/speed-legacy-install-test.cjs <bundle>
  *
- * The page is set up here, not by the harness's bootPage: a webOS 4 user
- * agent with neither the Chrome 38 nor the Chrome 87 environment.
+ * The page has a webOS 4 user agent and neither the Chrome 38 nor the
+ * Chrome 87 environment: the engine is made in boot().
  */
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { createReporter, readBundle, silentXHR, wait, UA, setUserAgent } = require('./harness.cjs');
+const { createReporter, bootPage, wait, UA } = require('./harness.cjs');
 
 const { t, run } = createReporter();
 
 function boot({ webCodecs = false } = {}) {
-  const errors = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => errors.push(e.message));
-  const dom = new JSDOM('<!doctype html><html><body class="WEB_PAGE_TYPE_WATCH"><ytlr-app></ytlr-app></body></html>',
-    { runScripts: 'outside-only', url: 'https://www.youtube.com/tv#/watch?v=abcdefghijk', virtualConsole: vc, pretendToBeVisual: true });
-  const win = dom.window;
-  // webOS 4: the buffer limit (hooks/buffer-limit.js) wraps addSourceBuffer
-  // as well, around the speed code's own wrapper.
-  setUserAgent(win, UA.webos4);
-  win.launchParams = '{}';
-  win.XMLHttpRequest = silentXHR();
-  win.fetch = () => new Promise(() => {});
-  win.requestAnimationFrame = (cb) => setTimeout(cb, 0);
-  win.cancelAnimationFrame = () => {};
-  win.localStorage.setItem('ytaf-configuration', JSON.stringify({
-    enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-    upgradeThumbnails: false, enableAutoLogin: false, checkForUpdates: false, showWhatsNew: false
-  }));
+  const { win, errors } = bootPage({
+    bodyClass: 'WEB_PAGE_TYPE_WATCH',
+    url: 'https://www.youtube.com/tv#/watch?v=abcdefghijk',
+    // webOS 4: the buffer limit (hooks/buffer-limit.js) wraps addSourceBuffer
+    // as well, around the speed code's own wrapper.
+    userAgent: UA.webos4,
+    environment: false,
+    consoleErrors: false,
+    fetch: 'pending',
+    // A frame is a 0 ms timer of node's, called without a time.
+    raf: (cb) => setTimeout(cb, 0),
+    config: {
+      enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
+      upgradeThumbnails: false, enableAutoLogin: false, checkForUpdates: false, showWhatsNew: false
+    },
+    setup(win) {
+      // An engine like Chromium 53's.
+      delete win.Object.hasOwn;
+      delete win.Array.prototype.flatMap;
+      delete win.AudioDecoder;
+      // A newer TV, for comparison: WebCodecs there.
+      if (webCodecs) {
+        win.AudioDecoder = class { static isConfigSupported() { return Promise.resolve({ supported: true }); } configure() {} close() {} };
+        win.EncodedAudioChunk = class {};
+      }
+      const Native = win.EventTarget;
+      win.EventTarget = function EventTarget() { throw new win.TypeError('Illegal constructor'); };
+      win.EventTarget.prototype = Native.prototype;
 
-  // An engine like Chromium 53's.
-  delete win.Object.hasOwn;
-  delete win.Array.prototype.flatMap;
-  delete win.AudioDecoder;
-  // A newer TV, for comparison: WebCodecs there.
-  if (webCodecs) {
-    win.AudioDecoder = class { static isConfigSupported() { return Promise.resolve({ supported: true }); } configure() {} close() {} };
-    win.EncodedAudioChunk = class {};
-  }
-  const Native = win.EventTarget;
-  win.EventTarget = function EventTarget() { throw new win.TypeError('Illegal constructor'); };
-  win.EventTarget.prototype = Native.prototype;
-
-  // Web Audio and MSE, faked.
-  win.AudioContext = class {
-    constructor() { this.currentTime = 0; this.destination = {}; this.state = 'running'; }
-    createGain() { return { gain: { value: 1 }, connect() {} }; }
-    close() { this.state = 'closed'; }
-  };
-  win.OfflineAudioContext = class { decodeAudioData() {} };
-  const realSb = () => ({ updating: false, appendBuffer() {}, remove() {}, abort() {}, buffered: { length: 0 } });
-  win.MediaSource = class {
-    constructor() { this.readyState = 'open'; }
-    addSourceBuffer() { return realSb(); }
-    get sourceBuffers() { return { length: 0, item: () => undefined }; }
-  };
-  win.MediaSource.isTypeSupported = () => true;
-  win.URL.createObjectURL = () => 'blob:fake';
-  win.URL.revokeObjectURL = () => {};
-
-  win.eval(readBundle());
+      // Web Audio and MSE, faked.
+      win.AudioContext = class {
+        constructor() { this.currentTime = 0; this.destination = {}; this.state = 'running'; }
+        createGain() { return { gain: { value: 1 }, connect() {} }; }
+        close() { this.state = 'closed'; }
+      };
+      win.OfflineAudioContext = class { decodeAudioData() {} };
+      const realSb = () => ({ updating: false, appendBuffer() {}, remove() {}, abort() {}, buffered: { length: 0 } });
+      win.MediaSource = class {
+        constructor() { this.readyState = 'open'; }
+        addSourceBuffer() { return realSb(); }
+        get sourceBuffers() { return { length: 0, item: () => undefined }; }
+      };
+      win.MediaSource.isTypeSupported = () => true;
+      win.URL.createObjectURL = () => 'blob:fake';
+      win.URL.revokeObjectURL = () => {};
+    }
+  });
   return { win, errors };
 }
 

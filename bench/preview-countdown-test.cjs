@@ -22,10 +22,7 @@ function boot() {
     consoleErrors: false,
     // The legacy environment has no Element#remove here.
     restoreRemove: false,
-    setup: (w) => {
-      w.requestAnimationFrame = () => 0;
-      w.cancelAnimationFrame = () => {};
-    },
+    raf: 'none',
     fetch: () => Promise.reject(new Error('offline'))
   });
   return { win, errors };

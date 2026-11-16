@@ -19,11 +19,9 @@ function boot(bodyClass, storage, setup) {
     storage,
     // The legacy environment has no Element#remove here.
     restoreRemove: false,
-    setup: (win) => {
-      win.requestAnimationFrame = () => 1;
-      win.cancelAnimationFrame = () => {};
-      if (setup) setup(win);
-    }
+    // No frame ever runs; a request for one gets the id 1.
+    raf: () => 1,
+    setup
   }).win;
 }
 

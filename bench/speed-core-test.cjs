@@ -15,6 +15,7 @@
  */
 const path = require('path');
 const { pathToFileURL } = require('url');
+const { createReporter } = require('./harness.cjs');
 
 const WSOLA = pathToFileURL(path.resolve(__dirname, '../src/speed/wsola.js')).href;
 const CONTAINERS = pathToFileURL(path.resolve(__dirname, '../src/speed/containers.js')).href;
@@ -24,13 +25,7 @@ const {
 } = require('./speed-fixtures.cjs');
 const SPEEDS = [0.25, 0.5, 0.75, 1.25, 1.5, 1.75, 2];
 
-let passed = 0;
-let failed = 0;
-const t = (name, ok, extra) => {
-  if (ok) passed++;
-  else failed++;
-  console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${ok || extra === undefined ? '' : ' -> ' + extra}`);
-};
+const { t, run: runTest } = createReporter();
 
 // --- signals -------------------------------------------------------------
 
@@ -473,13 +468,7 @@ async function webmTests() {
   }
 }
 
-(async () => {
+runTest(async () => {
   await wsolaTests();
   await mp4Tests();
-  await webmTests();
-  console.log(`\n${passed} passed, ${failed} failed`);
-  process.exit(failed ? 1 : 0);
-})().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+  await webmTests();});

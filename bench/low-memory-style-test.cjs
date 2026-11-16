@@ -27,10 +27,7 @@ function boot(cfg) {
       checkForUpdates: false, showWhatsNew: false
     }, cfg),
     // A frame is a 0 ms timer of node's, called without a time.
-    setup(win) {
-      win.requestAnimationFrame = (cb) => setTimeout(cb, 0);
-      win.cancelAnimationFrame = () => {};
-    },
+    raf: (cb) => setTimeout(cb, 0),
     fetch: 'pending'
   });
   const has = () => win.document.body.classList.contains(CLS);

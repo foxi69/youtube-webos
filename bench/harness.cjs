@@ -65,6 +65,8 @@ const DEFAULT_URL = 'https://www.youtube.com/tv';
  *   done();                   // "\nN passed, M failed", exit code 1 on a failure
  *
  * opts.prefix: put before every name ("legacy: name").
+ * opts.summary(pass, fail): the last line, for a test whose summary reads
+ * otherwise ("all 9 cases passed"); "N passed, M failed" by default.
  * `extra` is printed for a failure unless it is undefined, null, false or ''
  * (so `threw && threw.message` prints nothing when nothing threw, and a
  * count of 0 is printed).
@@ -88,7 +90,7 @@ function createReporter(opts = {}) {
     }
   };
   const done = () => {
-    console.log(`\n${pass} passed, ${fail} failed`);
+    console.log('\n' + (opts.summary ? opts.summary(pass, fail) : `${pass} passed, ${fail} failed`));
     process.exit(fail ? 1 : 0);
   };
   const crashed = (e) => {
@@ -210,8 +212,9 @@ function routedXHR(answer, opts = {}) {
  * Animation frames the test runs itself: install(win) replaces
  * requestAnimationFrame with a queue, pump() runs what is queued (the
  * callbacks queued meanwhile wait for the next pump) and returns how many.
+ * `time`: the timestamp every callback gets (the time of the pump by default).
  */
-function manualFrames() {
+function manualFrames(time) {
   let queue = [];
   return {
     install(win) {
@@ -221,7 +224,7 @@ function manualFrames() {
     pump() {
       const q = queue;
       queue = [];
-      for (const cb of q) cb(Date.now());
+      for (const cb of q) cb(time === undefined ? Date.now() : time);
       return q.length;
     },
     pending: () => queue.length
@@ -267,12 +270,16 @@ function restoreRemove(win) {
  *     small one), `xhr` (an XMLHttpRequest class, silentXHR() by default,
  *     false to keep jsdom's), `raf` ('keep' jsdom's by default; 'timer': a
  *     0 ms timeout; 'manual': the test runs them with the returned
- *     frames.pump()).
+ *     frames.pump(), each callback getting `frameTime` if given; 'none':
+ *     no frame ever runs; a function: the page's requestAnimationFrame).
  *  4. localStorage: `config` as 'ytaf-configuration' (JSON), `storage`
  *     ({ key: string }) as it is.
  *  5. `setup(win)`: anything else before the environment is applied.
  *  6. the environment of the build (applyEnvironment; `restoreRemove`).
  *     On the legacy build this takes fetch, Reflect, Proxy and more away.
+ *     `environment: false` leaves jsdom as it is (no API taken away, and
+ *     Element#remove untouched), for a test of something the environment
+ *     would remove.
  *  7. `fetch`: 'pending' (never answers) or a function, set after the
  *     environment, so it is the TV's own fetch on both builds. Left out,
  *     the legacy bundle uses its polyfill over XMLHttpRequest.
@@ -332,8 +339,14 @@ function bootPage(opts = {}) {
     win.requestAnimationFrame = (cb) => win.setTimeout(() => cb(Date.now()), 0);
     win.cancelAnimationFrame = () => {};
   } else if (opts.raf === 'manual') {
-    frames = manualFrames();
+    frames = manualFrames(opts.frameTime);
     frames.install(win);
+  } else if (opts.raf === 'none') {
+    win.requestAnimationFrame = () => 0;
+    win.cancelAnimationFrame = () => {};
+  } else if (typeof opts.raf === 'function') {
+    win.requestAnimationFrame = opts.raf;
+    win.cancelAnimationFrame = () => {};
   }
 
   // 4. localStorage
@@ -344,7 +357,8 @@ function bootPage(opts = {}) {
   if (opts.setup) opts.setup(win);
 
   // 6. the environment
-  const removed = applyEnvironment(win, modern, { userAgent: false, restoreRemove: opts.restoreRemove });
+  const removed = opts.environment === false ? [] :
+    applyEnvironment(win, modern, { userAgent: false, restoreRemove: opts.restoreRemove });
 
   // 7. fetch
   if (opts.fetch === 'pending') win.fetch = () => new Promise(() => {});

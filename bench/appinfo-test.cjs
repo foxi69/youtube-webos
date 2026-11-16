@@ -14,19 +14,15 @@
  */
 const fs = require('fs');
 const path = require('path');
+const { createReporter } = require('./harness.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const EXPECTED =
   '$browserName$/$browserVersion$ ($platformName$-$platformVersion$), _TV_O18/$firmwareVersion$ (LG, $modelName$, $networkMode$)';
 
-let passed = 0;
-let failed = 0;
-const t = (name, ok, detail) => {
-  if (ok) passed++;
-  else failed++;
-  console.log(`${ok ? 'PASS' : 'FAIL'} ${name}`);
-  if (!ok && detail !== undefined) console.log(`  got: ${detail}`);
-};
+const { t: report, done } = createReporter();
+// A failure shows the user agent that was read, as JSON.
+const t = (name, ok, detail) => report(name, ok, detail !== undefined && `got: ${detail}`);
 
 const userAgentOf = (file) => {
   const full = path.join(ROOT, file);
@@ -41,5 +37,4 @@ const built = userAgentOf('dist/appinfo.json');
 t('dist/appinfo.json exists (run after a build)', !built.missing);
 t('dist/appinfo.json: the packaged user agent sends O18', built.ua === EXPECTED, JSON.stringify(built.ua));
 
-console.log(`${passed} passed, ${failed} failed`);
-process.exit(failed ? 1 : 0);
+done();

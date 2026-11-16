@@ -21,11 +21,9 @@ const LOGO_HTML =
   `style="background-image: url(&quot;${DEFAULT_URL}&quot;);"></ytlr-thumbnail-details></ytlr-logo-entity>`;
 
 function boot(cfg, extraHtml = '', storage = {}, before) {
-  // The frames wait until the test runs them (pump), each called with 0.
-  let rafQ = [];
   // The page's own JSON.stringify, from before the bundle hooks it.
   let NS;
-  const { win } = bootPage({
+  const { win, frames } = bootPage({
     inner: extraHtml,
     userAgent: UA.webos23,
     config: Object.assign({
@@ -36,11 +34,12 @@ function boot(cfg, extraHtml = '', storage = {}, before) {
       upgradeThumbnails: false, enableAutoLogin: false, logoStyle: 'default'
     }, cfg),
     storage,
+    // The frames wait until the test runs them (pump), each called with 0.
+    raf: 'manual',
+    frameTime: 0,
     // Before the environment is applied: the Chrome 38 one takes this fetch
     // away again, so only the modern bundle sees it.
     setup(win) {
-      win.requestAnimationFrame = (cb) => { rafQ.push(cb); return rafQ.length; };
-      win.cancelAnimationFrame = () => {};
       win.fetch = () => Promise.reject(new Error('offline'));
       NS = win.JSON.stringify;
     },
@@ -49,7 +48,7 @@ function boot(cfg, extraHtml = '', storage = {}, before) {
     // to the harness.
     restoreRemove: false
   });
-  return { win, NS, pump: () => { const q = rafQ; rafQ = []; for (const cb of q) cb(0); } };
+  return { win, NS, pump: frames.pump };
 }
 
 const reporter = createReporter();

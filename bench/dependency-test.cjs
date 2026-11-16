@@ -11,12 +11,10 @@
 const { createReporter, bootPage, trustedKey, wait } = require('./harness.cjs');
 
 function boot(cfg) {
-  // The frames wait until the test runs them (pump), each called with 0.
-  let rafQ = [];
   const opened = [];
   // The page's own JSON.stringify, from before the bundle hooks it.
   let NS;
-  const { win } = bootPage({
+  const { win, frames } = bootPage({
     modern: false,
     xhr: class {
       open(m, u) { opened.push(String(u)); } send() {} setRequestHeader() {}
@@ -27,16 +25,15 @@ function boot(cfg) {
       enableSponsorBlock: false, enableReturnYouTubeDislike: false,
       upgradeThumbnails: false, enableAutoLogin: false
     }, cfg),
-    setup(win) {
-      win.requestAnimationFrame = (cb) => { rafQ.push(cb); return rafQ.length; };
-      win.cancelAnimationFrame = () => {};
-      NS = win.JSON.stringify;
-    },
+    // The frames wait until the test runs them (pump), each called with 0.
+    raf: 'manual',
+    frameTime: 0,
+    setup(win) { NS = win.JSON.stringify; },
     // The page stays without Element#remove, as before this test moved to the
     // harness.
     restoreRemove: false
   });
-  return { win, NS, opened, pump: () => { const q = rafQ; rafQ = []; for (const cb of q) cb(0); } };
+  return { win, NS, opened, pump: frames.pump };
 }
 
 const pad = 'z'.repeat(600);

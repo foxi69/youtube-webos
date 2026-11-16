@@ -11,35 +11,15 @@
  *
  *   node bench/perfmon-test.cjs <perf bundle> [legacy|modern]
  *
- * The page is set up here and not by the harness's bootPage: `modern` runs
- * the bundle in jsdom's own environment, with nothing taken away, and the
- * storage is filled after the Chrome 38 environment is applied.
+ * `modern` runs the bundle in jsdom's own environment, with nothing taken
+ * away; `legacy` in the Chrome 38 one, the storage filled after it is applied.
  */
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade } = require('./chrome38-env.cjs');
-const { createReporter, silentXHR, UA, setUserAgent, wait } = require('./harness.cjs');
+const { createReporter, bootPage, flavorFromArgs, wait } = require('./harness.cjs');
 
-const bundlePath = process.argv[2];
-const legacy = process.argv[3] !== 'modern';
-
-const errors = [];
-const vc = new VirtualConsole();
-vc.on('jsdomError', (e) => errors.push('jsdomError: ' + (e.stack || e.message)));
-
-const dom = new JSDOM(
-  '<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app><div id="ytlr-player__player-container"><video></video></div></ytlr-app></body></html>',
-  { runScripts: 'outside-only', url: 'https://www.youtube.com/tv', virtualConsole: vc, pretendToBeVisual: true }
-);
-const win = dom.window;
-setUserAgent(win, legacy ? UA.webos3 : UA.webos23);
-win.launchParams = '{}';
-if (!win.requestAnimationFrame) win.requestAnimationFrame = (cb) => win.setTimeout(() => cb(Date.now()), 16);
-if (!win.cancelAnimationFrame) win.cancelAnimationFrame = (i) => win.clearTimeout(i);
-win.XMLHttpRequest = silentXHR();
-if (legacy) applyChrome38Downgrade(win);
+const { modern } = flavorFromArgs();
 
 // Separate Settings for Each Account on, and an account whose own SponsorBlock
 // setting is off while the shared one is on. The account's key is worked out
@@ -59,12 +39,21 @@ const profileOf = new Function('data', [
   "const parts = []; collectIdFields(data, /id$/i, '', parts, 0); parts.sort(); return hashString(parts.join('|'));"
 ].join('\n'));
 const identity = { id: 'test-account-1' };
-win.localStorage.setItem('yt.leanback.default::last-identity-used', JSON.stringify({ data: identity }));
-win.localStorage.setItem('ytaf-configuration', JSON.stringify({ perAccountSettings: true, enableSponsorBlock: true, upgradeThumbnails: true }));
-win.localStorage.setItem('ytaf-configuration::' + profileOf(identity), JSON.stringify({ enableSponsorBlock: false }));
 
-let threw = null;
-try { win.eval(fs.readFileSync(bundlePath, 'utf8')); } catch (e) { threw = e; }
+const { win, dom, errors, threw } = bootPage({
+  inner: '<div id="ytlr-player__player-container"><video></video></div>',
+  // The Chrome 38 environment for the legacy run only.
+  environment: !modern,
+  restoreRemove: false,
+  consoleErrors: false,
+  errorStacks: true,
+  catchThrow: true,
+  beforeEval(win) {
+    win.localStorage.setItem('yt.leanback.default::last-identity-used', JSON.stringify({ data: identity }));
+    win.localStorage.setItem('ytaf-configuration', JSON.stringify({ perAccountSettings: true, enableSponsorBlock: true, upgradeThumbnails: true }));
+    win.localStorage.setItem('ytaf-configuration::' + profileOf(identity), JSON.stringify({ enableSponsorBlock: false }));
+  }
+});
 
 // A timer set by YouTube's own script, which is not ours.
 vm.runInContext('setTimeout(function ytTick() {}, 0);', dom.getInternalVMContext(),
