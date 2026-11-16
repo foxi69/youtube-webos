@@ -553,6 +553,25 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
     emit(-1); emit(3); emit(1); pump(); pump();
     for (let i = 0; i < 80 && !log.ranges.length; i++) await sleep(50);
     t('the video after it is raised in its turn', log.ranges.join() === 'hd1080', log.ranges.join());
+    // Once a playback, not once an id: opened again after another video, the
+    // first one gets its turn again.
+    p.videoId = 'nextvideo02';
+    setQuality('large');
+    log.ranges.length = 0;
+    emit(-1); emit(3); emit(1); pump(); pump();
+    for (let i = 0; i < 80 && !log.ranges.length; i++) await sleep(50);
+    t('a video opened again after another one is raised again', log.ranges.join() === 'hd1080', log.ranges.join());
+    // Also when the one in between started above the cap (never below it).
+    p.videoId = 'nextvideo04';
+    setQuality('hd1440');
+    emit(-1); emit(3); emit(1); pump(); pump();
+    await sleep(300);
+    p.videoId = 'nextvideo02';
+    setQuality('large');
+    log.ranges.length = 0;
+    emit(-1); emit(3); emit(1); pump(); pump();
+    for (let i = 0; i < 80 && !log.ranges.length; i++) await sleep(50);
+    t('a video opened again after one above the cap is raised again', log.ranges.join() === 'hd1080', log.ranges.join());
   }
   {
     // A 720p pick; the reloaded video plays, then falls to 480p while its watch runs.
