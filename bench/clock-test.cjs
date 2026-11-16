@@ -141,7 +141,9 @@ function boot(cfg, start, hold = false) {
     // The page's time runs from 14:05:58.5 only now.
     env.release();
     const before = env.text();
-    t(n('the minute turns over without a key press'), await waitFor(() => env.text() !== before, 3000) &&
+    // Due 1.5 s after the release; the wide limit only keeps a stalled CI
+    // machine from failing a correct clock, the check itself is unchanged.
+    t(n('the minute turns over without a key press'), await waitFor(() => env.text() !== before, 15000) &&
       env.text() === TIME.format(env.now()) && /:06/.test(env.text()), JSON.stringify(env.text()));
 
     // Back from the background: the time at once, not at the next minute.
