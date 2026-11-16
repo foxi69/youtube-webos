@@ -1722,7 +1722,13 @@ window.addEventListener('keydown', (evt) => {
 window.addEventListener('yt-player-state-change', ({ detail }) => {
     if (!detail) return;
     const videoId = detail.videoId;
-    if (detail.state === 1 && videoId !== commentsOpenedFor) commentsOpenedFor = null;
+    if (detail.state === 1) {
+        // Playing again (replayed, or the next video) within the delay: not
+        // opened over a video that plays.
+        clearTimeout(endTimer);
+        endTimer = null;
+        if (videoId !== commentsOpenedFor) commentsOpenedFor = null;
+    }
     if (detail.state !== 0 || !configRead('openCommentsAtEnd') || !videoId) return;
     const endedAt = Date.now();
     clearTimeout(endTimer);

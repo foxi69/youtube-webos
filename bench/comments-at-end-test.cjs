@@ -103,6 +103,20 @@ run(async () => {
     t(n('a key pressed just before the end: not opened'), env.clicks.length === 0, env.clicks.join());
   }
   {
+    // Played again within the delay, with no key (a pointer on Replay): not
+    // opened over the playing video; its next end opens them.
+    const env = await boot();
+    env.state(1);
+    env.state(0);
+    await wait(200);
+    env.state(1);
+    await wait(SETTLE_MS);
+    t(n('played again before the delay ran out: not opened'), env.clicks.length === 0, env.clicks.join());
+    env.state(0);
+    await wait(SETTLE_MS);
+    t(n('...and opened at its next end'), env.clicks.length === 1, env.clicks.join());
+  }
+  {
     // The event with no detail (not the player's): ignored, and the listener goes on working.
     const env = await boot();
     env.win.dispatchEvent(new env.win.CustomEvent('yt-player-state-change'));
