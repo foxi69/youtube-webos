@@ -454,25 +454,6 @@ async function boot(cfg, opts = {}) {
     t(n('previews given back: no page errors'), env.errors.length === 0, env.errors.join(' | '));
     env.win.close();
   }
-  // The two settings Video Previews replaced, as a stored configuration has them.
-  for (const [old, want, mutes] of [
-    [{ forcePreviews: 'force_on', mutePreviews: false }, true, false],
-    [{ forcePreviews: 'disabled', mutePreviews: true }, true, true],
-    [{ forcePreviews: 'force_off', mutePreviews: true }, false, false],
-    [{ forcePreviews: 'disabled', mutePreviews: false }, null, false]
-  ]) {
-    const env = await boot(Object.assign({ enableAutoLogin: false }, old));
-    await pageMs(3000);
-    const video = env.win.document.createElement('video');
-    env.win.document.body.appendChild(video);
-    video.dispatchEvent(new env.win.Event('playing'));
-    const name = `old ${old.forcePreviews}${old.mutePreviews ? ' + mute' : ''}`;
-    t(n(`${name}: previews ${want === null ? 'left to YouTube' : want ? 'on' : 'off'}${mutes ? ', muted' : ''}`),
-      JSON.stringify(env.read(INLINE)) === JSON.stringify(want === null ? null : { data: want }) && video.muted === mutes,
-      `${env.store.getItem(INLINE)} muted=${video.muted}`);
-    env.win.close();
-  }
-
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })().catch((e) => { console.log('FAIL harness: ' + (e && e.stack || e)); process.exit(1); });

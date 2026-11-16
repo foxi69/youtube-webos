@@ -136,23 +136,6 @@ setTimeout(async () => {
   t('Max Thumbnail Quality counts the tiles above hqdefault', !!thumbs && thumbs.state === 'firing' && /^2 of 3 tiles/.test(thumbs.detail),
     thumbs && thumbs.state + ': ' + thumbs.detail);
 
-  // A set stored before Video Previews, as an upgrade finds it before config.js
-  // writes anything: read as config.js migrates it (Off). The monitor keeps
-  // what it read for 2 s.
-  // Both sets, the shared one and the account's (laid over it), as the old version left them.
-  const cfgKeys = Object.keys(win.localStorage).filter((k) => /^ytaf-configuration/.test(k));
-  const storedCfgs = cfgKeys.map((k) => win.localStorage.getItem(k));
-  cfgKeys.forEach((k, i) => {
-    const old = JSON.parse(storedCfgs[i]);
-    delete old.videoPreviews;
-    if (k === 'ytaf-configuration') old.forcePreviews = 'force_off';
-    win.localStorage.setItem(k, JSON.stringify(old));
-  });
-  await new Promise((r) => setTimeout(r, 2100));
-  const previews = win.__PERF.features().filter((f) => f.key === 'videoPreviews')[0];
-  cfgKeys.forEach((k, i) => { win.localStorage.setItem(k, storedCfgs[i]); });
-  t('Video Previews: the old Force Off is read as Off', !!previews && /Mode: off/.test(previews.detail),
-    previews ? previews.state + ': ' + previews.detail : 'not listed');
 
   // The cluster starts hidden.
 

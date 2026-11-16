@@ -33,7 +33,7 @@ function boot(bodyClass = 'WEB_PAGE_TYPE_BROWSE', extraHtml = '', setup = null) 
   win.localStorage.setItem('ytaf-configuration', win.JSON.stringify({
     enableAdBlock: true, enableLegacyEmojiFix: true, enableSponsorBlock: true,
     enableReturnYouTubeDislike: true, upgradeThumbnails: false, enableAutoLogin: true,
-    enableScrollSeek: true, showTimeRemaining: true, logoStyle: 'premium'
+    enableScrollSeek: true, timeRemainingMode: 'both', logoStyle: 'premium'
   }));
   if (setup) setup(win);
   if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
@@ -196,8 +196,7 @@ setTimeout(async () => {
     const text = () => (win.document.getElementById('ytaf-time-remaining') || {}).textContent || '';
     await new Promise((r) => setTimeout(r, 1100));
     t('remaining time shown on a normal video', /ends /.test(text()), text());
-    // The config above still has the old on/off switch: on becomes Both.
-    t('old showTimeRemaining: true shows both halves', /"-59:45 · ends [^"]+"/.test(text()), text());
+    t('Both shows both halves', /"-59:45 · ends [^"]+"/.test(text()), text());
     live = true;
     await new Promise((r) => setTimeout(r, 1100));
     t('remaining time hidden on a live stream', !/ends /.test(text()), text());
@@ -209,7 +208,6 @@ setTimeout(async () => {
       '<div idomkey="time-label"><span idomkey="duration"></span></div><video></video>',
       (w) => {
         const c = JSON.parse(w.localStorage.getItem('ytaf-configuration'));
-        delete c.showTimeRemaining;
         c.timeRemainingMode = 'end';
         w.localStorage.setItem('ytaf-configuration', JSON.stringify(c));
       });

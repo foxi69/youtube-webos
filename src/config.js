@@ -425,31 +425,8 @@ function loadStored(key) {
   if (storage === null) return null;
   try {
     const parsed = JSON.parse(storage);
-    return parsed && typeof parsed === 'object' ? migrateStored(parsed) : null;
+    return parsed && typeof parsed === 'object' ? parsed : null;
   } catch { return null; }
-}
-
-// Show Remaining Time and End Time was an on/off switch (showTimeRemaining)
-// before either half could be picked. Done on every stored set, the shared one
-// and each account's, as the switch may be in any of them.
-function migrateStored(stored) {
-  if ('showTimeRemaining' in stored) {
-    if (!('timeRemainingMode' in stored)) stored.timeRemainingMode = stored.showTimeRemaining ? 'both' : 'off';
-    delete stored.showTimeRemaining;
-  }
-  // Video Previews was two settings: Previews With Sound (forcePreviews) and
-  // Mute Video Previews (mutePreviews). A mute turns previews on now.
-  if ('forcePreviews' in stored || 'mutePreviews' in stored) {
-    if (!('videoPreviews' in stored)) {
-      const force = stored.forcePreviews;
-      stored.videoPreviews = force === 'force_off' ? 'off'
-        : stored.mutePreviews ? 'muted'
-          : force === 'force_on' ? 'sound' : 'default';
-    }
-    delete stored.forcePreviews;
-    delete stored.mutePreviews;
-  }
-  return stored;
 }
 
 function collectIdFields(obj, fieldRe, prefix, out, depth) {
@@ -509,10 +486,6 @@ function pickAccountValues(source) {
   for (const key of Object.keys(source)) {
     if (!DEVICE_KEYS.has(key) && configOptions.has(key)) out[key] = source[key];
   }
-  // An account saved before DeArrow's thumbnail fallbacks (see below).
-  if ('enableDeArrowThumbnails' in source && !('dearrowCrowdThumbnails' in source)) {
-    out.dearrowCrowdThumbnails = !!source.enableDeArrowThumbnails;
-  }
   return out;
 }
 
@@ -523,29 +496,10 @@ function pickAccountValues(source) {
 // sharedConfig is what CONFIG_KEY holds: everything with per-account settings
 // off, and the device settings plus the shared profile with them on.
 const sharedConfig = loadStored(CONFIG_KEY) || {};
-// The clock was an on/off switch (showWatch) before it could show the date.
-// Migrated in the stored object itself, before an account's own settings are
-// laid over: run after them it overwrote the account's clock on every start,
-// and with per-account settings on, showWatch was never written away.
-if ('showWatch' in sharedConfig) {
-  if (!('clockMode' in sharedConfig)) sharedConfig.clockMode = sharedConfig.showWatch ? 'time' : 'off';
-  delete sharedConfig.showWatch;
-}
 // The account profile in use, or null while the shared settings are.
 let activeProfile = null;
 let profileSeeded = false;
 let localConfig = Object.assign({}, defaultConfig, sharedConfig);
-
-// DeArrow's thumbnails were one switch (enableDeArrowThumbnails, off by
-// default) before the fallbacks came; a TV that had them off keeps YouTube's.
-// Before an account's own settings are laid over (pickAccountValues does the
-// same for those).
-if ('enableDeArrowThumbnails' in sharedConfig) {
-  if (!('dearrowCrowdThumbnails' in sharedConfig)) {
-    localConfig.dearrowCrowdThumbnails = !!sharedConfig.enableDeArrowThumbnails;
-  }
-  delete localConfig.enableDeArrowThumbnails;
-}
 
 if (sharedConfig.perAccountSettings) {
   activeProfile = readAccountProfile();
@@ -661,11 +615,6 @@ function switchProfile(profile) {
     // An account seen for the first time (and every guest session) starts
     // from the shared settings.
     incoming = pickAccountValues(Object.assign({}, defaultConfig, sharedConfig));
-    // The shared set of a build before DeArrow's thumbnail fallbacks (above):
-    // the defaults laid under it hide that it has no newer switch.
-    if ('enableDeArrowThumbnails' in sharedConfig && !('dearrowCrowdThumbnails' in sharedConfig)) {
-      incoming.dearrowCrowdThumbnails = !!sharedConfig.enableDeArrowThumbnails;
-    }
     if (storesProfile(profile)) scheduleWrite();
   }
   incoming = pickAccountValues(Object.assign(pickAccountValues(defaultConfig), incoming));
