@@ -2303,6 +2303,11 @@ function initGlobalStyles() {
             background-color: transparent !important;
         }
         html.ytaf-remove-borders .ltewod.BZ345e { background-color: #f1f1f1 !important; }
+        /* The player's left (channel, description, subscribe) and middle (previous,
+           next) buttons: YouTube draws them itself, solid in memory saving and
+           faintly white without it. A focused one turns into .lu66D.zylon-focus,
+           its white highlight, and is left alone. (#158) */
+        html.ytaf-remove-borders ytlr-player-actions-container yt-button-container.CgA6bd.UMztjd:not(.zylon-focus),
         html.ytaf-remove-borders .MIiKQd.CgA6bd,
         html.ytaf-remove-borders .clJQEe,
         html.ytaf-remove-borders .dySudf,
