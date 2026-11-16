@@ -1695,7 +1695,8 @@ class SponsorBlockHandler {
     _jumpIfPending() {
         if (!this.highlightPending || !hasMedia(this.video)) return;
         this.highlightPending = false;
-        this.autoJumpToHighlight();
+        // Switched away from Auto Skip to Start while it waited: no jump.
+        if (configGetAll().sbMode_highlight === 'auto_skip') this.autoJumpToHighlight();
     }
 
     jumpToNextHighlight() {

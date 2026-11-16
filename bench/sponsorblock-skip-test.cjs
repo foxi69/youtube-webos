@@ -313,6 +313,25 @@ run(async () => {
     t(n('...and jumps once it has loaded, with the toast'), env.state.time === 120 &&
       /Jumped to Highlight/.test(env.toasts()), `${env.state.seeks.join(',')} ${env.toasts()}`);
   }
+  {
+    // Auto Skip to Start switched off in the panel while the video still loads.
+    const env = await boot({ sbMode_highlight: 'auto_skip' }, [seg('poi_highlight', 120, 120, 'poi')],
+      { readyState: 0 });
+    const doc = env.win.document;
+    env.win.ytaf_showOptionsPanel(true);
+    await wait(30);
+    doc.querySelectorAll('.ytaf-tab-btn')[3].click();
+    await wait(30);
+    const row = [...doc.querySelectorAll('.shortcut-control-row')]
+      .find((r) => (r.querySelector('.shortcut-label') || {}).textContent === 'Highlight');
+    row.click();
+    await wait(30);
+    env.state.ready = 1;
+    env.video.dispatchEvent(new env.win.Event('loadedmetadata'));
+    await wait(40);
+    t(n('highlight mode changed while it waited: no jump once loaded'), env.state.seeks.length === 0 &&
+      !/Jumped to Highlight/.test(env.toasts()), `${row.textContent} | ${env.state.seeks.join(',')} ${env.toasts()}`);
+  }
 
   // ---- The fallback server ----
   {
