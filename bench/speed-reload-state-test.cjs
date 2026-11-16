@@ -6,24 +6,16 @@
  * menu (the yt-player-quality record) is kept: a pick below 1080p above 1x,
  * and the pick again, not Auto, back at 1x.
  *
- * Usage: node bench/speed-reload-state-test.cjs [bundle]
+ * Usage: node bench/speed-reload-state-test.cjs <bundle> [legacy|modern]
  */
-const fs = require('fs');
-const path = require('path');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { UA, setUserAgent, dispatchTrusted, applyChrome38Downgrade, applyChrome87Downgrade } = require('./chrome38-env.cjs');
+const { createReporter, readBundle, bootPage, failingXHR, dispatchTrusted, wait: sleep } = require('./harness.cjs');
 
-const ROOT = path.resolve(__dirname, '..');
-const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
-// `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
-// with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
-const modern = process.argv[3] === 'modern';
-const bundle = fs.readFileSync(bundlePath, 'utf8');
+// With `modern`, bootPage runs the modern bundle (webOS 22 and newer) in a
+// Chrome 87 environment with a webOS 23 user agent, instead of the legacy one
+// in a Chrome 38 one.
+const bundle = readBundle();
 
-let pass = 0, fail = 0;
-const t = (n, ok, extra) => { if (ok) { pass++; console.log('PASS ' + n); }
-  else { fail++; console.log('FAIL ' + n + (extra ? '\n     ' + extra : '')); } };
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const { t, run } = createReporter();
 
 const EN = { languageCode: 'en', vss_id: '.en', kind: '' };
 
@@ -44,41 +36,42 @@ const pressKey = (win) => dispatchTrusted(win.document.body, new win.KeyboardEve
 // session asked for (stored by the controller) half a second, or that many ms,
 // before.
 function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = false, reloadTrack, oldRecord, oldOwn = false } = {}) {
-  const dom = new JSDOM('<body class="WEB_PAGE_TYPE_WATCH"><div id="ytlr-player__player-container-player"><video></video></div></body>',
-    { runScripts: 'outside-only', url: 'https://www.youtube.com/tv#/watch?v=abcdefghijk',
-      virtualConsole: new VirtualConsole(), pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, modern ? UA.webos23 : UA.webos3);
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  win.launchParams = '{}';
-  win.fetch = () => Promise.reject(new Error('offline'));
-  win.XMLHttpRequest = class {
-    open() {} send() { if (this.onerror) this.onerror(); }
-    setRequestHeader() {} getResponseHeader() { return null; } addEventListener() {}
-  };
-  let raf = [];
-  win.requestAnimationFrame = (cb) => { raf.push(cb); return raf.length; };
-  const pump = () => { const ready = raf; raf = []; ready.forEach((cb) => { cb(0); }); };
-  win.cancelAnimationFrame = () => {};
-  // What the speed feature needs to install (playback-speed.js).
-  win.AudioDecoder = class {};
-  win.AudioContext = class {};
-  win.MediaSource = class { addSourceBuffer() {} };
-  win.localStorage.setItem('ytaf-configuration', JSON.stringify({
-    enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-    upgradeThumbnails: false, enableAutoLogin: false, forceHighResVideo: force
-  }));
-  if (oldRecord) {
-    win.localStorage.setItem('yt-player-quality', JSON.stringify({
-      data: JSON.stringify({ quality: oldRecord, previousQuality: 2160 }),
-      creation: Date.now() - 60000, expiration: Date.now() + 1e9
-    }));
-    if (oldOwn) {
-      const at = Date.now() - 60000 - (oldOwn === true ? 500 : oldOwn);
-      win.localStorage.setItem('ytaf-speed-own-range', JSON.stringify({ level: 'hd' + oldRecord, from: at, last: at }));
+  const { win, frames } = bootPage({
+    code: bundle,
+    // The whole page: no doctype and no <ytlr-app>.
+    html: '<body class="WEB_PAGE_TYPE_WATCH"><div id="ytlr-player__player-container-player"><video></video></div></body>',
+    url: 'https://www.youtube.com/tv#/watch?v=abcdefghijk',
+    // Nothing the page logs or throws is collected or checked here.
+    consoleErrors: false,
+    // Element#remove stays away on the legacy build, as the environment leaves it.
+    restoreRemove: false,
+    xhr: failingXHR(),
+    raf: 'manual',
+    frameTime: 0,
+    config: {
+      enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
+      upgradeThumbnails: false, enableAutoLogin: false, forceHighResVideo: force
+    },
+    fetch: () => Promise.reject(new Error('offline')),
+    beforeEval(win) {
+      // What the speed feature needs to install (playback-speed.js).
+      win.AudioDecoder = class {};
+      win.AudioContext = class {};
+      win.MediaSource = class { addSourceBuffer() {} };
+      // Written here, not as `storage`: the times are read just before the bundle runs.
+      if (oldRecord) {
+        win.localStorage.setItem('yt-player-quality', JSON.stringify({
+          data: JSON.stringify({ quality: oldRecord, previousQuality: 2160 }),
+          creation: Date.now() - 60000, expiration: Date.now() + 1e9
+        }));
+        if (oldOwn) {
+          const at = Date.now() - 60000 - (oldOwn === true ? 500 : oldOwn);
+          win.localStorage.setItem('ytaf-speed-own-range', JSON.stringify({ level: 'hd' + oldRecord, from: at, last: at }));
+        }
+      }
     }
-  }
-  win.eval(bundle);
+  });
+  const pump = frames.pump;
   // The viewer's pick in YouTube's menu, made after the app started (Force Max
   // Quality writes its own record at start).
   if (pickHeight) writeQuality(win, pickHeight, 2160);
@@ -132,7 +125,7 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
   };
 }
 
-(async () => {
+run(async () => {
   {
     // Subtitles off, a 720p pick; to 1.5x.
     const { win, p, log, speed } = boot(720);
@@ -656,6 +649,4 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
     t('a raise on the reloaded video keeps the reload restoring the subtitles', p.track === EN, JSON.stringify(p.track));
     win.close();
   }
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
-})();
+});
