@@ -87,7 +87,7 @@ async function boot(cfg, segments, opts = {}) {
     return Promise.resolve({ ok: status === 200, status, json: () => Promise.resolve(body) });
   };
   const video = win.document.querySelector('video');
-  const v = fakeVideo(win, video, opts.duration || 600);
+  const v = fakeVideo(win, video, 'duration' in opts ? opts.duration : 600);
   if (opts.startAt) v.state.time = opts.startAt;
   if (opts.readyState !== undefined) v.state.ready = opts.readyState;
   // opts.holdClock: the page's Date.now stands still, so a window the bundle
@@ -283,6 +283,35 @@ run(async () => {
     const ok = env.sb().handleBlueButton();
     await wait(40);
     t(n('...the blue key jumps to it'), ok === true && env.state.time === 120, String(env.state.time));
+  }
+  {
+    // A video YouTube cannot play ("This video isn't available"): the <video>
+    // is left with no source, readyState 0 and no duration (webOS 25).
+    const env = await boot({ sbMode_highlight: 'auto_skip' }, [seg('poi_highlight', 120, 120, 'poi')],
+      { readyState: 0, duration: NaN });
+    await wait(60);
+    t(n('highlight on an unplayable video: not jumped to'), env.state.seeks.length === 0, env.state.seeks.join(','));
+    t(n('...and no toast says it jumped'), !/Jumped to Highlight/.test(env.toasts()), env.toasts());
+    const ok = env.sb().handleBlueButton();
+    await wait(40);
+    t(n('...the blue key does not jump either'), ok === false && env.state.seeks.length === 0 &&
+      !/Jumped to Highlight/.test(env.toasts()), `${ok} ${env.state.seeks.join(',')} ${env.toasts()}`);
+    env.video.dispatchEvent(new env.win.Event('durationchange'));
+    env.video.dispatchEvent(new env.win.Event('loadedmetadata'));
+    await wait(40);
+    t(n('...nor later, while it stays unloaded'), env.state.seeks.length === 0 && !/Jumped/.test(env.toasts()),
+      env.state.seeks.join(','));
+  }
+  {
+    // A playable video whose <video> loads after the segments came: jumped to then.
+    const env = await boot({ sbMode_highlight: 'auto_skip' }, [seg('poi_highlight', 120, 120, 'poi')],
+      { readyState: 0 });
+    t(n('highlight before the video loaded: waits'), env.state.seeks.length === 0, env.state.seeks.join(','));
+    env.state.ready = 1;
+    env.video.dispatchEvent(new env.win.Event('loadedmetadata'));
+    await wait(40);
+    t(n('...and jumps once it has loaded, with the toast'), env.state.time === 120 &&
+      /Jumped to Highlight/.test(env.toasts()), `${env.state.seeks.join(',')} ${env.toasts()}`);
   }
 
   // ---- The fallback server ----
