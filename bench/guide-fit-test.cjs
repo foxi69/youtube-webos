@@ -5,13 +5,11 @@
  *
  * Usage: node bench/guide-fit-test.cjs [bundle] [legacy|modern]
  */
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome87Downgrade } = require('./chrome38-env.cjs');
-const { flavorFromArgs, readBundle, silentXHR, wait, UA, setUserAgent } = require('./harness.cjs');
+const { flavorFromArgs, bootPage, wait, UA } = require('./harness.cjs');
 
 // `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment.
-// The legacy one runs with no environment applied (see boot), so the page is
-// set up here and not by bootPage; the user agent is webOS 23 on both.
+// The legacy one runs with no environment applied (see boot); the user agent
+// is webOS 23 on both.
 const { modern } = flavorFromArgs();
 
 let passed = 0;
@@ -33,33 +31,32 @@ function guideEl(win, width) {
 }
 
 function boot(cfg, width) {
-  const errors = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => errors.push(e.message));
-  const dom = new JSDOM('<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app></ytlr-app></body></html>',
-    { runScripts: 'outside-only', url: 'https://www.youtube.com/tv', virtualConsole: vc, pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, UA.webos23);
-  if (modern) applyChrome87Downgrade(win);
-  win.launchParams = '{}';
-  win.XMLHttpRequest = silentXHR();
-  win.fetch = () => new Promise(() => {});
-  win.localStorage.setItem('ytaf-configuration', JSON.stringify(Object.assign({
-    enableAdBlock: false, checkForUpdates: false, showWhatsNew: false
-  }, cfg)));
-  // The re-check every 2 s runs every 100 ms here.
-  const realInterval = win.setInterval.bind(win);
-  win.setInterval = (fn, ms, ...args) => realInterval(fn, ms === 2000 ? 100 : ms, ...args);
   const observers = [];
-  win.ResizeObserver = class {
-    constructor(cb) { this.cb = cb; this.live = false; observers.push(this); }
-    observe() { this.live = true; }
-    disconnect() { this.live = false; }
-  };
-  const guide = guideEl(win, width);
-  win.document.querySelector('ytlr-app').appendChild(guide);
-  // No Chromium 38 downgrade: it takes ResizeObserver, and the feature with it.
-  win.eval(readBundle());
+  let guide;
+  const { win, errors } = bootPage({
+    userAgent: UA.webos23,
+    // No Chromium 38 environment for the legacy bundle: it takes
+    // ResizeObserver, and the feature with it.
+    environment: modern,
+    restoreRemove: false,
+    consoleErrors: false,
+    fetch: 'pending',
+    config: Object.assign({
+      enableAdBlock: false, checkForUpdates: false, showWhatsNew: false
+    }, cfg),
+    beforeEval(win) {
+      // The re-check every 2 s runs every 100 ms here.
+      const realInterval = win.setInterval.bind(win);
+      win.setInterval = (fn, ms, ...args) => realInterval(fn, ms === 2000 ? 100 : ms, ...args);
+      win.ResizeObserver = class {
+        constructor(cb) { this.cb = cb; this.live = false; observers.push(this); }
+        observe() { this.live = true; }
+        disconnect() { this.live = false; }
+      };
+      guide = guideEl(win, width);
+      win.document.querySelector('ytlr-app').appendChild(guide);
+    }
+  });
   return { win, guide, observers, errors };
 }
 
