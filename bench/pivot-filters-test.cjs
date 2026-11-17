@@ -26,7 +26,7 @@ function boot(cfg, aiIds) {
     consoleErrors: false,
     config: Object.assign({
       enableAdBlock: true, enableLegacyEmojiFix: false, enableSponsorBlock: false,
-      enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false
+      enableReturnYouTubeDislike: false, thumbnailQuality: 'off', enableAutoLogin: false
     }, cfg),
     // Videos ai-content-filter.js found labelled "AI" (ai-video-store.js).
     storage: { 'ytaf-ai-videos': JSON.stringify((aiIds || []).map((id) => ({ id, expiresAt: Date.now() + 864e5 }))) },
@@ -92,7 +92,7 @@ const { t, done } = createReporter();
 
 const ALL = ['plainvideo1', 'aivideo0001', 'shortvideo1', 'livevideo01', 'upcoming001', 'members0001', 'plainvideo2'];
 const cases = [
-  ['Remove AI Videos alone drops the learned AI video beside the player', { removeAiVideos: true }, 'aivideo0001'],
+  ['Remove AI Videos alone drops the learned AI video beside the player', { aiVideos: 'remove' }, 'aivideo0001'],
   ['Remove Shorts alone drops the Short beside the player', { removeGlobalShorts: true }, 'shortvideo1'],
   ['Remove Live Videos alone drops the live video beside the player', { removeLiveVideos: true }, 'livevideo01'],
   ['Remove Upcoming Videos alone drops the premiere beside the player', { removeUpcomingVideos: true }, 'upcoming001'],
@@ -112,7 +112,7 @@ for (const [name, cfg, gone] of cases) {
   t('with these filters off every video beside the player stays', JSON.stringify(ids) === JSON.stringify(ALL), ids.join(','));
 }
 {
-  const { parse } = boot({ enableAdBlock: false, removeAiVideos: true, removeGlobalShorts: true, removeLiveVideos: true,
+  const { parse } = boot({ enableAdBlock: false, aiVideos: 'remove', removeGlobalShorts: true, removeLiveVideos: true,
     removeUpcomingVideos: true, removeMembersOnly: true }, ['aivideo0001']);
   const ids = idsBeside(parse(next()));
   t('with Ad Blocking off they do nothing, as elsewhere', JSON.stringify(ids) === JSON.stringify(ALL), ids.join(','));

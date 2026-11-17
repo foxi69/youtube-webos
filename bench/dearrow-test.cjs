@@ -98,7 +98,7 @@ function boot(cfg, opts = {}) {
     NS = win.JSON.stringify;
     win.localStorage.setItem('ytaf-configuration', NS(Object.assign({
       enableAdBlock: true, enableLegacyEmojiFix: false, enableSponsorBlock: false,
-      enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false,
+      enableReturnYouTubeDislike: false, thumbnailQuality: 'off', enableAutoLogin: false,
       enableDeArrow: true, dearrowTitleFormatting: 'disable', dearrowThumbnailFallback: 'original'
     }, cfg)));
   };
@@ -406,7 +406,7 @@ run(async () => {
   // entries per video, and the tile drawn here is of a later response.
   // A response that ships hq720 proves it: that is what comes back then, not hqdefault.
   for (const shipped of ['hqdefault', 'hq720']) {
-    const { win, parse, pump } = boot({ upgradeThumbnails: true, thumbnailQualityMode: 'eager' }, { head: { delay: 150, length: 1000 } });
+    const { win, parse, pump } = boot({ thumbnailQuality: 'eager' }, { head: { delay: 150, length: 1000 } });
     const shippedTile = () => {
       const item = tile('custom00001', 'Clickbait title');
       item.tileRenderer.header.tileHeaderRenderer.thumbnail.thumbnails[0].url = `https://i.ytimg.com/vi/custom00001/${shipped}.jpg`;
@@ -663,7 +663,7 @@ run(async () => {
   // ---- A pending quality correction must not cover DeArrow's raw fallback frame ----
   {
     const { win, parse, pendingHeads } = boot({
-      upgradeThumbnails: true, thumbnailQualityMode: 'eager', dearrowThumbnailFallback: 'start'
+      thumbnailQuality: 'eager', dearrowThumbnailFallback: 'start'
     }, { head: { hold: true, length: 1000 } });
     const r = parse(browse([tile('downvoted01', 'Original')]));
     await waitFor(() => pendingHeads.length > 0 && tileThumb(itemsOf(r)[0]).includes('/hq1.jpg'), 2000);

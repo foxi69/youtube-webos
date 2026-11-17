@@ -31,7 +31,7 @@ function boot(cfg, opts = {}) {
     userAgent: UA.webos23,
     config: Object.assign({
       enableAdBlock: true, enableLegacyEmojiFix: false, enableSponsorBlock: false,
-      enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false,
+      enableReturnYouTubeDislike: false, thumbnailQuality: 'off', enableAutoLogin: false,
       checkForUpdates: false, showWhatsNew: false
     }, cfg),
     setup(win) {
@@ -72,7 +72,7 @@ setTimeout(async () => {
 
   // ---- Thumbnail test variants ----
   {
-    const { parse } = boot({ upgradeThumbnails: true, thumbnailQualityMode: 'sd' });
+    const { parse } = boot({ thumbnailQuality: 'sd' });
     const tile = (id, name) => ({ tileRenderer: { style: 'TILE_STYLE_YTLR_DEFAULT', contentId: id, onSelectCommand: { watchEndpoint: { videoId: id } },
       header: { tileHeaderRenderer: { thumbnail: { thumbnails: [{ url: `https://i.ytimg.com/vi/${id}/${name}.jpg?sqp=signed&rs=signed`, width: 320, height: 180 }] } } } } });
     const r = parse({ responseContext: { _pad: pad }, contents: { tvBrowseRenderer: { content: { tvSurfaceContentRenderer: { content: {

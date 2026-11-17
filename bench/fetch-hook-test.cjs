@@ -75,7 +75,7 @@ function boot({ polyfill }) {
   win.launchParams = '{}';
   win.localStorage.setItem('ytaf-configuration', JSON.stringify({
     enableAdBlock: true, enableTrackingBlock: true, enableSponsorBlock: false,
-    enableReturnYouTubeDislike: false, enableDeArrow: false, upgradeThumbnails: false,
+    enableReturnYouTubeDislike: false, enableDeArrow: false, thumbnailQuality: 'off',
     enableAutoLogin: false, checkForUpdates: false, showWhatsNew: false
   }));
   if (!win.requestAnimationFrame) win.requestAnimationFrame = (cb) => win.setTimeout(() => cb(Date.now()), 16);

@@ -263,7 +263,7 @@ JSON.parse = function (text, reviver) {
 };
 
 /**
- * "Turn On Translated Subtitles Automatically".
+ * Subtitles When a Video Starts: Translated.
  *
  * When a video starts playing, captions are switched to the chosen language
  * through the player's own API: a native track in that language if the video
@@ -287,8 +287,7 @@ const REAPPLY_POLL_MS = 500;
 
 // The video this viewing's one attempt was made for. Kept for the viewing
 // only: remembered for the whole session, a video watched again later got no
-// subtitles (and none from YouTube either, with Don't Turn On Subtitles by
-// Themselves on).
+// subtitles (YouTube's own are dropped with Translated and a language).
 let attemptedVideoId = null;
 let lastUserKeyAt = 0;
 let autoTimer = null;
@@ -357,7 +356,7 @@ function autoEnableCaptions() {
   // The watch page only: the player also reports the tile previews that play
   // in it on Home, and a preview counted as the video's one attempt, so the
   // video then opened got no subtitles.
-  if (!configRead('subtitleAutoEnable') || isShortsPage() || !isWatchPage()) return;
+  if (configRead('subtitlesAtStart') !== 'translated' || isShortsPage() || !isWatchPage()) return;
   const code = currentTarget();
   if (!code) return;
   const player = captionsPlayer();
@@ -379,7 +378,7 @@ function autoEnableCaptions() {
     autoTimer = null;
     // The viewer is already doing something with the player, or moved on.
     if (lastUserKeyAt > startedAt || !player.isConnected || playerVideoId(player) !== videoId) return;
-    if (!configRead('subtitleAutoEnable') || currentTarget() !== code) return;
+    if (configRead('subtitlesAtStart') !== 'translated' || currentTarget() !== code) return;
     if (isTargetTrack(captionsOption(player, 'track'), code)) return; // already on
 
     let track = pickTrack(captionsOption(player, 'tracklist'), code);

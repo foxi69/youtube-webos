@@ -27,7 +27,7 @@ function boot(cfg, opts = {}) {
     bodyClass: opts.bodyClass || 'WEB_PAGE_TYPE_BROWSE',
     config: Object.assign({
       enableAdBlock: true, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-      enableDeArrow: false, upgradeThumbnails: false, enableAutoLogin: false,
+      enableDeArrow: false, thumbnailQuality: 'off', enableAutoLogin: false,
       checkForUpdates: false, showWhatsNew: false, enableLegacyEmojiFix: false
     }, cfg),
     fetch: 'pending'

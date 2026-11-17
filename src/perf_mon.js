@@ -1778,7 +1778,7 @@ export {};
     enableAdBlock: true,
     enableTrackingBlock: false,
     enableReturnYouTubeDislike: true,
-    upgradeThumbnails: false,
+    thumbnailQuality: 'off',
     removeGlobalShorts: false,
     removeTopLiveGames: false,
     removeMostRelevant: false,
@@ -2128,8 +2128,11 @@ export {};
     },
 
     {
-      key: 'upgradeThumbnails',
+      key: 'thumbnailQuality',
       label: 'Max Thumbnail Quality',
+      enabledWhen: function (v) {
+        return !!v && v !== 'off';
+      },
       lamp: 'THUMB',
       module: 'thumbnail-quality.js',
       pages: ['home', 'search', 'watch'],
@@ -3011,7 +3014,8 @@ export {};
     },
 
     function thumbnailStorm() {
-      if (!cfgGet('upgradeThumbnails')) return null;
+      var tq = cfgGet('thumbnailQuality');
+      if (!tq || tq === 'off') return null;
       var rate = chanRate('thumbnails', 5000);
       if (rate < THRESHOLDS.headProbesPerSec) return null;
       return {

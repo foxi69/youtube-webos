@@ -36,7 +36,7 @@ function boot(cfg) {
     html: '<!doctype html><html><head></head><body></body></html>',
     config: Object.assign({
       enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-      enableDeArrow: false, upgradeThumbnails: false, enableAutoLogin: false,
+      enableDeArrow: false, thumbnailQuality: 'off', enableAutoLogin: false,
       checkForUpdates: false, showWhatsNew: false, enableLegacyEmojiFix: false
     }, cfg),
     setup(win) { win.document.documentElement.removeChild(win.document.body); },

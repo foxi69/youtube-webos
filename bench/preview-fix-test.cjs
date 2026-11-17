@@ -79,7 +79,7 @@ function boot(webos, cfg = {}) {
     userAgent: webos === 6 ? UA_WEBOS6 : undefined,
     config: Object.assign({
       enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-      enableDeArrow: false, upgradeThumbnails: false, enableAutoLogin: false,
+      enableDeArrow: false, thumbnailQuality: 'off', enableAutoLogin: false,
       checkForUpdates: false, showWhatsNew: false
     }, cfg),
     fetch: 'pending',

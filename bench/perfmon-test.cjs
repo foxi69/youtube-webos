@@ -50,7 +50,7 @@ const { win, dom, errors, threw } = bootPage({
   catchThrow: true,
   beforeEval(win) {
     win.localStorage.setItem('yt.leanback.default::last-identity-used', JSON.stringify({ data: identity }));
-    win.localStorage.setItem('ytaf-configuration', JSON.stringify({ perAccountSettings: true, enableSponsorBlock: true, upgradeThumbnails: true }));
+    win.localStorage.setItem('ytaf-configuration', JSON.stringify({ perAccountSettings: true, enableSponsorBlock: true, thumbnailQuality: 'safe' }));
     win.localStorage.setItem('ytaf-configuration::' + profileOf(identity), JSON.stringify({ enableSponsorBlock: false }));
   }
 });
@@ -125,7 +125,7 @@ run(async () => {
     tile.style.backgroundImage = `url("https://i.ytimg.com/vi/video${i}abcd/${name}")`;
     win.document.body.appendChild(tile);
   });
-  const thumbs = win.__PERF.features().filter((f) => f.key === 'upgradeThumbnails')[0];
+  const thumbs = win.__PERF.features().filter((f) => f.key === 'thumbnailQuality')[0];
   t('Max Thumbnail Quality counts the tiles above hqdefault', !!thumbs && thumbs.state === 'firing' && /^2 of 3 tiles/.test(thumbs.detail),
     thumbs && thumbs.state + ': ' + thumbs.detail);
 

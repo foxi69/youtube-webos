@@ -34,7 +34,7 @@ async function boot(cfg) {
     onError: (text) => errors.push(text.replace(/^(?:jsdomError|console\.error): /, '')),
     config: Object.assign({
       enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-      enableDeArrow: false, upgradeThumbnails: false, checkForUpdates: false, showWhatsNew: false
+      enableDeArrow: false, thumbnailQuality: 'off', checkForUpdates: false, showWhatsNew: false
     }, cfg),
     // Before the environment, which takes fetch away again on the legacy build.
     setup: (w) => { w.fetch = () => new Promise(() => {}); },

@@ -32,7 +32,7 @@ function boot({ webCodecs = false } = {}) {
     raf: (cb) => setTimeout(cb, 0),
     config: {
       enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-      upgradeThumbnails: false, enableAutoLogin: false, checkForUpdates: false, showWhatsNew: false
+      thumbnailQuality: 'off', enableAutoLogin: false, checkForUpdates: false, showWhatsNew: false
     },
     setup(win) {
       // An engine like Chromium 53's.

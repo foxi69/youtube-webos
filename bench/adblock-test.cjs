@@ -20,7 +20,7 @@ const { win } = bootPage({
     enableAdBlock: true, enableTrackingBlock: true, removeGlobalShorts: true,
     removeTopLiveGames: true, removeMostRelevant: true, hideGuestSignInPrompts: true,
     hideEndcards: true, enableLegacyEmojiFix: true, enableSponsorBlock: false,
-    enableReturnYouTubeDislike: false, upgradeThumbnails: false
+    enableReturnYouTubeDislike: false, thumbnailQuality: 'off'
   },
   setup(win) {
     nativeStringify = win.JSON.stringify;

@@ -32,7 +32,7 @@ function boot(shared, identity, extraStorage = {}) {
       // A string is stored as it is (a broken set); null stores nothing (a first start).
       if (shared !== null) w.localStorage.setItem(CONFIG_KEY, typeof shared === 'string' ? shared : NS(Object.assign({
         enableAdBlock: true, enableLegacyEmojiFix: false, enableSponsorBlock: false,
-        enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false
+        enableReturnYouTubeDislike: false, thumbnailQuality: 'off', enableAutoLogin: false
       }, shared)));
       if (identity) w.localStorage.setItem(IDENTITY_KEY, NS({ data: identity }));
       for (const [k, v] of Object.entries(extraStorage)) w.localStorage.setItem(k, NS(v));

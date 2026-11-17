@@ -40,7 +40,7 @@ function boot(css, opts = {}) {
     console: { info: (...a) => { const s = a.join(' '); if (s.indexOf('[CommentsFix]') !== -1) infos.push(s); } },
     config: {
       enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-      enableDeArrow: false, upgradeThumbnails: false, enableAutoLogin: false,
+      enableDeArrow: false, thumbnailQuality: 'off', enableAutoLogin: false,
       checkForUpdates: false, showWhatsNew: false, enableLegacyEmojiFix: false
     },
     fetch: 'pending',

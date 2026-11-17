@@ -72,7 +72,7 @@ const CONFIG_KEYS = {
   LIVE: 'removeLiveVideos',
   UPCOMING: 'removeUpcomingVideos',
   MEMBERS: 'removeMembersOnly',
-  AI: 'removeAiVideos',
+  AI: 'aiVideos',
   LIVE_GAMES: 'removeTopLiveGames',
   MIXES: 'removeMixes',
   MOST_RELEVANT: 'removeMostRelevant',
@@ -80,10 +80,12 @@ const CONFIG_KEYS = {
   GUEST_PROMPTS: 'hideGuestSignInPrompts',
   EMOJI_FIX: 'enableLegacyEmojiFix',
   ENDCARDS: 'hideEndcards',
-  THUMBNAILS: 'upgradeThumbnails',
+  THUMBNAILS: 'thumbnailQuality',
   // "Are you still watching?" is one of the nag screens this switch bypasses.
   NAG_SCREENS: 'enableAutoLogin',
-  AUTO_CAPTIONS: 'disableAutoCaptions',
+  AUTO_CAPTIONS: 'subtitlesAtStart',
+  // Translated drops YouTube's subtitles only with a language to put instead.
+  SUBTITLE_LANG: 'subtitleTranslateLang',
   HIDE_WATCHED: 'hideWatchedVideos',
   MIN_LENGTH: 'minVideoLength',
   MAX_AGE: 'maxVideoAge',
@@ -324,7 +326,7 @@ function recomputeFilterFlags() {
   cfgFlags.removeLiveVideos = adBlock && !!cfgSnapshot[CONFIG_KEYS.LIVE];
   cfgFlags.removeUpcomingVideos = adBlock && !!cfgSnapshot[CONFIG_KEYS.UPCOMING];
   cfgFlags.removeMembersOnly = adBlock && !!cfgSnapshot[CONFIG_KEYS.MEMBERS];
-  cfgFlags.removeAiVideos = adBlock && !!cfgSnapshot[CONFIG_KEYS.AI];
+  cfgFlags.removeAiVideos = adBlock && cfgSnapshot[CONFIG_KEYS.AI] === 'remove';
   cfgFlags.badgeMask = (cfgFlags.removeLiveVideos ? BADGE_LIVE : 0) |
     (cfgFlags.removeUpcomingVideos ? BADGE_UPCOMING : 0) |
     (cfgFlags.removeMembersOnly ? BADGE_MEMBERS : 0);
@@ -336,9 +338,14 @@ function recomputeFilterFlags() {
   // Independent switches on the same hook.
   cfgFlags.enableLegacyEmojiFix = cfgEmojiFixEffective;
   cfgFlags.hideEndcards = !!cfgSnapshot[CONFIG_KEYS.ENDCARDS];
-  cfgFlags.upgradeThumbnails = !!cfgSnapshot[CONFIG_KEYS.THUMBNAILS];
+  cfgFlags.upgradeThumbnails = (cfgSnapshot[CONFIG_KEYS.THUMBNAILS] || 'off') !== 'off';
   cfgFlags.removeYouThere = !!cfgSnapshot[CONFIG_KEYS.NAG_SCREENS];
-  cfgFlags.disableAutoCaptions = !!cfgSnapshot[CONFIG_KEYS.AUTO_CAPTIONS];
+  // Translated as well: only the translated subtitles, never YouTube's own
+  // first. Not without a language to translate to: that would leave none.
+  const atStart = cfgSnapshot[CONFIG_KEYS.AUTO_CAPTIONS];
+  const lang = cfgSnapshot[CONFIG_KEYS.SUBTITLE_LANG];
+  cfgFlags.disableAutoCaptions = atStart === 'off' ||
+    (atStart === 'translated' && !!lang && lang !== 'off');
   cfgFlags.forceOriginalAudio = !!cfgSnapshot[CONFIG_KEYS.ORIGINAL_AUDIO];
   // The feed filters are Ad Blocking's, like the other item filters.
   cfgFlags.hideWatched = adBlock && !!cfgSnapshot[CONFIG_KEYS.HIDE_WATCHED];
@@ -960,7 +967,7 @@ function applySchemaFilters(data, responseType, config) {
       if (config.hideRecommended && responseType === 'NEXT') hideRecommendedVideos(data, schema);
       // The videos beside and under the player go through the item filters
       // and rewrites too: every filter shouldDropItem() applies, each on its
-      // own (Remove AI Videos, Remove Shorts and the Live / Upcoming /
+      // own (AI Videos: Remove, Remove Shorts and the Live / Upcoming /
       // Members-only badges were missing, so they did nothing there unless a
       // feed filter was on as well).
       if (config.enableAdBlock || config.hideGuestPrompts || config.feedFilters || config.decorateItems ||
@@ -1317,7 +1324,7 @@ function shouldDropItem(item, config) {
   if (config.hideGuestPrompts && isGuestPrompt(item)) return true;
   if (config.removeGlobalShorts && isShortsItem(item)) return true;
   if (config.removeMixes && isMixItem(item)) return true;
-  // Remove AI Videos: only videos ai-content-filter.js already found labelled "AI".
+  // AI Videos: Remove: only videos ai-content-filter.js already found labelled "AI".
   if (config.removeAiVideos && isAiVideoStored(extractAiVideoId(item))) return true;
   if (config.feedFilters && dropsByFeedFilters(item, config)) return true;
   if (hasWantedBadge(item, config.badgeMask)) return true;
@@ -1654,8 +1661,9 @@ function removePaidPromotion(data) {
 /**
  * Subtitles that start on by themselves: the player response names a default
  * track and an initial state per audio track. Without the default and with the
- * state set to off, a video starts without subtitles; turning them on by hand,
- * and Turn On Translated Subtitles Automatically, still work.
+ * state set to off, a video starts without subtitles; turning them on by hand
+ * still works, and so do Translated's own (subtitle-translate.js). Used by
+ * Subtitles When a Video Starts: Off and Translated.
  * (From MickLesk's fork; webosbrew/youtube-webos#57.)
  */
 function captionsOff(holder) {

@@ -71,7 +71,7 @@ async function boot(cfg, segments, opts = {}) {
     consoleErrors: false,
     config: Object.assign({
       enableAdBlock: false, enableSponsorBlock: true, enableReturnYouTubeDislike: false,
-      enableDeArrow: false, upgradeThumbnails: false, enableAutoLogin: false,
+      enableDeArrow: false, thumbnailQuality: 'off', enableAutoLogin: false,
       checkForUpdates: false, showWhatsNew: false, sbPeriodicRefresh: false
     }, cfg),
     evaluate: false

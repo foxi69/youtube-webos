@@ -69,7 +69,8 @@ export const logoStyles = {
 };
 
 /**
- * Max Thumbnail Quality strategy.
+ * Max Thumbnail Quality: 'off' leaves YouTube's thumbnails as sent; the others
+ * are how far above them it reaches.
  *
  * 'safe'    - only ever emit a derivative already known to exist, so a tile can
  *             never land on a 404. Upgrades past that arrive once verified.
@@ -84,6 +85,7 @@ export const logoStyles = {
  *             navigation.
  */
 export const thumbnailQualityModes = {
+  off: 'Off',
   safe: 'Original',
   eager: 'Fast',
   sd: 'Smooth (SD)'
@@ -150,6 +152,28 @@ export const startPageModes = {
   subscriptions: 'Subscriptions',
   library: 'Library',
   history: 'History'
+};
+
+/**
+ * Subtitles When a Video Starts (Player): as YouTube turns them on, off
+ * (YouTube's default track dropped from the player response), or the
+ * Auto-Translate Subtitles language only (YouTube's default dropped too, while
+ * a language is set; where the translation cannot be had, none).
+ */
+export const subtitlesAtStartModes = {
+  youtube: "YouTube's Choice",
+  off: 'Off',
+  translated: 'Translated'
+};
+
+/**
+ * AI Videos (Filters): the videos YouTube labels "AI" are shown as they are,
+ * marked with a badge, or removed (Remove needs Ad Blocking).
+ */
+export const aiVideoModes = {
+  show: 'Show',
+  mark: 'Mark',
+  remove: 'Remove'
 };
 
 /**
@@ -245,14 +269,12 @@ const configOptions = new Map([
   // Off until switched on: every video opened sends its id to
   // returnyoutubedislikeapi.com, a third party.
   ['enableReturnYouTubeDislike', { default: false, desc: 'Return YouTube Dislike' }],
-  ['upgradeThumbnails', { default: false, desc: 'Max Thumbnail Quality' }],
-  ['thumbnailQualityMode', { default: 'safe', desc: 'Thumbnail Strategy' }],
+  ['thumbnailQuality', { default: 'off', desc: 'Max Thumbnail Quality' }],
   ['removeGlobalShorts', { default: false, desc: 'Remove Shorts (Global)' }],
   ['removeLiveVideos', { default: false, desc: 'Remove Live Videos (Global)' }],
   ['removeUpcomingVideos', { default: false, desc: 'Remove Upcoming Videos' }],
   ['removeMembersOnly', { default: false, desc: 'Remove Members-Only Videos' }],
-  ['removeAiVideos', { default: false, desc: 'Remove AI Videos' }],
-  ['markAiVideos', { default: false, desc: 'Mark AI Videos' }],
+  ['aiVideos', { default: 'show', desc: 'AI Videos' }],
   ['removeTopLiveGames', { default: false, desc: 'Remove Top Live Games' }],
   // YouTube's generated Mix playlists (feed-filters.js isMixItem).
   ['removeMixes', { default: false, desc: 'Remove Mixes' }],
@@ -287,7 +309,7 @@ const configOptions = new Map([
   // ui.js: the comments panel at the end of a watched video, autoplay off only.
   ['openCommentsAtEnd', { default: false, desc: 'Open Comments at the End of a Video' }],
   // The player responses say whether subtitles start on; this says off.
-  ['disableAutoCaptions', { default: false, desc: "Don't Turn On Subtitles by Themselves" }],
+  ['subtitlesAtStart', { default: 'youtube', desc: 'Subtitles When a Video Starts' }],
   // Drops the dubbed audio tracks from the player response, so the original plays.
   ['forceOriginalAudio', { default: false, desc: 'Prefer Original Audio over Dubbed' }],
   ['seekStep', { default: '0', desc: 'Left/Right Seek Step (Controls Hidden)' }],
@@ -329,7 +351,6 @@ const configOptions = new Map([
   ['showVideoQuality', { default: 'off', desc: 'Show Video Quality' }],
   ['forceVideoCodec', { default: 'auto', desc: 'Force Video Codec' }],
   ['subtitleTranslateLang', { default: 'off', desc: 'Auto-Translate Subtitles' }],
-  ['subtitleAutoEnable', { default: false, desc: 'Turn On Translated Subtitles Automatically' }],
   ['enablePlaybackSpeed', { default: true, desc: 'Playback Speed Control' }],
   ['blockWebosCast', { default: true, desc: 'Block webOS Cast Service (webOS 25)' }],
   ['disableNotifications', { default: false, desc: 'Disable Notifications' }],

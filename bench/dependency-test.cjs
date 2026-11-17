@@ -23,7 +23,7 @@ function boot(cfg) {
     config: Object.assign({
       enableAdBlock: true, enableTrackingBlock: false, enableLegacyEmojiFix: true,
       enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-      upgradeThumbnails: false, enableAutoLogin: false
+      thumbnailQuality: 'off', enableAutoLogin: false
     }, cfg),
     // The frames wait until the test runs them (pump), each called with 0.
     raf: 'manual',

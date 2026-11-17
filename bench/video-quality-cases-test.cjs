@@ -66,7 +66,7 @@ function boot(cfg, { player = true, events = true, record, ua, quality = 'hd720'
   if (record) win.localStorage.setItem(KEY, JSON.stringify(record));
   win.localStorage.setItem('ytaf-configuration', JSON.stringify(Object.assign({
     enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-    upgradeThumbnails: false, enableAutoLogin: false, enablePlaybackSpeed: false, forceHighResVideo: true
+    thumbnailQuality: 'off', enableAutoLogin: false, enablePlaybackSpeed: false, forceHighResVideo: true
   }, cfg)));
 
   const log = { calls: [], listeners: 0 };

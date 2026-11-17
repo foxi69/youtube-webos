@@ -35,7 +35,7 @@ async function boot(cfg = {}, opts = {}) {
     consoleErrors: false,
     config: Object.assign({
       enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-      enableDeArrow: false, upgradeThumbnails: false, enableAutoLogin: false,
+      enableDeArrow: false, thumbnailQuality: 'off', enableAutoLogin: false,
       checkForUpdates: false, showWhatsNew: false, openCommentsAtEnd: true
     }, cfg),
     storage: {

@@ -138,7 +138,7 @@ function boot() {
     raf: 'manual',
     config: {
       enableAdBlock: true, enableSponsorBlock: true, enableReturnYouTubeDislike: true,
-      upgradeThumbnails: false, enableAutoLogin: false, enableDeArrow: false,
+      thumbnailQuality: 'off', enableAutoLogin: false, enableDeArrow: false,
       checkForUpdates: false, showWhatsNew: false
     },
     // Set before the environment, which takes it away again on the legacy build.
@@ -238,8 +238,6 @@ run(async () => {
   // ---- Down through a page and back up ----
   const player = page('player');
   const rows = controlsOf(player);
-  // Greyed out while Auto-Translate Subtitles is Off (the default).
-  const greyed = checkboxNamed(player, 'Turn On Translated Subtitles Automatically');
   const walk = (keyCode) => {
     const seen = [];
     let outOfView = '';
@@ -256,8 +254,6 @@ run(async () => {
   t(n('Down walks the Player rows in order, one at a time'),
     down.seen.length === rows.length && down.seen.every((el, i) => el === rows[i]),
     down.seen.length + ' of ' + rows.length + ', first wrong: ' + describe(down.seen.find((el, i) => el !== rows[i])));
-  t(n('Down passes over a greyed-out row'), !!greyed && greyed.tabIndex === -1 && down.seen.indexOf(greyed) === -1,
-    greyed ? 'tabIndex ' + greyed.tabIndex : 'no greyed-out row found');
   t(n('every row Down lands on is in full view, with half a row around it'), !down.outOfView, down.outOfView);
   t(n('the page is long enough to scroll'), maxScroll(player) > 0, String(maxScroll(player)));
   t(n('Down on the last row goes back to the open tab'), focused() === tabs()[1], describe(focused()));
@@ -382,6 +378,20 @@ run(async () => {
   t(n('focus taken outside the panel comes back to it'), focused() === tabs()[4], describe(focused()));
   t(n('no key press left the focus outside the panel'), lost.length === 0 && presses > 50,
     presses + ' presses; ' + lost.join(', '));
+
+  // ---- A greyed-out row is passed over ----
+  // UI Tweaks opens on Video shelf opacity, greyed out while OLED-Care Mode is
+  // off (the default): Down from the tab goes past it, to UI Brightness.
+  press(KEY.RIGHT);
+  const tweaks = page('ui-tweaks');
+  const shelf = tweaks && rowNamed(tweaks, 'Video shelf opacity');
+  press(KEY.DOWN);
+  t(n('Down passes over a greyed-out row'),
+    !!shelf && shelf.tabIndex === -1 && focused() === rowNamed(tweaks, 'UI Brightness'),
+    (shelf ? 'tabIndex ' + shelf.tabIndex : 'no shelf row') + ', on ' + describe(focused()));
+  press(KEY.UP);
+  press(KEY.LEFT);
+  t(n('...and back on the Shortcuts tab'), focused() === tabs()[4], describe(focused()));
 
   // ---- Back ----
   // The panel ignores toggles in its first half second.

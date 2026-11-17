@@ -27,7 +27,7 @@ function boot(cfg, opts = {}) {
     raf: 'manual',
     config: Object.assign({
       enableAdBlock: true, enableLegacyEmojiFix: false, enableSponsorBlock: false,
-      enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false
+      enableReturnYouTubeDislike: false, thumbnailQuality: 'off', enableAutoLogin: false
     }, cfg),
     consoleErrors: false,
     // The legacy environment has no Element#remove here.

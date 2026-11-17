@@ -2,7 +2,7 @@
  * Auto-translated subtitles (src/subtitle-translate.js), in the bundle: the
  * edits to the /player response (the chosen language pinned to the top of
  * Auto-translate, a ready-made "<Language> (auto-translated)" track where the
- * video has none in it) and "Turn On Translated Subtitles Automatically"
+ * video has none in it) and Subtitles When a Video Starts: Translated
  * through the player's captions API (which track it picks, a track already
  * on, no track in the language, a tracklist that comes late or never, a
  * reset by the player, another video).
@@ -95,7 +95,7 @@ async function boot(cfg, opts = {}) {
     console: { warn: (...a) => warnings.push(a.map(String).join(' ')) },
     config: Object.assign({
       enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-      enableDeArrow: false, upgradeThumbnails: false, enableAutoLogin: false,
+      enableDeArrow: false, thumbnailQuality: 'off', enableAutoLogin: false,
       checkForUpdates: false, showWhatsNew: false, showVideoQuality: 'off'
     }, cfg),
     fetch: 'pending',
@@ -228,7 +228,7 @@ run(async () => {
   }
 
   // ================= Turning the subtitles on =================
-  const AUTO = { subtitleTranslateLang: 'hu', subtitleAutoEnable: true };
+  const AUTO = { subtitleTranslateLang: 'hu', subtitlesAtStart: 'translated' };
   const huAsr = { languageCode: 'hu', kind: 'asr', vss_id: 'a.hu' };
   const huHuman = { languageCode: 'hu', vss_id: '.hu' };
   const huTranslated = { languageCode: 'en', vss_id: '.en', translationLanguage: { languageCode: 'hu' } };
@@ -319,10 +319,10 @@ run(async () => {
 
   // The setting off, a Shorts page: nothing.
   {
-    const env = await boot({ subtitleTranslateLang: 'hu', subtitleAutoEnable: false }, { tracklist: [huHuman] });
+    const env = await boot({ subtitleTranslateLang: 'hu', subtitlesAtStart: 'youtube' }, { tracklist: [huHuman] });
     env.p.emit(1);
     await pageMs(1000);
-    t(n('Turn On Automatically off: nothing is set'), env.p.sets.length === 0 && env.p.loads.length === 0,
+    t(n('Subtitles at start not Translated: nothing is set'), env.p.sets.length === 0 && env.p.loads.length === 0,
       `sets=${env.p.sets.length} loads=${env.p.loads.join()}`);
     env.win.close();
   }

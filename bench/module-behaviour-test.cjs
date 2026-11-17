@@ -21,7 +21,7 @@ function boot(cfg, html, url) {
     },
     config: Object.assign({
       enableAdBlock: true, enableLegacyEmojiFix: false, enableSponsorBlock: false,
-      enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false
+      enableReturnYouTubeDislike: false, thumbnailQuality: 'off', enableAutoLogin: false
     }, cfg),
     // The frames wait until the test runs them (pump), each called with 0.
     raf: 'manual',
@@ -68,7 +68,7 @@ run(async () => {
   const html = '<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app></ytlr-app></body></html>';
 
   {
-    const { win, probed } = boot({ upgradeThumbnails: true, thumbnailQualityMode: 'eager' }, html);
+    const { win, probed } = boot({ thumbnailQuality: 'eager' }, html);
     await tick();
     const out = win.JSON.parse(tileResponse(win.JSON.stringify, ['abc123XYZ_-']));
     t('eager mode: tile rewritten to maxresdefault',
@@ -79,7 +79,7 @@ run(async () => {
   }
 
   {
-    const { win, probed } = boot({ upgradeThumbnails: true, thumbnailQualityMode: 'safe' }, html);
+    const { win, probed } = boot({ thumbnailQuality: 'safe' }, html);
     await tick();
     const out = win.JSON.parse(tileResponse(win.JSON.stringify, ['safe0000000']));
     t('safe mode: unproven rung is not drawn',
@@ -92,7 +92,7 @@ run(async () => {
   }
 
   {
-    const { win, probed } = boot({ upgradeThumbnails: false, thumbnailQualityMode: 'eager' }, html);
+    const { win, probed } = boot({ thumbnailQuality: 'off' }, html);
     await tick();
     const out = win.JSON.parse(tileResponse(win.JSON.stringify, ['off00000000']));
     await wait(1500);
@@ -109,7 +109,7 @@ run(async () => {
     for (let i = 0; i < 24; i++) rendered.push('onscreen' + String(i).padStart(3, '0'));
     const tiles = rendered.map((id) =>
       `<ytlr-thumbnail-details style="background-image: url(https://i.ytimg.com/vi/${id}/hqdefault.jpg)"></ytlr-thumbnail-details>`).join('');
-    const { win, probed } = boot({ upgradeThumbnails: true, thumbnailQualityMode: 'safe' },
+    const { win, probed } = boot({ thumbnailQuality: 'safe' },
       '<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app>' + tiles + '</ytlr-app></body></html>');
     await tick();
     // The module's clock stands still, so the idle gate (1.2 s after a parse)

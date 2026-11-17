@@ -172,6 +172,7 @@ run comments-at-end-test "$B" legacy
 run page-bridge-test "$B" legacy
 run comments-fix-test "$B" legacy
 run rows-ahead-test "$B" legacy
+run settings-dependencies-test "$B" legacy
 run lang-settings-fix-test "$B" legacy
 run app-quality-fix-test "$B" legacy
 run emoji-font-test "$B" legacy
@@ -215,7 +216,7 @@ for t in smoke adblock-test panel-test module-behaviour-test upstream-fixes-test
   screensaver-cases-test subtitle-translate-test auto-login-test about-test \
   launch-params-test clock-test sponsorblock-bar-test sponsorblock-lifecycle-test \
   dislike-panel-test keyboard-search-cases-test adblock-cases-test shortcut-actions-test \
-  page-bridge-test comments-fix-test rows-ahead-test lang-settings-fix-test app-quality-fix-test \
+  page-bridge-test comments-fix-test rows-ahead-test settings-dependencies-test lang-settings-fix-test app-quality-fix-test \
   emoji-font-test ai-filter-cases-test speed-cases-test thumbnail-quality-test \
   video-quality-cases-test dearrow-cases-test \
   whos-watching-test comments-at-end-test; do

@@ -52,9 +52,9 @@ function boot(cfg = {}, opts = {}) {
     config: Object.assign({
       enableAdBlock: true, enableTrackingBlock: true, removeGlobalShorts: true, removeLiveVideos: true,
       removeUpcomingVideos: true, removeMembersOnly: true, hideEndcards: true, enableAutoLogin: true,
-      disableAutoCaptions: true, forceOriginalAudio: true, enableLegacyEmojiFix: true,
+      subtitlesAtStart: 'off', forceOriginalAudio: true, enableLegacyEmojiFix: true,
       enableSponsorBlock: false, enableReturnYouTubeDislike: false, enableDeArrow: false,
-      upgradeThumbnails: false, checkForUpdates: false, showWhatsNew: false
+      thumbnailQuality: 'off', checkForUpdates: false, showWhatsNew: false
     }, cfg),
     fetch: 'pending',
     evaluate: false
@@ -242,6 +242,19 @@ run(async () => {
       t(n(`player, ${name}: only the original audio track (by its xtags) is left, video kept`),
         itags === '137,140,251,', itags);
     }
+  }
+  // ---- Subtitles When a Video Starts: Off, and Translated with a language,
+  // drop YouTube's default track ----
+  for (const [mode, lang, drops] of [['youtube', 'hu', false], ['off', 'off', true], ['translated', 'hu', true], ['translated', 'off', false]]) {
+    const { P } = boot({ subtitlesAtStart: mode, subtitleTranslateLang: lang });
+    // streamingData: a player response.
+    const r = P({ responseContext: { _pad: pad }, streamingData: { adaptiveFormats: [] },
+      captions: { playerCaptionsTracklistRenderer: { audioTracks: [{ defaultCaptionTrackIndex: 0, captionsInitialState: 'CAPTIONS_INITIAL_STATE_ON_REQUIRED' }] } } });
+    const track = r.captions.playerCaptionsTracklistRenderer.audioTracks[0];
+    const kept = track.defaultCaptionTrackIndex === 0 && track.captionsInitialState === 'CAPTIONS_INITIAL_STATE_ON_REQUIRED';
+    const dropped = track.defaultCaptionTrackIndex === undefined && track.captionsInitialState === 'CAPTIONS_INITIAL_STATE_OFF_RECOMMENDED';
+    t(n(`subtitles at start ${mode}, language ${lang}: YouTube's default track ${drops ? 'dropped' : 'kept'}`),
+      drops ? dropped : kept, JSON.stringify(track));
   }
   {
     // No xtags: the track marked default is the original.

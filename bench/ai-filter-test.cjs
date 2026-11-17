@@ -82,10 +82,10 @@ function boot(cfg, opts) {
     xhr: false,
     config: Object.assign({
       enableAdBlock: true, enableTrackingBlock: false, removeGlobalShorts: false,
-      removeLiveVideos: false, removeAiVideos: false, removeTopLiveGames: false,
-      removeMostRelevant: false, markAiVideos: false, hideGuestSignInPrompts: false,
+      removeLiveVideos: false, aiVideos: 'show', removeTopLiveGames: false,
+      removeMostRelevant: false, hideGuestSignInPrompts: false,
       hideEndcards: false, enableLegacyEmojiFix: false, enableSponsorBlock: false,
-      enableReturnYouTubeDislike: false, upgradeThumbnails: false
+      enableReturnYouTubeDislike: false, thumbnailQuality: 'off'
     }, cfg),
     storage: Object.assign({},
       opts.aiStore !== undefined ? { 'ytaf-ai-videos': opts.aiStore } : null,
@@ -139,11 +139,13 @@ const watchBadge = (win, el) => {
   observer.observe(el, { attributes: true, attributeFilter: [BADGE], attributeOldValue: true });
   return { observed, stop: () => observer.disconnect() };
 };
-const openMarkBox = async (h) => {
+// The AI Videos row (Show / Mark / Remove) in the opened panel.
+const openAiRow = async (h) => {
   trustedKey(h.win, 404);
   await wait(20);
-  return h.doc.querySelector('#ytaf-mark-ai');
+  return h.doc.querySelector('#ytaf-ai-videos');
 };
+const aiValue = (row) => row.querySelector('.current-value').textContent;
 const lockup = (videoId, contentType) => ({ lockupViewModel: {
   contentType: contentType || 'LOCKUP_CONTENT_TYPE_VIDEO', contentId: videoId,
   rendererContext: { commandContext: { onTap: { innertubeCommand: { watchEndpoint: { videoId } } } } }
@@ -178,7 +180,7 @@ function resultItems(win, out, surface) {
 
   // A late answer for a recycled component must never badge its new video.
   {
-    const h = boot({ markAiVideos: true }, { delay: 180, answers: { [id(21)]: 'ai' } });
+    const h = boot({ aiVideos: 'mark' }, { delay: 180, answers: { [id(21)]: 'ai' } });
     const card = h.card(id(21));
     await wait(80);
     const watch = watchBadge(h.win, card);
@@ -192,7 +194,7 @@ function resultItems(win, out, surface) {
   // Only video renderer kinds are looked up; collection commands may point at an AI first video.
   {
     const answers = {};
-    const h = boot({ markAiVideos: true }, { answers });
+    const h = boot({ aiVideos: 'mark' }, { answers });
     const musicId = id(23), shortId = id(24), reelId = id(25), playlistId = id(26), mixId = id(27), channelId = id(28), tilePlaylistId = id(29);
     [musicId, shortId, reelId].forEach((videoId) => { answers[videoId] = 'ai'; });
     const music = h.card(musicId, 'yt-lockup-view-model');
@@ -223,7 +225,7 @@ function resultItems(win, out, surface) {
 
   // Duplicate cards and wrapper ownership share one request.
   {
-    const h = boot({ markAiVideos: true }, { answers: { [id(30)]: 'ai' } });
+    const h = boot({ aiVideos: 'mark' }, { answers: { [id(30)]: 'ai' } });
     const tileCard = h.card(id(30));
     const lockupCard = h.card(id(30), 'yt-lockup-view-model');
     const wrapped = h.wrapperLockup(id(30));
@@ -239,7 +241,7 @@ function resultItems(win, out, surface) {
     const failures = ['403', '429', '500', 'invalidjson', 'timeout', 'network'];
     const answers = {};
     const cards = [];
-    const h = boot({ markAiVideos: true }, { answers });
+    const h = boot({ aiVideos: 'mark' }, { answers });
     for (let i = 0; i < failures.length; i++) {
       const videoId = id(40 + i);
       answers[videoId] = failures[i];
@@ -251,9 +253,9 @@ function resultItems(win, out, surface) {
     h.close();
   }
 
-  // Turning Mark off restores prior badges and prevents a late pending answer from adding one.
+  // Switching from Mark to Show restores prior badges and prevents a late pending answer from adding one.
   {
-    const h = boot({ markAiVideos: true }, {
+    const h = boot({ aiVideos: 'mark' }, {
       answers: { [id(50)]: 'ai', [id(51)]: 'ai' }, delayFor: { [id(50)]: 0, [id(51)]: 400 }
     });
     const existing = h.card(id(50));
@@ -261,19 +263,20 @@ function resultItems(win, out, surface) {
     await wait(150);
     const watch = watchBadge(h.win, pending);
     t('toggle setup: first AI card is already badged while second lookup is pending', existing.hasAttribute(BADGE) && !pending.hasAttribute(BADGE));
-    const mark = await openMarkBox(h);
-    mark.click();
+    const row = await openAiRow(h);
+    // From Mark to Show: OK cycles Mark, Remove, Show.
+    for (let i = 0; i < 3 && aiValue(row) !== 'Show'; i++) row.click();
     await wait(500);
     t('toggle off: existing badge removed and late AI reply never badges pending card',
       !existing.hasAttribute(BADGE) && !pending.hasAttribute(BADGE) && !watch.observed.added,
-      JSON.stringify({ existing: existing.getAttribute(BADGE), pending: pending.getAttribute(BADGE), added: watch.observed.added, mark: mark.checked, disabled: mark.disabled }));
+      JSON.stringify({ existing: existing.getAttribute(BADGE), pending: pending.getAttribute(BADGE), added: watch.observed.added, mode: aiValue(row) }));
     watch.stop();
     h.close();
   }
 
   // Badge work must not affect video playback or navigation.
   {
-    const h = boot({ markAiVideos: true }, { answers: { [id(60)]: 'ai' } });
+    const h = boot({ aiVideos: 'mark' }, { answers: { [id(60)]: 'ai' } });
     const card = h.card(id(60));
     const video = h.doc.createElement('video');
     video.src = 'blob:https://www.youtube.com/playing';
@@ -288,7 +291,7 @@ function resultItems(win, out, surface) {
 
   // Static cards need a containing block; positioned cards preserve the empty attribute value.
   {
-    const h = boot({ markAiVideos: true }, { answers: { [id(70)]: 'ai', [id(71)]: 'ai' } });
+    const h = boot({ aiVideos: 'mark' }, { answers: { [id(70)]: 'ai', [id(71)]: 'ai' } });
     const staticCard = h.card(id(70));
     staticCard.style.position = 'static';
     const positionedCard = h.card(id(71));
@@ -311,14 +314,14 @@ function resultItems(win, out, surface) {
     ];
     for (let c = 0; c < cases.length; c++) {
       const surface = cases[c][0];
-      const h = boot({ removeAiVideos: true }, { aiStore: store });
+      const h = boot({ aiVideos: 'remove' }, { aiStore: store });
       const out = h.win.JSON.parse(h.NS(responseFor(surface, cases[c][1])));
       const actual = resultItems(h.win, out, surface);
       const expectedLength = surface === 'HOME' ? 7 : 1;
       t('JSON ' + surface + ': removes learned video ids and keeps non-video/unknown/expired items', actual.length === expectedLength, 'items: ' + actual.length);
       h.close();
     }
-    for (const cfg of [{ removeAiVideos: false }, { removeAiVideos: true, enableAdBlock: false }]) {
+    for (const cfg of [{ aiVideos: 'show' }, { aiVideos: 'remove', enableAdBlock: false }]) {
       const h = boot(cfg, { aiStore: store });
       const out = h.win.JSON.parse(h.NS(responseFor('CONTINUATION', [tile(learned)])));
       t('JSON removal disabled by option or Ad Blocking', resultItems(h.win, out, 'CONTINUATION').length === 1);
@@ -329,7 +332,7 @@ function resultItems(win, out, surface) {
   // First encounter learns and marks; the persisted result is available after restart.
   {
     const startedAt = Date.now();
-    const h = boot({ removeAiVideos: true }, { answers: { [id(1)]: 'ai' } });
+    const h = boot({ aiVideos: 'remove' }, { answers: { [id(1)]: 'ai' } });
     const ai = h.card(id(1));
     const plain = h.card(id(2));
     await wait(700);
@@ -342,7 +345,7 @@ function resultItems(win, out, surface) {
     const saved = h.win.localStorage.getItem('ytaf-ai-videos');
     h.close();
 
-    const h2 = boot({ removeAiVideos: true }, { aiStore: saved });
+    const h2 = boot({ aiVideos: 'remove' }, { aiStore: saved });
     const response = responseFor('HOME', [lockup(id(1))]);
     const out = h2.win.JSON.parse(h2.NS(response));
     const sections = out.contents.tvBrowseRenderer.content.tvSurfaceContentRenderer.content.sectionListRenderer.contents;
@@ -351,7 +354,7 @@ function resultItems(win, out, surface) {
   }
 
   {
-    const h = boot({ enableAdBlock: false, markAiVideos: true }, {
+    const h = boot({ enableAdBlock: false, aiVideos: 'mark' }, {
       aiStore: JSON.stringify([{ id: id(5), expiresAt: Date.now() + 86400000 }]),
       answers: { [id(6)]: 'ai' }
     });
@@ -365,7 +368,7 @@ function resultItems(win, out, surface) {
   }
 
   {
-    const h = boot({ markAiVideos: true }, { delay: 150, answers: { [id(7)]: 'ai' } });
+    const h = boot({ aiVideos: 'mark' }, { delay: 150, answers: { [id(7)]: 'ai' } });
     const card = h.card(id(7));
     await wait(80);
     card.__instance.props.data = { contentType: 'TILE_CONTENT_TYPE_VIDEO', onSelectCommand: { watchEndpoint: { videoId: id(8) } } };
@@ -376,7 +379,7 @@ function resultItems(win, out, surface) {
 
   // Unconfirmed results and corrupt storage are safe; "not AI" retracts a learned id.
   {
-    const h = boot({ markAiVideos: true }, { aiStore: '{broken', answers: { [id(3)]: 'plain' } });
+    const h = boot({ aiVideos: 'mark' }, { aiStore: '{broken', answers: { [id(3)]: 'plain' } });
     const c = h.card(id(3));
     await wait(700);
     t('corrupt storage: starts empty without throwing', storedIds(h.win).length === 0);
@@ -386,7 +389,7 @@ function resultItems(win, out, surface) {
   {
     const old = Date.now() - 31 * 24 * 60 * 60 * 1000;
     const expired = JSON.stringify([{ id: id(4), expiresAt: old }]);
-    const h = boot({ removeAiVideos: true }, { aiStore: expired });
+    const h = boot({ aiVideos: 'remove' }, { aiStore: expired });
     const response = { responseContext: { pad: 'z'.repeat(600) }, continuationContents: { gridContinuation: { items: [
       { tileRenderer: { contentType: 'TILE_CONTENT_TYPE_VIDEO', onSelectCommand: { watchEndpoint: { videoId: id(4) } } } }
     ] } } };
@@ -396,7 +399,7 @@ function resultItems(win, out, surface) {
   }
 
   {
-    const h = boot({ markAiVideos: true }, {
+    const h = boot({ aiVideos: 'mark' }, {
       aiStore: JSON.stringify([{ id: id(5), expiresAt: Date.now() + 86400000 }]),
       answers: { [id(5)]: 'plain' }
     });
@@ -410,7 +413,7 @@ function resultItems(win, out, surface) {
   {
     const entries = [];
     for (let i = 0; i < 2001; i++) entries.push({ id: 'saved' + i, expiresAt: Date.now() + 100000 + i });
-    const h = boot({ removeAiVideos: true }, { aiStore: JSON.stringify(entries) });
+    const h = boot({ aiVideos: 'remove' }, { aiStore: JSON.stringify(entries) });
     h.win.JSON.parse(h.NS(responseFor('CONTINUATION', [tile(id(999))])));
     await wait(300);
     const valid = storedIds(h.win);
@@ -442,7 +445,7 @@ function resultItems(win, out, surface) {
   // "No AI label" is remembered for a week, so the same videos are not asked
   // about again at every start of the app.
   {
-    const h = boot({ markAiVideos: true }, { answers: { [id(20)]: 'plain', [id(21)]: 'ai' } });
+    const h = boot({ aiVideos: 'mark' }, { answers: { [id(20)]: 'plain', [id(21)]: 'ai' } });
     h.card(id(20));
     h.card(id(21));
     // The store writes 3 s after the last answer.
@@ -452,7 +455,7 @@ function resultItems(win, out, surface) {
     t('AI result: not among the remembered "not AI"', saved.indexOf(id(21)) === -1, saved);
     h.close();
 
-    const h2 = boot({ markAiVideos: true }, { notAiStore: saved, answers: { [id(20)]: 'ai' } });
+    const h2 = boot({ aiVideos: 'mark' }, { notAiStore: saved, answers: { [id(20)]: 'ai' } });
     const again = h2.card(id(20));
     h2.card(id(22));
     await wait(400);
@@ -463,7 +466,7 @@ function resultItems(win, out, surface) {
     // Run out, far in the future (a clock set back), or not a day at all: asked again.
     const today = Math.round(Date.now() / 864e5);
     const stale = [id(30) + ':' + (today - 1), id(31) + ':' + (today + 400), id(32) + ':x'].join(',');
-    const h3 = boot({ markAiVideos: true }, { notAiStore: stale });
+    const h3 = boot({ aiVideos: 'mark' }, { notAiStore: stale });
     h3.card(id(30)); h3.card(id(31)); h3.card(id(32));
     await wait(400);
     t('an entry that ran out, or is not to be trusted, is asked about again',
@@ -474,7 +477,7 @@ function resultItems(win, out, surface) {
   // No lookups while the arrow keys move: they start once the remote is quiet.
   {
     // On the page's own clock, moved by the test (see the case below).
-    const h = boot({ markAiVideos: true }, { fakeClock: true });
+    const h = boot({ aiVideos: 'mark' }, { fakeClock: true });
     await settleClock(h, 500);
     const keyAt = h.clock.now();
     dispatchTrusted(h.doc.body, new h.win.KeyboardEvent('keydown', { keyCode: 40, bubbles: true }));
@@ -496,7 +499,7 @@ function resultItems(win, out, surface) {
   {
     // On the page's own clock, moved by the test: no scheduler delay can
     // make it pass or fail.
-    const h = boot({ markAiVideos: true }, { held: [id(45), id(46)], fakeClock: true });
+    const h = boot({ aiVideos: 'mark' }, { held: [id(45), id(46)], fakeClock: true });
     const settle = (ms) => settleClock(h, ms);
     for (let n = 45; n < 49; n++) h.card(id(n));
     await settle(500);
@@ -525,7 +528,7 @@ function resultItems(win, out, surface) {
   {
     // The first two answer only when let go, so the other two cannot start
     // before the key; on the page's own clock, moved by the test.
-    const h = boot({ markAiVideos: true }, { held: [id(50), id(51)], fakeClock: true });
+    const h = boot({ aiVideos: 'mark' }, { held: [id(50), id(51)], fakeClock: true });
     for (let n = 50; n < 54; n++) h.card(id(n));
     // The sweep has queued all four, two are running.
     await settleClock(h, 500);

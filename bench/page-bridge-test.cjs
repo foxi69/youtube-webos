@@ -67,7 +67,7 @@ function boot(cfg = {}, opts = {}) {
     launchParams: opts.launchParams || '{}',
     config: Object.assign({
       enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-      enableDeArrow: false, upgradeThumbnails: false, enableAutoLogin: false,
+      enableDeArrow: false, thumbnailQuality: 'off', enableAutoLogin: false,
       checkForUpdates: false, showWhatsNew: false
     }, cfg),
     storage: opts.storage,

@@ -25,7 +25,7 @@ function run(emojiOn, withEmojiText) {
       raf: 'manual',
       config: {
         enableLegacyEmojiFix: emojiOn, enableAdBlock: true, enableSponsorBlock: false,
-        enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false
+        enableReturnYouTubeDislike: false, thumbnailQuality: 'off', enableAutoLogin: false
       },
       restoreRemove: false
     });

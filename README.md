@@ -159,8 +159,7 @@ column. A setting marked *webOS 25* appears on webOS 25 and newer, and one marke
 | Remove Upcoming Videos | Off |
 | Remove Members-Only Videos | Off |
 | Remove Mixes (YouTube's generated Mix playlists; YouTube Music albums and charts stay) | Off |
-| Remove AI Videos (labelled "AI" by YouTube; from the second time a video is listed; not on playlist pages) | Off |
-| Mark AI Videos (an "AI" badge on their tiles; works without Ad Blocking) | Off |
+| AI Videos (labelled "AI" by YouTube): Show, Mark (an "AI" badge on their tiles; works without Ad Blocking), Remove (from the second time a video is listed; not on playlist pages) | Show |
 | Hide Recommended Videos Under the Player (the row of a playlist you play stays) | Off |
 | Guest Mode: Hide Sign-in Buttons (*guest*) | Off |
 | Hide Watched Videos (90%+; not in History, Library, playlists) | Off |
@@ -170,7 +169,7 @@ column. A setting marked *webOS 25* appears on webOS 25 and newer, and one marke
 | Blocked Channels | Empty |
 | Hide Videos Whose Title Contains | Empty |
 
-All filters except Ad Blocking and Mark AI Videos need Ad Blocking on. The two lists are edited with a text box: type with the TV's
+All filters except Ad Blocking and AI Videos' Mark need Ad Blocking on. The two lists are edited with a text box: type with the TV's
 keyboard (OK on the box) or a USB/Bluetooth one, then OK; select an entry to remove it.
 
 **Hide Videos Older Than** reads the "2 years ago" on the tile. On webOS 6 and newer it works in any language
@@ -192,8 +191,7 @@ and search alone.
 | Force Video Codec (Auto, AV1, VP9, AVC, HEVC, Avoid AV1) | Auto |
 | Playback Speed Control (webOS 4 and newer; on webOS 4-6 and 22 with AAC audio only) | On |
 | Auto-Translate Subtitles (pick a language) | Off |
-| Turn On Translated Subtitles Automatically | Off |
-| Don't Turn On Subtitles by Themselves | Off |
+| Subtitles When a Video Starts (YouTube's Choice, Off, Translated: only the Auto-Translate Subtitles language) | YouTube's Choice |
 | Prefer Original Audio over Dubbed | Off |
 | Show Remaining Time / End Time (Remaining, End Time, Both) | Off |
 | Show Most Replayed Graph Above the Seek Bar | Off |
@@ -225,10 +223,9 @@ Return YouTube Dislike sends the id of every video you open to returnyoutubedisl
 |---|---|
 | UI Theme (Fox, Blue, Red) | Fox |
 | Bypass Nag Screens (also "Are you still watching?") | On |
-| Auto Login (off: always ask who is watching) | On |
+| Auto Login (off: always ask who is watching; needs Bypass Nag Screens) | On |
 | Separate Settings for Each Account | Off |
-| Max Thumbnail Quality | Off |
-| Thumbnail Strategy (Original, Fast, Smooth (SD)) | Original |
+| Max Thumbnail Quality (Off, Original, Fast, Smooth (SD)) | Off |
 | YouTube Logo (Default, Premium, Hidden) | Default |
 | Clock in UI (Off, Time, Date and Time) | Off |
 | Keep the Clock On During Playback | Off |

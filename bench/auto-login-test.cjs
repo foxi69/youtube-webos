@@ -68,7 +68,7 @@ async function boot(cfg, opts = {}) {
     console: { warn: (...a) => warnings.push(a.map(String).join(' ')) },
     config: Object.assign({
       enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-      enableDeArrow: false, upgradeThumbnails: false, checkForUpdates: false, showWhatsNew: false
+      enableDeArrow: false, thumbnailQuality: 'off', checkForUpdates: false, showWhatsNew: false
     }, cfg),
     storage,
     // Set before the environment, which takes it away again on the legacy build.

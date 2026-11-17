@@ -36,7 +36,7 @@ function boot(opts = {}) {
     inner: '\n    <div id="ytlr-player__player-container"><div id="ytlr-player__player-container-player"></div></div>\n    ',
     config: {
       enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-      enableDeArrow: false, upgradeThumbnails: false, enableAutoLogin: false,
+      enableDeArrow: false, thumbnailQuality: 'off', enableAutoLogin: false,
       checkForUpdates: false, showWhatsNew: false
     },
     fetch: 'pending',
