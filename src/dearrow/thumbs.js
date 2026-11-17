@@ -102,13 +102,12 @@ export const thumbsFull = () =>
   copies.size >= CACHE_LIMIT || keptWeight >= (canBlob() ? BLOB_BUDGET : DATA_URL_BUDGET);
 
 /**
- * How wide copies are drawn now: as wide as Max Thumbnail Quality's strategy
+ * How wide copies are drawn now: as wide as Max Thumbnail Quality
  * makes YouTube's tiles (COPY_WIDTHS), DATA_URL_WIDTH for data URLs.
  */
 export function copyWidth() {
   if (!canBlob()) return DATA_URL_WIDTH;
-  if (!configRead('upgradeThumbnails')) return COPY_WIDTHS.off;
-  return COPY_WIDTHS[configRead('thumbnailQualityMode')] || COPY_WIDTHS.safe;
+  return COPY_WIDTHS[configRead('thumbnailQuality')] || COPY_WIDTHS.off;
 }
 
 /**

@@ -112,7 +112,7 @@ function boot(opts = {}) {
     xhr: GitHub,
     config: Object.assign({
       enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-      enableDeArrow: false, upgradeThumbnails: false, enableAutoLogin: false, showWhatsNew: false
+      enableDeArrow: false, thumbnailQuality: 'off', enableAutoLogin: false, showWhatsNew: false
     }, opts.cfg),
     storage: Object.assign({ 'ytaf-seen-version': INSTALLED }, opts.storage),
     setup(win) {

@@ -44,7 +44,7 @@ async function boot(answer, opts = {}) {
     console: { log: (...a) => { const s = a.map(String).join(' '); if (/^\[RYD:[^\]]*\] \[ERROR\]/.test(s)) rydErrors.push(s); } },
     config: Object.assign({
       enableReturnYouTubeDislike: true, enableAdBlock: false, enableSponsorBlock: false,
-      enableDeArrow: false, upgradeThumbnails: false, enableAutoLogin: false,
+      enableDeArrow: false, thumbnailQuality: 'off', enableAutoLogin: false,
       checkForUpdates: false, showWhatsNew: false, enableLegacyEmojiFix: false
     }, opts.config),
     evaluate: false

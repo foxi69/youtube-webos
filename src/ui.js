@@ -1,4 +1,4 @@
-import { logoStyles, timeRemainingModes, thumbnailQualityModes, videoCodecModes, uiThemes, clockModes, startPageModes, minVideoLengthModes, seekStepModes, maxVideoAgeModes, searchUploadDateModes, dearrowTitleFormats, dearrowThumbnailFallbacks } from './config.js';
+import { aiVideoModes, subtitlesAtStartModes, logoStyles, timeRemainingModes, thumbnailQualityModes, videoCodecModes, uiThemes, clockModes, startPageModes, minVideoLengthModes, seekStepModes, maxVideoAgeModes, searchUploadDateModes, dearrowTitleFormats, dearrowThumbnailFallbacks } from './config.js';
 import { configAddChangeListener, configRead, configWrite, configGetDesc, segmentTypes, configGetDefault, shortcutActions, sbModes, sbModesHighlight, videoPreviewModes, videoQualityDisplayModes, configGetProfileStatus } from './config.js';
 import './ui.css';
 import './auto-login.js';
@@ -470,20 +470,6 @@ function alignControlLabel(control, text) {
 
 const createLogoControl = () => createAlignedCycleControl('logoStyle', logoStyles);
 const createVideoCodecControl = () => createAlignedCycleControl('forceVideoCodec', videoCodecModes);
-function createThumbnailQualityControl() {
-  const control = createAlignedCycleControl('thumbnailQualityMode', thumbnailQualityModes);
-  // The strategy only means anything while the feature it tunes is on. Greyed
-  // out and dropped from the focus order rather than hidden, so the rows below
-  // it do not jump every time the checkbox above is toggled.
-  const sync = () => {
-    const on = configRead('upgradeThumbnails');
-    control.style.opacity = on ? '1' : '0.5';
-    control.tabIndex = on ? 0 : -1;
-  };
-  configAddChangeListener('upgradeThumbnails', sync);
-  sync();
-  return control;
-}
 
 // The per-account switch, with a line under it saying which settings are in
 // use. When no account can be told from the identity record, the line lists
@@ -507,22 +493,6 @@ function createPerAccountControl() {
   window.addEventListener('ytaf-profile-change', update);
   update();
   return createElement('div', {}, control, status);
-}
-
-// Turning subtitles on automatically needs a language to turn on. Greyed out
-// and dropped from the focus order while Auto-Translate Subtitles is Off, like
-// the thumbnail strategy row, so the rows below do not move.
-function createSubtitleAutoEnableControl() {
-  const control = createConfigCheckbox('subtitleAutoEnable');
-  const input = control.querySelector('input');
-  const sync = () => {
-    const on = configRead('subtitleTranslateLang') !== 'off';
-    control.style.opacity = on ? '1' : '0.5';
-    if (input) input.tabIndex = on ? 0 : -1;
-  };
-  configAddChangeListener('subtitleTranslateLang', sync);
-  sync();
-  return control;
 }
 
 function createSegmentControl(key) {
@@ -1022,13 +992,21 @@ function createOptionsPanel() {
   const elHideRecommended = createConfigCheckbox('hideRecommendedVideos');
   const elRemoveUpcoming = createConfigCheckbox('removeUpcomingVideos');
   const elRemoveMembersOnly = createConfigCheckbox('removeMembersOnly');
-  const elRemoveAi = createConfigCheckbox('removeAiVideos');
-  const elMarkAi = createConfigCheckbox('markAiVideos');
-  elRemoveAi.querySelector('input').id = 'ytaf-remove-ai';
-  elMarkAi.querySelector('input').id = 'ytaf-mark-ai';
+  // Show, Mark or Remove: not greyed out with Ad Blocking off, as Mark works
+  // without it. Remove does nothing then, and its value says so.
+  const aiVideoLabels = Object.assign({}, aiVideoModes);
+  Object.defineProperty(aiVideoLabels, 'remove', {
+    enumerable: true,
+    get: () => (configRead('enableAdBlock') ? aiVideoModes.remove : aiVideoModes.remove + ' (needs Ad Blocking)')
+  });
+  const elAiVideos = createAlignedCycleControl('aiVideos', aiVideoLabels);
+  elAiVideos.id = 'ytaf-ai-videos';
+  configAddChangeListener('enableAdBlock', () => {
+    const value = elAiVideos.querySelector('.current-value');
+    if (value) value.textContent = aiVideoLabels[configRead('aiVideos')] || configRead('aiVideos');
+  });
   let elGuestPrompts = null;
-  // Remove AI Videos and Mark AI Videos side by side, in a row of their own.
-  cosmeticGroup.push(elRemoveGlobalShorts, elRemoveLiveVideos, elRemoveTopLiveGames, elRemoveMostRelevant, elRemoveUpcoming, elRemoveMembersOnly, elRemoveMixes, elHideRecommended, elRemoveAi, elMarkAi);
+  cosmeticGroup.push(elRemoveGlobalShorts, elRemoveLiveVideos, elRemoveTopLiveGames, elRemoveMostRelevant, elRemoveUpcoming, elRemoveMembersOnly, elRemoveMixes, elHideRecommended, elAiVideos);
   if (isGuestMode()) { elGuestPrompts = createConfigCheckbox('hideGuestSignInPrompts'); cosmeticGroup.push(elGuestPrompts); }
 
   pageFilters.appendChild(createSection('Cosmetic Filtering', cosmeticGroup, 'ytaf-section-2col'));
@@ -1042,7 +1020,7 @@ function createOptionsPanel() {
   // Blocking, so it genuinely does nothing while Ad Blocking is off. Greying it
   // out is what tells the user that, instead of leaving a checkbox that looks
   // armed but is inert.
-  const adBlockDependents = [elTrackingBlock, elRemoveGlobalShorts, elRemoveLiveVideos, elRemoveTopLiveGames, elRemoveMostRelevant, elRemoveUpcoming, elRemoveMembersOnly, elRemoveMixes, elRemoveAi, elHideRecommended, elGuestPrompts];
+  const adBlockDependents = [elTrackingBlock, elRemoveGlobalShorts, elRemoveLiveVideos, elRemoveTopLiveGames, elRemoveMostRelevant, elRemoveUpcoming, elRemoveMembersOnly, elRemoveMixes, elHideRecommended, elGuestPrompts];
   const updateDependencyState = () => {
     const enabled = configRead('enableAdBlock');
     adBlockDependents.forEach(el => { setState(el, enabled); });
@@ -1055,20 +1033,6 @@ function createOptionsPanel() {
   }
   configAddChangeListener('enableAdBlock', updateDependencyState);
   updateDependencyState();
-
-  // Removing known AI videos and marking them are mutually exclusive.
-  const updateAiExclusion = () => {
-    const removing = configRead('removeAiVideos') && configRead('enableAdBlock');
-    if (removing && configRead('markAiVideos')) configWrite('markAiVideos', false);
-    setState(elMarkAi, !removing);
-  };
-  elRemoveAi.querySelector('input').addEventListener('change', (evt) => {
-    if (evt.target.checked) configWrite('markAiVideos', false);
-    updateAiExclusion();
-  });
-  configAddChangeListener('removeAiVideos', updateAiExclusion);
-  configAddChangeListener('enableAdBlock', updateAiExclusion);
-  updateAiExclusion();
 
   // Feed filters. Ad Blocking's like the ones above: greyed out and out of the
   // focus order while it is off. Built in the first frame after the panel is
@@ -1116,8 +1080,8 @@ function createOptionsPanel() {
   createConfigCheckbox('enablePlaybackSpeed'),
   createVideoCodecControl(),
   createAlignedCycleControl('subtitleTranslateLang', subtitleTranslateLanguages),
-  createSubtitleAutoEnableControl(),
-  createConfigCheckbox('disableAutoCaptions'),
+  createAlignedCycleControl('subtitlesAtStart', subtitlesAtStartModes),
+  createElement('div', { text: 'Off: no subtitles until you turn them on. Translated: only the Auto-Translate Subtitles language above', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   createConfigCheckbox('forceOriginalAudio'),
   createAlignedCycleControl('timeRemainingMode', timeRemainingModes),
   createConfigCheckbox('showMostReplayed'),
@@ -1139,7 +1103,12 @@ function createOptionsPanel() {
   };
   configAddChangeListener('clockMode', updateClockRow);
   updateClockRow();
-  const interfaceGroup = [createAlignedCycleControl('uiTheme', uiThemes), createConfigCheckbox('enableAutoLogin'), createConfigCheckbox('autoSelectAccount'), createPerAccountControl(), createConfigCheckbox('upgradeThumbnails'), createThumbnailQualityControl(), createLogoControl(), createAlignedCycleControl('clockMode', clockModes), elClockDuringPlayback, elShowWatchTime, createConfigCheckbox('enableOledCareMode'), createConfigCheckbox('disableNotifications'), createConfigCheckbox('loadRowsAhead'), createConfigCheckbox('keyboardSearch'), createAlignedCycleControl('searchUploadDate', searchUploadDateModes), createConfigCheckbox('pointerSettingsButton'), createConfigCheckbox('disableAnimations'), createConfigCheckbox('keepAppOpenWhenPaused')];
+  // Auto Login acts only while Bypass Nag Screens is on (auto-login.js).
+  const elAutoSelectAccount = createConfigCheckbox('autoSelectAccount');
+  const updateAutoLoginRow = () => setState(elAutoSelectAccount, !!configRead('enableAutoLogin'));
+  configAddChangeListener('enableAutoLogin', updateAutoLoginRow);
+  updateAutoLoginRow();
+  const interfaceGroup = [createAlignedCycleControl('uiTheme', uiThemes), createConfigCheckbox('enableAutoLogin'), elAutoSelectAccount, createPerAccountControl(), createAlignedCycleControl('thumbnailQuality', thumbnailQualityModes), createLogoControl(), createAlignedCycleControl('clockMode', clockModes), elClockDuringPlayback, elShowWatchTime, createConfigCheckbox('enableOledCareMode'), createConfigCheckbox('disableNotifications'), createConfigCheckbox('keyboardSearch'), createAlignedCycleControl('searchUploadDate', searchUploadDateModes), createConfigCheckbox('pointerSettingsButton'), createConfigCheckbox('disableAnimations'), createConfigCheckbox('keepAppOpenWhenPaused')];
   // The cast block only exists on webOS 25 (see userScript.js).
   if (isWebOS25()) interfaceGroup.push(createConfigCheckbox('blockWebosCast'));
   // --- Page 3: Interface ---
@@ -1186,8 +1155,18 @@ function createOptionsPanel() {
   // --- Page 6: UI Tweaks ---
     const pageUITweaks = makePage(5);
   
+    // The shelf opacity is a rule of OLED-Care Mode's: greyed out and out of
+    // the focus order while that is off, like DeArrow's cycle rows.
+    const shelfOpacity = createOpacityControl('videoShelfOpacity');
+    const syncShelfOpacity = () => {
+      const on = !!configRead('enableOledCareMode');
+      shelfOpacity.style.opacity = on ? '1' : '0.5';
+      shelfOpacity.tabIndex = on ? 0 : -1;
+    };
+    configAddChangeListener('enableOledCareMode', syncShelfOpacity);
+    syncShelfOpacity();
     const playerUITweaks = [
-        createOpacityControl('videoShelfOpacity'),
+        shelfOpacity,
         createElement('div', { text: 'Adjusts opacity of black background underneath videos (Requires OLED-care mode)', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
         createOpacityControl('uiBrightness', 10, 40, 100),
         createElement('div', { text: 'Dims the YouTube menus and thumbnails; never the playing video or this panel', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
@@ -1247,7 +1226,7 @@ function createOptionsPanel() {
         const fallbackRow = row === elDeArrowFallback || row === elDeArrowFallbackHelp;
         const enabled = on && (!fallbackRow || thumbsOn);
         if (row.classList.contains('shortcut-control-row')) {
-          // A cycle row: greyed out and out of the focus order, like the thumbnail strategy.
+          // A cycle row: greyed out and out of the focus order.
           row.style.opacity = enabled ? '1' : '0.5';
           row.tabIndex = enabled ? 0 : -1;
         } else if (row.querySelector('input')) {
@@ -1982,7 +1961,7 @@ function handleShortcutAction(action) {
   
   if (action === 'oled_toggle') {
       if (endOledBlackout()) {
-          showNotification('OLED Mode Deactivated');
+          showNotification('OLED Black Overlay Off');
       } else {
           // Below the notification container (1200) so the toasts - this
           // feature's own included - are not painted behind the blackout, and
@@ -1997,7 +1976,7 @@ function handleShortcutAction(action) {
             sendKey(REMOTE_KEYS.UP);
             setTimeout(() => sendKey(REMOTE_KEYS.UP), 250);
           }, 30 * 60 * 1000);
-          showNotification('OLED Mode Activated');
+          showNotification('OLED Black Overlay On');
       }
       return;
   }

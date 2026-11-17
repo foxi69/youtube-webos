@@ -15,7 +15,7 @@ const DEBUG = false;
 
 /**
  * How far above the "known to exist" line the module is willing to reach.
- * Driven by the `thumbnailQualityMode` setting; see thumbnailQualityModes in
+ * Driven by the `thumbnailQuality` setting ('off' disables); see thumbnailQualityModes in
  * config.js for the user-facing wording.
  *
  *   'safe'  - never emit a rung unless YouTube shipped it in this very response
@@ -27,7 +27,9 @@ const DEBUG = false;
  *             rung, at about a quarter of the decode work of maxres; the rare
  *             video with no sddefault is corrected to hqdefault.
  */
-let qualityMode = configRead('thumbnailQualityMode');
+// 'safe' while the setting is 'off': the feature is disabled then, see `enabled`.
+const modeOf = (value) => (value && value !== 'off' ? value : 'safe');
+let qualityMode = modeOf(configRead('thumbnailQuality'));
 
 /**
  * Emit WebP derivatives (~25-30% smaller) when the runtime can decode them.
@@ -187,7 +189,7 @@ const webpSupported = (() => {
 })();
 
 // --- State ----------------------------------------------------------------
-let enabled = !!configRead('upgradeThumbnails');
+let enabled = (configRead('thumbnailQuality') || 'off') !== 'off';
 
 /** videoId -> verified rank. Survives navigation and restarts. */
 const qualityCache = new Map();
@@ -1353,15 +1355,19 @@ window.addEventListener('pagehide', flushCache);
 // only while enabled would need matching teardown for no measurable gain.
 document.addEventListener('keydown', onNavKey, { capture: true, passive: true });
 
-configAddChangeListener('thumbnailQualityMode', (evt) => {
-  const previousUseful = usefulRank;
-  qualityMode = evt.detail.newValue;
-  usefulRank = usefulRankFor(qualityMode);
-  if (usefulRank !== previousUseful) resetVerification();
-});
-
-configAddChangeListener('upgradeThumbnails', (evt) => {
-  enabled = !!evt.detail.newValue;
+configAddChangeListener('thumbnailQuality', (evt) => {
+  const value = evt.detail.newValue;
+  const next = (value || 'off') !== 'off';
+  // Off keeps the mode it had, so switching off and back on keeps what was
+  // learned for it (Smooth (SD) measures another rung than the other two).
+  if (next) {
+    const previousUseful = usefulRank;
+    qualityMode = value;
+    usefulRank = usefulRankFor(qualityMode);
+    if (usefulRank !== previousUseful) resetVerification();
+  }
+  if (next === enabled) return;
+  enabled = next;
   if (enabled) loadCache();
   else cleanup();
 });

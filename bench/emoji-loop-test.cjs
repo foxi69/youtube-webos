@@ -24,7 +24,7 @@ const { win, frames } = bootPage({
   raf: 'manual',
   config: {
     enableLegacyEmojiFix: true, enableAdBlock: true, enableSponsorBlock: false,
-    enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false
+    enableReturnYouTubeDislike: false, thumbnailQuality: 'off', enableAutoLogin: false
   },
   restoreRemove: false
 });

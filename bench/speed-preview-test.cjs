@@ -29,7 +29,7 @@ function boot() {
     consoleErrors: false,
     config: {
       enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-      upgradeThumbnails: false, enableAutoLogin: false, checkForUpdates: false, showWhatsNew: false
+      thumbnailQuality: 'off', enableAutoLogin: false, checkForUpdates: false, showWhatsNew: false
     },
     fetch: 'pending',
     beforeEval(win) {

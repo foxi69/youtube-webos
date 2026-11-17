@@ -32,7 +32,7 @@ async function boot(opts = {}) {
     console: { warn: (...a) => warnings.push(a.map(String).join(' ')) },
     config: {
       enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-      enableDeArrow: false, upgradeThumbnails: false, enableAutoLogin: false,
+      enableDeArrow: false, thumbnailQuality: 'off', enableAutoLogin: false,
       checkForUpdates: false, showWhatsNew: false, enableLegacyEmojiFix: false
     },
     fetch: 'pending',

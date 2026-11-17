@@ -80,9 +80,9 @@ function boot(cfg, opts = {}) {
     url: 'https://www.youtube.com/tv#/',
     xhr: Player,
     config: Object.assign({
-      enableAdBlock: true, enableTrackingBlock: false, removeAiVideos: false, markAiVideos: true,
+      enableAdBlock: true, enableTrackingBlock: false, aiVideos: 'mark',
       enableSponsorBlock: false, enableReturnYouTubeDislike: false, enableDeArrow: false,
-      upgradeThumbnails: false, enableAutoLogin: false, checkForUpdates: false, showWhatsNew: false,
+      thumbnailQuality: 'off', enableAutoLogin: false, checkForUpdates: false, showWhatsNew: false,
       enableLegacyEmojiFix: false
     }, cfg),
     setup(win) {

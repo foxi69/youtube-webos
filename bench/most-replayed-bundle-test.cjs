@@ -82,7 +82,7 @@ function boot({ on = true, bar = BAR, video = A, answers = {} } = {}) {
     xhr: Next,
     config: {
       enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-      enableDeArrow: false, upgradeThumbnails: false, enableAutoLogin: false,
+      enableDeArrow: false, thumbnailQuality: 'off', enableAutoLogin: false,
       checkForUpdates: false, showWhatsNew: false, showMostReplayed: on
     },
     evaluate: false

@@ -23,7 +23,7 @@ function boot(cfg) {
     consoleErrors: false,
     config: Object.assign({
       enableAdBlock: false, enableLegacyEmojiFix: false, enableSponsorBlock: false,
-      enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false,
+      enableReturnYouTubeDislike: false, thumbnailQuality: 'off', enableAutoLogin: false,
       checkForUpdates: false, showWhatsNew: false
     }, cfg),
     // A frame is a 0 ms timer of node's, called without a time.

@@ -28,10 +28,10 @@ function boot(cfg, extraHtml = '', storage = {}, before) {
     userAgent: UA.webos23,
     config: Object.assign({
       enableAdBlock: true, enableTrackingBlock: false, removeGlobalShorts: false,
-      removeLiveVideos: false, removeAiVideos: false, markAiVideos: false, removeTopLiveGames: false, removeMostRelevant: false,
+      removeLiveVideos: false, aiVideos: 'show', removeTopLiveGames: false, removeMostRelevant: false,
       hideGuestSignInPrompts: false, hideEndcards: false, enableLegacyEmojiFix: false,
       enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-      upgradeThumbnails: false, enableAutoLogin: false, logoStyle: 'default'
+      thumbnailQuality: 'off', enableAutoLogin: false, logoStyle: 'default'
     }, cfg),
     storage,
     // The frames wait until the test runs them (pump), each called with 0.
@@ -417,7 +417,7 @@ reporter.run(async () => {
   {
     // Everything else on the JSON.parse hook off: the hook stays for the menu
     // while an entry is hidden or none is learnt yet.
-    const bare = { enableAdBlock: false, loadRowsAhead: false, enableAutoLogin: false };
+    const bare = { enableAdBlock: false, enableAutoLogin: false };
     const a = boot(Object.assign({ hiddenSidebarEntries: ['FEtopics_music'] }, bare), '',
       { 'ytaf-sidebar-entries': LEARNT });
     await wait(300);
@@ -457,8 +457,8 @@ reporter.run(async () => {
     const ui = win.document.querySelector('#ytaf-page-interface');
     t('[panel] Remove Live Videos row present',
       !!filters && /Remove Live Videos/.test(filters.textContent), filters && filters.textContent.slice(0, 80));
-    t('[panel] Remove AI Videos and Mark AI Videos rows present',
-      !!filters && /Remove AI Videos/.test(filters.textContent) && /Mark AI Videos/.test(filters.textContent));
+    t('[panel] AI Videos row present',
+      !!filters && /AI Videos/.test(filters.textContent) && !/Mark AI Videos/.test(filters.textContent));
     t('[panel] YouTube Logo is now a selector, not a checkbox',
       !!ui && /YouTube Logo/.test(ui.textContent) &&
       !/Hide YouTube Logo/.test(ui.textContent));
@@ -468,37 +468,48 @@ reporter.run(async () => {
   }
 
   {
-    const h = boot({ enableAdBlock: false, removeAiVideos: true, markAiVideos: false });
+    // AI Videos: one Show / Mark / Remove row, usable with Ad Blocking off
+    // (Mark works without it).
+    const h = boot({ enableAdBlock: false, aiVideos: 'remove' });
     await wait(300);
     trustedKey(h.win, 404);
     for (let i = 0; i < 20; i++) h.pump();
-    const remove = h.win.document.querySelector('#ytaf-remove-ai');
-    const mark = h.win.document.querySelector('#ytaf-mark-ai');
-    t('[panel] Remove AI Videos disabled when Ad Blocking is off', !!remove && remove.disabled);
-    t('[panel] Mark AI Videos remains available without Ad Blocking', !!mark && !mark.disabled);
+    const row = h.win.document.querySelector('#ytaf-ai-videos');
+    const value = () => row.querySelector('.current-value').textContent;
+    t('[panel] AI Videos is one row showing the stored choice, Remove saying it needs Ad Blocking',
+      !!row && value() === 'Remove (needs Ad Blocking)', row && value());
+    t('[panel] AI Videos stays usable when Ad Blocking is off', row.tabIndex === 0 && row.style.opacity !== '0.5');
+    t('[panel] no separate Remove / Mark AI checkboxes', !h.win.document.querySelector('#ytaf-remove-ai, #ytaf-mark-ai'));
+    const adBlock = [...h.win.document.querySelectorAll('.ytaf-ui-container label')]
+      .find((l) => l.textContent.trim() === 'Ad Blocking').querySelector('input');
+    adBlock.checked = true;
+    adBlock.dispatchEvent(new h.win.Event('change', { bubbles: true }));
+    await wait(50);
+    t('[panel] Ad Blocking switched on: the row says Remove', value() === 'Remove', value());
     h.win.close();
   }
   {
-    const h = boot({ enableAdBlock: true, removeAiVideos: false, markAiVideos: false });
+    const h = boot({ enableAdBlock: true, aiVideos: 'show' });
     await wait(300);
     trustedKey(h.win, 404);
     for (let i = 0; i < 20; i++) h.pump();
-    const remove = h.win.document.querySelector('#ytaf-remove-ai');
-    const mark = h.win.document.querySelector('#ytaf-mark-ai');
-    mark.click();
-    remove.click();
+    const row = h.win.document.querySelector('#ytaf-ai-videos');
+    const value = () => row.querySelector('.current-value').textContent;
+    t('[panel] AI Videos starts at Show', value() === 'Show', value());
+    row.click();
+    t('[panel] OK cycles to Mark', value() === 'Mark', value());
+    row.click();
     await wait(300);
-    t('[panel] selecting Remove clears and disables Mark', remove.checked && !mark.checked && mark.disabled);
+    t('[panel] ...then Remove', value() === 'Remove', value());
     const saved = JSON.parse(h.win.localStorage.getItem('ytaf-configuration'));
-    t('[panel] Remove choice persists and Mark is off', saved.removeAiVideos === true && saved.markAiVideos === false);
+    t('[panel] the choice persists as one setting', saved.aiVideos === 'remove' && !('markAiVideos' in saved) && !('removeAiVideos' in saved), JSON.stringify([saved.aiVideos, saved.markAiVideos, saved.removeAiVideos]));
     h.win.close();
     const h2 = boot(saved);
     await wait(300);
     trustedKey(h2.win, 404);
     for (let i = 0; i < 20; i++) h2.pump();
-    const remove2 = h2.win.document.querySelector('#ytaf-remove-ai');
-    const mark2 = h2.win.document.querySelector('#ytaf-mark-ai');
-    t('[panel] persisted Remove remains selected and Mark disabled', remove2.checked && !mark2.checked && mark2.disabled);
+    const row2 = h2.win.document.querySelector('#ytaf-ai-videos');
+    t('[panel] persisted Remove is shown after a restart', row2.querySelector('.current-value').textContent === 'Remove');
     h2.win.close();
   }
 

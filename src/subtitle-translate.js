@@ -233,7 +233,54 @@ function patchResponse(res, code) {
     const renderer = c.captions.playerCaptionsTracklistRenderer;
     if (!isObject(renderer)) continue;
     patchRenderer(renderer, code);
-    if (isObject(c.videoDetails)) rememberResponseTrack(c.videoDetails.videoId, pickTrack(renderer.captionTracks, code));
+    const target = pickTrack(renderer.captionTracks, code);
+    const videoId = isObject(c.videoDetails) ? c.videoDetails.videoId : null;
+    if (configRead('subtitlesAtStart') === 'translated') startWith(renderer, isOpenedVideo(videoId) ? target : null);
+    if (videoId) rememberResponseTrack(videoId, target);
+  }
+}
+
+/**
+ * The video opened on the watch page, not a tile preview, a Short or the video
+ * loading behind "Who's watching": those must not start with subtitles.
+ */
+function isOpenedVideo(videoId) {
+  if (typeof videoId !== 'string' || !videoId || isShortsPage()) return false;
+  if (document.body && /ACCOUNT_SELECTOR/.test(document.body.className)) return false;
+  const m = /^#\/watch\b.*[?&]v=([\w-]{11})/.exec(location.hash);
+  return !!m && m[1] === videoId;
+}
+
+// The player's own memory of subtitles being on. Without it, it leaves even a
+// default track off as the video loads, and only the app's decision a second
+// later turns it on. It sets this itself once any track is on.
+const CAPTIONS_REMEMBERED_KEY = 'yt-html5-player-modules::subtitlesModuleData::module-enabled';
+
+/**
+ * Translated. For the opened video, the target track becomes the default,
+ * turned on from the start: the player puts it on as the video loads and the
+ * app's own start-up decision a second later keeps it, so the subtitles are
+ * there from the first line and never go off and on. Any other response, or
+ * none in the language: YouTube's own default goes and subtitles start off
+ * (the attempt below then turns on the target, if there is one).
+ */
+function startWith(renderer, target) {
+  const index = target && Array.isArray(renderer.captionTracks) ? renderer.captionTracks.indexOf(target) : -1;
+  if (!Array.isArray(renderer.audioTracks)) return;
+  for (const at of renderer.audioTracks) {
+    if (!isObject(at)) continue;
+    if (index >= 0) {
+      at.defaultCaptionTrackIndex = index;
+      at.captionsInitialState = 'CAPTIONS_INITIAL_STATE_ON_REQUIRED';
+    } else {
+      delete at.defaultCaptionTrackIndex;
+      at.captionsInitialState = 'CAPTIONS_INITIAL_STATE_OFF_RECOMMENDED';
+    }
+  }
+  if (index >= 0) {
+    try {
+      localStorage.setItem(CAPTIONS_REMEMBERED_KEY, 'true');
+    } catch { /* the app's decision turns it on a second later */ }
   }
 }
 
@@ -263,7 +310,7 @@ JSON.parse = function (text, reviver) {
 };
 
 /**
- * "Turn On Translated Subtitles Automatically".
+ * Subtitles When a Video Starts: Translated.
  *
  * When a video starts playing, captions are switched to the chosen language
  * through the player's own API: a native track in that language if the video
@@ -284,20 +331,123 @@ const TRACKLIST_POLL_MS = 300;
 const TRACKLIST_TRIES = 10; // ~3 s for the captions module to list its tracks
 const REAPPLY_WINDOW_MS = 5000;
 const REAPPLY_POLL_MS = 500;
+// The TV app sets its own start-up subtitles 1 s after the player reports
+// onPlaybackStartExternal (off, unless YouTube wants them on). Turned on
+// before that, the subtitles showed for a second, went off and came back with
+// the re-apply: so the attempt waits for that decision, or, when the event
+// never comes, for a while after PLAYING.
+const APP_DECISION_MS = 1150;
+const NO_START_EVENT_MS = 2500;
 
 // The video this viewing's one attempt was made for. Kept for the viewing
 // only: remembered for the whole session, a video watched again later got no
-// subtitles (and none from YouTube either, with Don't Turn On Subtitles by
-// Themselves on).
+// subtitles (YouTube's own are dropped with Translated and a language).
 let attemptedVideoId = null;
 let lastUserKeyAt = 0;
 let autoTimer = null;
+let startTimer = null;
+let startSince = 0;
+let startVideoId = null;
+// The last onPlaybackStartExternal: when, and for which video. Another
+// video's PLAYING does not count from it.
+let externalStart = { at: 0, videoId: null };
+// Off: the video the app's start-up decision was checked for.
+let offVideoId = null;
+const hookedPlayers = new WeakSet();
 
 function cancelAutoEnable() {
   if (autoTimer !== null) {
     clearTimeout(autoTimer);
     autoTimer = null;
   }
+}
+
+function cancelStart() {
+  if (startTimer !== null) {
+    clearTimeout(startTimer);
+    startTimer = null;
+  }
+}
+
+/**
+ * Runs the start-up handling after `delay`. A key pressed since the first call
+ * for this video still ends it; one for the video before (Next) does not.
+ * Dropped once the player shows another video: that one (still loading after
+ * Next) gets its own start-up handling, which this one must not use up.
+ */
+function scheduleAutoEnable(delay) {
+  const player = captionsPlayer();
+  const videoId = player && playerVideoId(player);
+  if (startTimer === null || videoId !== startVideoId) startSince = Date.now();
+  startVideoId = videoId;
+  clearTimeout(startTimer);
+  startTimer = setTimeout(() => {
+    startTimer = null;
+    if (captionsPlayer() !== player || (videoId && playerVideoId(player) !== videoId)) return;
+    if (configRead('subtitlesAtStart') === 'off') enforceOff(startSince);
+    else autoEnableCaptions(startSince);
+  }, delay);
+}
+
+/**
+ * Off, after the app's start-up decision: it turns subtitles on when YouTube
+ * wants them, or when they were turned on earlier in the session. Kept off for
+ * a few seconds (the app may wait for the tracklist), unless a key is pressed.
+ */
+function enforceOff(since) {
+  if (isShortsPage() || !isWatchPage()) return;
+  const player = captionsPlayer();
+  if (!player) return;
+  const videoId = playerVideoId(player);
+  if (!videoId || videoId === offVideoId) return;
+  offVideoId = videoId;
+  cancelAutoEnable();
+  const check = () => {
+    autoTimer = null;
+    if (lastUserKeyAt > since || !player.isConnected || playerVideoId(player) !== videoId) return;
+    const track = captionsOption(player, 'track');
+    if (isObject(track) && track.languageCode) setCaptionsTrack(player, {});
+    if (Date.now() - since < REAPPLY_WINDOW_MS) autoTimer = setTimeout(check, REAPPLY_POLL_MS);
+  };
+  check();
+}
+
+// YouTube's own track, put on when the player remembers subtitles being on,
+// showed until the app's decision (or ours): with Off, or Translated and a
+// language, it goes at once. One already in the language too: the app turns
+// it off a second later and the attempt turns it on again, a blink in the
+// middle of the first line. Once per video, so one picked by hand stays.
+let checkedVideoId = null;
+
+function dropYouTubeTrack(player) {
+  const mode = configRead('subtitlesAtStart');
+  const code = mode === 'translated' ? currentTarget() : null;
+  if ((mode !== 'off' && !code) || isShortsPage() || !isWatchPage()) return;
+  const videoId = playerVideoId(player);
+  if (!videoId || videoId === checkedVideoId) return;
+  checkedVideoId = videoId;
+  const track = captionsOption(player, 'track');
+  if (isObject(track) && track.languageCode && !(code && isTargetTrack(track, code))) setCaptionsTrack(player, {});
+}
+
+function onPlaying() {
+  const player = captionsPlayer();
+  if (player) dropYouTubeTrack(player);
+  const mode = configRead('subtitlesAtStart');
+  if (mode !== 'translated' && mode !== 'off') return;
+  if (player && !hookedPlayers.has(player) && typeof player.addEventListener === 'function') {
+    hookedPlayers.add(player);
+    try {
+      player.addEventListener('onPlaybackStartExternal', () => {
+        externalStart = { at: Date.now(), videoId: playerVideoId(player) };
+        scheduleAutoEnable(APP_DECISION_MS);
+      });
+    } catch { /* NO_START_EVENT_MS covers it */ }
+  }
+  // PLAYING comes just before onPlaybackStartExternal, which then sets the time.
+  const sameVideo = player && externalStart.videoId === playerVideoId(player);
+  const sinceStart = sameVideo ? Date.now() - externalStart.at : Infinity;
+  scheduleAutoEnable(sinceStart < APP_DECISION_MS ? APP_DECISION_MS - sinceStart : NO_START_EVENT_MS);
 }
 
 function captionsPlayer() {
@@ -353,11 +503,11 @@ function watchForReset(player, videoId, code, track, appliedAt) {
   autoTimer = setTimeout(check, REAPPLY_POLL_MS);
 }
 
-function autoEnableCaptions() {
+function autoEnableCaptions(since) {
   // The watch page only: the player also reports the tile previews that play
   // in it on Home, and a preview counted as the video's one attempt, so the
   // video then opened got no subtitles.
-  if (!configRead('subtitleAutoEnable') || isShortsPage() || !isWatchPage()) return;
+  if (configRead('subtitlesAtStart') !== 'translated' || isShortsPage() || !isWatchPage()) return;
   const code = currentTarget();
   if (!code) return;
   const player = captionsPlayer();
@@ -367,19 +517,22 @@ function autoEnableCaptions() {
 
   attemptedVideoId = videoId;
   cancelAutoEnable();
+  // Already on (the default given in the response): the module is not loaded
+  // again, which could drop the line on screen.
+  if (isTargetTrack(captionsOption(player, 'track'), code)) return;
 
   // The captions module loads on demand; until it has, the tracklist is empty.
   try {
     if (typeof player.loadModule === 'function') player.loadModule('captions');
   } catch { /* the tracklist poll below copes */ }
 
-  const startedAt = Date.now();
+  const startedAt = since || Date.now();
   let tries = 0;
   const attempt = () => {
     autoTimer = null;
     // The viewer is already doing something with the player, or moved on.
     if (lastUserKeyAt > startedAt || !player.isConnected || playerVideoId(player) !== videoId) return;
-    if (!configRead('subtitleAutoEnable') || currentTarget() !== code) return;
+    if (configRead('subtitlesAtStart') !== 'translated' || currentTarget() !== code) return;
     if (isTargetTrack(captionsOption(player, 'track'), code)) return; // already on
 
     let track = pickTrack(captionsOption(player, 'tracklist'), code);
@@ -406,19 +559,22 @@ window.addEventListener('keydown', (evt) => {
 
 // Published by video-quality.js for every player state change on a watch page.
 window.addEventListener('yt-player-state-change', (evt) => {
-  if (evt && evt.detail && evt.detail.state === STATE_PLAYING) autoEnableCaptions();
+  if (evt && evt.detail && evt.detail.state === STATE_PLAYING) onPlaying();
 });
 
 window.addEventListener('ytaf-page-update', (evt) => {
   if (!evt || !evt.detail || !evt.detail.isWatch) {
     cancelAutoEnable();
+    cancelStart();
     // The viewing is over: opened again, the video gets its attempt again.
     attemptedVideoId = null;
+    checkedVideoId = null;
+    offVideoId = null;
     return;
   }
   // A watch page entered with the video already running gets no PLAYING change.
   const player = captionsPlayer();
   try {
-    if (player && typeof player.getPlayerState === 'function' && player.getPlayerState() === STATE_PLAYING) autoEnableCaptions();
+    if (player && typeof player.getPlayerState === 'function' && player.getPlayerState() === STATE_PLAYING) onPlaying();
   } catch { /* the state-change event will come */ }
 });

@@ -58,7 +58,7 @@ async function boot(cfg = {}, opts = {}) {
     console: { warn: (...args) => warnings.push(args.map(String).join(' ')) },
     config: Object.assign({
       enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-      enableDeArrow: false, upgradeThumbnails: false, enableAutoLogin: false,
+      enableDeArrow: false, thumbnailQuality: 'off', enableAutoLogin: false,
       checkForUpdates: false, showWhatsNew: false
     }, BINDINGS, cfg),
     fetch: 'pending',
@@ -480,7 +480,7 @@ run(async () => {
     const overlay = env.doc.getElementById('oled-black-overlay');
     const keepAlive = env.long.filter((h) => h.kind === 'interval' && h.ms === 30 * 60000);
     t(n('red: the blackout covers the screen, with a toast'), !!overlay && overlay.style.zIndex === '1100' &&
-      env.doc.documentElement.classList.contains('ytaf-oled-blackout') && /OLED Mode Activated/.test(env.toasts()), env.toasts());
+      env.doc.documentElement.classList.contains('ytaf-oled-blackout') && /OLED Black Overlay On/.test(env.toasts()), env.toasts());
     t(n('...and keeps the TV awake every 30 minutes'), keepAlive.length === 1);
     env.sent.length = 0;
     env.sentAt.length = 0;
@@ -491,7 +491,7 @@ run(async () => {
       gap >= 240, `${env.sent.join()} gap=${gap}`);
     await env.press(KEY.RED);
     t(n('red again: the blackout ends, with a toast'), !env.doc.getElementById('oled-black-overlay') &&
-      !env.doc.documentElement.classList.contains('ytaf-oled-blackout') && /OLED Mode Deactivated/.test(env.toasts()), env.toasts());
+      !env.doc.documentElement.classList.contains('ytaf-oled-blackout') && /OLED Black Overlay Off/.test(env.toasts()), env.toasts());
     t(n('...and the keep-alive stops'), env.long.filter((h) => h.kind === 'interval').length === 0);
   }
 

@@ -241,7 +241,8 @@ function teardown() {
 
 function refresh() {
   if (!document.body) return;
-  const next = !!(configRead('markAiVideos') || (configRead('removeAiVideos') && configRead('enableAdBlock')));
+  const mode = configRead('aiVideos');
+  const next = mode === 'mark' || (mode === 'remove' && !!configRead('enableAdBlock'));
   if (next === enabled) { if (enabled) scheduleSweep(null); return; }
   teardown();
   enabled = next;
@@ -255,8 +256,7 @@ function refresh() {
 export function initAiContentFilter() {
   if (initialized) return;
   initialized = true;
-  configAddChangeListener('removeAiVideos', refresh);
-  configAddChangeListener('markAiVideos', refresh);
+  configAddChangeListener('aiVideos', refresh);
   configAddChangeListener('enableAdBlock', refresh);
   // Arrow keys: one timestamp, read by the sweep.
   document.addEventListener('keydown', (evt) => {

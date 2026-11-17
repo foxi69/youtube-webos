@@ -24,7 +24,7 @@ const { win, doc, errors } = bootPage({
   raf: 'timer',
   config: {
     enableAdBlock: false, enableLegacyEmojiFix: false, enableSponsorBlock: false,
-    enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false,
+    enableReturnYouTubeDislike: false, thumbnailQuality: 'off', enableAutoLogin: false,
     showVideoQuality: 'title'
   }
 });

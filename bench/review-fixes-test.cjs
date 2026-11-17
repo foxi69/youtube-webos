@@ -35,7 +35,7 @@ async function boot(cfg, { html, url, speed = 1, fetch, prepare }) {
     xhr: failingXHR(),
     config: Object.assign({
       enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-      upgradeThumbnails: false, enableAutoLogin: false
+      thumbnailQuality: 'off', enableAutoLogin: false
     }, cfg),
     fetch: fetch || (() => Promise.reject(new Error('offline'))),
     // After the environment of the build is applied.
@@ -128,7 +128,7 @@ run(async () => {
 
   // ---- A tile preview on Home, then the video opened ----
   {
-    const win = await boot({ subtitleTranslateLang: 'hu', subtitleAutoEnable: true, showVideoQuality: 'start' },
+    const win = await boot({ subtitleTranslateLang: 'hu', subtitlesAtStart: 'translated', showVideoQuality: 'start' },
       { html: '<body class="WEB_PAGE_TYPE_BROWSE"></body>', url: 'https://www.youtube.com/tv#/', speed: 20 });
     const player = makePlayer(win, -1);
     player.inline = true;

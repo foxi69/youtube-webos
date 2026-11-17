@@ -22,7 +22,7 @@ function boot(fetchImpl, hl) {
     url: 'https://www.youtube.com/tv#/watch?v=dQw4w9WgXcQ',
     config: {
       enableReturnYouTubeDislike: true, enableAdBlock: true, enableSponsorBlock: false,
-      enableLegacyEmojiFix: false, upgradeThumbnails: false, enableAutoLogin: false
+      enableLegacyEmojiFix: false, thumbnailQuality: 'off', enableAutoLogin: false
     },
     // The legacy environment has no Element#remove here.
     restoreRemove: false,

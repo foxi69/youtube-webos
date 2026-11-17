@@ -55,7 +55,7 @@ function boot(cfg = {}, { live = false, page = 'WEB_PAGE_TYPE_WATCH' } = {}) {
     raf: 'manual',
     config: Object.assign({
       enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-      upgradeThumbnails: false, enableAutoLogin: false
+      thumbnailQuality: 'off', enableAutoLogin: false
     }, cfg),
     fetch: () => Promise.reject(new Error('offline')),
     evaluate: false

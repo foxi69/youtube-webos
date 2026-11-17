@@ -72,7 +72,7 @@ const CONFIG_KEYS = {
   LIVE: 'removeLiveVideos',
   UPCOMING: 'removeUpcomingVideos',
   MEMBERS: 'removeMembersOnly',
-  AI: 'removeAiVideos',
+  AI: 'aiVideos',
   LIVE_GAMES: 'removeTopLiveGames',
   MIXES: 'removeMixes',
   MOST_RELEVANT: 'removeMostRelevant',
@@ -80,11 +80,10 @@ const CONFIG_KEYS = {
   GUEST_PROMPTS: 'hideGuestSignInPrompts',
   EMOJI_FIX: 'enableLegacyEmojiFix',
   ENDCARDS: 'hideEndcards',
-  THUMBNAILS: 'upgradeThumbnails',
-  ROWS_AHEAD: 'loadRowsAhead',
+  THUMBNAILS: 'thumbnailQuality',
   // "Are you still watching?" is one of the nag screens this switch bypasses.
   NAG_SCREENS: 'enableAutoLogin',
-  AUTO_CAPTIONS: 'disableAutoCaptions',
+  AUTO_CAPTIONS: 'subtitlesAtStart',
   HIDE_WATCHED: 'hideWatchedVideos',
   MIN_LENGTH: 'minVideoLength',
   MAX_AGE: 'maxVideoAge',
@@ -236,7 +235,7 @@ const BADGE_MEMBERS = 4;
 
 // configGetAll() returns the live reference, so this binds once at load.
 const cfgSnapshot = configGetAll();
-// The filters that need a setting on; Load Rows Ahead, the left menu and the
+// The filters that need a setting on; the rows ahead, the left menu and the
 // preview fix run before them.
 let anyResponseFilterEnabled = false;
 let cfgEmojiFixEffective = false;
@@ -261,7 +260,6 @@ const cfgFlags = {
   enableLegacyEmojiFix: false,
   hideEndcards: false,
   upgradeThumbnails: false,
-  loadRowsAhead: false,
   removeYouThere: false,
   disableAutoCaptions: false,
   // Feed filters: whether any is on, then each one. The lists are lower-cased.
@@ -326,7 +324,7 @@ function recomputeFilterFlags() {
   cfgFlags.removeLiveVideos = adBlock && !!cfgSnapshot[CONFIG_KEYS.LIVE];
   cfgFlags.removeUpcomingVideos = adBlock && !!cfgSnapshot[CONFIG_KEYS.UPCOMING];
   cfgFlags.removeMembersOnly = adBlock && !!cfgSnapshot[CONFIG_KEYS.MEMBERS];
-  cfgFlags.removeAiVideos = adBlock && !!cfgSnapshot[CONFIG_KEYS.AI];
+  cfgFlags.removeAiVideos = adBlock && cfgSnapshot[CONFIG_KEYS.AI] === 'remove';
   cfgFlags.badgeMask = (cfgFlags.removeLiveVideos ? BADGE_LIVE : 0) |
     (cfgFlags.removeUpcomingVideos ? BADGE_UPCOMING : 0) |
     (cfgFlags.removeMembersOnly ? BADGE_MEMBERS : 0);
@@ -338,10 +336,13 @@ function recomputeFilterFlags() {
   // Independent switches on the same hook.
   cfgFlags.enableLegacyEmojiFix = cfgEmojiFixEffective;
   cfgFlags.hideEndcards = !!cfgSnapshot[CONFIG_KEYS.ENDCARDS];
-  cfgFlags.upgradeThumbnails = !!cfgSnapshot[CONFIG_KEYS.THUMBNAILS];
-  cfgFlags.loadRowsAhead = !!cfgSnapshot[CONFIG_KEYS.ROWS_AHEAD];
+  cfgFlags.upgradeThumbnails = (cfgSnapshot[CONFIG_KEYS.THUMBNAILS] || 'off') !== 'off';
   cfgFlags.removeYouThere = !!cfgSnapshot[CONFIG_KEYS.NAG_SCREENS];
-  cfgFlags.disableAutoCaptions = !!cfgSnapshot[CONFIG_KEYS.AUTO_CAPTIONS];
+  // Translated as well: only the translated subtitles, never YouTube's own
+  // first. Not without a language to translate to: that would leave none.
+  // Off. Translated is subtitle-translate.js's: it gives the opened video
+  // its own default track.
+  cfgFlags.disableAutoCaptions = cfgSnapshot[CONFIG_KEYS.AUTO_CAPTIONS] === 'off';
   cfgFlags.forceOriginalAudio = !!cfgSnapshot[CONFIG_KEYS.ORIGINAL_AUDIO];
   // The feed filters are Ad Blocking's, like the other item filters.
   cfgFlags.hideWatched = adBlock && !!cfgSnapshot[CONFIG_KEYS.HIDE_WATCHED];
@@ -803,8 +804,8 @@ function filterResponse(data, text) {
   if (data.playabilityStatus) noteQueuePlayability(data.playabilityStatus.status);
   const responseType = detectResponseType(data);
   // Before the Shorts guard below: a browse response parsed while a Short
-  // plays still wants its rows ahead.
-  if (cfgFlags.loadRowsAhead) raiseRowsAhead(data, responseType);
+  // plays still wants its rows ahead. Always on: the same rows, asked for sooner.
+  raiseRowsAhead(data, responseType);
   // The left menu, whatever else is on.
   if (cfgFlags.sidebar) applySidebar(data);
   // No setting for the auto-open: one native search of the text, only a
@@ -963,7 +964,7 @@ function applySchemaFilters(data, responseType, config) {
       if (config.hideRecommended && responseType === 'NEXT') hideRecommendedVideos(data, schema);
       // The videos beside and under the player go through the item filters
       // and rewrites too: every filter shouldDropItem() applies, each on its
-      // own (Remove AI Videos, Remove Shorts and the Live / Upcoming /
+      // own (AI Videos: Remove, Remove Shorts and the Live / Upcoming /
       // Members-only badges were missing, so they did nothing there unless a
       // feed filter was on as well).
       if (config.enableAdBlock || config.hideGuestPrompts || config.feedFilters || config.decorateItems ||
@@ -1320,7 +1321,7 @@ function shouldDropItem(item, config) {
   if (config.hideGuestPrompts && isGuestPrompt(item)) return true;
   if (config.removeGlobalShorts && isShortsItem(item)) return true;
   if (config.removeMixes && isMixItem(item)) return true;
-  // Remove AI Videos: only videos ai-content-filter.js already found labelled "AI".
+  // AI Videos: Remove: only videos ai-content-filter.js already found labelled "AI".
   if (config.removeAiVideos && isAiVideoStored(extractAiVideoId(item))) return true;
   if (config.feedFilters && dropsByFeedFilters(item, config)) return true;
   if (hasWantedBadge(item, config.badgeMask)) return true;
@@ -1657,8 +1658,9 @@ function removePaidPromotion(data) {
 /**
  * Subtitles that start on by themselves: the player response names a default
  * track and an initial state per audio track. Without the default and with the
- * state set to off, a video starts without subtitles; turning them on by hand,
- * and Turn On Translated Subtitles Automatically, still work.
+ * state set to off, a video starts without subtitles; turning them on by hand
+ * still works. Used by Subtitles When a Video Starts: Off (Translated sets its
+ * own default in subtitle-translate.js).
  * (From MickLesk's fork; webosbrew/youtube-webos#57.)
  */
 function captionsOff(holder) {

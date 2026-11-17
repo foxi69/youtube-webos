@@ -5,7 +5,7 @@
  * crop, a thumbnail test variant), the probes that verify an unproven rung
  * (HEAD, then the image when a HEAD cannot tell) and what each answer does to
  * the response and to the tiles on screen, the verification cache across
- * sessions, and the panel's switch and strategy.
+ * sessions, and the panel's Max Thumbnail Quality row.
  *
  * module-behaviour-test checks the three strategies on one tile and the probe
  * order; this test is for the rest. The network is faked: a HEAD answers what
@@ -104,36 +104,37 @@ function boot(cfg, { head = () => big, image = () => ({ width: 1280 }), stored, 
   win.localStorage.setItem('ytaf-configuration', JSON.stringify(Object.assign({
     enableAdBlock: true, enableLegacyEmojiFix: false, enableSponsorBlock: false,
     enableReturnYouTubeDislike: false, enableAutoLogin: false, enableDeArrow: false,
-    upgradeThumbnails: true, thumbnailQualityMode: 'eager'
+    thumbnailQuality: 'eager'
   }, cfg)));
   win.eval(bundle);
   const NS = win.JSON.stringify;
   const parse = (obj) => win.JSON.parse(NS(obj));
   const pump = () => { const q = rafQ; rafQ = []; for (const cb of q) cb(Date.now()); };
-  /** Opens the panel once (the Interface page has the switch and the strategy). */
+  /** Opens the panel once (the Interface page has Max Thumbnail Quality). */
   const panel = () => {
     if (win.document.querySelector('.ytaf-ui-container')) return;
     trustedKey(win, GREEN);
     for (let i = 0; i < 20; i++) pump();
   };
-  const toggle = (label, on) => {
+  /**
+   * Steps the Max Thumbnail Quality row to `mode` ('off', 'safe', 'eager', 'sd')
+   * by the shorter way round, with its arrows, so no other mode is passed on the way.
+   */
+  const quality = (mode) => {
     panel();
-    const input = Array.from(win.document.querySelectorAll('.ytaf-ui-container label'))
-      .find((l) => l.querySelector('.label-text')?.textContent === label)?.querySelector('input');
-    if (!input) throw new Error(label + ' switch missing');
-    input.checked = on;
-    input.dispatchEvent(new win.Event('change'));
-  };
-  /** Steps the Thumbnail Strategy row to `mode` ('safe', 'eager', 'sd'). */
-  const strategy = (mode) => {
-    panel();
-    const names = { safe: 'Original', eager: 'Fast', sd: 'Smooth (SD)' };
+    const order = ['off', 'safe', 'eager', 'sd'];
+    const names = { off: 'Off', safe: 'Original', eager: 'Fast', sd: 'Smooth (SD)' };
     const row = Array.from(win.document.querySelectorAll('.ytaf-ui-container .shortcut-control-row'))
-      .find((r) => /Thumbnail Strategy/.test(r.textContent));
-    if (!row) throw new Error('Thumbnail Strategy row missing');
-    for (let i = 0; i < 3 && row.querySelector('.current-value').textContent !== names[mode]; i++) row.click();
+      .find((r) => /Max Thumbnail Quality/.test(r.textContent));
+    if (!row) throw new Error('Max Thumbnail Quality row missing');
+    const now = order.find((k) => names[k] === row.querySelector('.current-value').textContent);
+    const forward = (order.indexOf(mode) - order.indexOf(now) + order.length) % order.length;
+    const [prev, next] = row.querySelectorAll('.arrow-btn');
+    const steps = forward <= 2 ? forward : order.length - forward;
+    for (let i = 0; i < steps; i++) (forward <= 2 ? next : prev).click();
+    if (row.querySelector('.current-value').textContent !== names[mode]) throw new Error('Max Thumbnail Quality not at ' + mode);
   };
-  return { win, errors, heads, images, probes, parse, pump, toggle, strategy };
+  return { win, errors, heads, images, probes, parse, pump, quality };
 }
 
 const url = (id, name = 'hqdefault') => `https://i.ytimg.com/vi/${id}/${name}.jpg`;
@@ -291,7 +292,7 @@ run(async () => {
 
   // ---- The names it maps, and the ones it does not ----
   {
-    const { parse } = boot({ thumbnailQualityMode: 'safe' });
+    const { parse } = boot({ thumbnailQuality: 'safe' });
     const items = homeItems(parse(home([shelf([
       tile('oarcropvid1', 'oar2'),
       tile('frameonly01', 'hq1'),
@@ -364,7 +365,7 @@ run(async () => {
   }
   {
     // Original: an unproven rung waits for its probe; a probe that learned nothing holds the floor.
-    const { parse, heads } = boot({ thumbnailQualityMode: 'safe' }, { head: (u) => (u.includes('timeoutsafe') ? { timeout: true } : big) });
+    const { parse, heads } = boot({ thumbnailQuality: 'safe' }, { head: (u) => (u.includes('timeoutsafe') ? { timeout: true } : big) });
     const first = parse(home([shelf([tile('provensafe1'), tile('timeoutsafe')])]));
     t('Original: hqdefault until it is proven', homeItems(first).map(tileUrl).join() === [HQ('provensafe1'), HQ('timeoutsafe')].join());
     await wait(SETTLE_MS);
@@ -379,7 +380,7 @@ run(async () => {
   }
   {
     // Smooth (SD): the ladder stops at sddefault.
-    const { parse, heads } = boot({ thumbnailQualityMode: 'sd' });
+    const { parse, heads } = boot({ thumbnailQuality: 'sd' });
     const r = parse(home([shelf([tile('smoothsd001')])]));
     await wait(SETTLE_MS);
     t('Smooth (SD): sddefault, and it is what the probe asks for',
@@ -478,11 +479,11 @@ run(async () => {
   }
   {
     // The strategy changes while a probe is out: its answer was for the old ladder.
-    const { parse, strategy, heads } = boot({}, { head: () => ({ status: 200, length: 1000, delay: 400 }) });
+    const { parse, quality, heads } = boot({}, { head: () => ({ status: 200, length: 1000, delay: 400 }) });
     parse(home([shelf([tile('inflight001')])]));
     await wait(100);
     t('a probe is out', heads.includes(MAX('inflight001')), heads.join(' '));
-    strategy('sd');
+    quality('sd');
     await wait(500);
     const r = parse(home([shelf([tile('inflight001')])]));
     t('its answer, for the old ladder, is not used on the new one', tileUrl(homeItems(r)[0]) === url('inflight001', 'sddefault'),
@@ -509,12 +510,12 @@ run(async () => {
 
   // ---- The panel ----
   {
-    const { parse, toggle, strategy, heads, win } = boot({}, { head: () => grey });
+    const { parse, quality, heads, win } = boot({}, { head: () => grey });
     parse(home([shelf([tile('strategy001')])]));
     await wait(SETTLE_MS);
     t('Fast: the miss is known', tileUrl(homeItems(parse(home([shelf([tile('strategy001')])])))[0]) === HQ('strategy001'));
     // Smooth (SD) measures another rung: what Fast learned is dropped.
-    strategy('sd');
+    quality('sd');
     const sd = parse(home([shelf([tile('strategy001')])]));
     t('switched to Smooth (SD): the answers of the other ladder are dropped, sddefault drawn',
       tileUrl(homeItems(sd)[0]) === url('strategy001', 'sddefault'), tileUrl(homeItems(sd)[0]));
@@ -522,18 +523,26 @@ run(async () => {
       win.localStorage.getItem('ytaf-thumb-quality-cap') === '3r2', win.localStorage.getItem('ytaf-thumb-quality-cap'));
     await wait(SETTLE_MS);
     t('the video is probed again on the new ladder', heads.includes(url('strategy001', 'sddefault')), heads.join(' '));
+    // Off and back keeps what Smooth (SD) learned: nothing is probed again.
+    const headsBefore = heads.length;
+    quality('off');
+    quality('sd');
+    parse(home([shelf([tile('strategy001')])]));
+    await wait(SETTLE_MS);
+    t('off and back to Smooth (SD): what it learned is kept, nothing probed again',
+      heads.length === headsBefore && win.localStorage.getItem('ytaf-thumb-quality-cap') === '3r2', heads.slice(headsBefore).join(' '));
     // Fast and Original measure the same rung: nothing is dropped between them.
-    strategy('eager');
-    strategy('safe');
+    quality('eager');
+    quality('safe');
     // Switched off with probes still waiting for the surface to settle.
     parse(home([shelf([tile('waitingoff1')])]));
-    toggle('Max Thumbnail Quality', false);
+    quality('off');
     const off = parse(home([shelf([tile('switchedoff')])]));
     await wait(SETTLE_MS);
     t('switched off: responses are left as sent and nothing is probed',
       tileUrl(homeItems(off)[0]) === HQ('switchedoff') && !heads.some((u) => u.includes('switchedoff') || u.includes('waitingoff1')),
       heads.join(' '));
-    toggle('Max Thumbnail Quality', true);
+    quality('safe');
     const on = parse(home([shelf([tile('switchedon1')])]));
     await wait(SETTLE_MS);
     t('switched on again (Original): a new video is probed', tileUrl(homeItems(on)[0]) === HQ('switchedon1') &&

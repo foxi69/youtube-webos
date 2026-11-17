@@ -45,7 +45,7 @@ function boot(cfg, start, hold = false) {
     raf: 'timer',
     config: Object.assign({
       enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false, enableDeArrow: false,
-      upgradeThumbnails: false, enableAutoLogin: false, checkForUpdates: false, showWhatsNew: false
+      thumbnailQuality: 'off', enableAutoLogin: false, checkForUpdates: false, showWhatsNew: false
     }, cfg),
     setup(win) {
       // Set before the environment, which takes it away again on the legacy build.

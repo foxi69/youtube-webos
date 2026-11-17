@@ -32,7 +32,7 @@ function boot(cfg, html, url) {
 
   win.localStorage.setItem('ytaf-configuration', win.JSON.stringify(Object.assign({
     enableAdBlock: true, enableLegacyEmojiFix: false, enableSponsorBlock: false,
-    enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false
+    enableReturnYouTubeDislike: false, thumbnailQuality: 'off', enableAutoLogin: false
   }, cfg)));
   applyChrome38Downgrade(win);
   win.eval(fs.readFileSync(bundlePath, 'utf8'));
@@ -65,7 +65,7 @@ setTimeout(async () => {
 
   // ---- A. thumbnail-quality: a shelf streaming in ----
   {
-    const { win, c, reset, pump } = boot({ upgradeThumbnails: true }, APP);
+    const { win, c, reset, pump } = boot({ thumbnailQuality: 'safe' }, APP);
     await tick(); pump(); await tick();
     const app = win.document.querySelector('ytlr-app');
     reset();

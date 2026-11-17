@@ -2,7 +2,7 @@
  * Auto-translated subtitles (src/subtitle-translate.js), in the bundle: the
  * edits to the /player response (the chosen language pinned to the top of
  * Auto-translate, a ready-made "<Language> (auto-translated)" track where the
- * video has none in it) and "Turn On Translated Subtitles Automatically"
+ * video has none in it) and Subtitles When a Video Starts: Translated
  * through the player's captions API (which track it picks, a track already
  * on, no track in the language, a tracklist that comes late or never, a
  * reset by the player, another video).
@@ -55,7 +55,7 @@ function response(renderer, videoId = VIDEO, nested = false) {
 function stubPlayer(el, opts) {
   const p = {
     listeners: [], state: -1, videoId: VIDEO, track: opts.track || null, tracklist: opts.tracklist || [],
-    sets: [], loads: [], listAsked: 0, throwOnSet: false
+    sets: [], loads: [], listAsked: 0, throwOnSet: false, startListeners: [], started: null
   };
   Object.assign(el, {
     setPlaybackQualityRange() {}, setPlaybackQuality() {},
@@ -76,10 +76,22 @@ function stubPlayer(el, opts) {
       if (p.throwOnSet) throw new Error('captions module busy');
       p.track = value;
     },
-    addEventListener(type, fn) { if (type === 'onStateChange') p.listeners.push(fn); },
+    addEventListener(type, fn) {
+      if (type === 'onStateChange') p.listeners.push(fn);
+      if (type === 'onPlaybackStartExternal') p.startListeners.push(fn);
+    },
     removeEventListener(type, fn) { p.listeners = p.listeners.filter((f) => f !== fn); }
   });
-  p.emit = (state) => { p.state = state; p.listeners.slice().forEach((fn) => { fn(state); }); };
+  // As the TV player: PLAYING, then onPlaybackStartExternal, after which the
+  // app sets its own start-up subtitles (opts.appDecision, 1 s later).
+  p.emit = (state) => {
+    p.state = state;
+    p.listeners.slice().forEach((fn) => { fn(state); });
+    if (state !== 1 || opts.noStartEvent || p.started === p.videoId) return;
+    p.started = p.videoId;
+    p.startListeners.slice().forEach((fn) => { fn(); });
+    if (opts.appDecision) p.win.setTimeout(() => opts.appDecision(p), 1000);
+  };
   return p;
 }
 
@@ -95,7 +107,7 @@ async function boot(cfg, opts = {}) {
     console: { warn: (...a) => warnings.push(a.map(String).join(' ')) },
     config: Object.assign({
       enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-      enableDeArrow: false, upgradeThumbnails: false, enableAutoLogin: false,
+      enableDeArrow: false, thumbnailQuality: 'off', enableAutoLogin: false,
       checkForUpdates: false, showWhatsNew: false, showVideoQuality: 'off'
     }, cfg),
     fetch: 'pending',
@@ -108,12 +120,50 @@ async function boot(cfg, opts = {}) {
   win.setTimeout = (fn, ms, ...a) => st(fn, (ms || 0) / SPEED, ...a);
   win.setInterval = (fn, ms, ...a) => si(fn, (ms || 0) / SPEED, ...a);
   const p = stubPlayer(win.document.getElementById(PLAYER_ID), opts);
+  p.win = win;
   evaluate();
   // video-quality.js attaches to the player: its state changes reach the subtitles.
   for (let i = 0; i < 100 && !p.listeners.length; i++) await wait(10);
   /** Parses `text` in the page, through every JSON.parse hook it installed. */
   const parse = (text) => win.JSON.parse(text);
   return { win, p, errors, warnings, parse };
+}
+
+/**
+ * A clock the test moves: from now on the page's setTimeout and Date.now
+ * follow advance(ms) only. A timer set before stays on the real clock.
+ */
+function manualClock(win) {
+  let now = win.Date.now();
+  let seq = 0;
+  const timers = [];
+  const realClear = win.clearTimeout.bind(win);
+  win.Date.now = () => now;
+  win.setTimeout = (fn, ms, ...a) => {
+    const id = 'manual' + ++seq;
+    timers.push({ id, at: now + (ms || 0), fn, a });
+    return id;
+  };
+  win.clearTimeout = (id) => {
+    const i = timers.findIndex((x) => x.id === id);
+    if (i !== -1) timers.splice(i, 1);
+    else realClear(id);
+  };
+  return {
+    async advance(ms) {
+      const end = now + ms;
+      for (;;) {
+        timers.sort((x, y) => x.at - y.at);
+        if (!timers.length || timers[0].at > end) break;
+        const next = timers.shift();
+        now = next.at;
+        next.fn(...next.a);
+        // What the callback starts on the real clock (an animation frame) gets to run.
+        await wait(10);
+      }
+      now = end;
+    }
+  };
 }
 
 run(async () => {
@@ -228,7 +278,7 @@ run(async () => {
   }
 
   // ================= Turning the subtitles on =================
-  const AUTO = { subtitleTranslateLang: 'hu', subtitleAutoEnable: true };
+  const AUTO = { subtitleTranslateLang: 'hu', subtitlesAtStart: 'translated' };
   const huAsr = { languageCode: 'hu', kind: 'asr', vss_id: 'a.hu' };
   const huHuman = { languageCode: 'hu', vss_id: '.hu' };
   const huTranslated = { languageCode: 'en', vss_id: '.en', translationLanguage: { languageCode: 'hu' } };
@@ -240,6 +290,9 @@ run(async () => {
     const { p } = env;
     p.emit(1);
     await pageMs(100);
+    t(n('just after the start: nothing yet (the app sets its own subtitles first)'), p.sets.length === 0 && p.loads.length === 0,
+      JSON.stringify(p.sets));
+    await pageMs(1150);
     t(n('on PLAYING the captions module is loaded'), p.loads.indexOf('captions') !== -1, p.loads.join());
     t(n('the human Hungarian track is turned on, once'), p.sets.length === 1 && p.sets[0] === p.tracklist[3],
       JSON.stringify(p.sets));
@@ -262,19 +315,199 @@ run(async () => {
     p.tracklist = [huAsr];
     p.emit(3);
     p.emit(1);
-    await pageMs(100);
+    await pageMs(1250);
     t(n('another video: its own try, the ASR track when that is all there is'),
       p.sets.length === 3 && p.sets[2] === huAsr, JSON.stringify(p.sets));
     t(n('turning on: no page errors'), env.errors.length === 0, env.errors.join(' | '));
     env.win.close();
   }
 
-  // A Hungarian track already on, native or as a translation: left alone.
-  for (const [label, on] of [['a Hungarian track', huHuman], ['a translation into Hungarian', huTranslated]]) {
-    const env = await boot(AUTO, { tracklist: [huAsr, huHuman], track: on });
+  // The TV app turns its own start-up subtitles off 1 s after the start: the
+  // track is turned on after that, so it does not show, go off and come back.
+  {
+    const order = [];
+    const env = await boot(AUTO, {
+      tracklist: [huHuman],
+      appDecision: (pl) => { order.push('app off'); pl.track = {}; }
+    });
+    const set = env.p.win.document.getElementById(PLAYER_ID).setOption;
+    env.win.document.getElementById(PLAYER_ID).setOption = (...a) => { order.push('ours'); return set(...a); };
     env.p.emit(1);
-    await pageMs(1000);
-    t(n(`${label} already on: nothing is set`), env.p.sets.length === 0, JSON.stringify(env.p.sets));
+    await pageMs(2500);
+    t(n("the app's own start-up subtitles come first, then the track, turned on once"),
+      order.join() === 'app off,ours' && env.p.sets.length === 1 && env.p.track === huHuman, order.join() + ' ' + JSON.stringify(env.p.sets));
+    env.win.close();
+  }
+
+  // The player remembers subtitles being on and starts with YouTube's own
+  // track: dropped at once (Translated, and Off), not when picked by hand later.
+  for (const [mode, then] of [['translated', 'the Hungarian track later'], ['off', 'nothing later']]) {
+    const en = { languageCode: 'en', vss_id: '.en' };
+    const env = await boot(Object.assign({}, AUTO, { subtitlesAtStart: mode }), { tracklist: [en, huHuman], track: en });
+    env.p.emit(1);
+    await wait(20);
+    const first = JSON.stringify(env.p.sets);
+    await pageMs(1500);
+    const later = env.p.sets.slice(1);
+    dispatchTrusted(env.win.document.body, new env.win.KeyboardEvent('keydown', { keyCode: 13, bubbles: true }));
+    env.p.track = en; // picked by hand
+    env.p.emit(2);
+    env.p.emit(1);
+    await pageMs(1500);
+    t(n(`${mode}: YouTube's own track at the start goes at once, then ${then}`),
+      first === '[{}]' && (mode === 'off' ? later.length === 0 : later.length === 1 && later[0] === huHuman), `${first} ${JSON.stringify(later)}`);
+    t(n(`${mode}: picked by hand after that: left alone`), env.p.track === en, JSON.stringify(env.p.sets));
+    env.win.close();
+  }
+
+  // A player that never sends onPlaybackStartExternal: turned on a while after
+  // PLAYING. On a clock the test moves itself, so no scheduler delay can make
+  // an early or a late fallback pass, or a right one fail.
+  {
+    const env = await boot(AUTO, { tracklist: [huHuman], noStartEvent: true });
+    const clock = manualClock(env.win);
+    env.p.emit(1);
+    await wait(30);
+    await clock.advance(2499);
+    const early = env.p.sets.length;
+    await clock.advance(301);
+    t(n('no start event: the track 2.5 s after PLAYING'), early === 0 && env.p.sets.length === 1,
+      `by 2499 ms: ${early} sets, by 2800 ms: ${env.p.sets.length}`);
+    env.win.close();
+  }
+
+  // The start event belongs to its video: B playing 500 ms after A's start
+  // event, with none of its own, waits the full 2.5 s, not A's remaining 650 ms.
+  {
+    const env = await boot(AUTO, { tracklist: [huHuman] });
+    const clock = manualClock(env.win);
+    env.p.emit(1);
+    await wait(30);
+    await clock.advance(500);
+    env.p.videoId = VIDEO2;
+    env.p.started = VIDEO2; // no start event for B
+    env.p.emit(3);
+    env.p.emit(1);
+    await wait(30);
+    await clock.advance(2400);
+    const early = env.p.sets.length;
+    await clock.advance(400);
+    t(n("another video without a start event: not timed from the one before's"), early === 0 && env.p.sets.length === 1,
+      `by 2400 ms: ${early} sets, by 2800 ms: ${env.p.sets.length}`);
+    env.win.close();
+  }
+
+  // Next while A's start-up wait runs: A's handling does not fire for B, which
+  // is still loading, and B's own start-up turns its subtitles on.
+  {
+    const env = await boot(AUTO, { tracklist: [huHuman] });
+    const clock = manualClock(env.win);
+    env.p.emit(1);
+    await wait(30);
+    await clock.advance(500);
+    dispatchTrusted(env.win.document.body, new env.win.KeyboardEvent('keydown', { keyCode: 13, bubbles: true }));
+    env.p.videoId = VIDEO2;
+    env.p.emit(3);
+    await clock.advance(1000); // A's 1150 ms pass while B loads
+    const during = env.p.sets.length;
+    env.p.emit(1);
+    await wait(30);
+    await clock.advance(2000);
+    t(n('Next while the start-up wait runs: the next video still gets its own start-up'), during === 0 && env.p.sets.length === 1,
+      `while loading: ${during} sets, after its start: ${JSON.stringify(env.p.sets)}`);
+    env.win.close();
+  }
+
+  // Next pressed during a video's first second: the next video still gets its
+  // subtitles (that key was for the video before).
+  {
+    const huOther = { languageCode: 'hu', vss_id: '.hu2' };
+    const env = await boot(AUTO, { tracklist: [huHuman] });
+    env.p.emit(1);
+    await pageMs(500);
+    dispatchTrusted(env.win.document.body, new env.win.KeyboardEvent('keydown', { keyCode: 13, bubbles: true }));
+    env.p.videoId = VIDEO2;
+    env.p.tracklist = [huOther];
+    env.p.emit(3);
+    env.p.emit(1);
+    await pageMs(2500);
+    t(n('Next in the first second: the next video gets its track'), env.p.sets.length === 1 && env.p.sets[0] === huOther, JSON.stringify(env.p.sets));
+    env.win.close();
+  }
+
+  // Off: the app turns subtitles on a second after the start (YouTube wants
+  // them, or they were on earlier in the session): turned off again, unless a
+  // key was pressed.
+  for (const key of [false, true]) {
+    const en = { languageCode: 'en', vss_id: '.en' };
+    const env = await boot(Object.assign({}, AUTO, { subtitlesAtStart: 'off' }), { tracklist: [en], appDecision: (pl) => { pl.track = en; } });
+    env.p.emit(1);
+    if (key) {
+      await pageMs(300);
+      dispatchTrusted(env.win.document.body, new env.win.KeyboardEvent('keydown', { keyCode: 13, bubbles: true }));
+    }
+    await pageMs(2500);
+    t(n(key ? 'Off, a key pressed before the app turns subtitles on: left on' : 'Off: subtitles the app turns on are turned off again'),
+      key ? env.p.track === en && env.p.sets.length === 0 : JSON.stringify(env.p.track) === '{}' && env.p.sets.length === 1, JSON.stringify(env.p.sets));
+    env.win.close();
+  }
+
+  // Translated: the opened video's response starts with the Hungarian track,
+  // turned on, so the player puts it on as it loads; YouTube's own default goes
+  // from any other response (a tile preview, the video behind "Who's watching").
+  {
+    const KEY = 'yt-html5-player-modules::subtitlesModuleData::module-enabled';
+    const caps = () => ({
+      captionTracks: [track('en'), track('hu', { kind: 'asr' })],
+      translationLanguages: [tl('en', 'English')],
+      audioTracks: [{ captionTrackIndices: [0, 1], defaultCaptionTrackIndex: 0, captionsInitialState: 'CAPTIONS_INITIAL_STATE_ON_RECOMMENDED' }]
+    });
+    const env = await boot(AUTO);
+    env.win.localStorage.setItem(KEY, 'false');
+    const opened = env.parse(response(caps())).captions.playerCaptionsTracklistRenderer;
+    const at = opened.audioTracks[0];
+    t(n('Translated, the opened video: starts with the Hungarian track, turned on'),
+      at.defaultCaptionTrackIndex === 1 && at.captionsInitialState === 'CAPTIONS_INITIAL_STATE_ON_REQUIRED', JSON.stringify(at));
+    t(n('...and the player told subtitles were on, so it turns that track on as it loads'), env.win.localStorage.getItem(KEY) === 'true');
+
+    env.win.localStorage.setItem(KEY, 'false');
+    const other = env.parse(response(caps(), VIDEO2)).captions.playerCaptionsTracklistRenderer.audioTracks[0];
+    t(n("Translated, another video (a preview): YouTube's default dropped, subtitles start off"),
+      other.defaultCaptionTrackIndex === undefined && other.captionsInitialState === 'CAPTIONS_INITIAL_STATE_OFF_RECOMMENDED' &&
+      env.win.localStorage.getItem(KEY) === 'false', JSON.stringify(other));
+
+    env.win.document.body.className = 'WEB_PAGE_TYPE_ACCOUNT_SELECTOR';
+    const picker = env.parse(response(caps())).captions.playerCaptionsTracklistRenderer.audioTracks[0];
+    t(n("Translated, the video loading behind Who's watching: starts off"),
+      picker.defaultCaptionTrackIndex === undefined && picker.captionsInitialState === 'CAPTIONS_INITIAL_STATE_OFF_RECOMMENDED', JSON.stringify(picker));
+    env.win.close();
+  }
+  {
+    const env = await boot({ subtitleTranslateLang: 'hu', subtitlesAtStart: 'youtube' });
+    const caps = { captionTracks: [track('en'), track('hu')], audioTracks: [{ captionTrackIndices: [0, 1], defaultCaptionTrackIndex: 0 }] };
+    const at = env.parse(response(caps)).captions.playerCaptionsTracklistRenderer.audioTracks[0];
+    t(n("YouTube's Choice: the response's default is left as it is"), at.defaultCaptionTrackIndex === 0 && at.captionsInitialState === undefined, JSON.stringify(at));
+    env.win.close();
+  }
+
+  // A Hungarian track already on at the start (the default given in the
+  // response, or the player remembering it): kept, the module not loaded again.
+  {
+    const env = await boot(AUTO, { tracklist: [huAsr, huHuman], track: huHuman });
+    env.p.emit(1);
+    await pageMs(2500);
+    t(n('a Hungarian track on at the start: kept, nothing set, the module not loaded again'),
+      env.p.sets.length === 0 && env.p.loads.length === 0 && env.p.track === huHuman, JSON.stringify(env.p.sets) + ' loads=' + env.p.loads.join());
+    env.win.close();
+  }
+
+  // The app itself turns on a Hungarian track, native or as a translation
+  // (YouTube wants subtitles): left alone.
+  for (const [label, on] of [['a Hungarian track', huHuman], ['a translation into Hungarian', huTranslated]]) {
+    const env = await boot(AUTO, { tracklist: [huAsr, huHuman], appDecision: (pl) => { pl.track = on; } });
+    env.p.emit(1);
+    await pageMs(2500);
+    t(n(`${label} turned on by the app: nothing is set`), env.p.sets.length === 0, JSON.stringify(env.p.sets));
     env.win.close();
   }
 
@@ -283,7 +516,7 @@ run(async () => {
     let calls = 0;
     const env = await boot(AUTO, { tracklist: () => (++calls > 3 ? [huHuman] : []) });
     env.p.emit(1);
-    await pageMs(1500);
+    await pageMs(2600);
     t(n('a tracklist that comes late: waited for, then the track is turned on'),
       env.p.sets.length === 1 && env.p.sets[0].languageCode === 'hu' && calls >= 4, `calls=${calls} sets=${JSON.stringify(env.p.sets)}`);
     env.win.close();
@@ -319,10 +552,10 @@ run(async () => {
 
   // The setting off, a Shorts page: nothing.
   {
-    const env = await boot({ subtitleTranslateLang: 'hu', subtitleAutoEnable: false }, { tracklist: [huHuman] });
+    const env = await boot({ subtitleTranslateLang: 'hu', subtitlesAtStart: 'youtube' }, { tracklist: [huHuman] });
     env.p.emit(1);
     await pageMs(1000);
-    t(n('Turn On Automatically off: nothing is set'), env.p.sets.length === 0 && env.p.loads.length === 0,
+    t(n('Subtitles at start not Translated: nothing is set'), env.p.sets.length === 0 && env.p.loads.length === 0,
       `sets=${env.p.sets.length} loads=${env.p.loads.join()}`);
     env.win.close();
   }

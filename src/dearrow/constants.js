@@ -92,6 +92,5 @@ export const DEARROW_CONFIG_KEYS = [
   'dearrowThumbnailFallback',
   'dearrowShowBadge',
   // The copies' size follows Max Thumbnail Quality.
-  'upgradeThumbnails',
-  'thumbnailQualityMode'
+  'thumbnailQuality'
 ];

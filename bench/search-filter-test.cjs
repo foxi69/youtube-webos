@@ -19,7 +19,7 @@ function boot(searchUploadDate, enableAdBlock = true) {
     bodyClass: 'WEB_PAGE_TYPE_SEARCH',
     config: {
       enableAdBlock, enableLegacyEmojiFix: false, enableSponsorBlock: false,
-      enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false,
+      enableReturnYouTubeDislike: false, thumbnailQuality: 'off', enableAutoLogin: false,
       searchUploadDate
     },
     consoleErrors: false,

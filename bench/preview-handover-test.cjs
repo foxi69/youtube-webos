@@ -18,11 +18,11 @@ const LABEL = 'Open Playing Previews Without Reloading';
 // (LEARNT): until then Hide Left Menu Entries keeps the hook too.
 const ALL_OFF = {
   enableAdBlock: false, enableTrackingBlock: false, removeGlobalShorts: false,
-  removeLiveVideos: false, removeAiVideos: false, markAiVideos: false, removeTopLiveGames: false,
+  removeLiveVideos: false, aiVideos: 'show', removeTopLiveGames: false,
   removeMostRelevant: false, hideGuestSignInPrompts: false, hideEndcards: false,
   enableLegacyEmojiFix: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-  upgradeThumbnails: false, enableAutoLogin: false, loadRowsAhead: false,
-  disableAutoCaptions: false, forceOriginalAudio: false, extendLongPressMenu: false,
+  thumbnailQuality: 'off', enableAutoLogin: false,
+  subtitlesAtStart: 'youtube', forceOriginalAudio: false, extendLongPressMenu: false,
   enableDeArrow: false, hiddenSidebarEntries: []
 };
 const LEARNT = { 'ytaf-sidebar-entries': JSON.stringify([{ id: 'FEtopics_music', title: 'Music' }]) };

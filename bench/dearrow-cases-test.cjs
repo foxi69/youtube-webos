@@ -56,7 +56,7 @@ function boot(cfg, { copySize = 1000 } = {}) {
   win.cancelAnimationFrame = () => {};
   win.localStorage.setItem('ytaf-configuration', JSON.stringify(Object.assign({
     enableAdBlock: true, enableLegacyEmojiFix: false, enableSponsorBlock: false,
-    enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false,
+    enableReturnYouTubeDislike: false, thumbnailQuality: 'off', enableAutoLogin: false,
     enableDeArrow: true, dearrowTitleFormatting: 'disable', dearrowThumbnailFallback: 'original'
   }, cfg)));
   const known = new Set();

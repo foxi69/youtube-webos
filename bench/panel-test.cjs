@@ -21,7 +21,7 @@ function boot(bodyClass = 'WEB_PAGE_TYPE_BROWSE', extraHtml = '', setup = null) 
     raf: 'manual',
     config: {
       enableAdBlock: true, enableLegacyEmojiFix: true, enableSponsorBlock: true,
-      enableReturnYouTubeDislike: true, upgradeThumbnails: false, enableAutoLogin: true,
+      enableReturnYouTubeDislike: true, thumbnailQuality: 'off', enableAutoLogin: true,
       enableScrollSeek: true, timeRemainingMode: 'both', logoStyle: 'premium'
     },
     setup,

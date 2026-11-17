@@ -15,11 +15,11 @@ const { createReporter, bootPage, UA } = require('./harness.cjs');
 // Every setting that once kept the JSON.parse hook installed, off.
 const ALL_OFF = {
   enableAdBlock: false, enableTrackingBlock: false, removeGlobalShorts: false,
-  removeLiveVideos: false, removeAiVideos: false, markAiVideos: false, removeTopLiveGames: false,
+  removeLiveVideos: false, aiVideos: 'show', removeTopLiveGames: false,
   removeMostRelevant: false, hideGuestSignInPrompts: false, hideEndcards: false,
   enableLegacyEmojiFix: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-  upgradeThumbnails: false, enableAutoLogin: false, loadRowsAhead: false,
-  disableAutoCaptions: false, forceOriginalAudio: false, extendLongPressMenu: false,
+  thumbnailQuality: 'off', enableAutoLogin: false,
+  subtitlesAtStart: 'youtube', forceOriginalAudio: false, extendLongPressMenu: false,
   enableDeArrow: false, hiddenSidebarEntries: [], videoPreviews: 'default'
 };
 // The left menu's entries already learnt: until then the left menu keeps the

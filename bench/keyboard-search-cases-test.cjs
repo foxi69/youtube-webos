@@ -45,7 +45,7 @@ async function boot(yt = {}, cfg = {}) {
     url: 'https://www.youtube.com/tv#/search',
     config: Object.assign({
       enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false, enableDeArrow: false,
-      upgradeThumbnails: false, enableAutoLogin: false, checkForUpdates: false, showWhatsNew: false
+      thumbnailQuality: 'off', enableAutoLogin: false, checkForUpdates: false, showWhatsNew: false
     }, cfg),
     fetch: 'pending',
     evaluate: false

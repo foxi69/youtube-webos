@@ -34,7 +34,7 @@ win.document.createElement = function (t) { created++; return realCreate(t); };
 
 win.localStorage.setItem('ytaf-configuration', win.JSON.stringify({
   enableAdBlock: true, enableLegacyEmojiFix: true, enableSponsorBlock: true,
-  enableReturnYouTubeDislike: true, upgradeThumbnails: false, enableAutoLogin: true
+  enableReturnYouTubeDislike: true, thumbnailQuality: 'off', enableAutoLogin: true
 }));
 applyChrome38Downgrade(win);
 win.eval(fs.readFileSync(bundlePath, 'utf8'));
