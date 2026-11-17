@@ -1378,6 +1378,37 @@ window.ytaf_showOptionsPanel = showOptionsPanel;
 
 // --- Video Control Logic ---
 
+/**
+ * The chapters' start times in seconds. The bar renderer's data has them
+ * (chapters[].start); the widths of the bar's chapter elements are the
+ * fallback: whole pixels, so a few seconds off on a short video, and on a
+ * long one the bar draws only some of the chapters (50 of 71 on a 4.7-hour
+ * video, read on the TV), which put the skip minutes off.
+ */
+function chapterStarts(chapterEls, duration) {
+  const host = document.querySelector('ytlr-multi-markers-player-bar-renderer');
+  const props = host && host.__instance && host.__instance.props;
+  const own = props && props.data && Array.isArray(props.data.chapters) ? props.data.chapters : [];
+  const starts = own.map((chapter) => Number(chapter && chapter.start)).filter((s) => isFinite(s));
+  if (starts.length) return starts;
+  const widths = [];
+  let total = 0;
+  for (let i = 0; i < chapterEls.length; i++) {
+    if (chapterEls[i].getAttribute('idomkey')?.startsWith('chapter-')) {
+      const width = parseFloat(chapterEls[i].style.width || '0');
+      widths.push(width);
+      total += width;
+    }
+  }
+  if (!total) return [];
+  let at = 0;
+  return widths.map((width) => {
+    const start = (at / total) * duration;
+    at += width;
+    return start;
+  });
+}
+
 async function skipChapter(direction = 'next') {
   if(isShortsPage()) return;
   // A press during the wait below would find no chapters yet.
@@ -1422,23 +1453,11 @@ async function skipChapter(direction = 'next') {
     return;
   }
 
-  const totalDuration = video.duration;
   const currentTime = video.currentTime;
-  let totalWidth = 0;
-  const chapters = [];
-
-  // 1. Single DOM pass: extract valid chapters and calculate total width
-  for (let i = 0; i < chapterEls.length; i++) {
-      const el = chapterEls[i];
-      if (el.getAttribute('idomkey')?.startsWith('chapter-')) {
-          const width = parseFloat(el.style.width || '0');
-          totalWidth += width;
-          chapters.push(width);
-      }
-  }
+  const starts = chapterStarts(chapterEls, video.duration);
 
   // A bar without chapter markers.
-  if (totalWidth === 0) {
+  if (starts.length === 0) {
     showNotification('No chapters found');
     if (wasForcedNow) setTimeout(() => simulateBack(), 250);
     return;
@@ -1447,13 +1466,9 @@ async function skipChapter(direction = 'next') {
   let targetTime = -1;
   let currentChapterStart = 0;
   let prevChapterStart = 0;
-  let accumulatedWidth = 0;
 
-  // 2. Find target using cached values
-  for (let i = 0; i < chapters.length; i++) {
-      const width = chapters[i];
-      const startTimestamp = (accumulatedWidth / totalWidth) * totalDuration;
-      accumulatedWidth += width;
+  for (let i = 0; i < starts.length; i++) {
+      const startTimestamp = starts[i];
 
       if (direction === 'next') {
         if (startTimestamp > currentTime + 1) {

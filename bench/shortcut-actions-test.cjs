@@ -545,6 +545,22 @@ run(async () => {
       /No next chapter/.test(env.toasts()), env.toasts());
   }
   {
+    // The renderer's data has the chapters' own starts. The bar's widths are whole pixels and, on a
+    // long video, cover only some chapters: here two halves (0:00, 5:00) for four chapters.
+    const bar = '<ytlr-multi-markers-player-bar-renderer><div idomkey="progress-bar">' +
+      '<div idomkey="chapter-0" style="width: 50%"></div><div idomkey="chapter-1" style="width: 50%"></div>' +
+      '<div idomkey="playhead"></div></div></ytlr-multi-markers-player-bar-renderer>';
+    const env = await boot({ shortcut_key_0: 'chapter_skip_prev' }, { html: bar });
+    env.doc.querySelector('ytlr-multi-markers-player-bar-renderer').__instance =
+      { props: { data: { chapters: [0, 70, 333, 480].map((start) => ({ start, title: { simpleText: 'c' } })) } } };
+    env.vs.time = 100;
+    await env.press(D(5));
+    t(n('next chapter: the start the data gives (5:33), not the bar\'s 5:00'), env.vs.time === 333, String(env.vs.time));
+    env.vs.time = 400;
+    await env.press(D(0));
+    t(n('previous chapter: back to the data\'s start too'), env.vs.time === 333, String(env.vs.time));
+  }
+  {
     // A bar with no chapter markers on it.
     const env = await boot({}, { html: '<ytlr-multi-markers-player-bar-renderer><div idomkey="progress-bar"><div idomkey="playhead"></div></div></ytlr-multi-markers-player-bar-renderer>' });
     await env.press(D(5));
