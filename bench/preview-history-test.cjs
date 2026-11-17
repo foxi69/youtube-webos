@@ -28,6 +28,7 @@ function boot(bodyClass, config) {
       const done = this.onloadend;
       if (done) Promise.resolve().then(done);
     }
+    abort() {}
     setRequestHeader() {}
     getResponseHeader() { return null; }
     addEventListener(type, fn) { if (type === 'loadend') this.onloadend = fn; }
@@ -119,6 +120,12 @@ run(async () => {
   page.doc.body.className = 'WEB_PAGE_TYPE_BROWSE';
   await until(() => !page.viaFetch(playback(PREVIEW)), 1000);
   t('and is dropped again back on Home', !page.viaFetch(playback(PREVIEW)) && !page.viaXHR(watchtime(PREVIEW)));
+  // The page read when the ping comes, in the same task as YouTube's change.
+  const swap = boot('WEB_PAGE_TYPE_WATCH');
+  swap.doc.body.className = 'WEB_PAGE_TYPE_BROWSE';
+  t('dropped in the same task the page becomes Home', !swap.viaFetch(playback(PREVIEW)) && !swap.viaXHR(watchtime(PREVIEW)));
+  swap.doc.body.className = 'WEB_PAGE_TYPE_SHORTS';
+  t('and goes out in the same task it becomes the Shorts page', swap.viaFetch(playback(PREVIEW)) && swap.viaXHR(watchtime(PREVIEW)));
 
   // Tracking Block turned off in the panel puts back the XMLHttpRequest methods it found.
   const tb = boot('WEB_PAGE_TYPE_BROWSE', { enableAdBlock: true, enableTrackingBlock: true });
@@ -190,9 +197,10 @@ run(async () => {
   {
     // Not opened: it expires. 80 s after the start ping it is gone.
     const env = boot('WEB_PAGE_TYPE_BROWSE');
-    const realNow = env.win.Date.now.bind(env.win.Date);
+    // A fixed clock, moved by hand: the waits in between take no time on it.
+    const t0 = env.win.Date.now();
     let offset = 0;
-    env.win.Date.now = () => realNow() + offset;
+    env.win.Date.now = () => t0 + offset;
     env.viaFetch(start('c4'));
     env.viaFetch(start('c5'));
     await toPage(env, 'WEB_PAGE_TYPE_WATCH');
@@ -237,5 +245,33 @@ run(async () => {
     t('XMLHttpRequest: the start ping first (method and body as they came), then the ping',
       same(sent, ['POST ' + start('x1') + ' body', 'POST ' + ping('watchtime', 'x1', OPENED) + ' now']), sent.join(' | '));
     t('no errors (XMLHttpRequest)', env.errors.length === 0, env.errors[0]);
+  }
+
+  {
+    // An XMLHttpRequest aborted or opened again while its start ping goes out: the held send is dropped.
+    const env = boot('WEB_PAGE_TYPE_BROWSE');
+    env.viaXHR(start('y1'));
+    env.viaXHR(start('y2'));
+    await toPage(env, 'WEB_PAGE_TYPE_WATCH');
+    let n = env.xhrs.length;
+    const x = new env.win.XMLHttpRequest();
+    x.open('POST', ping('watchtime', 'y1', OPENED), true);
+    x.send('now');
+    x.abort();
+    await wait(30);
+    const aborted = env.xhrs.slice(n).map((r) => r.url);
+    t('aborted while its start ping goes out: the start ping only, not the aborted ping',
+      same(aborted, [start('y1')]), aborted.join(' | '));
+    n = env.xhrs.length;
+    const other = HOST + '/youtubei/v1/next';
+    x.open('POST', ping('watchtime', 'y2', OPENED), true);
+    x.send('now');
+    x.open('POST', other, true);
+    x.send('later');
+    await wait(30);
+    const reopened = env.xhrs.slice(n).map((r) => r.url + ' ' + r.body);
+    t('opened again for another request meanwhile: that one once, the held ping not after it',
+      same(reopened, [start('y2') + ' body', other + ' later']), reopened.join(' | '));
+    t('no errors (aborted)', env.errors.length === 0, env.errors[0]);
   }
 });

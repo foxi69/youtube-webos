@@ -1,5 +1,3 @@
-import { isWatchPage, isShortsPage } from './utils.js';
-
 /**
  * Tile previews stay out of the watch history.
  *
@@ -60,8 +58,20 @@ function pingOf(url) {
   return m ? { path: m[1], search: full.slice(query) } : null;
 }
 
+/**
+ * Whether the page is the watch or the Shorts page, read off the body when the
+ * ping comes: utils.js updates its page state from a MutationObserver, a
+ * moment after YouTube changes it, and a ping can come in between. Without a
+ * body it counts as one, so the ping goes out.
+ */
+function onPlaybackPage() {
+  const body = document.body;
+  if (!body || !body.classList) return true;
+  return body.classList.contains('WEB_PAGE_TYPE_WATCH') || body.classList.contains('WEB_PAGE_TYPE_SHORTS');
+}
+
 export function isPreviewPing(url) {
-  if (isWatchPage() || isShortsPage()) return false;
+  if (onPlaybackPage()) return false;
   const ping = pingOf(url);
   return !!ping && AUTOPLAY_RE.test(ping.search) && VIS_RE.test(ping.search);
 }
@@ -110,6 +120,7 @@ function log(what, via, url) {
 const originalFetch = window.fetch;
 const originalOpen = XMLHttpRequest.prototype.open;
 const originalSend = XMLHttpRequest.prototype.send;
+const originalAbort = XMLHttpRequest.prototype.abort;
 
 /** Sends a kept start ping; settles once it is answered or failed. */
 function sendKept(start) {
@@ -139,7 +150,12 @@ if (typeof originalFetch === 'function') {
   };
 }
 
+// A send held back for a kept start ping belongs to the operation it was made
+// in: open() and abort() start another one, and the held send is dropped.
+const nextOp = (xhr) => (xhr.__ytafOp = (xhr.__ytafOp || 0) + 1);
+
 XMLHttpRequest.prototype.open = function (method, url) {
+  nextOp(this);
   const urlStr = urlOf(url);
   const stats = urlStr.indexOf('/api/stats/') !== -1;
   this.__ytafPreviewPing = stats && isPreviewPing(urlStr) ? { method, url: urlStr } : null;
@@ -170,6 +186,15 @@ XMLHttpRequest.prototype.send = function (body) {
   this.__ytafStart = null;
   const self = this;
   const args = arguments;
-  const go = () => originalSend.apply(self, args);
+  const op = self.__ytafOp;
+  const go = () => {
+    if (self.__ytafOp === op) originalSend.apply(self, args);
+  };
   sendKept(start).then(go, go);
 };
+if (typeof originalAbort === 'function') {
+  XMLHttpRequest.prototype.abort = function () {
+    nextOp(this);
+    return originalAbort.apply(this, arguments);
+  };
+}
