@@ -185,7 +185,11 @@ export function watchPosition(win, player, at, onPlaying, quality, targetId, onE
       if (!played) {
         played = true;
         const target = at !== null && Math.abs(now - at) > OFF_BY_S ? at : null;
-        if (target !== null) player.seekTo(target, true);
+        if (target !== null) {
+          player.seekTo(target, true);
+          // The read before the seek tells nothing of a loop after it.
+          lastNow = null;
+        }
         const keysBefore = keys();
         // onPlaying may set the cap (playback-speed.js), which can reload.
         // After a seek of our own the place to come back to is its target.

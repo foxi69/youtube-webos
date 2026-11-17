@@ -375,6 +375,22 @@ runTest(() => import(MODULE).then(({ watchPosition }) => {
     d.player.time = 0;
     d.run(750);
     t('...a seek under way reading near its target is not taken as landed', d.player.seeks.join() === '3,3,3', d.player.seeks.join());
+    // The first play read near the end (58.6 s of 60) and moved back to 10 s:
+    // 0 right after it is the seek under way, not a loop from 58.6 s.
+    const e = setup({ state: 1, t: 58.6, vt: 58.6 });
+    e.player.getDuration = () => 60;
+    watchPosition(e.win, e.player, 10, () => true, { isLow: () => false, setCap: () => true, keys: () => 0 }, 'abcdefghijk');
+    e.run(250);
+    e.player.state = 3;
+    e.player.time = 0;
+    e.run(250);
+    e.player.state = 1;
+    e.player.time = 10.2;
+    e.run(250);
+    e.player.state = 3;
+    e.player.time = 0;
+    e.run(750);
+    t('...a read from before the watch\'s seek is no loop: the reload is put back', e.player.seeks.join() === '10,10', e.player.seeks.join());
   }
   {
     // The TV busy for 4 s right after the cap: one late tick, not sixteen.
