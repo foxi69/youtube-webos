@@ -72,13 +72,17 @@ export const BLANK_THUMB =
 // videoID parameter or fragment of DeArrow's own.
 export const VIDEO_ID_RE = /(?:\/vi(?:_webp)?\/|[?&#]videoID=)([\w-]{11})/;
 
-// The rendered tiles the sweep brings in line (sweep.js).
+// The rendered tiles the sweep brings in line (sweep.js): the older tile, and
+// the lockup of the search results (webOS 25, 2026-11), whose thumbnail is an
+// <image> with the same background-image and whose title is one text node.
+// The badge goes on tileRenderers only (tiles.js), so the metadata and its
+// lines stay the older tile's.
 export const SELECTORS = {
-  TILE: 'ytlr-tile-renderer',
+  TILE: 'ytlr-tile-renderer, yt-lockup-view-model',
   TILE_METADATA: 'ytlr-tile-metadata-renderer',
-  TILE_TITLE: 'ytlr-tile-metadata-renderer yt-formatted-string',
+  TILE_TITLE: 'ytlr-tile-metadata-renderer yt-formatted-string, yt-lockup-metadata-view-model > yt-core-attributed-string',
   TILE_LINE: 'ytlr-line',
-  THUMBNAIL: 'ytlr-thumbnail-details'
+  THUMBNAIL: 'ytlr-thumbnail-details, thumbnail image'
 };
 
 // Every setting the feature reads: a change of any decides again what is on

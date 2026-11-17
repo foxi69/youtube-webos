@@ -231,6 +231,30 @@ function render(win, item, { onScreen = false } = {}) {
   win.document.querySelector('ytlr-app').appendChild(el);
   return el;
 }
+/**
+ * Draws a search result the way a webOS 25 TV does (2026-11): a lockup whose
+ * thumbnail is an <image> element (made by the app, not parsed) with the
+ * background, and whose title is a yt-core-attributed-string; its channel
+ * line is one too.
+ */
+function renderLockup(win, item, { onScreen = false } = {}) {
+  const lv = item.lockupViewModel;
+  const el = win.document.createElement('yt-lockup-view-model');
+  el.innerHTML = '<ytlr-playback-preview><yt-collection-thumbnail-view-model><thumbnail><div></div></thumbnail>' +
+    '</yt-collection-thumbnail-view-model><yt-lockup-metadata-view-model><yt-core-attributed-string></yt-core-attributed-string>' +
+    '<yt-content-metadata-view-model><yt-metadata-row><yt-core-attributed-string>Channel</yt-core-attributed-string>' +
+    '</yt-metadata-row></yt-content-metadata-view-model></yt-lockup-metadata-view-model></ytlr-playback-preview>';
+  const image = win.document.createElement('image');
+  const sources = lv.contentImage && lv.contentImage.thumbnailViewModel ? lv.contentImage.thumbnailViewModel.image.sources : [];
+  if (sources.length) image.style.backgroundImage = `url("${sources[0].url}")`;
+  el.querySelector('thumbnail div').appendChild(image);
+  el.querySelector('yt-lockup-metadata-view-model > yt-core-attributed-string').textContent = lv.metadata.lockupMetadataViewModel.title.content;
+  if (onScreen) el.__box = { left: 100, top: 100, right: 400, bottom: 300, width: 300, height: 200 };
+  win.document.querySelector('ytlr-app').appendChild(el);
+  return el;
+}
+const lockupTitle = (el) => el.querySelector('yt-lockup-metadata-view-model > yt-core-attributed-string').textContent;
+const lockupThumb = (el) => decodeURIComponent(el.querySelector('thumbnail image').style.backgroundImage);
 const shownTitle = (el) => el.querySelector('yt-formatted-string').textContent;
 const shownThumb = (el) => decodeURIComponent(el.querySelector('ytlr-thumbnail-details').style.backgroundImage);
 
@@ -284,6 +308,19 @@ run(async () => {
       items[2].lineItemRenderer.badge.metadataBadgeRenderer.label === '◉', JSON.stringify(items));
     await waitFor(() => shownThumb(el).indexOf('COPY') !== -1, 1500);
     t('the tile on screen gets the thumbnail', shownThumb(el).indexOf('COPY') !== -1, shownThumb(el));
+  }
+
+  // ---- Search results: a lockup drawn before the answer gets it on screen too ----
+  {
+    const { win, parse, errors } = boot({ dearrowThumbnailFallback: 'original' });
+    const item = lockup('custom00001', 'Clickbait');
+    const el = renderLockup(win, item, { onScreen: true });
+    parse(browse([item]));
+    await waitFor(() => lockupTitle(el) === 'the iPhone review' && lockupThumb(el).indexOf('COPY') !== -1, 2500);
+    t('search result (lockup) on screen: DeArrow\'s title', lockupTitle(el) === 'the iPhone review', lockupTitle(el));
+    t('...and its thumbnail', lockupThumb(el).indexOf('COPY') !== -1, lockupThumb(el));
+    t('...its channel line untouched', el.querySelector('yt-metadata-row').textContent === 'Channel');
+    t('no jsdomError (lockup)', errors.length === 0, errors[0]);
   }
 
   // ---- Off in the panel: YouTube's own back everywhere ----
