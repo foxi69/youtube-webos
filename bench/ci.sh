@@ -168,6 +168,7 @@ run keyboard-search-cases-test "$B" legacy
 run math-letters-test
 run adblock-cases-test "$B" legacy
 run shortcut-actions-test "$B" legacy
+run comments-at-end-test "$B" legacy
 run page-bridge-test "$B" legacy
 run comments-fix-test "$B" legacy
 run rows-ahead-test "$B" legacy
@@ -217,7 +218,7 @@ for t in smoke adblock-test panel-test module-behaviour-test upstream-fixes-test
   page-bridge-test comments-fix-test rows-ahead-test lang-settings-fix-test app-quality-fix-test \
   emoji-font-test ai-filter-cases-test speed-cases-test thumbnail-quality-test \
   video-quality-cases-test dearrow-cases-test \
-  whos-watching-test; do
+  whos-watching-test comments-at-end-test; do
   run "$t" "$M" modern
 done
 run dearrow-test "$M" modern
