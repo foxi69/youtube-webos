@@ -993,9 +993,18 @@ function createOptionsPanel() {
   const elRemoveUpcoming = createConfigCheckbox('removeUpcomingVideos');
   const elRemoveMembersOnly = createConfigCheckbox('removeMembersOnly');
   // Show, Mark or Remove: not greyed out with Ad Blocking off, as Mark works
-  // without it (Remove then does nothing).
-  const elAiVideos = createAlignedCycleControl('aiVideos', aiVideoModes);
+  // without it. Remove does nothing then, and its value says so.
+  const aiVideoLabels = Object.assign({}, aiVideoModes);
+  Object.defineProperty(aiVideoLabels, 'remove', {
+    enumerable: true,
+    get: () => (configRead('enableAdBlock') ? aiVideoModes.remove : aiVideoModes.remove + ' (needs Ad Blocking)')
+  });
+  const elAiVideos = createAlignedCycleControl('aiVideos', aiVideoLabels);
   elAiVideos.id = 'ytaf-ai-videos';
+  configAddChangeListener('enableAdBlock', () => {
+    const value = elAiVideos.querySelector('.current-value');
+    if (value) value.textContent = aiVideoLabels[configRead('aiVideos')] || configRead('aiVideos');
+  });
   let elGuestPrompts = null;
   cosmeticGroup.push(elRemoveGlobalShorts, elRemoveLiveVideos, elRemoveTopLiveGames, elRemoveMostRelevant, elRemoveUpcoming, elRemoveMembersOnly, elRemoveMixes, elHideRecommended, elAiVideos);
   if (isGuestMode()) { elGuestPrompts = createConfigCheckbox('hideGuestSignInPrompts'); cosmeticGroup.push(elGuestPrompts); }

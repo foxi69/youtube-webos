@@ -284,6 +284,13 @@ const TRACKLIST_POLL_MS = 300;
 const TRACKLIST_TRIES = 10; // ~3 s for the captions module to list its tracks
 const REAPPLY_WINDOW_MS = 5000;
 const REAPPLY_POLL_MS = 500;
+// The TV app sets its own start-up subtitles 1 s after the player reports
+// onPlaybackStartExternal (off, unless YouTube wants them on). Turned on
+// before that, the subtitles showed for a second, went off and came back with
+// the re-apply: so the attempt waits for that decision, or, when the event
+// never comes, for a while after PLAYING.
+const APP_DECISION_MS = 1150;
+const NO_START_EVENT_MS = 2500;
 
 // The video this viewing's one attempt was made for. Kept for the viewing
 // only: remembered for the whole session, a video watched again later got no
@@ -291,12 +298,67 @@ const REAPPLY_POLL_MS = 500;
 let attemptedVideoId = null;
 let lastUserKeyAt = 0;
 let autoTimer = null;
+let startTimer = null;
+let startSince = 0;
+let externalStartAt = 0;
+const hookedPlayers = new WeakSet();
 
 function cancelAutoEnable() {
   if (autoTimer !== null) {
     clearTimeout(autoTimer);
     autoTimer = null;
   }
+}
+
+function cancelStart() {
+  if (startTimer !== null) {
+    clearTimeout(startTimer);
+    startTimer = null;
+  }
+}
+
+/** Runs the attempt after `delay`; a key pressed since the first call still ends it. */
+function scheduleAutoEnable(delay) {
+  if (startTimer === null) startSince = Date.now();
+  else clearTimeout(startTimer);
+  startTimer = setTimeout(() => {
+    startTimer = null;
+    autoEnableCaptions(startSince);
+  }, delay);
+}
+
+// YouTube's own track, put on when the player remembers subtitles being on,
+// showed until the app's decision (or ours): with Off, or Translated and a
+// language, it goes at once. Once per video, so one picked by hand stays.
+let checkedVideoId = null;
+
+function dropYouTubeTrack(player) {
+  const mode = configRead('subtitlesAtStart');
+  const code = mode === 'translated' ? currentTarget() : null;
+  if ((mode !== 'off' && !code) || isShortsPage() || !isWatchPage()) return;
+  const videoId = playerVideoId(player);
+  if (!videoId || videoId === checkedVideoId) return;
+  checkedVideoId = videoId;
+  const track = captionsOption(player, 'track');
+  if (isObject(track) && track.languageCode && !(code && isTargetTrack(track, code))) setCaptionsTrack(player, {});
+}
+
+function onPlaying() {
+  const player = captionsPlayer();
+  if (player) dropYouTubeTrack(player);
+  if (configRead('subtitlesAtStart') !== 'translated') return;
+  if (player && !hookedPlayers.has(player) && typeof player.addEventListener === 'function') {
+    hookedPlayers.add(player);
+    try {
+      player.addEventListener('onPlaybackStartExternal', () => {
+        externalStartAt = Date.now();
+        scheduleAutoEnable(APP_DECISION_MS);
+      });
+    } catch { /* NO_START_EVENT_MS covers it */ }
+  }
+  // PLAYING comes just before onPlaybackStartExternal, which then sets the time.
+  const sinceStart = Date.now() - externalStartAt;
+  scheduleAutoEnable(sinceStart < APP_DECISION_MS ? APP_DECISION_MS - sinceStart : NO_START_EVENT_MS);
 }
 
 function captionsPlayer() {
@@ -352,7 +414,7 @@ function watchForReset(player, videoId, code, track, appliedAt) {
   autoTimer = setTimeout(check, REAPPLY_POLL_MS);
 }
 
-function autoEnableCaptions() {
+function autoEnableCaptions(since) {
   // The watch page only: the player also reports the tile previews that play
   // in it on Home, and a preview counted as the video's one attempt, so the
   // video then opened got no subtitles.
@@ -372,7 +434,7 @@ function autoEnableCaptions() {
     if (typeof player.loadModule === 'function') player.loadModule('captions');
   } catch { /* the tracklist poll below copes */ }
 
-  const startedAt = Date.now();
+  const startedAt = since || Date.now();
   let tries = 0;
   const attempt = () => {
     autoTimer = null;
@@ -405,19 +467,21 @@ window.addEventListener('keydown', (evt) => {
 
 // Published by video-quality.js for every player state change on a watch page.
 window.addEventListener('yt-player-state-change', (evt) => {
-  if (evt && evt.detail && evt.detail.state === STATE_PLAYING) autoEnableCaptions();
+  if (evt && evt.detail && evt.detail.state === STATE_PLAYING) onPlaying();
 });
 
 window.addEventListener('ytaf-page-update', (evt) => {
   if (!evt || !evt.detail || !evt.detail.isWatch) {
     cancelAutoEnable();
+    cancelStart();
     // The viewing is over: opened again, the video gets its attempt again.
     attemptedVideoId = null;
+    checkedVideoId = null;
     return;
   }
   // A watch page entered with the video already running gets no PLAYING change.
   const player = captionsPlayer();
   try {
-    if (player && typeof player.getPlayerState === 'function' && player.getPlayerState() === STATE_PLAYING) autoEnableCaptions();
+    if (player && typeof player.getPlayerState === 'function' && player.getPlayerState() === STATE_PLAYING) onPlaying();
   } catch { /* the state-change event will come */ }
 });

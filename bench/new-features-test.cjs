@@ -476,9 +476,16 @@ reporter.run(async () => {
     for (let i = 0; i < 20; i++) h.pump();
     const row = h.win.document.querySelector('#ytaf-ai-videos');
     const value = () => row.querySelector('.current-value').textContent;
-    t('[panel] AI Videos is one row showing the stored choice', !!row && value() === 'Remove', row && value());
+    t('[panel] AI Videos is one row showing the stored choice, Remove saying it needs Ad Blocking',
+      !!row && value() === 'Remove (needs Ad Blocking)', row && value());
     t('[panel] AI Videos stays usable when Ad Blocking is off', row.tabIndex === 0 && row.style.opacity !== '0.5');
     t('[panel] no separate Remove / Mark AI checkboxes', !h.win.document.querySelector('#ytaf-remove-ai, #ytaf-mark-ai'));
+    const adBlock = [...h.win.document.querySelectorAll('.ytaf-ui-container label')]
+      .find((l) => l.textContent.trim() === 'Ad Blocking').querySelector('input');
+    adBlock.checked = true;
+    adBlock.dispatchEvent(new h.win.Event('change', { bubbles: true }));
+    await wait(50);
+    t('[panel] Ad Blocking switched on: the row says Remove', value() === 'Remove', value());
     h.win.close();
   }
   {

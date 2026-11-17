@@ -589,6 +589,14 @@
   width: 50%;
 }
 
+/* A cycle row (AI Videos) takes the whole width: half of it leaves no room
+   between its label and its value. */
+.ytaf-page-sectioned .ytaf-section-2col > .shortcut-control-row {
+  flex: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+
 /* An odd number of rows (guest mode adds a seventh) leaves the last one alone
    on its row - let it keep half width so the column edge stays straight. */
 .ytaf-page-sectioned .ytaf-section-2col > label:last-child {
