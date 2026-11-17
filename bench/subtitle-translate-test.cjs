@@ -370,14 +370,52 @@ run(async () => {
     env.win.close();
   }
 
-  // A Hungarian track already on at the start (the player remembers it): off
-  // at once, as the app turns it off a second later anyway, and on again after that.
+  // Translated: the opened video's response starts with the Hungarian track,
+  // turned on, so the player puts it on as it loads; YouTube's own default goes
+  // from any other response (a tile preview, the video behind "Who's watching").
   {
-    const env = await boot(AUTO, { tracklist: [huAsr, huHuman], track: huHuman, appDecision: (pl) => { pl.track = {}; } });
+    const KEY = 'yt-html5-player-modules::subtitlesModuleData::module-enabled';
+    const caps = () => ({
+      captionTracks: [track('en'), track('hu', { kind: 'asr' })],
+      translationLanguages: [tl('en', 'English')],
+      audioTracks: [{ captionTrackIndices: [0, 1], defaultCaptionTrackIndex: 0, captionsInitialState: 'CAPTIONS_INITIAL_STATE_ON_RECOMMENDED' }]
+    });
+    const env = await boot(AUTO);
+    env.win.localStorage.setItem(KEY, 'false');
+    const opened = env.parse(response(caps())).captions.playerCaptionsTracklistRenderer;
+    const at = opened.audioTracks[0];
+    t(n('Translated, the opened video: starts with the Hungarian track, turned on'),
+      at.defaultCaptionTrackIndex === 1 && at.captionsInitialState === 'CAPTIONS_INITIAL_STATE_ON_REQUIRED', JSON.stringify(at));
+    t(n('...and the player told subtitles were on, so it turns that track on as it loads'), env.win.localStorage.getItem(KEY) === 'true');
+
+    env.win.localStorage.setItem(KEY, 'false');
+    const other = env.parse(response(caps(), VIDEO2)).captions.playerCaptionsTracklistRenderer.audioTracks[0];
+    t(n("Translated, another video (a preview): YouTube's default dropped, subtitles start off"),
+      other.defaultCaptionTrackIndex === undefined && other.captionsInitialState === 'CAPTIONS_INITIAL_STATE_OFF_RECOMMENDED' &&
+      env.win.localStorage.getItem(KEY) === 'false', JSON.stringify(other));
+
+    env.win.document.body.className = 'WEB_PAGE_TYPE_ACCOUNT_SELECTOR';
+    const picker = env.parse(response(caps())).captions.playerCaptionsTracklistRenderer.audioTracks[0];
+    t(n("Translated, the video loading behind Who's watching: starts off"),
+      picker.defaultCaptionTrackIndex === undefined && picker.captionsInitialState === 'CAPTIONS_INITIAL_STATE_OFF_RECOMMENDED', JSON.stringify(picker));
+    env.win.close();
+  }
+  {
+    const env = await boot({ subtitleTranslateLang: 'hu', subtitlesAtStart: 'youtube' });
+    const caps = { captionTracks: [track('en'), track('hu')], audioTracks: [{ captionTrackIndices: [0, 1], defaultCaptionTrackIndex: 0 }] };
+    const at = env.parse(response(caps)).captions.playerCaptionsTracklistRenderer.audioTracks[0];
+    t(n("YouTube's Choice: the response's default is left as it is"), at.defaultCaptionTrackIndex === 0 && at.captionsInitialState === undefined, JSON.stringify(at));
+    env.win.close();
+  }
+
+  // A Hungarian track already on at the start (the default given in the
+  // response, or the player remembering it): kept, the module not loaded again.
+  {
+    const env = await boot(AUTO, { tracklist: [huAsr, huHuman], track: huHuman });
     env.p.emit(1);
     await pageMs(2500);
-    t(n('a Hungarian track on at the start: off at once, on after the app’s decision, once'),
-      env.p.sets.length === 2 && JSON.stringify(env.p.sets[0]) === '{}' && env.p.track === huHuman, JSON.stringify(env.p.sets));
+    t(n('a Hungarian track on at the start: kept, nothing set, the module not loaded again'),
+      env.p.sets.length === 0 && env.p.loads.length === 0 && env.p.track === huHuman, JSON.stringify(env.p.sets) + ' loads=' + env.p.loads.join());
     env.win.close();
   }
 

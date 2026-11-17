@@ -247,8 +247,9 @@ run(async () => {
   // drop YouTube's default track ----
   for (const [mode, lang, drops] of [['youtube', 'hu', false], ['off', 'off', true], ['translated', 'hu', true], ['translated', 'off', false]]) {
     const { P } = boot({ subtitlesAtStart: mode, subtitleTranslateLang: lang });
-    // streamingData: a player response.
-    const r = P({ responseContext: { _pad: pad }, streamingData: { adaptiveFormats: [] },
+    // streamingData: a player response. Over 1000 bytes: Translated is
+    // subtitle-translate.js's, which skips smaller blobs.
+    const r = P({ responseContext: { _pad: pad + pad }, streamingData: { adaptiveFormats: [] },
       captions: { playerCaptionsTracklistRenderer: { audioTracks: [{ defaultCaptionTrackIndex: 0, captionsInitialState: 'CAPTIONS_INITIAL_STATE_ON_REQUIRED' }] } } });
     const track = r.captions.playerCaptionsTracklistRenderer.audioTracks[0];
     const kept = track.defaultCaptionTrackIndex === 0 && track.captionsInitialState === 'CAPTIONS_INITIAL_STATE_ON_REQUIRED';

@@ -233,7 +233,54 @@ function patchResponse(res, code) {
     const renderer = c.captions.playerCaptionsTracklistRenderer;
     if (!isObject(renderer)) continue;
     patchRenderer(renderer, code);
-    if (isObject(c.videoDetails)) rememberResponseTrack(c.videoDetails.videoId, pickTrack(renderer.captionTracks, code));
+    const target = pickTrack(renderer.captionTracks, code);
+    const videoId = isObject(c.videoDetails) ? c.videoDetails.videoId : null;
+    if (configRead('subtitlesAtStart') === 'translated') startWith(renderer, isOpenedVideo(videoId) ? target : null);
+    if (videoId) rememberResponseTrack(videoId, target);
+  }
+}
+
+/**
+ * The video opened on the watch page, not a tile preview, a Short or the video
+ * loading behind "Who's watching": those must not start with subtitles.
+ */
+function isOpenedVideo(videoId) {
+  if (typeof videoId !== 'string' || !videoId || isShortsPage()) return false;
+  if (document.body && /ACCOUNT_SELECTOR/.test(document.body.className)) return false;
+  const m = /^#\/watch\b.*[?&]v=([\w-]{11})/.exec(location.hash);
+  return !!m && m[1] === videoId;
+}
+
+// The player's own memory of subtitles being on. Without it, it leaves even a
+// default track off as the video loads, and only the app's decision a second
+// later turns it on. It sets this itself once any track is on.
+const CAPTIONS_REMEMBERED_KEY = 'yt-html5-player-modules::subtitlesModuleData::module-enabled';
+
+/**
+ * Translated. For the opened video, the target track becomes the default,
+ * turned on from the start: the player puts it on as the video loads and the
+ * app's own start-up decision a second later keeps it, so the subtitles are
+ * there from the first line and never go off and on. Any other response, or
+ * none in the language: YouTube's own default goes and subtitles start off
+ * (the attempt below then turns on the target, if there is one).
+ */
+function startWith(renderer, target) {
+  const index = target && Array.isArray(renderer.captionTracks) ? renderer.captionTracks.indexOf(target) : -1;
+  if (!Array.isArray(renderer.audioTracks)) return;
+  for (const at of renderer.audioTracks) {
+    if (!isObject(at)) continue;
+    if (index >= 0) {
+      at.defaultCaptionTrackIndex = index;
+      at.captionsInitialState = 'CAPTIONS_INITIAL_STATE_ON_REQUIRED';
+    } else {
+      delete at.defaultCaptionTrackIndex;
+      at.captionsInitialState = 'CAPTIONS_INITIAL_STATE_OFF_RECOMMENDED';
+    }
+  }
+  if (index >= 0) {
+    try {
+      localStorage.setItem(CAPTIONS_REMEMBERED_KEY, 'true');
+    } catch { /* the app's decision turns it on a second later */ }
   }
 }
 
@@ -375,7 +422,7 @@ function dropYouTubeTrack(player) {
   if (!videoId || videoId === checkedVideoId) return;
   checkedVideoId = videoId;
   const track = captionsOption(player, 'track');
-  if (isObject(track) && track.languageCode) setCaptionsTrack(player, {});
+  if (isObject(track) && track.languageCode && !(code && isTargetTrack(track, code))) setCaptionsTrack(player, {});
 }
 
 function onPlaying() {
@@ -464,6 +511,9 @@ function autoEnableCaptions(since) {
 
   attemptedVideoId = videoId;
   cancelAutoEnable();
+  // Already on (the default given in the response): the module is not loaded
+  // again, which could drop the line on screen.
+  if (isTargetTrack(captionsOption(player, 'track'), code)) return;
 
   // The captions module loads on demand; until it has, the tracklist is empty.
   try {
