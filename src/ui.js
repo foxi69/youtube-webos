@@ -1713,6 +1713,8 @@ function toggleCommentsLogic() {
 // (leaving, most likely), and once a video: closed, it stays closed.
 const END_KEY_WINDOW_MS = 3000;
 const END_OPEN_DELAY_MS = 1000;
+const END_COMMENT_SELECTORS = 'yt-button-container[aria-label="Comments"], ' +
+    '[idomkey="TRANSPORT_CONTROLS_BUTTON_TYPE_COMMENTS"] ytlr-button';
 let lastViewerKeyAt = 0;
 let commentsOpenedFor = null;
 let endTimer = null;
@@ -1740,8 +1742,11 @@ window.addEventListener('yt-player-state-change', ({ detail }) => {
         if (!isWatchPage() || isShortsPage() || !window.location.hash.includes(videoId)) return;
         if (commentsOpenedFor === videoId || isEngagementPanelVisible() || isAutoplayOn()) return;
         // No button (comments turned off, or none): nothing, and no toast.
+        // Pressed with no key, so only a button known to be the comments one:
+        // the positional selectors of COMMENT_SELECTORS (and one cached by the
+        // Toggle Comments key) could hit another button there, a dislike say.
         const target = findPlayerButton((d) => isCommentsButton(d) && !d.isDisabled) ||
-            resolveCached('comments', COMMENT_SELECTORS);
+            document.querySelector(END_COMMENT_SELECTORS);
         const button = target && target.closest('yt-button-container, ytlr-button');
         if (!button) return;
         commentsOpenedFor = videoId;

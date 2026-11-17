@@ -51,10 +51,19 @@ async function boot(cfg = {}, opts = {}) {
   const clicks = [];
   const actions = doc.createElement('ytlr-player-actions-container');
   const renderer = doc.createElement('ytlr-button-renderer');
-  renderer.__instance = { props: { data: { icon: { iconType: 'COMMENT' } } } };
-  const button = doc.createElement('yt-button-container');
-  button.addEventListener('click', () => clicks.push('comments'));
-  renderer.appendChild(button);
+  if (opts.noComments) {
+    // Comments off: another button where the positional selectors look.
+    renderer.setAttribute('idomkey', 'item-1');
+    renderer.__instance = { props: { data: { icon: { iconType: 'DISLIKE' } } } };
+    const other = doc.createElement('ytlr-button');
+    other.addEventListener('click', () => clicks.push('dislike'));
+    renderer.appendChild(other);
+  } else {
+    renderer.__instance = { props: { data: { icon: { iconType: 'COMMENT' } } } };
+    const button = doc.createElement('yt-button-container');
+    button.addEventListener('click', () => clicks.push('comments'));
+    renderer.appendChild(button);
+  }
   actions.appendChild(renderer);
   doc.querySelector('ytlr-app').appendChild(actions);
   const state = (s, id = VIDEO_ID) =>
@@ -147,6 +156,16 @@ run(async () => {
     env.state(0);
     await wait(SETTLE_MS);
     t(n('...and the next end still opens the comments'), env.clicks.length === 1, env.clicks.join());
+  }
+  {
+    // No comments button, another one at the place the positional selectors
+    // name: nothing pressed with no key.
+    const env = await boot({}, { noComments: true });
+    env.state(1);
+    env.state(0);
+    await wait(SETTLE_MS);
+    t(n('no comments button: no other button at its place is pressed'), env.clicks.length === 0, env.clicks.join());
+    t(n('...and no toast'), env.toasts() === '', env.toasts());
   }
   {
     // An autoplay record of another shape is not known: on, so not opened.
