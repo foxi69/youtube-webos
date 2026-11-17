@@ -55,7 +55,7 @@ function response(renderer, videoId = VIDEO, nested = false) {
 function stubPlayer(el, opts) {
   const p = {
     listeners: [], state: -1, videoId: VIDEO, track: opts.track || null, tracklist: opts.tracklist || [],
-    sets: [], loads: [], listAsked: 0, throwOnSet: false, startListeners: [], started: null
+    sets: [], loads: [], listAsked: 0, throwOnSet: false, startListeners: [], started: null, setAt: []
   };
   Object.assign(el, {
     setPlaybackQualityRange() {}, setPlaybackQuality() {},
@@ -73,6 +73,7 @@ function stubPlayer(el, opts) {
     setOption: (m, name, value) => {
       if (m !== 'captions' || name !== 'track') return;
       p.sets.push(value);
+      p.setAt.push(Date.now());
       if (p.throwOnSet) throw new Error('captions module busy');
       p.track = value;
     },
@@ -326,11 +327,46 @@ run(async () => {
   // A player that never sends onPlaybackStartExternal: turned on a while after PLAYING.
   {
     const env = await boot(AUTO, { tracklist: [huHuman], noStartEvent: true });
+    const emittedAt = Date.now();
     env.p.emit(1);
-    await pageMs(1500);
-    const early = env.p.sets.length;
-    await pageMs(1300);
-    t(n('no start event: nothing at 1.5 s, the track by 2.8 s'), early === 0 && env.p.sets.length === 1, `early=${early} sets=${env.p.sets.length}`);
+    await pageMs(3500);
+    // Measured in page time from the set itself, so the waits' slack cannot hide a later fallback.
+    const after = env.p.setAt.length ? (env.p.setAt[0] - emittedAt) * SPEED : -1;
+    t(n('no start event: the track 2.5 s after PLAYING'), env.p.sets.length === 1 && after >= 2500 && after < 2800, `after=${after} sets=${env.p.sets.length}`);
+    env.win.close();
+  }
+
+  // Next pressed during a video's first second: the next video still gets its
+  // subtitles (that key was for the video before).
+  {
+    const huOther = { languageCode: 'hu', vss_id: '.hu2' };
+    const env = await boot(AUTO, { tracklist: [huHuman] });
+    env.p.emit(1);
+    await pageMs(500);
+    dispatchTrusted(env.win.document.body, new env.win.KeyboardEvent('keydown', { keyCode: 13, bubbles: true }));
+    env.p.videoId = VIDEO2;
+    env.p.tracklist = [huOther];
+    env.p.emit(3);
+    env.p.emit(1);
+    await pageMs(2500);
+    t(n('Next in the first second: the next video gets its track'), env.p.sets.length === 1 && env.p.sets[0] === huOther, JSON.stringify(env.p.sets));
+    env.win.close();
+  }
+
+  // Off: the app turns subtitles on a second after the start (YouTube wants
+  // them, or they were on earlier in the session): turned off again, unless a
+  // key was pressed.
+  for (const key of [false, true]) {
+    const en = { languageCode: 'en', vss_id: '.en' };
+    const env = await boot(Object.assign({}, AUTO, { subtitlesAtStart: 'off' }), { tracklist: [en], appDecision: (pl) => { pl.track = en; } });
+    env.p.emit(1);
+    if (key) {
+      await pageMs(300);
+      dispatchTrusted(env.win.document.body, new env.win.KeyboardEvent('keydown', { keyCode: 13, bubbles: true }));
+    }
+    await pageMs(2500);
+    t(n(key ? 'Off, a key pressed before the app turns subtitles on: left on' : 'Off: subtitles the app turns on are turned off again'),
+      key ? env.p.track === en && env.p.sets.length === 0 : JSON.stringify(env.p.track) === '{}' && env.p.sets.length === 1, JSON.stringify(env.p.sets));
     env.win.close();
   }
 

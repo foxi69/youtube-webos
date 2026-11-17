@@ -300,7 +300,10 @@ let lastUserKeyAt = 0;
 let autoTimer = null;
 let startTimer = null;
 let startSince = 0;
+let startVideoId = null;
 let externalStartAt = 0;
+// Off: the video the app's start-up decision was checked for.
+let offVideoId = null;
 const hookedPlayers = new WeakSet();
 
 function cancelAutoEnable() {
@@ -317,14 +320,44 @@ function cancelStart() {
   }
 }
 
-/** Runs the attempt after `delay`; a key pressed since the first call still ends it. */
+/**
+ * Runs the start-up handling after `delay`. A key pressed since the first call
+ * for this video still ends it; one for the video before (Next) does not.
+ */
 function scheduleAutoEnable(delay) {
-  if (startTimer === null) startSince = Date.now();
-  else clearTimeout(startTimer);
+  const player = captionsPlayer();
+  const videoId = player && playerVideoId(player);
+  if (startTimer === null || videoId !== startVideoId) startSince = Date.now();
+  startVideoId = videoId;
+  clearTimeout(startTimer);
   startTimer = setTimeout(() => {
     startTimer = null;
-    autoEnableCaptions(startSince);
+    if (configRead('subtitlesAtStart') === 'off') enforceOff(startSince);
+    else autoEnableCaptions(startSince);
   }, delay);
+}
+
+/**
+ * Off, after the app's start-up decision: it turns subtitles on when YouTube
+ * wants them, or when they were turned on earlier in the session. Kept off for
+ * a few seconds (the app may wait for the tracklist), unless a key is pressed.
+ */
+function enforceOff(since) {
+  if (isShortsPage() || !isWatchPage()) return;
+  const player = captionsPlayer();
+  if (!player) return;
+  const videoId = playerVideoId(player);
+  if (!videoId || videoId === offVideoId) return;
+  offVideoId = videoId;
+  cancelAutoEnable();
+  const check = () => {
+    autoTimer = null;
+    if (lastUserKeyAt > since || !player.isConnected || playerVideoId(player) !== videoId) return;
+    const track = captionsOption(player, 'track');
+    if (isObject(track) && track.languageCode) setCaptionsTrack(player, {});
+    if (Date.now() - since < REAPPLY_WINDOW_MS) autoTimer = setTimeout(check, REAPPLY_POLL_MS);
+  };
+  check();
 }
 
 // YouTube's own track, put on when the player remembers subtitles being on,
@@ -348,7 +381,8 @@ function dropYouTubeTrack(player) {
 function onPlaying() {
   const player = captionsPlayer();
   if (player) dropYouTubeTrack(player);
-  if (configRead('subtitlesAtStart') !== 'translated') return;
+  const mode = configRead('subtitlesAtStart');
+  if (mode !== 'translated' && mode !== 'off') return;
   if (player && !hookedPlayers.has(player) && typeof player.addEventListener === 'function') {
     hookedPlayers.add(player);
     try {
@@ -479,6 +513,7 @@ window.addEventListener('ytaf-page-update', (evt) => {
     // The viewing is over: opened again, the video gets its attempt again.
     attemptedVideoId = null;
     checkedVideoId = null;
+    offVideoId = null;
     return;
   }
   // A watch page entered with the video already running gets no PLAYING change.
