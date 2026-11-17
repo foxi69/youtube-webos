@@ -48,8 +48,11 @@ const KEEP_MS = 80000;
 const KEEP_MAX = 3;
 /** Kept start pings: { cpn, at, url, send() }, oldest first. */
 const kept = [];
-// Requests for a playback wait together until its retained start has settled.
+// Requests for a playback wait together until its retained start has settled,
+// at most START_WAIT_MS: a start that hangs does not hold back the playback's
+// own pings (a held XHR's native timeout only starts once it is sent).
 const starting = new Map();
+const START_WAIT_MS = 5000;
 
 /** 'playback' or 'watchtime' and the query of such a ping, or null. */
 function pingOf(url) {
@@ -142,7 +145,10 @@ function startBefore(cpn) {
   } catch {
     return Promise.resolve();
   }
-  const pending = Promise.resolve(sent).then(() => {}, () => {});
+  const pending = Promise.race([
+    Promise.resolve(sent).then(() => {}, () => {}),
+    new Promise((resolve) => { setTimeout(resolve, START_WAIT_MS); })
+  ]);
   starting.set(cpn, pending);
   pending.then(() => { if (starting.get(cpn) === pending) starting.delete(cpn); });
   return pending;

@@ -340,6 +340,38 @@ run(async () => {
   }
 
   {
+    // A retained start that never answers: the playback's pings wait 5 s at most.
+    const env = boot('WEB_PAGE_TYPE_BROWSE', {}, (url) =>
+      url === start('hung') ? new Promise(() => {}) : Promise.resolve({ ok: true, status: 204 }));
+    env.viaFetch(start('hung'));
+    env.doc.body.className = 'WEB_PAGE_TYPE_WATCH';
+    const timers = [];
+    const realTimeout = env.win.setTimeout;
+    env.win.setTimeout = (fn, ms) => { timers.push({ fn, ms }); return 0; };
+    const first = ping('watchtime', 'hung', OPENED);
+    const one = env.win.fetch(first);
+    const xhr = new env.win.XMLHttpRequest();
+    xhr.open('POST', ping('watchtime', 'hung', '&st=14&et=24'), true);
+    xhr.send('held');
+    env.win.setTimeout = realTimeout;
+    await wait(10);
+    t('a hung start holds its pings meanwhile',
+      same(env.fetched, [start('hung')]) && env.xhrs.length === 0, env.fetched.join(' | '));
+    const deadline = timers.find((x) => x.ms === 5000);
+    t('a hung start has a 5 s deadline', !!deadline, JSON.stringify(timers.map((x) => x.ms)));
+    if (deadline) {
+      deadline.fn();
+      await one;
+    }
+    await wait(10);
+    t('past the deadline the held pings go out',
+      same(env.fetched, [start('hung'), first]) && env.xhrs.length === 1 && env.xhrs[0].body === 'held',
+      env.fetched.join(' | ') + ' / ' + JSON.stringify(env.xhrs));
+    const later = ping('watchtime', 'hung', '&st=24&et=34');
+    t('a later ping of the playback no longer waits', env.viaFetch(later), env.fetched.join(' | '));
+  }
+
+  {
     const env = boot('WEB_PAGE_TYPE_BROWSE');
     env.viaFetch(start('unsent'));
     env.doc.body.className = 'WEB_PAGE_TYPE_WATCH';
