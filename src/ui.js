@@ -1389,7 +1389,8 @@ function chapterStarts(chapterEls, duration) {
   const host = document.querySelector('ytlr-multi-markers-player-bar-renderer');
   const props = host && host.__instance && host.__instance.props;
   const own = props && props.data && Array.isArray(props.data.chapters) ? props.data.chapters : [];
-  const starts = own.map((chapter) => Number(chapter && chapter.start)).filter((s) => isFinite(s));
+  // A number only: Number(null) is 0, a chapter at the start that is not there.
+  const starts = own.map((chapter) => chapter && chapter.start).filter((s) => typeof s === 'number' && isFinite(s));
   if (starts.length) return starts;
   const widths = [];
   let total = 0;
