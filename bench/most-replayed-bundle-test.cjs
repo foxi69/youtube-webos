@@ -265,6 +265,29 @@ run(async () => {
     win.close();
   }
 
+  // Same geometry, different host: do not keep the old static host's
+  // position:relative rule when YouTube replaces it with a positioned one.
+  {
+    const env = boot({ answers: { [A]: heatmap(VALUES_A) } });
+    const host = env.doc.querySelector(HOST);
+    env.box(host, 100, 900, 1720, 80);
+    env.box(host.querySelector('[idomkey="progress-bar"]'), 160, 950, 1600, 6);
+    await wait(TICK * 2);
+    t(n('host replacement: initial static bar needs relative positioning'),
+      env.rule().includes('position:relative!important;'), env.rule());
+    const replacement = host.cloneNode(true);
+    replacement.style.position = 'absolute';
+    replacement.style.display = 'block';
+    host.replaceWith(replacement);
+    env.box(replacement, 100, 900, 1720, 80);
+    env.box(replacement.querySelector('[idomkey="progress-bar"]'), 160, 950, 1600, 6);
+    await wait(TICK * 2);
+    t(n('host replacement: same-sized positioned bar keeps its position'),
+      env.rule().includes(`${HOST}::after{`) && !env.rule().includes('position:relative!important;'), env.rule());
+    t(n('host replacement: no page errors'), env.errors.length === 0, env.errors.join(' | '));
+    env.win.close();
+  }
+
   // ---- The setting off from the start ----
   {
     const env = boot({ on: false, answers: { [A]: heatmap(VALUES_A) } });

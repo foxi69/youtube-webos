@@ -44,6 +44,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 + The settings load as defaults when the TV's storage refuses to be read (SecurityError); the whole add-on stopped at its start.
 + The long-press menu and the queue find the TV app's command resolver also when another entry in the app's registry has no instance yet (null); the search stopped there.
 + Watch time: coming back from the background to a video that is buffering no longer counts the wait; it counts from when the video plays again.
++ Most Replayed graph: when YouTube puts a new progress bar of the same size in place of the old one, its own positioning is kept; the old bar's position:relative stayed on it.
 
 ## Docs
 
