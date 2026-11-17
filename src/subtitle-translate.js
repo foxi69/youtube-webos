@@ -329,7 +329,9 @@ function scheduleAutoEnable(delay) {
 
 // YouTube's own track, put on when the player remembers subtitles being on,
 // showed until the app's decision (or ours): with Off, or Translated and a
-// language, it goes at once. Once per video, so one picked by hand stays.
+// language, it goes at once. One already in the language too: the app turns
+// it off a second later and the attempt turns it on again, a blink in the
+// middle of the first line. Once per video, so one picked by hand stays.
 let checkedVideoId = null;
 
 function dropYouTubeTrack(player) {
@@ -340,7 +342,7 @@ function dropYouTubeTrack(player) {
   if (!videoId || videoId === checkedVideoId) return;
   checkedVideoId = videoId;
   const track = captionsOption(player, 'track');
-  if (isObject(track) && track.languageCode && !(code && isTargetTrack(track, code))) setCaptionsTrack(player, {});
+  if (isObject(track) && track.languageCode) setCaptionsTrack(player, {});
 }
 
 function onPlaying() {

@@ -334,12 +334,24 @@ run(async () => {
     env.win.close();
   }
 
-  // A Hungarian track already on, native or as a translation: left alone.
-  for (const [label, on] of [['a Hungarian track', huHuman], ['a translation into Hungarian', huTranslated]]) {
-    const env = await boot(AUTO, { tracklist: [huAsr, huHuman], track: on });
+  // A Hungarian track already on at the start (the player remembers it): off
+  // at once, as the app turns it off a second later anyway, and on again after that.
+  {
+    const env = await boot(AUTO, { tracklist: [huAsr, huHuman], track: huHuman, appDecision: (pl) => { pl.track = {}; } });
     env.p.emit(1);
-    await pageMs(1000);
-    t(n(`${label} already on: nothing is set`), env.p.sets.length === 0, JSON.stringify(env.p.sets));
+    await pageMs(2500);
+    t(n('a Hungarian track on at the start: off at once, on after the app’s decision, once'),
+      env.p.sets.length === 2 && JSON.stringify(env.p.sets[0]) === '{}' && env.p.track === huHuman, JSON.stringify(env.p.sets));
+    env.win.close();
+  }
+
+  // The app itself turns on a Hungarian track, native or as a translation
+  // (YouTube wants subtitles): left alone.
+  for (const [label, on] of [['a Hungarian track', huHuman], ['a translation into Hungarian', huTranslated]]) {
+    const env = await boot(AUTO, { tracklist: [huAsr, huHuman], appDecision: (pl) => { pl.track = on; } });
+    env.p.emit(1);
+    await pageMs(2500);
+    t(n(`${label} turned on by the app: nothing is set`), env.p.sets.length === 0, JSON.stringify(env.p.sets));
     env.win.close();
   }
 
