@@ -523,6 +523,31 @@ run(async () => {
   }
 
   // ---- Chapters ----
+  // Missing renderer chapter data must use the visible bar, rather than
+  // coercing null into a spurious chapter at 0. Test through the remote key.
+  for (const [label, chapters] of [
+    ['empty data (control)', []],
+    ['null entry', [null]],
+    ['null start', [{ start: null }]]
+  ]) {
+    const bar = '<ytlr-multi-markers-player-bar-renderer><div idomkey="progress-bar">' +
+      '<div idomkey="chapter-0" style="width: 50%"></div>' +
+      '<div idomkey="chapter-1" style="width: 50%"></div>' +
+      '<div idomkey="playhead"></div></div></ytlr-multi-markers-player-bar-renderer>';
+    const env = await boot({ shortcut_key_0: 'chapter_skip_prev' }, { html: bar });
+    env.doc.querySelector('ytlr-multi-markers-player-bar-renderer').__instance = {
+      props: { data: { chapters } }
+    };
+    env.vs.time = 100;
+    await env.press(D(5));
+    t(n(`chapter fallback (${label}): next key seeks to 300 seconds`),
+      env.vs.time === 300 && /Next Chapter/.test(env.toasts()), `${env.vs.time} ${env.toasts()}`);
+    env.vs.time = 320;
+    await env.press(D(0));
+    t(n(`chapter fallback (${label}): previous key seeks to 300 seconds`),
+      env.vs.time === 300, String(env.vs.time));
+    t(n(`chapter fallback (${label}): no page errors`), env.errors.length === 0, env.errors.join(' | '));
+  }
   {
     // Four chapters of a quarter each: 0:00, 2:30, 5:00, 7:30 of a 10-minute video.
     const bar = '<ytlr-multi-markers-player-bar-renderer><div idomkey="progress-bar">' +
@@ -543,6 +568,22 @@ run(async () => {
     await env.press(D(5));
     t(n('next chapter in the last one: "No next chapter", nothing moves'), env.vs.time === 500 &&
       /No next chapter/.test(env.toasts()), env.toasts());
+  }
+  {
+    // The renderer's data has the chapters' own starts. The bar's widths are whole pixels and, on a
+    // long video, cover only some chapters: here two halves (0:00, 5:00) for four chapters.
+    const bar = '<ytlr-multi-markers-player-bar-renderer><div idomkey="progress-bar">' +
+      '<div idomkey="chapter-0" style="width: 50%"></div><div idomkey="chapter-1" style="width: 50%"></div>' +
+      '<div idomkey="playhead"></div></div></ytlr-multi-markers-player-bar-renderer>';
+    const env = await boot({ shortcut_key_0: 'chapter_skip_prev' }, { html: bar });
+    env.doc.querySelector('ytlr-multi-markers-player-bar-renderer').__instance =
+      { props: { data: { chapters: [0, 70, 333, 480].map((start) => ({ start, title: { simpleText: 'c' } })) } } };
+    env.vs.time = 100;
+    await env.press(D(5));
+    t(n('next chapter: the start the data gives (5:33), not the bar\'s 5:00'), env.vs.time === 333, String(env.vs.time));
+    env.vs.time = 400;
+    await env.press(D(0));
+    t(n('previous chapter: back to the data\'s start too'), env.vs.time === 333, String(env.vs.time));
   }
   {
     // A bar with no chapter markers on it.
