@@ -338,6 +338,44 @@ runTest(() => import(MODULE).then(({ watchPosition }) => {
     b.player.time = 0;
     b.run(1000);
     t('...and with no cap set, a start over after it is left alone', b.player.seeks.join() === '5', b.player.seeks.join());
+    // The first seek still under way on a third tick (the hold ran out): sent
+    // again, and the cap's reload once it landed is still put back.
+    const c = setup({ state: 1, t: 0.1, vt: 0.1 });
+    watchPosition(c.win, c.player, 5, () => true, { isLow: () => false, setCap: () => true, keys: () => 0 }, 'abcdefghijk');
+    c.run(250);
+    c.player.state = 3;
+    c.run(750);
+    t('...a seek under way past the hold is sent again', c.player.seeks.join() === '5,5', c.player.seeks.join());
+    c.player.state = 1;
+    c.player.time = 5.2;
+    c.run(250);
+    c.player.state = 3;
+    c.player.time = 0;
+    c.run(500);
+    t('...and the cap\'s reload after it lands is still put back', c.player.seeks.join() === '5,5,5', c.player.seeks.join());
+  }
+  {
+    // The TV busy for 4 s right after the cap: one late tick, not sixteen.
+    // The wait (3 s) is over by the clock: nothing is moved.
+    const realNow = Date.now;
+    let shift = 0;
+    Date.now = () => realNow() + shift;
+    try {
+      const s = setup({ state: 1, t: 0.5, vt: 0.5 });
+      let caps = 0;
+      watchPosition(s.win, s.player, null, () => {}, { isLow: () => caps === 0, setCap: () => { caps++; return true; }, keys: () => 0 }, 'abcdefghijk');
+      s.run(1750);
+      s.player.time = 3;
+      s.run(250);
+      shift = 4000;
+      s.player.state = 3;
+      s.player.time = 0;
+      s.run(250);
+      t('a tick 4 s late after the cap: the wait is over, nothing moved', caps === 1 && s.player.seeks.length === 0,
+        `caps ${caps}, seeks ${s.player.seeks.join()}`);
+    } finally {
+      Date.now = realNow;
+    }
   }
   {
     // The cap set (a range really asked for), no reload, then it loops on playing.

@@ -71,8 +71,13 @@ export function watchPosition(win, player, at, onPlaying, quality, targetId, onE
   // Where the cap was last set, while its reload may still come (null: none).
   let resumeAt = null;
   let resumeTicks = 0;
+  let resumeSince = 0;
   let resumeKeys = 0;
   let resumeHold = 0;
+  // Seen at resumeAt since it was set (so for a cap set where the video is).
+  // Before that a start over may be the watch's own seek still under way: it
+  // is sent again and the wait goes on, so the cap's reload after it is caught.
+  let resumeLanded = true;
   // The position on the tick before, to tell a loop from a reload.
   let lastNow = null;
   const keys = () => (quality && typeof quality.keys === 'function' ? quality.keys() : 0);
@@ -86,9 +91,14 @@ export function watchPosition(win, player, at, onPlaying, quality, targetId, onE
     if (onShorts()) return;
     resumeAt = pos;
     resumeTicks = 0;
+    resumeSince = Date.now();
     resumeKeys = keysBefore;
     resumeHold = hold || 0;
+    resumeLanded = !hold;
   };
+  // The wait ends after RESUME_TICKS ticks, or that long by the clock: a TV
+  // busy for seconds runs a late tick once, not once for each it missed.
+  const resumeOver = () => ++resumeTicks > RESUME_TICKS || Date.now() - resumeSince > RESUME_TICKS * TICK_MS;
   const looped = (now) => {
     if (lastNow === null || typeof player.getDuration !== 'function') return false;
     let duration;
@@ -136,21 +146,24 @@ export function watchPosition(win, player, at, onPlaying, quality, targetId, onE
     if (namesVideos && !id) {
       // The wait for the cap's reload runs on meanwhile: it ends on time, and
       // nothing is moved while no video is named.
-      if (resumeAt !== null && ++resumeTicks > RESUME_TICKS) resumeAt = null;
+      if (resumeAt !== null && resumeOver()) resumeAt = null;
       if (++ticks >= WATCH_TICKS) end();
       return;
     }
 
     if (resumeAt !== null) {
-      if (++resumeTicks > RESUME_TICKS || keys() !== resumeKeys || looped(now) || onShorts()) {
+      if (Math.abs(now - resumeAt) <= OFF_BY_S) resumeLanded = true;
+      if (resumeOver() || keys() !== resumeKeys || looped(now) || onShorts()) {
         resumeAt = null;
       } else if (resumeHold > 0) {
         resumeHold--;
       } else if (state !== 1 && now <= OFF_BY_S && resumeAt - now > RESUME_MIN_S) {
         // The cap's reload started it over: back where it was set. Once: a
-        // player that cannot seek is not asked again on every tick.
+        // player that cannot seek is not asked again on every tick. Our own
+        // seek not seen landing yet: sent again after the hold, and waited for.
         const to = resumeAt;
-        resumeAt = null;
+        if (resumeLanded) resumeAt = null;
+        else resumeHold = RESUME_HOLD_TICKS;
         try { player.seekTo(to, true); } catch { /* left where it is */ }
       }
     }
