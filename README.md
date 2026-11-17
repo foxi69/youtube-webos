@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <b>Ad-free YouTube for LG TVs</b>, with SponsorBlock, Return YouTube Dislike, DeArrow, a programmable remote and dozens of fixes.<br>
+  <b>YouTube Foxtended</b>: <b>ad-free YouTube for LG webOS TVs</b> (2016 and newer), with SponsorBlock, Return YouTube Dislike, DeArrow, playback speed, a programmable remote and dozens of fixes.<br>
   Built on <a href="https://github.com/NicholasBly/youtube-webos">NicholasBly/youtube-webos</a>, plus the best of every other fork of the project.
 </p>
 
@@ -59,6 +59,20 @@
       Hide watched, short, old and repeated videos, blocked channels, title keywords, Mixes, Shorts, live and members-only videos. DeArrow replaces clickbait titles and thumbnails.
     </td>
   </tr>
+  <tr>
+    <td valign="top">
+      <h3>⏩ Playback speed</h3>
+      0.25× to 2× with the pitch kept, on webOS 4 and newer: older TVs included, where YouTube's own app offers no speed control.
+    </td>
+    <td valign="top">
+      <h3>📋 A video queue</h3>
+      "Add to queue" in the long-press menu of any video (More Options in the Long-Press Menu): the queued videos play one after another.
+    </td>
+    <td valign="top">
+      <h3>🔔 Updates on the TV</h3>
+      The app checks for new releases and shows what is new after an update. With the Homebrew Channel, updating is one button.
+    </td>
+  </tr>
 </table>
 
 <p align="center">
@@ -81,6 +95,11 @@
 webOS 1 and 2 (2014-2015 TVs) are not supported by this build. For those, see [SiberianMishka/youtube-webos-legacy](https://github.com/SiberianMishka/youtube-webos-legacy).
 
 **2. Install it** in one of three ways:
+
+> [!TIP]
+> New to installing apps outside LG's store? You need the **Homebrew Channel**: on a rootable TV see
+> [webosbrew's rooting guide](https://www.webosbrew.org/rooting/), on any other TV use LG's
+> [Developer Mode app](https://www.webosbrew.org/devmode/) (no root needed; LG's developer session has to be extended now and then, see the guide).
 
 - 🍺 **[webOS Homebrew Channel](https://github.com/webosbrew/webos-homebrew-channel)** (recommended): add the repo link for your TV. It then offers each new release: press **Update** on this app's entry.
 
@@ -196,6 +215,7 @@ and search alone.
 | Show Remaining Time / End Time (Remaining, End Time, Both) | Off |
 | Show Most Replayed Graph Above the Seek Bar | Off |
 | Hide Endcards | Off |
+| Open Comments at the End of a Video (with autoplay off) | Off |
 | Magic Remote: Scroll Wheel Seeks on Progress Bar | Off |
 | Left/Right Seek Step (5, 10, 15, 30, 60 s) | YouTube's default |
 | Return YouTube Dislike | Off |
