@@ -78,6 +78,15 @@ function segmentsSignature(segments) {
         .join('|');
 }
 
+/**
+ * Whether the <video> has the video loaded. On webOS 25 a video YouTube cannot
+ * play ("This video isn't available") leaves it with no source: readyState 0
+ * and no duration, while the player's own data still says it is playable.
+ */
+function hasMedia(video) {
+    return !!video && !video.error && video.readyState >= 1 && video.duration > 0;
+}
+
 function isWellFormedSegment(entry) {
     return !!entry &&
         typeof entry.category === 'string' &&
@@ -756,8 +765,10 @@ class SponsorBlockHandler {
                 const config = configGetAll();
                 const hlMode = config.sbMode_highlight;
                 if (hlMode === 'auto_skip') {
-                    // No <video> yet: jumped to as soon as one is bound.
-                    if (this.video) this.autoJumpToHighlight();
+                    // No <video> with the video loaded yet: jumped to once one
+                    // is (bindVideo, 'loadedmetadata'). An unplayable video
+                    // never loads, so it is never jumped on.
+                    if (hasMedia(this.video)) this.autoJumpToHighlight();
                     else this.highlightPending = true;
                 } else if (hlMode === 'ask') {
                     showNotification('Highlight available: Press Blue to jump');
@@ -935,6 +946,10 @@ class SponsorBlockHandler {
             }
         });
 
+        this.addEvent(this.video, 'loadedmetadata', () => {
+            if (!this.isDestroyed) this._jumpIfPending();
+        });
+
         this.addEvent(this.video, 'timeupdate', () => {
             if (this.muteSegments && (this.muteSegments.length || this.mutedSegment)) this.checkMutedSegment();
         });
@@ -957,10 +972,7 @@ class SponsorBlockHandler {
         this.drawOverlay();
         this.updateLabels();
 
-        if (this.highlightPending) {
-            this.highlightPending = false;
-            this.autoJumpToHighlight();
-        }
+        this._jumpIfPending();
 
         this._startBarWatch();
     }
@@ -1679,8 +1691,18 @@ class SponsorBlockHandler {
         guard.video.removeEventListener('seeked', guard.onSeeked);
     }
 
+    /** The highlight's auto jump that waited for the video to load. */
+    _jumpIfPending() {
+        if (!this.highlightPending || !hasMedia(this.video)) return;
+        this.highlightPending = false;
+        // Switched away from Auto Skip to Start while it waited: no jump.
+        if (configGetAll().sbMode_highlight === 'auto_skip') this.autoJumpToHighlight();
+    }
+
     jumpToNextHighlight() {
-        if (!this.video || !this.highlightSegment) return false;
+        // An unplayable video ("This video isn't available") leaves the
+        // <video> empty: no jump, and no toast saying it jumped.
+        if (!hasMedia(this.video) || !this.highlightSegment) return false;
 
         const config = configGetAll();
         const mode = config.sbMode_highlight;
