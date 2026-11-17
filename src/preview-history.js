@@ -48,6 +48,8 @@ const KEEP_MS = 80000;
 const KEEP_MAX = 3;
 /** Kept start pings: { cpn, at, url, send() }, oldest first. */
 const kept = [];
+// Requests for a playback wait together until its retained start has settled.
+const starting = new Map();
 
 /** 'playback' or 'watchtime' and the query of such a ping, or null. */
 function pingOf(url) {
@@ -128,6 +130,23 @@ function sendKept(start) {
   return start.send();
 }
 
+function startBefore(cpn) {
+  if (!cpn) return null;
+  if (starting.has(cpn)) return starting.get(cpn);
+  const start = takeStart(cpn);
+  if (!start) return null;
+  let sent;
+  try {
+    sent = sendKept(start);
+  } catch {
+    return Promise.resolve();
+  }
+  const pending = Promise.resolve(sent).then(() => {}, () => {});
+  starting.set(cpn, pending);
+  pending.then(() => { if (starting.get(cpn) === pending) starting.delete(cpn); });
+  return pending;
+}
+
 if (typeof originalFetch === 'function') {
   window.fetch = function (resource) {
     const url = urlOf(resource);
@@ -141,12 +160,12 @@ if (typeof originalFetch === 'function') {
       return Promise.resolve(typeof Response === 'function' ? new Response(null, { status: 204 }) : { ok: true, status: 204 });
     }
     const cpn = cpnOf(url);
-    const start = cpn && takeStart(cpn);
-    if (!start) return originalFetch.apply(this, arguments);
+    const pending = startBefore(cpn);
+    if (!pending) return originalFetch.apply(this, arguments);
     const self = this;
     const args = arguments;
     const go = () => originalFetch.apply(self, args);
-    return sendKept(start).then(go, go);
+    return pending.then(go);
   };
 }
 
@@ -159,7 +178,7 @@ XMLHttpRequest.prototype.open = function (method, url) {
   const urlStr = urlOf(url);
   const stats = urlStr.indexOf('/api/stats/') !== -1;
   this.__ytafPreviewPing = stats && isPreviewPing(urlStr) ? { method, url: urlStr } : null;
-  this.__ytafStart = null;
+  this.__ytafCpn = null;
   if (this.__ytafPreviewPing) {
     log('Dropped a preview ping', 'XHR', urlStr);
     // An empty data: URL instead of the ping, as Tracking Block does: the
@@ -167,7 +186,7 @@ XMLHttpRequest.prototype.open = function (method, url) {
     return originalOpen.call(this, 'GET', 'data:text/plain,', arguments.length > 2 ? arguments[2] : true);
   }
   const cpn = stats && cpnOf(urlStr);
-  this.__ytafStart = cpn ? takeStart(cpn) : null;
+  this.__ytafCpn = cpn || null;
   return originalOpen.apply(this, arguments);
 };
 XMLHttpRequest.prototype.send = function (body) {
@@ -181,16 +200,16 @@ XMLHttpRequest.prototype.send = function (body) {
     }));
     return originalSend.call(this);
   }
-  const start = this.__ytafStart;
-  if (!start) return originalSend.apply(this, arguments);
-  this.__ytafStart = null;
+  const pending = startBefore(this.__ytafCpn);
+  if (!pending) return originalSend.apply(this, arguments);
+  this.__ytafCpn = null;
   const self = this;
   const args = arguments;
   const op = self.__ytafOp;
   const go = () => {
     if (self.__ytafOp === op) originalSend.apply(self, args);
   };
-  sendKept(start).then(go, go);
+  pending.then(go);
 };
 if (typeof originalAbort === 'function') {
   XMLHttpRequest.prototype.abort = function () {

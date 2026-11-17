@@ -18,7 +18,7 @@ const PREVIEW = '?docid=abc&el=leanback&autoplay=1&vis=5&st=0&et=5';
 const playback = (q) => HOST + '/api/stats/playback' + q;
 const watchtime = (q) => HOST + '/api/stats/watchtime' + q;
 
-function boot(bodyClass, config) {
+function boot(bodyClass, config, fetchResponse) {
   const fetched = [];
   const xhrs = [];
   const XHR = class {
@@ -41,7 +41,11 @@ function boot(bodyClass, config) {
     consoleErrors: false,
     // jsdom has no Request; the TV's fetch comes with one.
     beforeEval: (w) => { if (typeof w.Request !== 'function') w.Request = class { constructor(url) { this.url = String(url); } }; },
-    fetch: (resource) => { fetched.push(typeof resource === 'string' ? resource : resource.url); return Promise.resolve({ ok: true, status: 204 }); }
+    fetch: (resource) => {
+      const url = typeof resource === 'string' ? resource : resource.url;
+      fetched.push(url);
+      return fetchResponse ? fetchResponse(url) : Promise.resolve({ ok: true, status: 204 });
+    }
   });
   // Whether a request reaches the network, by each way.
   const viaFetch = (url) => { const n = fetched.length; win.fetch(url); return fetched.length > n && fetched[fetched.length - 1] === url; };
@@ -273,5 +277,41 @@ run(async () => {
     t('opened again for another request meanwhile: that one once, the held ping not after it',
       same(reopened, [start('y2') + ' body', other + ' later']), reopened.join(' | '));
     t('no errors (aborted)', env.errors.length === 0, env.errors[0]);
+  }
+
+  {
+    let finishStart;
+    const pending = new Promise((resolve) => { finishStart = resolve; });
+    const env = boot('WEB_PAGE_TYPE_BROWSE', {}, (url) =>
+      url === start('parallel') ? pending : Promise.resolve({ ok: true, status: 204 }));
+    env.viaFetch(start('parallel'));
+    env.doc.body.className = 'WEB_PAGE_TYPE_WATCH';
+    const first = ping('watchtime', 'parallel', OPENED);
+    const second = ping('watchtime', 'parallel', '&st=14&et=24');
+    const one = env.win.fetch(first);
+    const two = env.win.fetch(second);
+    const xhr = new env.win.XMLHttpRequest();
+    xhr.open('POST', ping('watchtime', 'parallel', '&st=24&et=34'), true);
+    xhr.send('third');
+    t('concurrent fetch and XHR wait for the retained start',
+      same(env.fetched, [start('parallel')]) && env.xhrs.length === 0, env.fetched.join(' | '));
+    finishStart({ ok: true, status: 204 });
+    await Promise.all([one, two]);
+    await wait(0);
+    t('concurrent pings go out after the start settles',
+      same(env.fetched, [start('parallel'), first, second]) && env.xhrs.length === 1 && env.xhrs[0].body === 'third',
+      env.fetched.join(' | ') + ' / ' + JSON.stringify(env.xhrs));
+  }
+
+  {
+    const env = boot('WEB_PAGE_TYPE_BROWSE');
+    env.viaFetch(start('unsent'));
+    env.doc.body.className = 'WEB_PAGE_TYPE_WATCH';
+    const xhr = new env.win.XMLHttpRequest();
+    xhr.open('POST', ping('watchtime', 'unsent', OPENED), true);
+    xhr.abort();
+    const sent = await sentBy(env, ping('watchtime', 'unsent', OPENED));
+    t('an XHR aborted before send leaves the start for the next ping',
+      same(sent, [start('unsent'), ping('watchtime', 'unsent', OPENED)]), sent.join(' | '));
   }
 });
