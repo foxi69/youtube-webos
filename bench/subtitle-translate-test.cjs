@@ -525,12 +525,15 @@ run(async () => {
   // No Hungarian anywhere: asked a few times, then nothing. The response for
   // another video does not count for this one.
   {
+    // On the controlled clock, as the case below.
     const env = await boot(AUTO, { tracklist: [{ languageCode: 'en', vss_id: '.en' }] });
+    const clock = manualClock(env.win);
     env.parse(response({ captionTracks: [track('en')], translationLanguages: [tl('en', 'English')] }, VIDEO2));
     env.p.emit(1);
-    await pageMs(4500);
+    await wait(30);
+    await clock.advance(4500);
     const asked = env.p.listAsked;
-    await pageMs(1000);
+    await clock.advance(1000);
     t(n('no track in the language: nothing is set'), env.p.sets.length === 0, JSON.stringify(env.p.sets));
     t(n('...after about ten looks at the tracklist, then no more'), asked >= 8 && asked <= 11 && env.p.listAsked === asked,
       `asked=${asked} later=${env.p.listAsked}`);
@@ -540,10 +543,14 @@ run(async () => {
 
   // A player whose API lists no tracks: the track the response carried is named.
   {
+    // On the controlled clock: the tracklist looks are timed with Date.now, which the sped-up page
+    // timers outran on a busy machine (eight runs at once failed this case or the one above).
     const env = await boot(AUTO, { tracklist: [] });
+    const clock = manualClock(env.win);
     env.parse(response({ captionTracks: [track('en')], translationLanguages: [tl('en', 'English')] }, VIDEO));
     env.p.emit(1);
-    await pageMs(4500);
+    await wait(30);
+    await clock.advance(6000);
     const s = env.p.sets[0] || {};
     t(n('no tracklist from the API: the auto-translated track of the response is turned on'),
       env.p.sets.length === 1 && s.languageCode === 'hu' && s.vss_id === '.hu' && s.kind === undefined, JSON.stringify(env.p.sets));
