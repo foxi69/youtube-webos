@@ -45,6 +45,9 @@ const RESUME_MIN_S = 0.5;
 const RESUME_HOLD_TICKS = 2;
 // The last position this close to the end, then near 0: the video looped.
 const LOOP_END_S = 1;
+// The highest speed (SUPPORTED_SPEEDS in mse-hook.js): how far a video can
+// have played between two ticks, a late one too, when telling a loop.
+const MAX_RATE = 2;
 
 /**
  * @param {Window} win
@@ -78,8 +81,11 @@ export function watchPosition(win, player, at, onPlaying, quality, targetId, onE
   // Before that a start over may be the watch's own seek still under way: it
   // is sent again and the wait goes on, so the cap's reload after it is caught.
   let resumeLanded = true;
-  // The position on the tick before, to tell a loop from a reload.
+  // The position on the tick before and when it was read, to tell a loop from a reload.
   let lastNow = null;
+  let lastNowAt = 0;
+  // The page's clock (the window's, so a test can drive it with its timers).
+  const clock = () => (win.Date || Date).now();
   const keys = () => (quality && typeof quality.keys === 'function' ? quality.keys() : 0);
   const onShorts = () => {
     const body = win.document && win.document.body;
@@ -91,19 +97,21 @@ export function watchPosition(win, player, at, onPlaying, quality, targetId, onE
     if (onShorts()) return;
     resumeAt = pos;
     resumeTicks = 0;
-    resumeSince = Date.now();
+    resumeSince = clock();
     resumeKeys = keysBefore;
     resumeHold = hold || 0;
     resumeLanded = !hold;
   };
   // The wait ends after RESUME_TICKS ticks, or that long by the clock: a TV
   // busy for seconds runs a late tick once, not once for each it missed.
-  const resumeOver = () => ++resumeTicks > RESUME_TICKS || Date.now() - resumeSince > RESUME_TICKS * TICK_MS;
+  const resumeOver = () => ++resumeTicks > RESUME_TICKS || clock() - resumeSince > RESUME_TICKS * TICK_MS;
   const looped = (now) => {
     if (lastNow === null || typeof player.getDuration !== 'function') return false;
     let duration;
     try { duration = player.getDuration(); } catch { return false; }
-    return duration > 0 && lastNow >= duration - LOOP_END_S && now <= OFF_BY_S;
+    // As far as it can have played since (a late tick may have missed the end).
+    const reach = lastNow + Math.max(0, clock() - lastNowAt) / 1000 * MAX_RATE;
+    return duration > 0 && reach >= duration - LOOP_END_S && now <= OFF_BY_S;
   };
 
   const namesVideos = typeof player.getVideoData === 'function';
@@ -170,6 +178,7 @@ export function watchPosition(win, player, at, onPlaying, quality, targetId, onE
       }
     }
     lastNow = now;
+    lastNowAt = clock();
 
     if (state === 1) {
       stalled = 0;

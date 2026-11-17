@@ -33,7 +33,9 @@ function setup(start) {
   const win = {
     document: { querySelector: (s) => (s === 'video' ? video : null) },
     setInterval: (fn, ms) => { timers.set(++id, { fn, at: clock + ms, ms }); return id; },
-    clearInterval: (i) => timers.delete(i)
+    clearInterval: (i) => timers.delete(i),
+    // The watch's clock is the fixture's, not the machine's.
+    Date: { now: () => clock }
   };
   const run = (ms) => {
     const end = clock + ms;
@@ -47,7 +49,12 @@ function setup(start) {
     }
     clock = end;
   };
-  return { win, player, video, run, timers };
+  // The page busy for ms: no tick meanwhile, then one at once (a late one).
+  const stall = (ms) => {
+    clock += ms;
+    for (const v of timers.values()) v.at = Math.max(v.at, clock);
+  };
+  return { win, player, video, run, stall, timers };
 }
 
 runTest(() => import(MODULE).then(({ watchPosition }) => {
@@ -372,25 +379,30 @@ runTest(() => import(MODULE).then(({ watchPosition }) => {
   {
     // The TV busy for 4 s right after the cap: one late tick, not sixteen.
     // The wait (3 s) is over by the clock: nothing is moved.
-    const realNow = Date.now;
-    let shift = 0;
-    Date.now = () => realNow() + shift;
-    try {
-      const s = setup({ state: 1, t: 0.5, vt: 0.5 });
-      let caps = 0;
-      watchPosition(s.win, s.player, null, () => {}, { isLow: () => caps === 0, setCap: () => { caps++; return true; }, keys: () => 0 }, 'abcdefghijk');
-      s.run(1750);
-      s.player.time = 3;
-      s.run(250);
-      shift = 4000;
-      s.player.state = 3;
-      s.player.time = 0;
-      s.run(250);
-      t('a tick 4 s late after the cap: the wait is over, nothing moved', caps === 1 && s.player.seeks.length === 0,
-        `caps ${caps}, seeks ${s.player.seeks.join()}`);
-    } finally {
-      Date.now = realNow;
-    }
+    const s = setup({ state: 1, t: 0.5, vt: 0.5 });
+    let caps = 0;
+    watchPosition(s.win, s.player, null, () => {}, { isLow: () => caps === 0, setCap: () => { caps++; return true; }, keys: () => 0 }, 'abcdefghijk');
+    s.run(1750);
+    s.player.time = 3;
+    s.run(250);
+    s.stall(4000);
+    s.player.state = 3;
+    s.player.time = 0;
+    s.run(250);
+    t('a tick 4 s late after the cap: the wait is over, nothing moved', caps === 1 && s.player.seeks.length === 0,
+      `caps ${caps}, seeks ${s.player.seeks.join()}`);
+    // The same 1 s late only: the start over is still put back (within the wait).
+    const b = setup({ state: 1, t: 0.5, vt: 0.5 });
+    let capsB = 0;
+    watchPosition(b.win, b.player, null, () => {}, { isLow: () => capsB === 0, setCap: () => { capsB++; return true; }, keys: () => 0 }, 'abcdefghijk');
+    b.run(1750);
+    b.player.time = 3;
+    b.run(250);
+    b.stall(1000);
+    b.player.state = 3;
+    b.player.time = 0;
+    b.run(250);
+    t('...1 s late: the start over is still put back', b.player.seeks.join() === '3', b.player.seeks.join());
   }
   {
     // The cap set (a range really asked for), no reload, then it loops on playing.
@@ -416,6 +428,21 @@ runTest(() => import(MODULE).then(({ watchPosition }) => {
     s.player.state = 1;
     s.run(500);
     t('a loop from the end (buffering at 0) is no reload: not moved on', s.player.seeks.length === 0, s.player.seeks.join());
+    // A tick 1 s late misses the end: the last read was 5.6 s (cap), the next
+    // 0 while buffering. It can have played 2 s meanwhile: a loop still.
+    const b = setup({ state: 1, t: 5.6, vt: 5.6 });
+    b.player.getDuration = () => 7;
+    let capsB = 0;
+    watchPosition(b.win, b.player, null, () => {}, { isLow: () => capsB === 0, setCap: () => { capsB++; return true; }, keys: () => 0 }, 'abcdefghijk');
+    b.run(2000);
+    b.stall(1000);
+    b.player.state = 3;
+    b.player.time = 0;
+    b.run(500);
+    b.player.state = 1;
+    b.run(500);
+    t('...a loop seen only after a tick 1 s late: not moved on', capsB === 1 && b.player.seeks.length === 0,
+      `caps ${capsB}, seeks ${b.player.seeks.join()}`);
   }
   {
     // The same start over in mid-video (not from its end) is the reload: put back.
