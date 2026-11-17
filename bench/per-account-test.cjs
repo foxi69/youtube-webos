@@ -212,4 +212,26 @@ run(async () => {
       win.localStorage.getItem(CONFIG_KEY));
     t('broken stored set: no errors', errors.length === 0, errors.join(' | '));
   }
+
+  {
+    // Storage that refuses the read (SecurityError): the settings load as defaults, the rest of the app runs.
+    const { win, errors } = bootPage({
+      raf: 'manual',
+      consoleErrors: false,
+      restoreRemove: false,
+      setup: (w) => {
+        w.fetch = () => Promise.reject(new Error('offline'));
+        const getItem = w.Storage.prototype.getItem;
+        Object.defineProperty(w.Storage.prototype, 'getItem', { configurable: true, value: function (k) {
+          if (String(k).indexOf(CONFIG_KEY) === 0) { const e = new Error('Storage denied'); e.name = 'SecurityError'; throw e; }
+          return getItem.call(this, k);
+        } });
+      }
+    });
+    await wait(100);
+    key(win, GREEN);
+    await wait(100);
+    t('storage that refuses the read: the panel opens', !!checkbox(win, RYD));
+    t('...with no errors', errors.length === 0, errors.join(' | '));
+  }
 });

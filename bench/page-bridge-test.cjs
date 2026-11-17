@@ -211,9 +211,11 @@ run(async () => {
 
   // ---- The TV app's command resolver ----
   {
-    // Found at once.
+    // Found at once, past a constructor whose instance is not made yet (null, which typeof calls 'object').
     const r = fakeResolver();
-    const env = boot({}, { before: (win) => { win._yttv = { notAFunction: { instance: {} }, noInstance() {}, resolver: r.Resolver }; } });
+    const env = boot({}, { before: (win) => {
+      win._yttv = { notAFunction: { instance: {} }, noInstance() {}, notYet: Object.assign(function () {}, { instance: null }), resolver: r.Resolver };
+    } });
     await wait(30);
     const resolve = r.Resolver.instance.resolveCommand;
     t(n('the resolver in window._yttv is taken over'), resolve !== r.original);

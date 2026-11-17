@@ -448,10 +448,11 @@ const FALLBACK_FIELD_RE = /(?:user|email|name)$/i;
 // account's settings behind at the next change.
 const VOLATILE_FIELD_RE = /token|expir|time|date|secret|index|session|request|nonce|state/i;
 
+/** A stored JSON object, or null: none, not an object, or storage that cannot be read (SecurityError). */
 function loadStored(key) {
-  const storage = window.localStorage.getItem(key);
-  if (storage === null) return null;
   try {
+    const storage = window.localStorage.getItem(key);
+    if (storage === null) return null;
     const parsed = JSON.parse(storage);
     return parsed && typeof parsed === 'object' ? parsed : null;
   } catch { return null; }

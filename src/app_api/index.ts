@@ -73,7 +73,9 @@ export class ResolveCommandRegistry {
       target &&
       typeof target === 'function' &&
       'instance' in target &&
+      // typeof null is 'object': a constructor whose instance is not made yet.
       typeof target.instance === 'object' &&
+      target.instance !== null &&
       typeof (target.instance as Record<string, unknown>).resolveCommand ===
         'function'
     );
