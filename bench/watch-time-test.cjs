@@ -63,6 +63,9 @@ run(async () => {
   await sleep(100);
   const video = doc.querySelector('video');
   Object.defineProperty(video, 'paused', { get: () => false, configurable: true });
+  // HAVE_ENOUGH_DATA while it plays; 2 (HAVE_CURRENT_DATA) while it waits for data.
+  let ready = 4;
+  Object.defineProperty(video, 'readyState', { get: () => ready, configurable: true });
 
   t('panel has the row', !!row('Show Watch Time With the Clock'));
   t('clock starts at 0m', / · 0m watched$/.test(clockText()), JSON.stringify(clockText()));
@@ -106,6 +109,20 @@ run(async () => {
   doc.dispatchEvent(new win.Event('visibilitychange'));
   offset += 4 * MIN;
   t('the background does not count, playing on after it does', / · 1h 12m watched$/.test(refresh()), JSON.stringify(clockText()));
+
+  // Back from the background while it buffers (not paused, but no data to play): not counted until it plays.
+  fire(video, 'waiting');
+  hidden = true;
+  doc.dispatchEvent(new win.Event('visibilitychange'));
+  ready = 2;
+  hidden = false;
+  doc.dispatchEvent(new win.Event('visibilitychange'));
+  offset += 2 * MIN;
+  t('back from the background while it buffers: not counted', / · 1h 12m watched$/.test(refresh()), JSON.stringify(clockText()));
+  ready = 4;
+  fire(video, 'playing');
+  offset += MIN;
+  t('...and counted again once it plays', / · 1h 13m watched$/.test(refresh()), JSON.stringify(clockText()));
 
   toggle('Show Watch Time With the Clock');
   t('switched off: the time alone', !/watched/.test(clockText()) && clockText().length > 0, JSON.stringify(clockText()));

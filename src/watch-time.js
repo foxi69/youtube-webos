@@ -58,11 +58,14 @@ document.addEventListener('playing', onPlaying, true);
 ['pause', 'ended', 'waiting', 'emptied', 'abort', 'error'].forEach((type) => {
   document.addEventListener(type, onStopped, true);
 });
-/** Starts a stretch for a video already playing, which sends no new 'playing'. */
+// HAVE_FUTURE_DATA: below it a video that is not paused waits for data.
+const CAN_PLAY = 3;
+
+/** Starts a stretch for a video already playing, which sends no new 'playing'; not one that buffers. */
 function resumeIfPlaying() {
   if (document.hidden || (!isWatchPage() && !isShortsPage())) return;
   const video = getVideo();
-  if (video && !video.paused && !video.ended) start(video);
+  if (video && !video.paused && !video.ended && video.readyState >= CAN_PLAY) start(video);
 }
 
 // Leaving the player, or the app going to the background, ends a stretch;

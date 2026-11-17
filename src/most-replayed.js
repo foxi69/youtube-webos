@@ -138,7 +138,8 @@ function draw() {
   };
   const height = Math.max(16, Math.round(window.innerHeight * HEIGHT_VH));
   const sig = `${host.selector}|${geo.left}|${geo.top}|${geo.width}|${height}|${uri.length}`;
-  if (sig === lastSig && css) return;
+  // The same host element too: a new one of the same size may be positioned already.
+  if (sig === lastSig && css && host.el === styledHost) return;
   lastSig = sig;
   write(buildCss(host.selector, uri, geo, height, ownHostStyle(host.el)));
 }
