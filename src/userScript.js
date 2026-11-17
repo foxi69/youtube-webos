@@ -7,6 +7,8 @@ import './perf_mon.js';
 // otherwise sent as "[object Object]".
 import './polyfills.js';
 import 'whatwg-fetch';
+// Before adblock.js, see the module.
+import './preview-history.js';
 import './playback-speed.js';
 import './adblock.js';
 import './player-animation.js';
