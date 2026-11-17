@@ -156,5 +156,41 @@ run(async () => {
   video.dispatchEvent(new win.Event('ended'));
   t('...and the end brings back YouTube\'s new text, not the first one', badgeOf(again) === '5:01', badgeOf(again));
 
+  // The search results' lockup (webOS 25, 2026-11), as read from the TV: the
+  // time in the bottom overlay's badge; a playlist's video count in another
+  // badge of the same kind; the title is a yt-core-attributed-string too.
+  const addLockup = (id, badge, overlay) => {
+    const l = win.document.createElement('yt-lockup-view-model');
+    l.tabIndex = 0;
+    l.__instance = { props: { data: { contentId: id } } };
+    l.innerHTML = '<ytlr-playback-preview><yt-collection-thumbnail-view-model><thumbnail>' +
+      `<${overlay}><yt-thumbnail-badge-view-model><yt-badge><yt-core-attributed-string class="badge"></yt-core-attributed-string>` +
+      `</yt-badge></yt-thumbnail-badge-view-model></${overlay}></thumbnail></yt-collection-thumbnail-view-model>` +
+      '<yt-lockup-metadata-view-model><yt-core-attributed-string class="title">A video</yt-core-attributed-string>' +
+      '</yt-lockup-metadata-view-model></ytlr-playback-preview>';
+    l.querySelector('.badge').textContent = badge;
+    win.document.body.appendChild(l);
+    return l;
+  };
+  const lockupBadge = (l) => l.querySelector('.badge').textContent;
+  const searchA = addLockup('ssssssssss1', '7:45', 'yt-thumbnail-bottom-overlay-view-model');
+  const searchB = addLockup('ssssssssss2', '4:23', 'yt-thumbnail-bottom-overlay-view-model');
+  state.id = 'ssssssssss1';
+  state.duration = 465;
+  state.playing = true;
+  searchA.focus();
+  tick(5.5);
+  t('search result (lockup): the time counts down (465 - 5.5 s -> 7:39)', lockupBadge(searchA) === '7:39', lockupBadge(searchA));
+  t('...its title is untouched', searchA.querySelector('.title').textContent === 'A video');
+  searchB.focus();
+  t('search result: focus on the next one brings the time back', lockupBadge(searchA) === '7:45', lockupBadge(searchA));
+  tick(8);
+  t('...and the next one, whose video is not the one playing, is untouched', lockupBadge(searchB) === '4:23', lockupBadge(searchB));
+  const playlist = addLockup('pppppppppp1', '17 videó', 'yt-thumbnail-overlay-badge-view-model');
+  state.id = 'pppppppppp1';
+  playlist.focus();
+  tick(8);
+  t('search result: a playlist\'s video count stays', lockupBadge(playlist) === '17 videó', lockupBadge(playlist));
+
   t('no page errors', errors.length === 0, errors.join(' | '));
   win.close();});
