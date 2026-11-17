@@ -376,6 +376,48 @@ run(async () => {
     env.win.close();
   }
 
+  // The start event belongs to its video: B playing 500 ms after A's start
+  // event, with none of its own, waits the full 2.5 s, not A's remaining 650 ms.
+  {
+    const env = await boot(AUTO, { tracklist: [huHuman] });
+    const clock = manualClock(env.win);
+    env.p.emit(1);
+    await wait(30);
+    await clock.advance(500);
+    env.p.videoId = VIDEO2;
+    env.p.started = VIDEO2; // no start event for B
+    env.p.emit(3);
+    env.p.emit(1);
+    await wait(30);
+    await clock.advance(2400);
+    const early = env.p.sets.length;
+    await clock.advance(400);
+    t(n("another video without a start event: not timed from the one before's"), early === 0 && env.p.sets.length === 1,
+      `by 2400 ms: ${early} sets, by 2800 ms: ${env.p.sets.length}`);
+    env.win.close();
+  }
+
+  // Next while A's start-up wait runs: A's handling does not fire for B, which
+  // is still loading, and B's own start-up turns its subtitles on.
+  {
+    const env = await boot(AUTO, { tracklist: [huHuman] });
+    const clock = manualClock(env.win);
+    env.p.emit(1);
+    await wait(30);
+    await clock.advance(500);
+    dispatchTrusted(env.win.document.body, new env.win.KeyboardEvent('keydown', { keyCode: 13, bubbles: true }));
+    env.p.videoId = VIDEO2;
+    env.p.emit(3);
+    await clock.advance(1000); // A's 1150 ms pass while B loads
+    const during = env.p.sets.length;
+    env.p.emit(1);
+    await wait(30);
+    await clock.advance(2000);
+    t(n('Next while the start-up wait runs: the next video still gets its own start-up'), during === 0 && env.p.sets.length === 1,
+      `while loading: ${during} sets, after its start: ${JSON.stringify(env.p.sets)}`);
+    env.win.close();
+  }
+
   // Next pressed during a video's first second: the next video still gets its
   // subtitles (that key was for the video before).
   {

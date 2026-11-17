@@ -348,7 +348,9 @@ let autoTimer = null;
 let startTimer = null;
 let startSince = 0;
 let startVideoId = null;
-let externalStartAt = 0;
+// The last onPlaybackStartExternal: when, and for which video. Another
+// video's PLAYING does not count from it.
+let externalStart = { at: 0, videoId: null };
 // Off: the video the app's start-up decision was checked for.
 let offVideoId = null;
 const hookedPlayers = new WeakSet();
@@ -370,6 +372,8 @@ function cancelStart() {
 /**
  * Runs the start-up handling after `delay`. A key pressed since the first call
  * for this video still ends it; one for the video before (Next) does not.
+ * Dropped once the player shows another video: that one (still loading after
+ * Next) gets its own start-up handling, which this one must not use up.
  */
 function scheduleAutoEnable(delay) {
   const player = captionsPlayer();
@@ -379,6 +383,7 @@ function scheduleAutoEnable(delay) {
   clearTimeout(startTimer);
   startTimer = setTimeout(() => {
     startTimer = null;
+    if (captionsPlayer() !== player || (videoId && playerVideoId(player) !== videoId)) return;
     if (configRead('subtitlesAtStart') === 'off') enforceOff(startSince);
     else autoEnableCaptions(startSince);
   }, delay);
@@ -434,13 +439,14 @@ function onPlaying() {
     hookedPlayers.add(player);
     try {
       player.addEventListener('onPlaybackStartExternal', () => {
-        externalStartAt = Date.now();
+        externalStart = { at: Date.now(), videoId: playerVideoId(player) };
         scheduleAutoEnable(APP_DECISION_MS);
       });
     } catch { /* NO_START_EVENT_MS covers it */ }
   }
   // PLAYING comes just before onPlaybackStartExternal, which then sets the time.
-  const sinceStart = Date.now() - externalStartAt;
+  const sameVideo = player && externalStart.videoId === playerVideoId(player);
+  const sinceStart = sameVideo ? Date.now() - externalStart.at : Infinity;
   scheduleAutoEnable(sinceStart < APP_DECISION_MS ? APP_DECISION_MS - sinceStart : NO_START_EVENT_MS);
 }
 
