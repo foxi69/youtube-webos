@@ -26,3 +26,14 @@
   background-position: center;
   background-size: 1em 1em;
 }
+
+/* YouTube's own frames, the fallback of Without a Crowdsourced Thumbnail
+   (hq1 to hq3, lookup.js), are 4:3 with the 16:9 picture between black bars.
+   The lockup (webOS 25 search results and Home, 2026-11) stretches its image
+   to its 16:9 box (100% 100%), which squashed the picture; cover crops the
+   bars off instead. */
+yt-lockup-view-model image[style*="/hq1.jpg"],
+yt-lockup-view-model image[style*="/hq2.jpg"],
+yt-lockup-view-model image[style*="/hq3.jpg"] {
+  background-size: cover !important;
+}

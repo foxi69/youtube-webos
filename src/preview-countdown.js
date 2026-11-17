@@ -11,8 +11,10 @@ import { isWatchPage, isShortsPage, SELECTORS } from './utils.js';
  */
 
 const TIME_RE = /^\d+(?::\d\d){1,2}$/;
-const TILE = 'ytlr-tile-renderer';
-const BADGE = 'ytlr-thumbnail-overlay-time-status-renderer yt-formatted-string';
+// The older tile (Home, history) and the lockup of the search results
+// (webOS 25, 2026-11): both carry the video id as props.data.contentId.
+const TILE = 'ytlr-tile-renderer, yt-lockup-view-model';
+const BADGE = 'ytlr-thumbnail-overlay-time-status-renderer yt-formatted-string, yt-thumbnail-badge-view-model yt-core-attributed-string';
 
 // The badge being counted down and the text it had.
 let current = null;
