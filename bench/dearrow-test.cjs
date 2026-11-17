@@ -320,6 +320,16 @@ run(async () => {
     t('search result (lockup) on screen: DeArrow\'s title', lockupTitle(el) === 'the iPhone review', lockupTitle(el));
     t('...and its thumbnail', lockupThumb(el).indexOf('COPY') !== -1, lockupThumb(el));
     t('...its channel line untouched', el.querySelector('yt-metadata-row').textContent === 'Channel');
+    // YouTube's frame (4:3, the picture between bars) in the lockup's 16:9 box: cropped, not squashed.
+    const frame = renderLockup(win, lockup('framed00001', 'x'));
+    frame.querySelector('thumbnail image').style.backgroundImage = 'url("https://i.ytimg.com/vi/framed00001/hq1.jpg")';
+    const sizes = [];
+    for (const sheet of win.document.styleSheets) {
+      for (const rule of sheet.cssRules) {
+        if (rule.selectorText && frame.querySelector('thumbnail image').matches(rule.selectorText)) sizes.push(rule.style.backgroundSize);
+      }
+    }
+    t('a lockup showing YouTube\'s 4:3 frame crops it (cover)', sizes.indexOf('cover') !== -1, sizes.join(','));
     t('no jsdomError (lockup)', errors.length === 0, errors[0]);
   }
 
