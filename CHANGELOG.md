@@ -48,6 +48,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Docs
 
++ README: the app's name and "LG webOS TVs" in the first lines, three more highlights (Playback speed, A video queue, Updates on the TV), a note on getting the Homebrew Channel (rooting or the Developer Mode app), and Open Comments at the End of a Video in the Player tab, where it was missing.
 + README: the SponsorBlock tab lists Intermission/Intro and Endcards/Credits under the names the panel shows, and the fork trail picture's description names no version.
 + README screenshots: the settings panel's title and the About tab no longer show a version (0.9.1 on the themes picture, 0.9.2 on the tabs), so they do not go stale with each release.
 
