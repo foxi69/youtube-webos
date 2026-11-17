@@ -1722,19 +1722,21 @@ window.addEventListener('keydown', (evt) => {
 window.addEventListener('yt-player-state-change', ({ detail }) => {
     if (!detail) return;
     const videoId = detail.videoId;
-    if (detail.state === 1) {
-        // Playing again (replayed, or the next video) within the delay: not
-        // opened over a video that plays.
+    if (detail.state !== 0) {
+        // Left the end within the delay (replayed, or the next video): not
+        // opened over a video that plays. Any state counts: replayed with the
+        // pointer on the TV it went -1, 5, 3, and played only after the delay.
         clearTimeout(endTimer);
         endTimer = null;
-        if (videoId !== commentsOpenedFor) commentsOpenedFor = null;
     }
+    if (detail.state === 1 && videoId !== commentsOpenedFor) commentsOpenedFor = null;
     if (detail.state !== 0 || !configRead('openCommentsAtEnd') || !videoId) return;
     const endedAt = Date.now();
     clearTimeout(endTimer);
     endTimer = setTimeout(() => {
         endTimer = null;
-        if (lastViewerKeyAt > endedAt - END_KEY_WINDOW_MS) return;
+        // Read again: switched off with the pointer during the delay, no key counted.
+        if (!configRead('openCommentsAtEnd') || lastViewerKeyAt > endedAt - END_KEY_WINDOW_MS) return;
         if (!isWatchPage() || isShortsPage() || !window.location.hash.includes(videoId)) return;
         if (commentsOpenedFor === videoId || isEngagementPanelVisible() || isAutoplayOn()) return;
         // No button (comments turned off, or none): nothing, and no toast.

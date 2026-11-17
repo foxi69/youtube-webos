@@ -193,8 +193,9 @@ export function isAutoplayOn() {
     const identity = read('last-identity-used');
     const id = identity && identity.data && identity.data.effectiveObfuscatedGaiaId;
     const record = isGuestMode() ? read('AUTONAV_FOR_SIGN_OUT') : read('AUTONAV_FOR_LIVING_ROOM');
-    const on = record && record.data && record.data[isGuestMode() ? 'guest' : id];
-    return on !== false;
+    // A record of any other shape ({data: false}) is not known either: on.
+    const data = (record && record.data) || {};
+    return data[isGuestMode() ? 'guest' : id] !== false;
   } catch {
     return true;
   }

@@ -18,6 +18,11 @@ const VIDEO_ID = 'abcdefghijk';
 const GAIA = '115436911888583517051';
 // The wait after the end before it opens (END_OPEN_DELAY_MS), and some.
 const SETTLE_MS = 1400;
+// Past END_KEY_WINDOW_MS: a key pressed this long before the end does not hold it back.
+const KEY_WINDOW_PAST_MS = 3200;
+const GREEN = 404;
+// Every page booted, so a handler that threw is not read as one that held back.
+const envs = [];
 
 async function boot(cfg = {}, opts = {}) {
   const page = opts.page || 'WEB_PAGE_TYPE_WATCH';
@@ -35,7 +40,8 @@ async function boot(cfg = {}, opts = {}) {
     }, cfg),
     storage: {
       'yt.leanback.default::last-identity-used': JSON.stringify({ data: { identityType: 'CORE_ID', effectiveObfuscatedGaiaId: GAIA } }),
-      'yt.leanback.default::AUTONAV_FOR_LIVING_ROOM': JSON.stringify({ data: { [GAIA]: opts.autoplay === true, 999: true } })
+      'yt.leanback.default::AUTONAV_FOR_LIVING_ROOM': JSON.stringify(
+        'autonav' in opts ? opts.autonav : { data: { [GAIA]: opts.autoplay === true, 999: true } })
     },
     evaluate: false
   });
@@ -54,7 +60,9 @@ async function boot(cfg = {}, opts = {}) {
   const state = (s, id = VIDEO_ID) =>
     win.dispatchEvent(new win.CustomEvent('yt-player-state-change', { detail: { state: s, videoId: id } }));
   const toasts = () => (doc.querySelector('.ytaf-notification-container') || {}).textContent || '';
-  return { win, doc, errors, clicks, state, toasts };
+  const env = { win, doc, errors, clicks, state, toasts };
+  envs.push(env);
+  return env;
 }
 
 run(async () => {
@@ -117,6 +125,20 @@ run(async () => {
     t(n('...and opened at its next end'), env.clicks.length === 1, env.clicks.join());
   }
   {
+    // Replayed with the pointer on the TV: -1, 5, 3 within the delay, 1 only
+    // after it (end at 21.2 s, 1 at 23.1 s). Leaving the end is enough.
+    const env = await boot();
+    env.state(1);
+    env.state(0);
+    await wait(200);
+    env.state(-1);
+    env.state(5);
+    env.state(3);
+    await wait(SETTLE_MS);
+    env.state(1);
+    t(n('replayed, still loading when the delay ran out: not opened'), env.clicks.length === 0, env.clicks.join());
+  }
+  {
     // The event with no detail (not the player's): ignored, and the listener goes on working.
     const env = await boot();
     env.win.dispatchEvent(new env.win.CustomEvent('yt-player-state-change'));
@@ -126,4 +148,35 @@ run(async () => {
     await wait(SETTLE_MS);
     t(n('...and the next end still opens the comments'), env.clicks.length === 1, env.clicks.join());
   }
+  {
+    // An autoplay record of another shape is not known: on, so not opened.
+    const env = await boot({}, { autonav: { data: false } });
+    env.state(1);
+    env.state(0);
+    await wait(SETTLE_MS);
+    t(n('an autoplay record {data: false}: counted as on, not opened'), env.clicks.length === 0, env.clicks.join());
+  }
+  {
+    // Switched off with the pointer during the delay (no key counted then):
+    // not opened. The panel is opened by key once, long enough before the end.
+    const env = await boot();
+    trustedKey(env.win, GREEN);
+    trustedKey(env.win, GREEN);
+    await wait(KEY_WINDOW_PAST_MS);
+    env.state(1);
+    env.state(0);
+    await wait(200);
+    const row = [...env.doc.querySelectorAll('.ytaf-ui-container label')]
+      .find((l) => l.textContent.trim() === 'Open Comments at the End of a Video');
+    const input = row && row.querySelector('input');
+    t(n('the setting has a row in the panel'), !!input && input.checked);
+    if (input) {
+      input.checked = false;
+      input.dispatchEvent(new env.win.Event('change', { bubbles: true }));
+    }
+    await wait(SETTLE_MS);
+    t(n('switched off during the delay: not opened'), env.clicks.length === 0, env.clicks.join());
+  }
+  t(n('no page errors in any case'), envs.every((e) => e.errors.length === 0),
+    envs.map((e) => e.errors.join(' | ')).filter(Boolean).join(' || '));
 });
