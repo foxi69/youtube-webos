@@ -307,7 +307,6 @@ const configOptions = new Map([
   ['videoShelfOpacity', { default: 100, desc: 'Video shelf opacity' }],
   // Takes YouTube's low-memory class off <body> (app-quality-fix.js).
   ['removeLowMemoryStyle', { default: true, desc: 'Remove Black Text Boxes' }],
-  ['loadRowsAhead', { default: true, desc: 'Load Rows Ahead' }],
   ['keyboardSearch', { default: true, desc: 'Type in Search with a Keyboard' }],
   ['searchUploadDate', { default: 'any', desc: 'Search: Upload Date' }],
   ['removeBlackBorders', { default: false, desc: 'New Liquid Glass UI' }],
@@ -414,7 +413,6 @@ const DEVICE_KEYS = new Set([
   'enableLegacyEmojiFix',
   'pointerSettingsButton',
   'keyboardSearch',
-  'loadRowsAhead',
   'disableAnimations',
   'keepAppOpenWhenPaused',
   // Read when the app starts, before "Who's watching" picks an account.

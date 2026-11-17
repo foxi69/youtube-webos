@@ -417,7 +417,7 @@ reporter.run(async () => {
   {
     // Everything else on the JSON.parse hook off: the hook stays for the menu
     // while an entry is hidden or none is learnt yet.
-    const bare = { enableAdBlock: false, loadRowsAhead: false, enableAutoLogin: false };
+    const bare = { enableAdBlock: false, enableAutoLogin: false };
     const a = boot(Object.assign({ hiddenSidebarEntries: ['FEtopics_music'] }, bare), '',
       { 'ytaf-sidebar-entries': LEARNT });
     await wait(300);

@@ -81,7 +81,6 @@ const CONFIG_KEYS = {
   EMOJI_FIX: 'enableLegacyEmojiFix',
   ENDCARDS: 'hideEndcards',
   THUMBNAILS: 'upgradeThumbnails',
-  ROWS_AHEAD: 'loadRowsAhead',
   // "Are you still watching?" is one of the nag screens this switch bypasses.
   NAG_SCREENS: 'enableAutoLogin',
   AUTO_CAPTIONS: 'disableAutoCaptions',
@@ -236,7 +235,7 @@ const BADGE_MEMBERS = 4;
 
 // configGetAll() returns the live reference, so this binds once at load.
 const cfgSnapshot = configGetAll();
-// The filters that need a setting on; Load Rows Ahead, the left menu and the
+// The filters that need a setting on; the rows ahead, the left menu and the
 // preview fix run before them.
 let anyResponseFilterEnabled = false;
 let cfgEmojiFixEffective = false;
@@ -261,7 +260,6 @@ const cfgFlags = {
   enableLegacyEmojiFix: false,
   hideEndcards: false,
   upgradeThumbnails: false,
-  loadRowsAhead: false,
   removeYouThere: false,
   disableAutoCaptions: false,
   // Feed filters: whether any is on, then each one. The lists are lower-cased.
@@ -339,7 +337,6 @@ function recomputeFilterFlags() {
   cfgFlags.enableLegacyEmojiFix = cfgEmojiFixEffective;
   cfgFlags.hideEndcards = !!cfgSnapshot[CONFIG_KEYS.ENDCARDS];
   cfgFlags.upgradeThumbnails = !!cfgSnapshot[CONFIG_KEYS.THUMBNAILS];
-  cfgFlags.loadRowsAhead = !!cfgSnapshot[CONFIG_KEYS.ROWS_AHEAD];
   cfgFlags.removeYouThere = !!cfgSnapshot[CONFIG_KEYS.NAG_SCREENS];
   cfgFlags.disableAutoCaptions = !!cfgSnapshot[CONFIG_KEYS.AUTO_CAPTIONS];
   cfgFlags.forceOriginalAudio = !!cfgSnapshot[CONFIG_KEYS.ORIGINAL_AUDIO];
@@ -803,8 +800,8 @@ function filterResponse(data, text) {
   if (data.playabilityStatus) noteQueuePlayability(data.playabilityStatus.status);
   const responseType = detectResponseType(data);
   // Before the Shorts guard below: a browse response parsed while a Short
-  // plays still wants its rows ahead.
-  if (cfgFlags.loadRowsAhead) raiseRowsAhead(data, responseType);
+  // plays still wants its rows ahead. Always on: the same rows, asked for sooner.
+  raiseRowsAhead(data, responseType);
   // The left menu, whatever else is on.
   if (cfgFlags.sidebar) applySidebar(data);
   // No setting for the auto-open: one native search of the text, only a

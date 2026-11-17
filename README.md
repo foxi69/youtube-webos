@@ -235,7 +235,6 @@ Return YouTube Dislike sends the id of every video you open to returnyoutubedisl
 | Show Watch Time With the Clock | Off |
 | OLED-Care Mode (True Black UI) | Off |
 | Disable Notifications | Off |
-| Load Rows Ahead | On |
 | Type in Search with a Keyboard | On |
 | Search: Upload Date (Any Time, Last Hour, Today, This Week, This Month, This Year) | Any Time |
 | Settings Button for the Pointer | On |

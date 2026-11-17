@@ -18,7 +18,7 @@ const ALL_OFF = {
   removeLiveVideos: false, removeAiVideos: false, markAiVideos: false, removeTopLiveGames: false,
   removeMostRelevant: false, hideGuestSignInPrompts: false, hideEndcards: false,
   enableLegacyEmojiFix: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-  upgradeThumbnails: false, enableAutoLogin: false, loadRowsAhead: false,
+  upgradeThumbnails: false, enableAutoLogin: false,
   disableAutoCaptions: false, forceOriginalAudio: false, extendLongPressMenu: false,
   enableDeArrow: false, hiddenSidebarEntries: [], videoPreviews: 'default'
 };

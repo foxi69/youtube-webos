@@ -136,15 +136,16 @@ run(async () => {
     t(n('Ad Blocking off: still raised'), thresholds(homeList(r)) === '4', thresholds(homeList(r)));
   }
 
-  // The setting off: YouTube's value stays.
+  // No switch any more: a value stored off by an earlier version is no
+  // longer read, the rows are raised all the same.
   {
     const h = boot({ loadRowsAhead: false });
     await wait(20);
     const r = h.parse(home(list(next(1), next())));
-    t(n('off: YouTube\'s threshold stays as sent'), thresholds(homeList(r)) === '1,', thresholds(homeList(r)));
+    t(n('stored off by an earlier version: still raised'), thresholds(homeList(r)) === '4,4', thresholds(homeList(r)));
   }
 
-  // Turned off and on in the panel, as the remote does it.
+  // The panel has no Load Rows Ahead row.
   {
     const h = boot({});
     await wait(20);
@@ -152,21 +153,9 @@ run(async () => {
     Object.defineProperty(e, 'keyCode', { get: () => GREEN, configurable: true });
     dispatchTrusted(h.win.document.body, e);
     await wait(20);
-    const box = () => {
-      const label = [...h.win.document.querySelectorAll('.ytaf-ui-container label')]
-        .find((l) => l.textContent.trim() === 'Load Rows Ahead');
-      return label && label.querySelector('input[type=checkbox]');
-    };
-    const set = (on) => { const b = box(); b.checked = on; b.dispatchEvent(new h.win.Event('change', { bubbles: true })); };
-    t(n('the panel has the Load Rows Ahead checkbox, checked'), !!box() && box().checked);
-    set(false);
-    await wait(20);
-    const off = h.parse(home(list(next(1))));
-    t(n('unchecked in the panel: the next response keeps YouTube\'s value'), thresholds(homeList(off)) === '1', thresholds(homeList(off)));
-    set(true);
-    await wait(20);
-    const on = h.parse(home(list(next(1))));
-    t(n('checked again: raised again'), thresholds(homeList(on)) === '4', thresholds(homeList(on)));
+    const labels = [...h.win.document.querySelectorAll('.ytaf-ui-container label')].map((l) => l.textContent.trim());
+    t(n('the panel is open'), labels.length > 0, labels.length);
+    t(n('no Load Rows Ahead row in the panel'), !labels.includes('Load Rows Ahead'), labels.filter((l) => /rows/i.test(l)).join());
     t(n('panel: no page errors'), h.errors.length === 0, h.errors.join(' | '));
   }
 });
