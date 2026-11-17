@@ -566,6 +566,60 @@ run(async () => {
     for (let i = 0; i < 80 && !log.ranges.length; i++) await sleep(50);
     t('a video opened again after one above the cap is raised again', log.ranges.join() === 'hd1080', log.ranges.join());
   }
+  // The raise's reload starts the video over (webOS 25: raised at 3.0 s, on
+  // from 0.0). viewer(p, win) runs as the cap is set: the viewer's own doing.
+  const raiseRun = async (at, viewer, { shorts = false } = {}) => {
+    const { win, p, speed, log, emit, pump, setQuality } = boot(0);
+    speed.setSpeed(1.5, { immediate: true });
+    await sleep(900);
+    let time = at;
+    const seeks = [];
+    p.getCurrentTime = () => time;
+    p.seekTo = (to) => { seeks.push(to); time = to; };
+    const setRange = p.setPlaybackQualityRange;
+    p.setPlaybackQualityRange = function (a) {
+      setRange.call(this, a);
+      if (viewer) time = viewer(win);
+      // The reload: back to 0, buffering, then playing.
+      win.setTimeout(() => { if (!viewer) time = 0; emit(3); }, 50);
+      win.setTimeout(() => { emit(1); }, 700);
+    };
+    if (shorts) win.document.body.className = 'WEB_PAGE_TYPE_SHORTS';
+    p.videoId = 'raisevideo1';
+    setQuality('large');
+    log.ranges.length = 0;
+    emit(-1); emit(3); emit(1); pump(); pump();
+    for (let i = 0; i < 80 && !log.ranges.length; i++) await sleep(50);
+    await sleep(1500);
+    win.close();
+    return { ranges: log.ranges.join(), seeks: seeks.join() };
+  };
+  {
+    const r = await raiseRun(3);
+    t('a raise whose reload starts the video over: raised once', r.ranges === 'hd1080', r.ranges);
+    t('and put back where it was raised (3 s), not left at 0', r.seeks === '3', r.seeks);
+  }
+  {
+    const r = await raiseRun(1.5);
+    t('raised 1.5 s in: back to 1.5 s, no repeat from 0', r.seeks === '1.5', r.seeks);
+  }
+  {
+    // The viewer skips 30 s ahead (a key) as the cap is set; the reload then
+    // reports 0 for a moment: their seek stands.
+    const r = await raiseRun(3, (win) => { pressKey(win); return 0; });
+    t('a key of the viewer\'s during the raise: not moved back', r.seeks === '', r.seeks);
+  }
+  {
+    // Without a key, a seek of theirs elsewhere (33 s) is not a start over.
+    const r = await raiseRun(3, () => 33);
+    t('a seek of the viewer\'s ahead during the raise stays', r.seeks === '', r.seeks);
+  }
+  {
+    // On Shorts (they loop by themselves) a start over is never moved on.
+    const r = await raiseRun(3, null, { shorts: true });
+    t('on Shorts the raise still comes', r.ranges === 'hd1080', r.ranges);
+    t('on Shorts a start over after the raise is not moved on', r.seeks === '', r.seeks);
+  }
   {
     // A 720p pick; the reloaded video plays, then falls to 480p while its watch runs.
     const { win, speed, log, setQuality } = boot(720);
