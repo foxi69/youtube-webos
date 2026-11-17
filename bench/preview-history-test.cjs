@@ -22,14 +22,17 @@ function boot(bodyClass, config, fetchResponse) {
   const fetched = [];
   const xhrs = [];
   const XHR = class {
-    open(method, url) { this.method = method; this.url = String(url); }
+    open(method, url) { this.method = method; this.url = String(url); this.headers = {}; }
     send(body) {
-      xhrs.push({ method: this.method, url: this.url, body });
+      xhrs.push({ method: this.method, url: this.url, body, headers: Object.assign({}, this.headers) });
       const done = this.onloadend;
       if (done) Promise.resolve().then(done);
     }
     abort() {}
-    setRequestHeader() {}
+    setRequestHeader(name, value) {
+      const key = String(name).toLowerCase();
+      this.headers[key] = this.headers[key] ? this.headers[key] + ', ' + String(value) : String(value);
+    }
     getResponseHeader() { return null; }
     addEventListener(type, fn) { if (type === 'loadend') this.onloadend = fn; }
   };
@@ -60,6 +63,39 @@ function boot(bodyClass, config, fetchResponse) {
 }
 
 run(async () => {
+  // A kept XHR must replay the original request's explicit headers as well
+  // as its method and body. The preview-history contract says "as it came".
+  // Record the headers at send time, after the module has wrapped the XHR.
+  for (const tracking of [false, true]) {
+    const env = boot('WEB_PAGE_TYPE_BROWSE', { enableTrackingBlock: tracking });
+    const originalUrl = playback('?cpn=header-test&autoplay=1&vis=5');
+    const body = '{"event":"start"}';
+    const x = new env.win.XMLHttpRequest();
+    x.open('POST', originalUrl, true);
+    x.setRequestHeader('Content-Type', 'application/json');
+    x.setRequestHeader('X-Preview-Test', 'first');
+    x.setRequestHeader('x-preview-test', 'second');
+    x.send(body);
+    t(`headers, tracking=${tracking}: preview not sent before OK`,
+      !env.xhrs.some((r) => r.url === originalUrl));
+    env.doc.body.className = 'WEB_PAGE_TYPE_WATCH';
+    const nextUrl = watchtime('?cpn=header-test&st=5&et=10');
+    const next = new env.win.XMLHttpRequest();
+    next.open('POST', nextUrl, true);
+    next.send('next');
+    await wait(30);
+    const replay = env.xhrs.find((r) => r.url === originalUrl);
+    t(`headers, tracking=${tracking}: one original POST and body replayed`,
+      env.xhrs.filter((r) => r.url === originalUrl).length === 1 &&
+      replay.method === 'POST' && replay.body === body);
+    t(`headers, tracking=${tracking}: replay keeps Content-Type`,
+      replay && replay.headers['content-type'] === 'application/json', JSON.stringify(replay));
+    t(`headers, tracking=${tracking}: replay keeps combined explicit headers`,
+      replay && replay.headers['x-preview-test'] === 'first, second', JSON.stringify(replay));
+    t(`headers, tracking=${tracking}: replay precedes watchtime`,
+      env.xhrs.findIndex((r) => r.url === originalUrl) < env.xhrs.findIndex((r) => r.url === nextUrl));
+  }
+
   for (const [name, config] of [
     ['Ad Blocking and Tracking Block off', {}],
     ['Ad Blocking and Tracking Block on', { enableAdBlock: true, enableTrackingBlock: true }]

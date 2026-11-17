@@ -123,6 +123,7 @@ const originalFetch = window.fetch;
 const originalOpen = XMLHttpRequest.prototype.open;
 const originalSend = XMLHttpRequest.prototype.send;
 const originalAbort = XMLHttpRequest.prototype.abort;
+const originalSetHeader = XMLHttpRequest.prototype.setRequestHeader;
 
 /** Sends a kept start ping; settles once it is answered or failed. */
 function sendKept(start) {
@@ -177,7 +178,7 @@ XMLHttpRequest.prototype.open = function (method, url) {
   nextOp(this);
   const urlStr = urlOf(url);
   const stats = urlStr.indexOf('/api/stats/') !== -1;
-  this.__ytafPreviewPing = stats && isPreviewPing(urlStr) ? { method, url: urlStr } : null;
+  this.__ytafPreviewPing = stats && isPreviewPing(urlStr) ? { method, url: urlStr, headers: [] } : null;
   this.__ytafCpn = null;
   if (this.__ytafPreviewPing) {
     log('Dropped a preview ping', 'XHR', urlStr);
@@ -196,6 +197,7 @@ XMLHttpRequest.prototype.send = function (body) {
       const x = new XMLHttpRequest();
       x.addEventListener('loadend', resolve);
       originalOpen.call(x, preview.method, preview.url, true);
+      preview.headers.forEach((h) => { originalSetHeader.call(x, h[0], h[1]); });
       originalSend.call(x, body);
     }));
     return originalSend.call(this);
@@ -211,6 +213,13 @@ XMLHttpRequest.prototype.send = function (body) {
   };
   pending.then(go);
 };
+// A dropped preview's headers, for its start ping sent later as it came.
+if (typeof originalSetHeader === 'function') {
+  XMLHttpRequest.prototype.setRequestHeader = function (name, value) {
+    if (this.__ytafPreviewPing) this.__ytafPreviewPing.headers.push([name, value]);
+    return originalSetHeader.apply(this, arguments);
+  };
+}
 if (typeof originalAbort === 'function') {
   XMLHttpRequest.prototype.abort = function () {
     nextOp(this);
