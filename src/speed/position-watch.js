@@ -74,7 +74,7 @@ export function watchPosition(win, player, at, onPlaying, quality, targetId, onE
   let resumeSince = 0;
   let resumeKeys = 0;
   let resumeHold = 0;
-  // Seen at resumeAt since it was set (so for a cap set where the video is).
+  // Seen playing at resumeAt since it was set (so for a cap set where the video is).
   // Before that a start over may be the watch's own seek still under way: it
   // is sent again and the wait goes on, so the cap's reload after it is caught.
   let resumeLanded = true;
@@ -152,7 +152,9 @@ export function watchPosition(win, player, at, onPlaying, quality, targetId, onE
     }
 
     if (resumeAt !== null) {
-      if (Math.abs(now - resumeAt) <= OFF_BY_S) resumeLanded = true;
+      // Playing there: buffering near it may still be the seek under way (a
+      // seek to 3 s reading 1.5 s), which a start over is told by as well.
+      if (state === 1 && Math.abs(now - resumeAt) <= OFF_BY_S) resumeLanded = true;
       if (resumeOver() || keys() !== resumeKeys || looped(now) || onShorts()) {
         resumeAt = null;
       } else if (resumeHold > 0) {

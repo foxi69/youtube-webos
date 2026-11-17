@@ -353,6 +353,21 @@ runTest(() => import(MODULE).then(({ watchPosition }) => {
     c.player.time = 0;
     c.run(500);
     t('...and the cap\'s reload after it lands is still put back', c.player.seeks.join() === '5,5,5', c.player.seeks.join());
+    // A seek to 3 s still under way reads 1.5 s while buffering: within reach
+    // of 3 s, but not landed; the cap's reload after it lands is put back.
+    const d = setup({ state: 1, t: 0.5, vt: 0.5 });
+    watchPosition(d.win, d.player, 3, () => true, { isLow: () => false, setCap: () => true, keys: () => 0 }, 'abcdefghijk');
+    d.run(250);
+    d.player.state = 3;
+    d.player.time = 1.5;
+    d.run(750);
+    d.player.state = 1;
+    d.player.time = 3.2;
+    d.run(250);
+    d.player.state = 3;
+    d.player.time = 0;
+    d.run(750);
+    t('...a seek under way reading near its target is not taken as landed', d.player.seeks.join() === '3,3,3', d.player.seeks.join());
   }
   {
     // The TV busy for 4 s right after the cap: one late tick, not sixteen.
