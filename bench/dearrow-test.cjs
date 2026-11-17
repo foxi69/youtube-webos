@@ -324,12 +324,17 @@ run(async () => {
     const frame = renderLockup(win, lockup('framed00001', 'x'));
     frame.querySelector('thumbnail image').style.backgroundImage = 'url("https://i.ytimg.com/vi/framed00001/hq1.jpg")';
     const sizes = [];
+    const priorities = [];
     for (const sheet of win.document.styleSheets) {
       for (const rule of sheet.cssRules) {
-        if (rule.selectorText && frame.querySelector('thumbnail image').matches(rule.selectorText)) sizes.push(rule.style.backgroundSize);
+        if (rule.selectorText && frame.querySelector('thumbnail image').matches(rule.selectorText)) {
+          sizes.push(rule.style.backgroundSize);
+          if (rule.style.backgroundSize === 'cover') priorities.push(rule.style.getPropertyPriority('background-size'));
+        }
       }
     }
     t('a lockup showing YouTube\'s 4:3 frame crops it (cover)', sizes.indexOf('cover') !== -1, sizes.join(','));
+    t('the cover declaration for the 4:3 frame is important', priorities.indexOf('important') !== -1, priorities.join(','));
     t('no jsdomError (lockup)', errors.length === 0, errors[0]);
   }
 
