@@ -22,11 +22,15 @@ function boot(bodyClass, config) {
   const fetched = [];
   const xhrs = [];
   const XHR = class {
-    open(method, url) { this.url = String(url); }
-    send(body) { xhrs.push({ url: this.url, body }); }
+    open(method, url) { this.method = method; this.url = String(url); }
+    send(body) {
+      xhrs.push({ method: this.method, url: this.url, body });
+      const done = this.onloadend;
+      if (done) Promise.resolve().then(done);
+    }
     setRequestHeader() {}
     getResponseHeader() { return null; }
-    addEventListener() {}
+    addEventListener(type, fn) { if (type === 'loadend') this.onloadend = fn; }
   };
   const { win, doc, errors } = bootPage({
     bodyClass,
@@ -36,7 +40,7 @@ function boot(bodyClass, config) {
     consoleErrors: false,
     // jsdom has no Request; the TV's fetch comes with one.
     beforeEval: (w) => { if (typeof w.Request !== 'function') w.Request = class { constructor(url) { this.url = String(url); } }; },
-    fetch: (resource) => { fetched.push(typeof resource === 'string' ? resource : resource.url); return new Promise(() => {}); }
+    fetch: (resource) => { fetched.push(typeof resource === 'string' ? resource : resource.url); return Promise.resolve({ ok: true, status: 204 }); }
   });
   // Whether a request reaches the network, by each way.
   const viaFetch = (url) => { const n = fetched.length; win.fetch(url); return fetched.length > n && fetched[fetched.length - 1] === url; };
@@ -47,7 +51,7 @@ function boot(bodyClass, config) {
     const last = xhrs[xhrs.length - 1];
     return last.url === url && last.body === 'body';
   };
-  return { win, doc, errors, fetched, viaFetch, viaXHR };
+  return { win, doc, errors, fetched, xhrs, viaFetch, viaXHR };
 }
 
 run(async () => {
@@ -128,4 +132,110 @@ run(async () => {
   t('Tracking Block turned off in the panel: its requests go out again', !!input && tb.viaXHR(HOST + '/api/stats/qoe?x=1'));
   t('and a preview ping is still dropped', !tb.viaXHR(playback(PREVIEW)) && !tb.viaFetch(watchtime(PREVIEW)));
   t('no errors with the panel', tb.errors.length === 0, tb.errors[0]);
+
+  // ===== A preview opened with OK carries on as the same playback (cpn) =====
+  // Its start ping, dropped on Home, goes out once just before the first ping
+  // of that cpn that goes out; its watchtime pings stay dropped.
+  const ping = (path, cpn, q) => HOST + '/api/stats/' + path + '?cpn=' + cpn + '&docid=abc&el=leanback' + q;
+  const PV = '&autoplay=1&vis=5&st=0&et=5';
+  // The first ping after OK: still autoplay=1, the spans before and after it.
+  const OPENED = '&autoplay=1&vis=5,0&st=4,8&et=8,14';
+  const start = (cpn) => ping('playback', cpn, PV);
+  const toPage = async (env, cls) => {
+    env.doc.body.className = cls;
+    const watch = cls === 'WEB_PAGE_TYPE_WATCH';
+    await until(() => env.viaFetch(playback(PREVIEW)) === watch, 1000);
+  };
+  // What reaches the network from a ping of the page on, once the chain settled.
+  const sentBy = async (env, url) => {
+    const n = env.fetched.length;
+    env.win.fetch(url);
+    await wait(30);
+    return env.fetched.slice(n);
+  };
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+  {
+    const env = boot('WEB_PAGE_TYPE_BROWSE');
+    const dropped = !env.viaFetch(start('c1')) & !env.viaFetch(ping('watchtime', 'c1', PV)) &
+      !env.viaFetch(ping('watchtime', 'c1', '&autoplay=1&vis=5&st=5&et=15'));
+    t('a preview\'s start and watchtime pings on Home: dropped', !!dropped);
+    await toPage(env, 'WEB_PAGE_TYPE_WATCH');
+    const first = await sentBy(env, ping('watchtime', 'c1', OPENED));
+    t('opened (same cpn on the watch page): the start ping as it came, then the watchtime, each once',
+      same(first, [start('c1'), ping('watchtime', 'c1', OPENED)]), first.join(' | '));
+    const next = await sentBy(env, ping('watchtime', 'c1', '&autoplay=1&st=14&et=24'));
+    t('the next ping of that cpn: the start ping does not go out again',
+      same(next, [ping('watchtime', 'c1', '&autoplay=1&st=14&et=24')]), next.join(' | '));
+    const previewTime = [ping('watchtime', 'c1', PV), ping('watchtime', 'c1', '&autoplay=1&vis=5&st=5&et=15')];
+    t('the preview\'s own watchtime pings never go out', !env.fetched.some((u) => previewTime.includes(u)),
+      env.fetched.join(' | '));
+    t('no errors (opened)', env.errors.length === 0, env.errors[0]);
+  }
+
+  {
+    const env = boot('WEB_PAGE_TYPE_BROWSE');
+    env.viaFetch(start('c2'));
+    await toPage(env, 'WEB_PAGE_TYPE_WATCH');
+    const other = await sentBy(env, ping('watchtime', 'c3', '&st=0&et=10'));
+    t('a ping of another cpn on the watch page: the kept start ping does not go out',
+      same(other, [ping('watchtime', 'c3', '&st=0&et=10')]), other.join(' | '));
+    // The last ping of a watched video goes out on Home: by its cpn too.
+    await toPage(env, 'WEB_PAGE_TYPE_BROWSE');
+    const back = await sentBy(env, ping('watchtime', 'c2', '&autoplay=1&st=8&et=9&final=1'));
+    t('on Home, the first ping of that cpn that goes out (no vis): the start ping before it',
+      same(back, [start('c2'), ping('watchtime', 'c2', '&autoplay=1&st=8&et=9&final=1')]), back.join(' | '));
+  }
+
+  {
+    // Not opened: it expires. 80 s after the start ping it is gone.
+    const env = boot('WEB_PAGE_TYPE_BROWSE');
+    const realNow = env.win.Date.now.bind(env.win.Date);
+    let offset = 0;
+    env.win.Date.now = () => realNow() + offset;
+    env.viaFetch(start('c4'));
+    env.viaFetch(start('c5'));
+    await toPage(env, 'WEB_PAGE_TYPE_WATCH');
+    offset = 79000;
+    const inTime = await sentBy(env, ping('watchtime', 'c5', OPENED));
+    t('opened 79 s after the start ping: it goes out', same(inTime, [start('c5'), ping('watchtime', 'c5', OPENED)]), inTime.join(' | '));
+    offset = 81000;
+    const late = await sentBy(env, ping('watchtime', 'c4', OPENED));
+    t('81 s after it (expired): never goes out', same(late, [ping('watchtime', 'c4', OPENED)]), late.join(' | '));
+  }
+
+  {
+    // Moved along the row: three previews, the third opened.
+    const env = boot('WEB_PAGE_TYPE_BROWSE');
+    for (const c of ['a', 'b', 'c']) { env.viaFetch(start(c)); env.viaFetch(ping('watchtime', c, PV)); }
+    await toPage(env, 'WEB_PAGE_TYPE_WATCH');
+    const opened = await sentBy(env, ping('watchtime', 'c', OPENED));
+    t('three previews, the third opened: only its start ping goes out',
+      same(opened, [start('c'), ping('watchtime', 'c', OPENED)]), opened.join(' | '));
+    // Only the last three are kept.
+    await toPage(env, 'WEB_PAGE_TYPE_BROWSE');
+    for (const c of ['d1', 'd2', 'd3', 'd4']) env.viaFetch(start(c));
+    await toPage(env, 'WEB_PAGE_TYPE_WATCH');
+    const oldest = await sentBy(env, ping('watchtime', 'd1', OPENED));
+    const newest = await sentBy(env, ping('watchtime', 'd2', OPENED));
+    t('four previews: the oldest one\'s start ping is no longer kept, the next one\'s is',
+      same(oldest, [ping('watchtime', 'd1', OPENED)]) && same(newest, [start('d2'), ping('watchtime', 'd2', OPENED)]),
+      oldest.join(' | ') + ' || ' + newest.join(' | '));
+  }
+
+  {
+    // The same through XMLHttpRequest: the start ping as it came (method, body).
+    const env = boot('WEB_PAGE_TYPE_BROWSE');
+    env.viaXHR(start('x1'));
+    await toPage(env, 'WEB_PAGE_TYPE_WATCH');
+    const n = env.xhrs.length;
+    const x = new env.win.XMLHttpRequest();
+    x.open('POST', ping('watchtime', 'x1', OPENED), true);
+    x.send('now');
+    await wait(30);
+    const sent = env.xhrs.slice(n).map((r) => r.method + ' ' + r.url + ' ' + r.body);
+    t('XMLHttpRequest: the start ping first (method and body as they came), then the ping',
+      same(sent, ['POST ' + start('x1') + ' body', 'POST ' + ping('watchtime', 'x1', OPENED) + ' now']), sent.join(' | '));
+    t('no errors (XMLHttpRequest)', env.errors.length === 0, env.errors[0]);
+  }
 });
