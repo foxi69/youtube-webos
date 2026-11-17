@@ -21,6 +21,7 @@ import { blockChannel, openFocusedLongPressMenu } from './long-press-menu.js';
 import { VERSION_LABEL } from './version.js';
 import { buildAboutPage } from './about.js';
 import { clearQueue, playNextInQueue } from './video-queue.js';
+import { toggleRepeat } from './repeat-video.js';
 import { titleFormattingSupported, titleFormatChoices } from './dearrow/index.js';
 import { getSidebarEntries, hiddenIds, entryName, SIDEBAR_ENTRIES_EVENT } from './sidebar.js';
 import { onWebClientRefused } from './web-client.js';
@@ -177,6 +178,7 @@ const ACTION_SCOPES = {
     sb_skip_prev: 'VIDEO',
     sb_manual_skip: 'VIDEO',
     audio_only: 'VIDEO',
+    repeat_video: 'VIDEO',
     jump_to_live: 'VIDEO',
     speed_up: 'VIDEO',
     speed_down: 'VIDEO',
@@ -2091,6 +2093,11 @@ function handleShortcutAction(action) {
         // jesvijonathan's fork via anikettuli's NicholasBly PR #146.
         const on = document.documentElement.classList.toggle('ytaf-audio-only');
         showNotification(`Audio-Only Mode ${on ? 'Enabled' : 'Disabled'}`);
+        break;
+    }
+    case 'repeat_video': {
+        const on = toggleRepeat();
+        showNotification(on === null ? 'Repeat Video: no video to repeat here' : `Repeat Video ${on ? 'On' : 'Off'}`);
         break;
     }
     case 'sb_manual_skip':

@@ -107,6 +107,7 @@ export const shortcutActions = {
   oled_toggle: 'Toggle OLED Black Overlay',
   sleep_timer: 'Sleep Timer (15/30/60/90/120 min, off)',
   audio_only: 'Toggle Audio-Only Mode',
+  repeat_video: 'Repeat Video (on/off)',
   sb_manual_skip: 'Manual Skip / Jump to Highlight',
   jump_to_live: 'Jump to Live',
   config_menu: 'Open/Close Settings',

@@ -425,6 +425,45 @@ run(async () => {
       taken === false && !html.classList.contains('ytaf-audio-only') && env.toasts() === '', env.toasts());
   }
 
+  // ---- Repeat Video ----
+  {
+    const env = await boot({ shortcut_key_5: 'repeat_video' });
+    const tick = (time) => {
+      env.vs.time = time;
+      env.video.dispatchEvent(new env.win.Event('timeupdate'));
+      return env.vs.time;
+    };
+    t(n('repeat off: the end of the video is left to YouTube'), tick(599.5) === 599.5);
+    await env.press(D(5));
+    t(n('repeat video: on, with a toast'), /Repeat Video On/.test(env.toasts()), env.toasts());
+    t(n('...mid-video nothing changes'), tick(300) === 300);
+    t(n('...0.6 s before the end it goes back to the start'), tick(599.5) === 0);
+    t(n('...and again on the next round'), tick(599.6) === 0);
+    await env.press(D(5));
+    t(n('...pressed again: off, with a toast'), /Repeat Video Off/.test(env.toasts()) && tick(599.5) === 599.5, env.toasts());
+    await env.press(D(5));
+    env.vs.duration = Infinity;
+    t(n('...a live stream (no end) is left alone'), tick(5000) === 5000);
+    env.vs.duration = 600;
+    env.win.location.hash = '#/watch?v=zyxwvutsrqp';
+    await wait(30);
+    t(n('...another video ends it'), tick(599.5) === 599.5);
+    env.win.location.hash = '#/watch?v=' + VIDEO_ID;
+    await wait(30);
+    t(n('...also when the first video is opened again'), tick(599.5) === 599.5);
+    await env.press(D(5));
+    env.doc.body.className = 'WEB_PAGE_TYPE_BROWSE';
+    await wait(30);
+    env.doc.body.className = 'WEB_PAGE_TYPE_WATCH';
+    await wait(30);
+    t(n('...and leaving the watch page ends it'), tick(599.5) === 599.5);
+    env.win.location.hash = '#/shorts/' + VIDEO_ID;
+    await wait(30);
+    await env.press(D(5));
+    t(n('...with no video id in the page (Shorts) it says so'), /no video to repeat/.test(env.toasts()), env.toasts());
+    t(n('no errors (repeat video)'), env.errors.length === 0, env.errors[0]);
+  }
+
   // ---- Refresh Page ----
   {
     const env = await boot({}, { page: 'WEB_PAGE_TYPE_BROWSE' });
