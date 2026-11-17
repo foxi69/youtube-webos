@@ -55,7 +55,7 @@ function response(renderer, videoId = VIDEO, nested = false) {
 function stubPlayer(el, opts) {
   const p = {
     listeners: [], state: -1, videoId: VIDEO, track: opts.track || null, tracklist: opts.tracklist || [],
-    sets: [], loads: [], listAsked: 0, throwOnSet: false, startListeners: [], started: null, setAt: []
+    sets: [], loads: [], listAsked: 0, throwOnSet: false, startListeners: [], started: null
   };
   Object.assign(el, {
     setPlaybackQualityRange() {}, setPlaybackQuality() {},
@@ -73,7 +73,6 @@ function stubPlayer(el, opts) {
     setOption: (m, name, value) => {
       if (m !== 'captions' || name !== 'track') return;
       p.sets.push(value);
-      p.setAt.push(Date.now());
       if (p.throwOnSet) throw new Error('captions module busy');
       p.track = value;
     },
@@ -128,6 +127,43 @@ async function boot(cfg, opts = {}) {
   /** Parses `text` in the page, through every JSON.parse hook it installed. */
   const parse = (text) => win.JSON.parse(text);
   return { win, p, errors, warnings, parse };
+}
+
+/**
+ * A clock the test moves: from now on the page's setTimeout and Date.now
+ * follow advance(ms) only. A timer set before stays on the real clock.
+ */
+function manualClock(win) {
+  let now = win.Date.now();
+  let seq = 0;
+  const timers = [];
+  const realClear = win.clearTimeout.bind(win);
+  win.Date.now = () => now;
+  win.setTimeout = (fn, ms, ...a) => {
+    const id = 'manual' + ++seq;
+    timers.push({ id, at: now + (ms || 0), fn, a });
+    return id;
+  };
+  win.clearTimeout = (id) => {
+    const i = timers.findIndex((x) => x.id === id);
+    if (i !== -1) timers.splice(i, 1);
+    else realClear(id);
+  };
+  return {
+    async advance(ms) {
+      const end = now + ms;
+      for (;;) {
+        timers.sort((x, y) => x.at - y.at);
+        if (!timers.length || timers[0].at > end) break;
+        const next = timers.shift();
+        now = next.at;
+        next.fn(...next.a);
+        // What the callback starts on the real clock (an animation frame) gets to run.
+        await wait(10);
+      }
+      now = end;
+    }
+  };
 }
 
 run(async () => {
@@ -324,15 +360,19 @@ run(async () => {
     env.win.close();
   }
 
-  // A player that never sends onPlaybackStartExternal: turned on a while after PLAYING.
+  // A player that never sends onPlaybackStartExternal: turned on a while after
+  // PLAYING. On a clock the test moves itself, so no scheduler delay can make
+  // an early or a late fallback pass, or a right one fail.
   {
     const env = await boot(AUTO, { tracklist: [huHuman], noStartEvent: true });
-    const emittedAt = Date.now();
+    const clock = manualClock(env.win);
     env.p.emit(1);
-    await pageMs(3500);
-    // Measured in page time from the set itself, so the waits' slack cannot hide a later fallback.
-    const after = env.p.setAt.length ? (env.p.setAt[0] - emittedAt) * SPEED : -1;
-    t(n('no start event: the track 2.5 s after PLAYING'), env.p.sets.length === 1 && after >= 2500 && after < 2800, `after=${after} sets=${env.p.sets.length}`);
+    await wait(30);
+    await clock.advance(2499);
+    const early = env.p.sets.length;
+    await clock.advance(301);
+    t(n('no start event: the track 2.5 s after PLAYING'), early === 0 && env.p.sets.length === 1,
+      `by 2499 ms: ${early} sets, by 2800 ms: ${env.p.sets.length}`);
     env.win.close();
   }
 
