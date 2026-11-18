@@ -181,22 +181,24 @@ export function isGuestMode() {
   }
 }
 
+// Whether the video playing is a live stream (Jump to Live, Repeat Video):
+// true for a <video> with no end, else the player's own word for it. null when
+// the player does not say (no player, no getVideoData, it threw): not known.
+export function isLiveStream(player, video) {
+  if (video.duration === Infinity) return true;
+  try {
+    const data = player && typeof player.getVideoData === 'function' ? player.getVideoData() : null;
+    if (data) return data.isLive === true;
+  } catch { /* not the player API we know */ }
+  return null;
+}
+
 /**
  * Whether YouTube's "Autoplay next video" is on for the account in use. The
  * TV app keeps it by account in AUTONAV_FOR_LIVING_ROOM ({gaia id: bool}),
  * the guest's in AUTONAV_FOR_SIGN_OUT. Not known (no record, no account):
  * on, YouTube's default.
  */
-// Whether the video playing is a live stream: the player's own word for it,
-// else a <video> with no end (Jump to Live, Repeat Video).
-export function isLiveStream(player, video) {
-  try {
-    const data = player && typeof player.getVideoData === 'function' ? player.getVideoData() : null;
-    if (data && data.isLive === true) return true;
-  } catch { /* not the player API we know */ }
-  return video.duration === Infinity;
-}
-
 export function isAutoplayOn() {
   try {
     const read = (key) => JSON.parse(window.localStorage.getItem('yt.leanback.default::' + key) || 'null');

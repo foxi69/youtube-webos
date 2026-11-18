@@ -54,8 +54,9 @@ function onTimeUpdate(evt) {
   if (!isFinite(duration) || duration <= END_MARGIN_S * 2) return;
   if (video.currentTime < duration - END_MARGIN_S) return;
   // A live stream's end is its live edge, where it plays all along; its
-  // duration is not always Infinity, so the player is asked.
-  if (isLiveStream(document.getElementById(SELECTORS.PLAYER_ID), video)) return;
+  // duration is not always Infinity, so the player is asked. Only a video it
+  // says is not live goes back; when it cannot say, the video is left alone.
+  if (isLiveStream(document.getElementById(SELECTORS.PLAYER_ID), video) !== false) return;
   video.currentTime = 0;
 }
 

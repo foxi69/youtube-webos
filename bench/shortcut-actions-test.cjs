@@ -428,6 +428,9 @@ run(async () => {
   // ---- Repeat Video ----
   {
     const env = await boot({ shortcut_key_5: 'repeat_video' });
+    const player = env.doc.getElementById('ytlr-player__player-container-player');
+    const notLive = () => ({ isLive: false });
+    player.getVideoData = notLive;
     const tick = (time) => {
       env.vs.time = time;
       env.video.dispatchEvent(new env.win.Event('timeupdate'));
@@ -445,10 +448,13 @@ run(async () => {
     env.vs.duration = Infinity;
     t(n('...a live stream (no end) is left alone'), tick(5000) === 5000);
     env.vs.duration = 600;
-    const player = env.doc.getElementById('ytlr-player__player-container-player');
     player.getVideoData = () => ({ isLive: true });
     t(n('...a live stream with a finite duration (its live edge) is left alone'), tick(599.5) === 599.5);
     delete player.getVideoData;
+    t(n('...no getVideoData (live or not unknown) is left alone'), tick(599.5) === 599.5);
+    player.getVideoData = () => { throw new Error('gone'); };
+    t(n('...getVideoData throwing (live or not unknown) is left alone'), tick(599.5) === 599.5);
+    player.getVideoData = notLive;
     env.vs.paused = true;
     t(n('...paused near the end (a seek there) stays where it is'), tick(599.5) === 599.5);
     env.vs.paused = false;
