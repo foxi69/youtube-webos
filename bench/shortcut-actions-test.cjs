@@ -452,6 +452,8 @@ run(async () => {
     t(n('...a live stream with a finite duration (its live edge) is left alone'), tick(599.5) === 599.5);
     delete player.getVideoData;
     t(n('...no getVideoData (live or not unknown) is left alone'), tick(599.5) === 599.5);
+    player.getVideoData = () => ({ video_id: VIDEO_ID });
+    t(n('...getVideoData without isLive (live or not unknown) is left alone'), tick(599.5) === 599.5);
     player.getVideoData = () => { throw new Error('gone'); };
     t(n('...getVideoData throwing (live or not unknown) is left alone'), tick(599.5) === 599.5);
     player.getVideoData = notLive;

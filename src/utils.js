@@ -182,13 +182,14 @@ export function isGuestMode() {
 }
 
 // Whether the video playing is a live stream (Jump to Live, Repeat Video):
-// true for a <video> with no end, else the player's own word for it. null when
-// the player does not say (no player, no getVideoData, it threw): not known.
+// true for a <video> with no end, else the player's own word for it (on the TV
+// a video on demand has isLive: false). null when the player does not say (no
+// player, no getVideoData, it threw, no boolean isLive): not known.
 export function isLiveStream(player, video) {
   if (video.duration === Infinity) return true;
   try {
     const data = player && typeof player.getVideoData === 'function' ? player.getVideoData() : null;
-    if (data) return data.isLive === true;
+    if (data && typeof data.isLive === 'boolean') return data.isLive;
   } catch { /* not the player API we know */ }
   return null;
 }
