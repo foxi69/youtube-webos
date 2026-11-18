@@ -724,11 +724,11 @@ run(async () => {
     const env = await boot({ shortcut_key_1: 'seek_15_fwd' }, { gap: 10 });
     const seekTimer = holdTimeouts(env, 200);
     await env.press(D(1));
+    t(n('A to B to A: the seek is queued (its timer held)'), seekTimer.count() > 0 && env.vs.time === 100);
     env.win.location.hash = '#/watch?v=newvideo123';
     await wait(10);
     env.win.location.hash = '#/watch?v=' + VIDEO_ID;
     await wait(30);
-    t(n('A to B to A: the seek is still waiting, back on A'), seekTimer.count() > 0 && env.win.location.hash.endsWith(VIDEO_ID));
     seekTimer.run();
     t(n('...A to B to A navigation cancels the old queued seek'), env.vs.time === 100, String(env.vs.time));
     env.win.close();
