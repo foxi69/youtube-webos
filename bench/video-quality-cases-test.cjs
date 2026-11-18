@@ -363,6 +363,9 @@ run(async () => {
   {
     const { win, p, s, log, emit } = boot({}, { levels: ['auto'] });
     await wait(50);
+    // Frames from now on wait in a queue the test runs itself.
+    const frames = [];
+    win.requestAnimationFrame = (cb) => { frames.push(cb); return frames.length; };
     s.levels = ['hd2160', 'hd1080', 'hd720', 'auto'];
     emit(1);
     t('switch pending, then replaced: the old player was paused for the switch', log.calls[0] === 'pause', log.calls.join());
@@ -371,15 +374,20 @@ run(async () => {
     p2.id = p.id;
     for (const k of Object.keys(p)) p2[k] = p[k];
     let plays2 = 0;
+    let attached2 = 0;
     p2.playVideo = () => { plays2++; };
     p2.getPlayerState = () => 2;
-    p2.addEventListener = () => {};
+    p2.addEventListener = (type) => { if (type === 'onStateChange') attached2++; };
     p2.innerHTML = '<video></video>';
     p.remove();
     win.document.querySelector('ytlr-app').appendChild(p2);
     p2.querySelector('video').dispatchEvent(new win.Event('playing'));
-    await wait(100);
-    t('...the old switch does not play the new, paused player', plays2 === 0, String(plays2));
+    await wait(30); // the put-off attach (a timer, not a frame)
+    t('...the switch frames still wait, and the new player is attached', frames.length === 1 && attached2 === 1,
+      `${frames.length} frames, attached ${attached2}`);
+    // Both of the switch's frames, the second queued by the first.
+    for (let i = 0; i < 10 && frames.length; i++) frames.shift()();
+    t('...the old switch does not play the new, paused player', plays2 === 0 && frames.length === 0, `${plays2} ${frames.length}`);
   }
   // ---- Watch, then Back before the put-off attach ran ----
   {
