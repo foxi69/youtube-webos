@@ -83,7 +83,7 @@ function boot(cfg, width) {
   }
   {
     // On, the open guide removed with no new one: let go, the page let out.
-    const { win, guide, observers } = boot({ fitPageBesideGuide: true }, 400);
+    const { win, guide, observers, errors } = boot({ fitPageBesideGuide: true }, 400);
     await wait(300);
     let resized = 0;
     win.addEventListener('resize', () => resized++);
@@ -94,6 +94,8 @@ function boot(cfg, width) {
     t('a removed guide: its observer is disconnected', observers.every((o) => !o.live), observers.map((o) => o.live).join());
     t('a removed guide: the page is let out, one resize', !win.document.documentElement.hasAttribute('data-ytaf-guide-open') && resized === 1, String(resized));
     t('a removed guide: no longer measured', guide.measured === n, `${n} -> ${guide.measured}`);
+    // The checks every 2 s after it ran without an error (one that threw would measure nothing either).
+    t('a removed guide: no page error on the checks after it', errors.length === 0, errors[0]);
   }
   console.log(`${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);

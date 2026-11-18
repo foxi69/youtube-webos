@@ -366,12 +366,17 @@ function interceptAndUpgradeQuality(videoId) {
   
   const currentState = player.getPlayerState?.();
   const wasPlaying = currentState === STATE_PLAYING;
+  // The frames below belong to this player: one let go meanwhile (a player
+  // built again, or the page left) leaves them nothing to do, and the next
+  // player is never played for this one.
+  const owner = player;
   
   try {
     if (wasPlaying) player.pauseVideo?.();
   } catch { /* ignore */ }
   
   requestAnimationFrame(() => {
+    if (player !== owner) return;
     const result = setQualityOnPlayer();
     
     if (result.success) {
@@ -379,6 +384,7 @@ function interceptAndUpgradeQuality(videoId) {
     }
     
     requestAnimationFrame(() => {
+      if (player !== owner) return;
       if (wasPlaying) {
         try {
           player.playVideo?.();

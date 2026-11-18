@@ -359,6 +359,28 @@ run(async () => {
     t('replaced player: the old one is let go', log.calls.includes('removeListener'), log.calls.join());
     t('replaced player: the new one is attached', added === 1, String(added));
   }
+  // ---- The player replaced while its quality switch waits for a frame ----
+  {
+    const { win, p, s, log, emit } = boot({}, { levels: ['auto'] });
+    await wait(50);
+    s.levels = ['hd2160', 'hd1080', 'hd720', 'auto'];
+    emit(1);
+    t('switch pending, then replaced: the old player was paused for the switch', log.calls[0] === 'pause', log.calls.join());
+    // Before the switch's frames run: a new player, paused.
+    const p2 = win.document.createElement('div');
+    p2.id = p.id;
+    for (const k of Object.keys(p)) p2[k] = p[k];
+    let plays2 = 0;
+    p2.playVideo = () => { plays2++; };
+    p2.getPlayerState = () => 2;
+    p2.addEventListener = () => {};
+    p2.innerHTML = '<video></video>';
+    p.remove();
+    win.document.querySelector('ytlr-app').appendChild(p2);
+    p2.querySelector('video').dispatchEvent(new win.Event('playing'));
+    await wait(100);
+    t('...the old switch does not play the new, paused player', plays2 === 0, String(plays2));
+  }
   // ---- Watch, then Back before the put-off attach ran ----
   {
     const { win, log } = boot({});
