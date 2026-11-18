@@ -428,11 +428,16 @@ run(async () => {
   d.getElementById('outside').disabled = false;
 
   await wait(250);
+  const opener = d.getElementById('outside');
+  opener.focus();
   press(KEY.GREEN);
-  t(n('open again before the opener is removed'), isOpen() && panel().contains(focused()), describe(focused()));
+  t(n('open again from the opener, before it is removed'), isOpen() && panel().contains(focused()), describe(focused()));
   await wait(550);
-  d.getElementById('outside').remove();
+  opener.remove();
+  let refocused = 0;
+  opener.focus = () => { refocused++; };
   press(KEY.BACK);
+  t(n('removed opener: it is not focused again'), refocused === 0, refocused);
   t(n('removed opener: focus is released from the hidden panel'),
     !isOpen() && !panel().contains(focused()), describe(focused()));
 

@@ -26,10 +26,12 @@ let registry: ResolveCommandRegistry | null = null;
 let initializing: Promise<ResolveCommandRegistry> | null = null;
 // When the lookup in `initializing` started (Date.now()).
 let initializingSince = 0;
+// Outside the registry: a hook set while the resolver is still looked for, or
+// after a startup lookup ran out, is in place once a later lookup finds it.
+const cmds = new Map<string, ResolveCommandHook>();
 
 export class ResolveCommandRegistry {
   #originalFn: ResolveCommand;
-  #cmds = new Map<string, ResolveCommandHook>();
 
   private resolveCommand = (
     command: Record<string, unknown>,
@@ -44,7 +46,7 @@ export class ResolveCommandRegistry {
       console.groupEnd();
     }
 
-    for (const [key, hook] of this.#cmds) {
+    for (const [key, hook] of cmds) {
       if (key in command) {
         return hook(this.#originalFn, command, extra);
       }
@@ -87,11 +89,17 @@ export class ResolveCommandRegistry {
   private static findHookTarget() {
     if (typeof window?._yttv !== 'object') return null;
 
+    // A candidate whose getter throws is passed over; the scan fails with
+    // that error only when no other candidate is the resolver.
+    let failure: unknown = null;
     for (const key in window._yttv) {
-      if (this.checkHookTarget(key)) {
-        return key;
+      try {
+        if (this.checkHookTarget(key)) return key;
+      } catch (error) {
+        failure = failure ?? error;
       }
     }
+    if (failure) throw failure;
 
     return null;
   }
@@ -161,8 +169,13 @@ export class ResolveCommandRegistry {
     }
   }
 
-  setHook(command: string, fn: ResolveCommandHook) {
-    this.#cmds.set(command, fn);
+  /**
+   * Sets hooks by command key, and returns the lookup, for its failure. The
+   * hooks hold whenever the resolver is found, also by a later lookup.
+   */
+  static setHooks(hooks: Record<string, ResolveCommandHook>) {
+    for (const key of Object.keys(hooks)) cmds.set(key, hooks[key]!);
+    return this.getInstance();
   }
 
   dispatchCommand(payload: ResolveCommandPayload, extra?: unknown) {

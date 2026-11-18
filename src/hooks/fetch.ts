@@ -52,8 +52,10 @@ export class FetchRegistry extends CustomEventTarget<EventMap> {
     options?: boolean | AddEventListenerOptions
   ): void;
   override addEventListener(type: any, callback: any, options?: any): void {
-    super.addEventListener(type, callback, options);
-    if (callback && isHookedType(type)) this.#listeners[type][+captureOf(options)]!.add(callback);
+    // Capture read once: an options getter could answer otherwise next time.
+    const capture = captureOf(options);
+    super.addEventListener(type, callback, typeof options === 'object' && options ? { ...options, capture } : capture);
+    if (callback && isHookedType(type)) this.#listeners[type][+capture]!.add(callback);
   }
 
   override removeEventListener<K extends keyof EventMap>(
@@ -71,8 +73,9 @@ export class FetchRegistry extends CustomEventTarget<EventMap> {
     callback: any,
     options?: any
   ): void {
-    super.removeEventListener(type, callback, options);
-    if (callback && isHookedType(type)) this.#listeners[type][+captureOf(options)]!.delete(callback);
+    const capture = captureOf(options);
+    super.removeEventListener(type, callback, capture);
+    if (callback && isHookedType(type)) this.#listeners[type][+capture]!.delete(callback);
   }
 
   private constructor() {

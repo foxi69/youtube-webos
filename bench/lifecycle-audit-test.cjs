@@ -71,6 +71,14 @@ run(async () => {
     t(`resolver ${timeoutFirst}: startup consumers share one poll`, env.timers.size === 1);
     if (timeoutFirst) {
       const settled = Promise.allSettled(pending);
+      let done = 0;
+      pending.forEach((p) => { p.then(() => { done++; }, () => { done++; }); });
+      // Just before the deadline: still looking, every caller waiting.
+      env.now = 29000;
+      env.drain();
+      await flush(); await flush();
+      t('resolver: before the deadline every consumer still waits, with one poll scheduled',
+        done === 0 && env.timers.size === 1, `settled ${done}, timers ${env.timers.size}`);
       env.now = 31000;
       env.drain();
       t('resolver: timeout rejects every waiting consumer and leaves no poll',
@@ -105,6 +113,33 @@ run(async () => {
     t('...and a later caller finds the registry', again.dispatchCommand({ test: 'again' }) === 'again');
   }
   {
+    // A throwing candidate before the resolver: passed over, the resolver found.
+    const env = resolver();
+    env.ready();
+    const Ready = env.ctx.window._yttv.Ready;
+    env.ctx.window._yttv = { get Broken() { throw new Error('getter failed'); }, Ready };
+    // The module's own startup lookup is waiting on its next poll.
+    const finding = env.Registry.getInstance();
+    env.drain();
+    const found = await finding;
+    t('resolver: a candidate that throws is passed over for the one after it', found.dispatchCommand({ test: 'next' }) === 'next');
+  }
+  {
+    // Hooks set while the startup lookup runs out hold once a later lookup
+    // finds the resolver.
+    const env = resolver();
+    const setting = env.Registry.setHooks({ hooked: () => 'from the hook' }).then(() => 'resolved', () => 'rejected');
+    env.now = 31000;
+    env.drain();
+    await flush();
+    const startup = await setting;
+    env.ready();
+    const later = await env.Registry.getInstance();
+    t('resolver: hooks set before a failed lookup are in place once a later one finds it',
+      startup === 'rejected' && env.ctx.window._yttv.Ready.instance.resolveCommand({ hooked: 1 }) === 'from the hook' &&
+      later.dispatchCommand({ test: 'plain' }) === 'plain', startup);
+  }
+  {
     // A caller that joined a lookup started long before it gets a fresh one
     // when that lookup runs out; the caller that started it does not.
     const env = resolver();
@@ -135,6 +170,8 @@ run(async () => {
     const cb = () => { both++; };
     target.addEventListener('y', cb, false);
     target.addEventListener('y', cb, { capture: true });
+    // The same registration again: kept once, as by the browser.
+    target.addEventListener('y', cb, { capture: true });
     target.removeEventListener('y', cb, false);
     target.dispatchEvent(new Event('x'));
     target.dispatchEvent(new Event('x'));
@@ -152,6 +189,12 @@ run(async () => {
     target.addEventListener('z', second);
     target.dispatchEvent(new Event('z'));
     t('legacy EventTarget: a listener removed during the dispatch does not run', ran.join() === 'first', ran.join());
+    // A once listener that dispatches its own event: it is gone before it runs.
+    let inner = 0;
+    const reenter = () => { inner++; if (inner === 1) target.dispatchEvent(new Event('r')); };
+    target.addEventListener('r', reenter, { once: true });
+    target.dispatchEvent(new Event('r'));
+    t('legacy EventTarget: a once listener dispatching its own event runs once', inner === 1, inner);
   }
 
   for (const file of ['most-replayed.js', 'time-remaining.js']) {
@@ -170,9 +213,10 @@ run(async () => {
       clearInterval(handle) { intervals.delete(handle); } };
     vm.runInNewContext(source(file), ctx);
     t(`${file}: one visible timer`, intervals.size === 1);
-    doc.hidden = true; doc.dispatchEvent(new Event('visibilitychange'));
     const before = reads;
-    t(`${file}: hidden, the running interval is the one cleared`, intervals.size === 0, intervals.size);
+    doc.hidden = true; doc.dispatchEvent(new Event('visibilitychange'));
+    t(`${file}: hidden, the running interval is the one cleared, with no page read`,
+      intervals.size === 0 && reads === before, `${intervals.size} ${reads - before}`);
     doc.dispatchEvent(new Event('visibilitychange'));
     t(`${file}: repeated hidden event has no work`, reads === before && intervals.size === 0);
     doc.hidden = false; doc.dispatchEvent(new Event('visibilitychange'));

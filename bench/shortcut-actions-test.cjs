@@ -690,6 +690,21 @@ run(async () => {
     env.win.close();
   }
 
+  {
+    // A navigation lets go of the old lookup: a press on the new video, while
+    // the old (held) wait is still running, is taken and loads its bar.
+    const env = await boot({}, { gap: 10 });
+    holdTimeouts(env, 500);
+    const ENTER = 13;
+    await env.press(D(5));
+    env.win.location.hash = '#/watch?v=newvideo123';
+    await wait(520); // past the shortcut's 500 ms debounce
+    await env.press(D(5));
+    t(n('chapter lookup on A still waiting: a press on B is taken and sends its own Enter'),
+      env.sent.filter((c) => c === ENTER).length === 2, env.sent.join());
+    env.win.close();
+  }
+
   // ---- Fast forward and rewind ----
   {
     const env = await boot({ shortcut_key_1: 'seek_15_fwd', shortcut_key_2: 'seek_15_back' });
@@ -710,15 +725,21 @@ run(async () => {
     const player = env.doc.getElementById('ytlr-player__player-container-player');
     let id = VIDEO_ID;
     player.getVideoData = () => ({ video_id: id });
+    // The seek and its 1.2 s reset held: the context changes while the seek
+    // waits, however slow the runner.
+    const seekTimer = holdTimeouts(env, 200);
+    holdTimeouts(env, 1200);
     await env.press(D(1));
     if (change === 'route') env.win.location.hash = '#/watch?v=newvideo123';
     else if (change === 'video') id = 'newvideo123';
     else env.video.remove();
-    await wait(260);
+    await wait(30);
+    seekTimer.run();
     t(n(`pending burst seek, changed ${change}: old position untouched`), env.vs.time === 100, String(env.vs.time));
     if (change !== 'element') {
+      await wait(60); // the same key again: past the 50 ms duplicate-press window
       await env.press(D(1));
-      await wait(250);
+      seekTimer.run();
       t(n(`pending burst seek, changed ${change}: next press has no old offset`), env.vs.time === 105, String(env.vs.time));
     }
     env.win.close();
@@ -736,6 +757,7 @@ run(async () => {
     Object.defineProperty(env.video, 'currentTime', { configurable: true, get: () => env.vs.time,
       set: (v) => { writes.push(v); env.vs.time = v; } });
     const seekTimer = holdTimeouts(env, 200);
+    holdTimeouts(env, 1200);
     await env.press(D(1));
     await wait(300);
     t(n('new video before queued seek: the first seek (+5) is queued and held past its 200 ms'),
@@ -752,6 +774,7 @@ run(async () => {
     // has been delivered: only that listener can cancel the seek.
     const env = await boot({ shortcut_key_1: 'seek_15_fwd' }, { gap: 10 });
     const seekTimer = holdTimeouts(env, 200);
+    holdTimeouts(env, 1200);
     await env.press(D(1));
     await wait(300);
     t(n('A to B to A: the seek (+5) is queued and held past its 200 ms'),
@@ -762,6 +785,22 @@ run(async () => {
     await wait(30);
     seekTimer.run();
     t(n('...A to B to A navigation cancels the old queued seek'), env.vs.time === 100, String(env.vs.time));
+    env.win.close();
+  }
+
+  {
+    // The player cannot give the video id when the seek lands (between
+    // videos, or not ready): that is no change, and the seek is applied.
+    const env = await boot({ shortcut_key_1: 'seek_15_fwd' }, { gap: 10 });
+    const player = env.doc.getElementById('ytlr-player__player-container-player');
+    let unreadable = false;
+    player.getVideoData = () => { if (unreadable) throw new Error('not ready'); return { video_id: VIDEO_ID }; };
+    const seekTimer = holdTimeouts(env, 200);
+    holdTimeouts(env, 1200);
+    await env.press(D(1));
+    unreadable = true;
+    seekTimer.run();
+    t(n('video id unreadable when the seek lands: the seek is applied'), env.vs.time === 105, String(env.vs.time));
     env.win.close();
   }
 

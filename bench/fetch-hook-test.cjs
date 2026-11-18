@@ -325,8 +325,18 @@ async function nativeFetchTv() {
   await call(win, '/youtubei/v1/browse');
   t(n('a request listener left in its capture registration is still called'), kept.length === 1, kept.length);
   reg.removeEventListener('request', onKept, true);
+  win.__ytaf_debug__ = true;
+  await call(win, '/probe3');
+  win.__ytaf_debug__ = false;
+  const kept3 = lastRequestNo(env.debug);
   await call(win, '/youtubei/v1/browse');
   t(n('...and not once that one is removed too'), kept.length === 1, kept.length);
+  win.__ytaf_debug__ = true;
+  await call(win, '/probe4');
+  win.__ytaf_debug__ = false;
+  const kept4 = lastRequestNo(env.debug);
+  t(n('...and with no listener left, requests go straight through again (the count does not move)'),
+    kept3 >= 0 && kept4 === kept3 + 1, `request numbers ${kept3} then ${kept4}`);
 
   // ---- window.__ytaf_debug__: the bodies in the log ----
   win.__ytaf_debug__ = true;
@@ -375,7 +385,8 @@ async function nativeFetchTv() {
     win.FileReader = class extends win.EventTarget {
       readAsDataURL() {
         if (failure === 'throw') throw new Error('unreadable blob');
-        win.setTimeout(() => this.dispatchEvent(new win.Event(failure)), 0);
+        // In a microtask, with no timer a busy runner could hold back.
+        Promise.resolve().then(() => this.dispatchEvent(new win.Event(failure)));
       }
     };
     const brokenDump = new Request(ORIGIN + '/reader-failure', { method: 'POST', body: 'keep this body' });
@@ -383,7 +394,8 @@ async function nativeFetchTv() {
     env.debug.length = 0;
     const result = await Promise.race([
       call(win, brokenDump),
-      wait(500).then(() => ({ error: new Error('debug dump stalled fetch') }))
+      // Only for a request that never ends: everything above settles in microtasks.
+      wait(5000).then(() => ({ error: new Error('debug dump stalled fetch') }))
     ]);
     t(n(`debug, FileReader ${failure}: request and response still delivered`),
       !result.error && fetched.length === before + 1 && result.body === '{"path":"/reader-failure"}', describe(result));

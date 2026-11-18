@@ -1410,9 +1410,12 @@ function capturePlaybackContext(video) {
   const route = window.location.hash;
   const src = video.currentSrc || video.src;
   const id = playbackVideoId();
+  // An id the player cannot give (now or then) is no change: the route, the
+  // element and its source still decide.
+  const sameId = (now) => !id || !now || now === id;
   return () => generation === playbackActionGeneration && video.isConnected &&
     (isWatchPage() || isShortsPage()) && getVideo() === video &&
-    window.location.hash === route && (video.currentSrc || video.src) === src && playbackVideoId() === id;
+    window.location.hash === route && (video.currentSrc || video.src) === src && sameId(playbackVideoId());
 }
 
 function resetPendingSeek() {
@@ -1428,6 +1431,12 @@ function resetPendingSeek() {
 function cancelDelayedPlaybackActions() {
   playbackActionGeneration++;
   resetPendingSeek();
+  // A chapter lookup waiting for the old playback lets go: a press on the new
+  // one is taken, and may send its own Enter.
+  if (skipChapter.loading) {
+    skipChapter.loading = null;
+    skipChapter.hasForced = false;
+  }
 }
 window.addEventListener('hashchange', cancelDelayedPlaybackActions);
 window.addEventListener('ytaf-page-update', cancelDelayedPlaybackActions);
@@ -1500,9 +1509,12 @@ async function skipChapter(direction = 'next') {
     wasForcedNow = true;
     showNotification('Loading chapters...');
     sendKey(REMOTE_KEYS.ENTER);
-    skipChapter.loading = true;
+    const lookup = {};
+    skipChapter.loading = lookup;
     await new Promise(resolve => setTimeout(resolve, 500));
-    skipChapter.loading = false;
+    // Released by a navigation: a newer lookup may own the state by now.
+    if (skipChapter.loading !== lookup) return;
+    skipChapter.loading = null;
     // Another playback by now (A -> B -> A included): the Enter loaded nothing
     // for this one, so the next press may send it again.
     if (!isCurrent()) {
