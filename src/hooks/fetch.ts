@@ -28,7 +28,9 @@ export class FetchRegistry extends CustomEventTarget<EventMap> {
   #originalFetch: typeof fetch;
   #fetchCount = 0;
   // By capture mode, [bubble, capture]: the browser keeps a callback once per
-  // mode, so removing one registration can leave the other.
+  // mode, so removing one registration can leave the other. A `once` or
+  // `signal` listener the browser drops by itself stays here: that only keeps
+  // the slower path, while a listener the browser has is never missing here.
   #listeners: Record<HookedType, [Set<unknown>, Set<unknown>]> = {
     request: [new Set(), new Set()],
     response: [new Set(), new Set()]

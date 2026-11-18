@@ -127,8 +127,10 @@ class EventTargetShim {
     const list = this.listenerMap.get(event.type);
     if (list) {
       // A snapshot, as a real EventTarget runs listeners: one added during
-      // the dispatch does not change this round.
+      // the dispatch does not run this round, one removed during it does not
+      // run any more.
       for (const entry of list.slice()) {
+        if (list.indexOf(entry) === -1) continue;
         const { callback } = entry;
         // A one-shot listener is removed before it runs.
         if (entry.once) this.removeEventListener(event.type, callback, entry.capture);

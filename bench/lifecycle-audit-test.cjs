@@ -144,6 +144,14 @@ run(async () => {
     target.removeEventListener('y', cb, true);
     target.dispatchEvent(new Event('y'));
     t('...which goes with its own removal', both === 1, both);
+    // One listener removes the next during a dispatch: the removed one does
+    // not run, as with a real EventTarget.
+    const ran = [];
+    const second = () => { ran.push('second'); };
+    target.addEventListener('z', () => { ran.push('first'); target.removeEventListener('z', second); });
+    target.addEventListener('z', second);
+    target.dispatchEvent(new Event('z'));
+    t('legacy EventTarget: a listener removed during the dispatch does not run', ran.join() === 'first', ran.join());
   }
 
   for (const file of ['most-replayed.js', 'time-remaining.js']) {

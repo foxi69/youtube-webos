@@ -51,8 +51,7 @@ export function fetchJsonWithTimeout(url, timeoutMs, opts) {
                 reject(abortError());
                 if (controller) controller.abort();
             };
-            if (outer.aborted) onOuterAbort();
-            else outer.addEventListener('abort', onOuterAbort);
+            outer.addEventListener('abort', onOuterAbort);
         }
     });
 
