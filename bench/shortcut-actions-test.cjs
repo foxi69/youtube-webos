@@ -486,7 +486,28 @@ run(async () => {
     t(n('...at 2x the window is 1.2 s: 1.1 s before the end it goes back'), tick(598.9) === 0);
     env.video.playbackRate = 1;
     t(n('...at 1x 1.1 s before the end is too early'), tick(598.9) === 598.9);
+    env.vs.duration = 2;
+    env.video.playbackRate = 2;
+    t(n('...a 2 s video at 2x repeats too, in its last quarter'), tick(1.2) === 1.2 && tick(1.6) === 0);
+    env.video.playbackRate = 1;
+    env.vs.duration = 600;
+    // No 'timeupdate' near the end: 'ended' itself.
+    let heard = 0;
+    env.video.addEventListener('ended', () => heard++);
+    const end = () => {
+      env.vs.time = 600;
+      env.vs.paused = true;
+      env.video.dispatchEvent(new env.win.Event('ended'));
+    };
+    const plays = env.vs.plays;
+    end();
+    t(n('...the end reached all the same: it starts again, YouTube does not hear it'),
+      env.vs.time === 0 && env.vs.paused === false && env.vs.plays === plays + 1 && heard === 0,
+      `${env.vs.time} ${env.vs.paused} ${heard}`);
     await env.press(D(5));
+    end();
+    t(n('...repeat off: the end goes on to YouTube'), env.vs.time === 600 && heard === 1, `${env.vs.time} ${heard}`);
+    env.vs.paused = false;
     await env.press(D(5));
     env.doc.body.className = 'WEB_PAGE_TYPE_BROWSE';
     await wait(30);
