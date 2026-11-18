@@ -1,4 +1,4 @@
-import { CustomEventTarget, TypedCustomEvent } from '../custom-event-target';
+import { CustomEventTarget, TypedCustomEvent, type EventListenerArg } from '../custom-event-target';
 
 export interface StringConvertible {
   toString(): string;
@@ -32,11 +32,31 @@ export class FetchRegistry extends CustomEventTarget<EventMap> {
     response: new Set()
   };
 
+  override addEventListener<K extends keyof EventMap>(
+    type: K,
+    callback: EventListenerArg<this, EventMap, K>,
+    options?: boolean | AddEventListenerOptions
+  ): void;
+  override addEventListener(
+    type: string,
+    callback: EventListenerOrEventListenerObject | null,
+    options?: boolean | AddEventListenerOptions
+  ): void;
   override addEventListener(type: any, callback: any, options?: any): void {
     super.addEventListener(type, callback, options);
     if (callback && isHookedType(type)) this.#listeners[type].add(callback);
   }
 
+  override removeEventListener<K extends keyof EventMap>(
+    type: K,
+    callback: EventListenerArg<this, EventMap, K>,
+    options?: boolean | EventListenerOptions
+  ): void;
+  override removeEventListener(
+    type: string,
+    callback: EventListenerOrEventListenerObject | null,
+    options?: boolean | EventListenerOptions
+  ): void;
   override removeEventListener(
     type: any,
     callback: any,
@@ -73,17 +93,18 @@ export class FetchRegistry extends CustomEventTarget<EventMap> {
     }
     if (!blob.size) return null;
 
-    const fr = new FileReader();
-
-    const res = new Promise<string | ArrayBuffer | null>((resolve) => {
-      fr.addEventListener('load', () => {
-        resolve(fr.result);
-      });
+    // Diagnostics must not stall or reject the real request on a failed read.
+    return new Promise<string | ArrayBuffer | null>((resolve) => {
+      try {
+        const fr = new FileReader();
+        fr.addEventListener('load', () => resolve(fr.result));
+        fr.addEventListener('error', () => resolve(null));
+        fr.addEventListener('abort', () => resolve(null));
+        fr.readAsDataURL(blob);
+      } catch {
+        resolve(null);
+      }
     });
-
-    fr.readAsDataURL(blob);
-
-    return res;
   }
 
   #customFetch = async (
@@ -137,7 +158,7 @@ export class FetchRegistry extends CustomEventTarget<EventMap> {
       throw new TypeError('Failed to fetch');
     }
 
-    const res = await this.#originalFetch(resource, init);
+    const res = await this.#originalFetch(resource as Parameters<typeof fetch>[0], init);
 
     if (window.__ytaf_debug__) {
       console.debug(`Response ${this.#fetchCount}:`, res);

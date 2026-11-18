@@ -357,6 +357,25 @@ async function nativeFetchTv() {
   r = await call(win, unreadable);
   t(n('debug: a body that cannot be dumped does not stop the request'), !r.error && fetched.length === before + 1 &&
     fetched[before].resource === unreadable, describe(r));
+  // Dumping a body is diagnostic only: FileReader failures cannot block fetch.
+  const GoodReader = win.FileReader;
+  for (const failure of ['error', 'abort', 'throw']) {
+    win.FileReader = class extends win.EventTarget {
+      readAsDataURL() {
+        if (failure === 'throw') throw new Error('unreadable blob');
+        win.setTimeout(() => this.dispatchEvent(new win.Event(failure)), 0);
+      }
+    };
+    const brokenDump = new Request(ORIGIN + '/reader-failure', { method: 'POST', body: 'keep this body' });
+    before = fetched.length;
+    const result = await Promise.race([
+      call(win, brokenDump),
+      wait(500).then(() => ({ error: new Error('debug dump stalled fetch') }))
+    ]);
+    t(n(`debug, FileReader ${failure}: request and response still delivered`),
+      !result.error && fetched.length === before + 1 && result.body === '{"path":"/reader-failure"}', describe(result));
+  }
+  win.FileReader = GoodReader;
   win.__ytaf_debug__ = false;
 
   // ---- The Tracking Block back on ----

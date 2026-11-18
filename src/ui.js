@@ -35,6 +35,7 @@ window.addEventListener('scroll', (evt) => {
 }, true);
 
 let lastSafeFocus = null;
+let panelReturnFocus = null;
 let oledKeepAliveTimer = null;
 
 let lastShortcutTime = 0;
@@ -1300,6 +1301,7 @@ function showOptionsPanel(visible) {
   if (visible === undefined || visible === null) visible = true;
   
   if (visible && !optionsPanelVisible) {
+    panelReturnFocus = document.activeElement;
     // The blackout sits above the panel, which would open unseen.
     endOledBlackout();
 
@@ -1347,6 +1349,15 @@ function showOptionsPanel(visible) {
     optionsPanel.blur();
     optionsPanelVisible = false;
     lastSafeFocus = null;
+    const returnFocus = panelReturnFocus;
+    panelReturnFocus = null;
+    // Release the trap before restoring the page's focus. YouTube may have
+    // replaced the original tile while the panel was open.
+    if (returnFocus && returnFocus.isConnected && !optionsPanel.contains(returnFocus)) {
+      returnFocus.focus();
+    } else if (optionsPanel.contains(document.activeElement)) {
+      document.activeElement.blur();
+    }
     // A held Back (or whichever key closed the panel) must not go on to
     // YouTube as a page back.
     swallowHeldKey();
@@ -1377,6 +1388,46 @@ document.addEventListener('focus', (e) => {
 window.ytaf_showOptionsPanel = showOptionsPanel;
 
 // --- Video Control Logic ---
+
+// Delayed remote actions belong to one playback context. YouTube reuses the
+// <video> across navigation, so neither the element nor its src alone is enough.
+let playbackActionGeneration = 0;
+let seekContext = null;
+
+function playbackVideoId() {
+  try {
+    const player = document.getElementById(SELECTORS.PLAYER_ID);
+    const data = player && typeof player.getVideoData === 'function' ? player.getVideoData() : null;
+    return data && data.video_id || '';
+  } catch { return ''; }
+}
+
+function capturePlaybackContext(video) {
+  const generation = playbackActionGeneration;
+  const route = window.location.hash;
+  const src = video.currentSrc || video.src;
+  const id = playbackVideoId();
+  return () => generation === playbackActionGeneration && video.isConnected &&
+    (isWatchPage() || isShortsPage()) && getVideo() === video &&
+    window.location.hash === route && (video.currentSrc || video.src) === src && playbackVideoId() === id;
+}
+
+function resetPendingSeek() {
+  clearTimeout(seekApplyTimer);
+  clearTimeout(seekResetTimer);
+  seekApplyTimer = seekResetTimer = null;
+  seekAccumulator = pendingSeekOffset = 0;
+  seekContext = null;
+  if (activeSeekNotification) activeSeekNotification.remove();
+  activeSeekNotification = null;
+}
+
+function cancelDelayedPlaybackActions() {
+  playbackActionGeneration++;
+  resetPendingSeek();
+}
+window.addEventListener('hashchange', cancelDelayedPlaybackActions);
+window.addEventListener('ytaf-page-update', cancelDelayedPlaybackActions);
 
 /**
  * The chapters' start times in seconds. The bar renderer's data has them
@@ -1420,7 +1471,11 @@ async function skipChapter(direction = 'next') {
   skipChapter.lastSrc = skipChapter.lastSrc || '';
   skipChapter.hasForced = skipChapter.hasForced || false;
 
-  const currentSrc = video.src || window.location.href;
+  const currentSrc = `${window.location.href}|${video.currentSrc || video.src}|${playbackVideoId()}`;
+  const isCurrent = capturePlaybackContext(video);
+  const closeForcedControls = () => {
+    setTimeout(() => { if (isCurrent() && !optionsPanelVisible) simulateBack(); }, 250);
+  };
   let wasForcedNow = false;
   
   if (skipChapter.lastSrc !== currentSrc) { skipChapter.lastSrc = currentSrc; skipChapter.hasForced = false; }
@@ -1445,12 +1500,13 @@ async function skipChapter(direction = 'next') {
     skipChapter.loading = true;
     await new Promise(resolve => setTimeout(resolve, 500));
     skipChapter.loading = false;
+    if (!isCurrent()) return;
     chapterEls = getChapterEls();
   }
 
   if (chapterEls.length === 0) {
     showNotification('No chapters found');
-    if (wasForcedNow) setTimeout(() => simulateBack(), 250);
+    if (wasForcedNow) closeForcedControls();
     return;
   }
 
@@ -1460,7 +1516,7 @@ async function skipChapter(direction = 'next') {
   // A bar without chapter markers.
   if (starts.length === 0) {
     showNotification('No chapters found');
-    if (wasForcedNow) setTimeout(() => simulateBack(), 250);
+    if (wasForcedNow) closeForcedControls();
     return;
   }
 
@@ -1495,16 +1551,18 @@ async function skipChapter(direction = 'next') {
   if (targetTime !== -1 && targetTime < video.duration) {
     video.currentTime = targetTime;
     showNotification(direction === 'next' ? 'Next Chapter' : 'Previous Chapter');
-    if (wasForcedNow) setTimeout(() => simulateBack(), 250);
+    if (wasForcedNow) closeForcedControls();
   } else {
     showNotification(direction === 'next' ? 'No next chapter' : 'Start of video');
-    if (wasForcedNow) setTimeout(() => simulateBack(), 250);
+    if (wasForcedNow) closeForcedControls();
   }
 }
 
 function performBurstSeek(seconds, video) {
     if (!video) video = getVideo();
     if (!video) return;
+    if (seekContext && !seekContext()) resetPendingSeek();
+    if (!seekContext) seekContext = capturePlaybackContext(video);
 	
     // Reset accumulators if direction changes (e.g. going from +15 to -15)
 	if ((seekAccumulator > 0 && seconds < 0) || (seekAccumulator < 0 && seconds > 0)) {
@@ -1533,6 +1591,8 @@ function performBurstSeek(seconds, video) {
     if (seekApplyTimer) clearTimeout(seekApplyTimer);
 
     seekApplyTimer = setTimeout(() => {
+        seekApplyTimer = null;
+        if (!seekContext || !seekContext()) { resetPendingSeek(); return; }
         if (pendingSeekOffset !== 0) {
             // Apply the total calculated seek in one single operation
             video.currentTime += pendingSeekOffset;
@@ -1544,6 +1604,7 @@ function performBurstSeek(seconds, video) {
         seekAccumulator = 0;
         activeSeekNotification = null;
         seekResetTimer = null;
+        seekContext = null;
     }, 1200);
 }
 

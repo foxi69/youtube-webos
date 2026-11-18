@@ -44,7 +44,7 @@ interface EventListenerObject<
   handleEvent: EventListener<Self, T, EventName>;
 }
 
-type EventListenerArg<
+export type EventListenerArg<
   Self extends EventTarget,
   T extends EmptyEventMap,
   EventName extends keyof T
@@ -53,10 +53,16 @@ type EventListenerArg<
   | EventListenerObject<Self, T, EventName>
   | null;
 
-interface CustomEventTarget<T extends EmptyEventMap> {
+interface CustomEventTarget<T extends EmptyEventMap> extends EventTarget {
   addEventListener<K extends keyof T & string>(
     type: K,
     callback: EventListenerArg<this, T, K>,
+    options?: boolean | AddEventListenerOptions
+  ): void;
+
+  addEventListener(
+    type: string,
+    callback: EventListenerOrEventListenerObject | null,
     options?: boolean | AddEventListenerOptions
   ): void;
 
@@ -66,6 +72,13 @@ interface CustomEventTarget<T extends EmptyEventMap> {
     options?: boolean | EventListenerOptions
   ): void;
 
+  removeEventListener(
+    type: string,
+    callback: EventListenerOrEventListenerObject | null,
+    options?: boolean | EventListenerOptions
+  ): void;
+
+  dispatchEvent(event: Event): boolean;
   dispatchEvent<K extends keyof T & string>(
     event: EventMapValue<T, K>
   ): boolean;

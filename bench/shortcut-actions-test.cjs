@@ -603,6 +603,32 @@ run(async () => {
       env.backs() === 1, `${env.sent.join()} ${env.toasts()}`);
   }
 
+  // A delayed chapter lookup must belong to the video that requested it.
+  for (const leavePage of [true, false]) {
+    const env = await boot({}, { gap: 10 });
+    const player = env.doc.getElementById('ytlr-player__player-container-player');
+    let id = VIDEO_ID;
+    player.getVideoData = () => ({ video_id: id });
+    await env.press(D(5));
+    if (leavePage) env.doc.body.className = 'WEB_PAGE_TYPE_BROWSE';
+    else id = 'newvideo123'; // YouTube can reuse the element before updating the route.
+    player.insertAdjacentHTML('afterend', '<ytlr-multi-markers-player-bar-renderer><div idomkey="progress-bar"><div idomkey="chapter-0" style="width:50%"></div><div idomkey="chapter-1" style="width:50%"></div></div></ytlr-multi-markers-player-bar-renderer>');
+    await wait(850);
+    t(n(`pending chapters, ${leavePage ? 'left watch' : 'reused video'}: no stale seek`), env.vs.time === 100, String(env.vs.time));
+    t(n(`pending chapters, ${leavePage ? 'left watch' : 'reused video'}: no stale Back`), env.backs() === 0, env.sent.join());
+    env.win.close();
+  }
+  {
+    const env = await boot({}, { gap: 10 });
+    await env.press(D(5));
+    await wait(550); // lookup finished; its closing Back is still queued.
+    env.win.location.hash = '#/';
+    env.doc.body.className = 'WEB_PAGE_TYPE_BROWSE';
+    await wait(300);
+    t(n('chapter controls: queued Back is cancelled on navigation'), env.backs() === 0, env.sent.join());
+    env.win.close();
+  }
+
   // ---- Fast forward and rewind ----
   {
     const env = await boot({ shortcut_key_1: 'seek_15_fwd', shortcut_key_2: 'seek_15_back' });
@@ -616,6 +642,49 @@ run(async () => {
     t(n('rewind after it: the toast counts from the turn'), /Skipped -5s/.test(env.toasts()), env.toasts());
     await wait(150);
     t(n('...and the video goes back by 5'), env.vs.time === 105, String(env.vs.time));
+  }
+
+  for (const change of ['route', 'video', 'element']) {
+    const env = await boot({ shortcut_key_1: 'seek_15_fwd' }, { gap: 10 });
+    const player = env.doc.getElementById('ytlr-player__player-container-player');
+    let id = VIDEO_ID;
+    player.getVideoData = () => ({ video_id: id });
+    await env.press(D(1));
+    if (change === 'route') env.win.location.hash = '#/watch?v=newvideo123';
+    else if (change === 'video') id = 'newvideo123';
+    else env.video.remove();
+    await wait(260);
+    t(n(`pending burst seek, changed ${change}: old position untouched`), env.vs.time === 100, String(env.vs.time));
+    if (change !== 'element') {
+      await env.press(D(1));
+      await wait(250);
+      t(n(`pending burst seek, changed ${change}: next press has no old offset`), env.vs.time === 105, String(env.vs.time));
+    }
+    env.win.close();
+  }
+
+  {
+    const env = await boot({ shortcut_key_1: 'seek_15_fwd' }, { gap: 10 });
+    const player = env.doc.getElementById('ytlr-player__player-container-player');
+    let id = VIDEO_ID;
+    player.getVideoData = () => ({ video_id: id });
+    await env.press(D(1));
+    await wait(100); // debounce passed, first seek still waiting.
+    id = 'newvideo123';
+    await env.press(D(1));
+    await wait(250);
+    t(n('new video before queued seek: only the new press is applied'), env.vs.time === 105, String(env.vs.time));
+    env.win.close();
+  }
+  {
+    const env = await boot({ shortcut_key_1: 'seek_15_fwd' }, { gap: 10 });
+    await env.press(D(1));
+    env.win.location.hash = '#/watch?v=newvideo123';
+    await wait(10);
+    env.win.location.hash = '#/watch?v=' + VIDEO_ID;
+    await wait(250);
+    t(n('A to B to A navigation cancels the old queued seek'), env.vs.time === 100, String(env.vs.time));
+    env.win.close();
   }
 
   // ---- The key that closes the settings panel ----

@@ -23,6 +23,7 @@ export interface ResolveCommandHook {
 }
 
 let registry: ResolveCommandRegistry | null = null;
+let initializing: Promise<ResolveCommandRegistry> | null = null;
 
 export class ResolveCommandRegistry {
   #originalFn: ResolveCommand;
@@ -127,10 +128,17 @@ export class ResolveCommandRegistry {
   static async getInstance() {
     if (registry) return registry;
 
-    const key = await this.getHookTarget();
-
-    registry = registry ?? new ResolveCommandRegistry(key);
-    return registry;
+    // Startup consumers share one bounded discovery loop. A failed lookup
+    // must be released too, so a later user action can try again.
+    if (!initializing) {
+      initializing = this.getHookTarget()
+        .then((key) => (registry = registry ?? new ResolveCommandRegistry(key)))
+        .then(
+          (ready) => { initializing = null; return ready; },
+          (error) => { initializing = null; throw error; }
+        );
+    }
+    return initializing;
   }
 
   setHook(command: string, fn: ResolveCommandHook) {

@@ -200,6 +200,7 @@ run(async () => {
     return label && label.querySelector('input');
   };
 
+  d.getElementById('outside').focus();
   // ---- Opening, and the tabs before the idle build has run ----
   press(KEY.GREEN);
   const openedAt = Date.now();
@@ -398,11 +399,13 @@ run(async () => {
   await wait(Math.max(0, 550 - (Date.now() - openedAt)));
   press(KEY.BACK);
   t(n('Back closes the panel'), !isOpen());
+  t(n('Back restores the page focus'), focused() === d.getElementById('outside'), describe(focused()));
   press(KEY.GREEN);
   t(n('green opens it again on the tab that was open'), isOpen() && focused() === tabs()[4] &&
     shortcuts.style.display === 'block', describe(focused()));
   press(KEY.ESC);
   t(n('Escape closes it too'), !isOpen());
+  t(n('Escape restores the page focus'), focused() === d.getElementById('outside'), describe(focused()));
   // A second green within the shortcut debounce would be dropped.
   await wait(250);
   press(KEY.GREEN);
@@ -411,6 +414,13 @@ run(async () => {
   t(n('open again, the focus in the text box'), isOpen() && !!box && focused() === box, describe(focused()));
   press(KEY.BACK);
   t(n('Back closes it from the text box as well'), !!box && !isOpen());
+
+  await wait(250);
+  press(KEY.GREEN);
+  d.getElementById('outside').remove();
+  press(KEY.BACK);
+  t(n('removed opener: focus is released from the hidden panel'),
+    !isOpen() && !panel().contains(focused()), describe(focused()));
 
   t(n('no page errors'), errors.length === 0, errors.join(' | '));
 });
