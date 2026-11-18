@@ -462,7 +462,7 @@ run(async () => {
     await pressRepeat();
     t(n('repeat video on a live stream: it says so and stays off'),
       /not on a live stream/.test(env.toasts()) && check === null, env.toasts());
-    env.vs.duration = 1;
+    env.vs.duration = 1.2;
     await pressRepeat();
     t(n('...a video of 1.2 s or less: it says so and stays off'), /too short/.test(env.toasts()) && check === null, env.toasts());
     env.vs.duration = 600;
@@ -501,6 +501,26 @@ run(async () => {
     t(n('...paused near the end (a seek there) stays where it is'), tick(599.5) === 599.5);
     env.vs.paused = false;
     t(n('...and goes back to the start once it plays on'), tick(599.6) === 0);
+    let seeking = false, ended = false;
+    Object.defineProperty(env.video, 'seeking', { configurable: true, get: () => seeking });
+    Object.defineProperty(env.video, 'ended', { configurable: true, get: () => ended });
+    seeking = true;
+    t(n('...seeking near the end while playing stays where it is'), tick(599.5) === 599.5);
+    seeking = false;
+    t(n('...and goes back once the seek is done'), tick(599.5) === 0);
+    // SponsorBlock's auto-skip of an outro seeks to the very end on modern builds.
+    seeking = true;
+    t(n('...a seek to the very end (an auto-skip of an outro) goes back at once'), tick(600) === 0);
+    seeking = false;
+    ended = true;
+    env.vs.paused = true;
+    const playsBefore = env.vs.plays;
+    t(n('...an ended video goes back to the start and plays'), tick(600) === 0 && env.vs.plays === playsBefore + 1 && !env.vs.paused,
+      `${env.vs.time} ${env.vs.plays - playsBefore}`);
+    ended = false;
+    env.vs.paused = false;
+    delete env.video.seeking;
+    delete env.video.ended;
     env.video.playbackRate = 2;
     t(n('...at 2x the window is 1.2 s: 1.1 s before the end it goes back'), tick(598.9) === 0);
     env.video.playbackRate = 1;

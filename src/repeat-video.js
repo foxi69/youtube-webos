@@ -18,6 +18,8 @@ import { getVideo, isLiveStream, SELECTORS } from './utils.js';
 // (over 1.2 s) that is over 0.3 s, more than the 0.2 s a look moves at 2x.
 const CHECK_MS = 100;
 const END_MARGIN_S = 0.6;
+// A seek this close to the end lands on it: the player would move on there.
+const END_SNAP_S = 0.3;
 
 // The id of the video being repeated, or null.
 let repeatId = null;
@@ -63,19 +65,29 @@ function check() {
     return;
   }
   const video = getVideo();
-  // Paused or seeking: a viewer who put it near the end keeps it there.
-  if (!video || video.paused || video.seeking) return;
+  if (!video) return;
   const duration = video.duration;
   // No end (Infinity) or a very short video: left alone.
   if (!isFinite(duration) || duration <= END_MARGIN_S * 2) return;
+  // A seek to the very end (on modern builds SponsorBlock's auto-skip of an
+  // outro goes there) or an ended video goes back too: the player moves on
+  // from there. Otherwise, paused or seeking: a viewer who put it near the end
+  // keeps it there.
+  const atEnd = video.ended || (video.seeking && video.currentTime >= duration - END_SNAP_S);
+  if (!atEnd && (video.paused || video.seeking)) return;
   // At most a quarter of the video, so a short one at 2x still plays through.
   const margin = Math.min(END_MARGIN_S * Math.max(1, video.playbackRate || 1), duration / 4);
-  if (video.currentTime < duration - margin) return;
+  if (!atEnd && video.currentTime < duration - margin) return;
   // A live stream's end is its live edge, where it plays all along; its
   // duration is not always Infinity, so the player is asked. Only a video it
   // says is not live goes back; when it cannot say, the video is left alone.
   if (isLiveStream(document.getElementById(SELECTORS.PLAYER_ID), video) !== false) return;
   video.currentTime = 0;
+  // An ended video stays paused at the start without this.
+  if (video.paused) {
+    const played = video.play();
+    if (played && typeof played.catch === 'function') played.catch(() => {});
+  }
 }
 
 window.addEventListener('ytaf-page-update', (evt) => {
