@@ -329,7 +329,10 @@ async function nativeFetchTv() {
   await call(win, '/probe3');
   win.__ytaf_debug__ = false;
   const kept3 = lastRequestNo(env.debug);
-  await call(win, '/youtubei/v1/browse');
+  before = fetched.length;
+  r = await call(win, '/youtubei/v1/browse');
+  t(n('...the request then still reaches the TV\'s fetch'), !r.error && fetched.length === before + 1,
+    r.error || fetched.length - before);
   t(n('...and not once that one is removed too'), kept.length === 1, kept.length);
   win.__ytaf_debug__ = true;
   await call(win, '/probe4');

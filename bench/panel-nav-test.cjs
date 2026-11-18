@@ -400,12 +400,20 @@ run(async () => {
   press(KEY.BACK);
   t(n('Back closes the panel'), !isOpen());
   t(n('Back restores the page focus'), focused() === d.getElementById('outside'), describe(focused()));
+  // Opened this time from another element: Escape must give the focus back to
+  // that one, not to the first opener.
+  const second = d.createElement('button');
+  second.id = 'second-opener';
+  second.textContent = 'Other';
+  d.body.appendChild(second);
+  second.focus();
   press(KEY.GREEN);
   t(n('green opens it again on the tab that was open'), isOpen() && focused() === tabs()[4] &&
     shortcuts.style.display === 'block', describe(focused()));
   press(KEY.ESC);
   t(n('Escape closes it too'), !isOpen());
-  t(n('Escape restores the page focus'), focused() === d.getElementById('outside'), describe(focused()));
+  t(n('Escape restores the focus to this opener'), focused() === second, describe(focused()));
+  second.remove();
   // A second green within the shortcut debounce would be dropped.
   await wait(250);
   press(KEY.GREEN);

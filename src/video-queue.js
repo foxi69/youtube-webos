@@ -37,13 +37,25 @@ export function addToQueue(videoId, title) {
 
 export function clearQueue() {
   queue.length = 0;
+  // A video whose command still waits goes too: it is neither sent late nor
+  // put back. One already sent plays on.
+  if (dispatching) {
+    if (opening === dispatching) opening = null;
+    dispatching = null;
+  }
   showNotification('Queue cleared');
 }
 
 /** Plays the next queued video; false when the queue is empty. */
 function playNext() {
-  const next = queue.shift();
-  if (!next) return false;
+  // A video whose command still waits is not lost to a second call (an end
+  // meanwhile): it goes first, in a new attempt.
+  if (dispatching) queue.unshift(dispatching);
+  const item = queue.shift();
+  if (!item) return false;
+  // Each attempt is its own object, so a late answer to an earlier attempt for
+  // the same video finds it no longer current and leaves this one alone.
+  const next = { videoId: item.videoId, title: item.title };
   clearTimeout(refusalTimer);
   opening = next;
   showNotification(`Next in queue: ${next.title} (${queue.length} left)`);
@@ -51,15 +63,23 @@ function playNext() {
   // that YouTube takes right after a video ends.
   dispatching = next;
   ResolveCommandRegistry.getInstance()
-    .then((registry) => {
-      // The viewer started another video meanwhile (see the state listener).
-      if (dispatching !== next) return;
-      dispatching = null;
-      registry.dispatchCommand({ watchEndpoint: { videoId: next.videoId } });
-    })
+    .then(
+      (registry) => {
+        // The viewer started another video meanwhile (see the state listener).
+        if (dispatching !== next) return;
+        dispatching = null;
+        registry.dispatchCommand({ watchEndpoint: { videoId: next.videoId } });
+      },
+      (err) => {
+        // A failed lookup: told only while this attempt is still the current
+        // one (not after a newer attempt or a cleared queue took over).
+        if (dispatching !== next) return;
+        dispatching = null;
+        throw err;
+      }
+    )
     .catch((err) => {
       console.warn('[Queue] Could not play the next video:', err);
-      if (dispatching === next) dispatching = null;
       if (opening === next) opening = null;
       showNotification(`Could not play: ${next.title}`);
     });
@@ -67,6 +87,11 @@ function playNext() {
 }
 
 export function playNextInQueue() {
+  // Next pressed again while the next video's command waits: it is on its way.
+  if (dispatching) {
+    showNotification(`On its way: ${dispatching.title}`);
+    return;
+  }
   if (!playNext()) showNotification('The queue is empty');
 }
 
@@ -95,8 +120,9 @@ window.addEventListener('yt-player-state-change', ({ detail }) => {
   if (!detail) return;
   // Another video playing on the watch page while the queued one's command
   // still waits: the viewer chose it. The queued video goes back to the front
-  // and plays at the next end instead.
-  if (detail.state === 1 && dispatching && detail.videoId && detail.videoId !== dispatching.videoId &&
+  // and plays at the next end instead. One the player names no id for counts
+  // as another too: the queued one is not sent yet, so it is not that one.
+  if (detail.state === 1 && dispatching && detail.videoId !== dispatching.videoId &&
       window.location.hash.startsWith('#/watch')) {
     queue.unshift(dispatching);
     if (opening === dispatching) opening = null;

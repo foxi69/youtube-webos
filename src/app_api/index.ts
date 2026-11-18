@@ -91,15 +91,19 @@ export class ResolveCommandRegistry {
 
     // A candidate whose getter throws is passed over; the scan fails with
     // that error only when no other candidate is the resolver.
-    let failure: unknown = null;
+    // Whether one threw is kept apart from what it threw (a getter may throw
+    // false or undefined).
+    let failed = false;
+    let failure: unknown;
     for (const key in window._yttv) {
       try {
         if (this.checkHookTarget(key)) return key;
       } catch (error) {
-        failure = failure ?? error;
+        if (!failed) failure = error;
+        failed = true;
       }
     }
-    if (failure) throw failure;
+    if (failed) throw failure;
 
     return null;
   }

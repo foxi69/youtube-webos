@@ -166,7 +166,12 @@ function holdTimeouts(env, ms) {
     return next;
   };
   env.win.clearTimeout = (id) => { if (!held.delete(id)) realClear(id); };
-  return { count: () => held.size, run: () => { const jobs = [...held.values()]; held.clear(); jobs.forEach((f) => { f(); }); } };
+  return {
+    count: () => held.size,
+    run: () => { const jobs = [...held.values()]; held.clear(); jobs.forEach((f) => { f(); }); },
+    // The oldest held timer alone.
+    runFirst: () => { const [id, f] = held.entries().next().value; held.delete(id); f(); }
+  };
 }
 
 run(async () => {
@@ -689,19 +694,63 @@ run(async () => {
       env.sent.filter((c) => c === ENTER).length === 2 && /Loading chapters/.test(env.toasts()), `${env.sent.join()} ${env.toasts()}`);
     env.win.close();
   }
+  {
+    // A video with no chapter bar: the lookup ran. The id unreadable on the
+    // next press is the same video: no second Enter.
+    const env = await boot({}, { gap: 10 });
+    const lookup = holdTimeouts(env, 500);
+    const player = env.doc.getElementById('ytlr-player__player-container-player');
+    let readable = true;
+    player.getVideoData = () => { if (!readable) throw new Error('no data'); return { video_id: VIDEO_ID }; };
+    const ENTER = 13;
+    await env.press(D(5));
+    await wait(30);
+    lookup.run();
+    await wait(520); // past the shortcut's 500 ms debounce
+    readable = false;
+    await env.press(D(5));
+    t(n('chapter lookup done, the id unreadable on the next press: no second Enter'),
+      env.sent.filter((c) => c === ENTER).length === 1 && lookup.count() === 0, `${env.sent.join()} held ${lookup.count()}`);
+    env.win.close();
+  }
+  {
+    // An id that is not a string (a fresh object on each read) is unreadable,
+    // not a change: the pending lookup still seeks.
+    const env = await boot({}, { gap: 10 });
+    const lookup = holdTimeouts(env, 500);
+    const player = env.doc.getElementById('ytlr-player__player-container-player');
+    player.getVideoData = () => ({ video_id: {} });
+    await env.press(D(5));
+    player.insertAdjacentHTML('afterend', '<ytlr-multi-markers-player-bar-renderer><div idomkey="progress-bar"><div idomkey="chapter-0" style="width:50%"></div><div idomkey="chapter-1" style="width:50%"></div></div></ytlr-multi-markers-player-bar-renderer>');
+    await wait(30);
+    lookup.run();
+    await wait(30);
+    t(n('chapter lookup with an id that is no string: it still seeks'), env.vs.time === 300, String(env.vs.time));
+    env.win.close();
+  }
 
   {
     // A navigation lets go of the old lookup: a press on the new video, while
     // the old (held) wait is still running, is taken and loads its bar.
     const env = await boot({}, { gap: 10 });
-    holdTimeouts(env, 500);
+    const lookups = holdTimeouts(env, 500);
     const ENTER = 13;
     await env.press(D(5));
     env.win.location.hash = '#/watch?v=newvideo123';
     await wait(520); // past the shortcut's 500 ms debounce
     await env.press(D(5));
     t(n('chapter lookup on A still waiting: a press on B is taken and sends its own Enter'),
-      env.sent.filter((c) => c === ENTER).length === 2, env.sent.join());
+      env.sent.filter((c) => c === ENTER).length === 2 && lookups.count() === 2, `${env.sent.join()} held ${lookups.count()}`);
+    // A's wait ends after B's lookup started, then B's, with the bar there:
+    // A's must leave B's lookup alone, and B seeks.
+    const player = env.doc.getElementById('ytlr-player__player-container-player');
+    player.insertAdjacentHTML('afterend', '<ytlr-multi-markers-player-bar-renderer><div idomkey="progress-bar"><div idomkey="chapter-0" style="width:50%"></div><div idomkey="chapter-1" style="width:50%"></div></div></ytlr-multi-markers-player-bar-renderer>');
+    lookups.runFirst();
+    await wait(30);
+    t(n('...A\'s wait ending first does not seek'), env.vs.time === 100, String(env.vs.time));
+    lookups.runFirst();
+    await wait(30);
+    t(n('...then B\'s lookup seeks to the next chapter'), env.vs.time === 300, String(env.vs.time));
     env.win.close();
   }
 

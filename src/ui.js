@@ -1401,7 +1401,9 @@ function playbackVideoId() {
   try {
     const player = document.getElementById(SELECTORS.PLAYER_ID);
     const data = player && typeof player.getVideoData === 'function' ? player.getVideoData() : null;
-    return data && data.video_id || '';
+    // Anything but a string is unreadable: a fresh object on each call would
+    // never compare equal.
+    return data && typeof data.video_id === 'string' ? data.video_id : '';
   } catch { return ''; }
 }
 
@@ -1480,17 +1482,23 @@ async function skipChapter(direction = 'next') {
   const video = getVideo();
   if (!video || !video.duration) return;
 
-  skipChapter.lastSrc = skipChapter.lastSrc || '';
   skipChapter.hasForced = skipChapter.hasForced || false;
 
-  const currentSrc = `${window.location.href}|${video.currentSrc || video.src}|${playbackVideoId()}`;
+  // Another video: another address or source, or another readable id. An id
+  // the player cannot give now is no change (the last readable one stays).
+  const base = `${window.location.href}|${video.currentSrc || video.src}`;
+  const id = playbackVideoId();
   const isCurrent = capturePlaybackContext(video);
   const closeForcedControls = () => {
     setTimeout(() => { if (isCurrent() && !optionsPanelVisible) simulateBack(); }, 250);
   };
   let wasForcedNow = false;
   
-  if (skipChapter.lastSrc !== currentSrc) { skipChapter.lastSrc = currentSrc; skipChapter.hasForced = false; }
+  if (skipChapter.lastBase !== base || (id && skipChapter.lastId && id !== skipChapter.lastId)) {
+    skipChapter.lastBase = base;
+    skipChapter.lastId = id;
+    skipChapter.hasForced = false;
+  } else if (id) skipChapter.lastId = id;
 
   const getChapterEls = () => {
     const bar = document.querySelector('ytlr-multi-markers-player-bar-renderer [idomkey="progress-bar"]');

@@ -52,11 +52,26 @@ run(async () => {
   const resolver = () => {
     const env = { now: 0, next: 0, timers: new Map() };
     const ctx = { exports: {}, window: {}, console: { debug() {}, warn() {} }, Date: { now: () => env.now },
-      setTimeout(fn) { env.timers.set(++env.next, fn); return env.next; } };
+      setTimeout(fn, ms = 0) { env.timers.set(++env.next, { fn, at: env.now + ms }); return env.next; } };
     vm.runInNewContext(transpile('app_api/index.ts'), ctx);
     env.ctx = ctx;
     env.Registry = ctx.exports.ResolveCommandRegistry;
-    env.drain = () => { const jobs = [...env.timers.values()]; env.timers.clear(); jobs.forEach((fn) => { fn(); }); };
+    // Moves the clock to `to`, running each timer due by then at its own time,
+    // in order (one set by a timer runs too, when due by `to`).
+    env.advance = (to) => {
+      for (;;) {
+        let id = null, at = Infinity;
+        for (const [k, job] of env.timers) if (job.at <= to && job.at < at) { id = k; at = job.at; }
+        if (id === null) break;
+        const { fn } = env.timers.get(id);
+        env.timers.delete(id);
+        env.now = Math.max(env.now, at);
+        fn();
+      }
+      env.now = Math.max(env.now, to);
+    };
+    // Runs the timers set now (late, when the clock was moved past them).
+    env.drain = () => env.advance(Math.max(env.now, ...[...env.timers.values()].map((job) => job.at)));
     env.ready = () => {
       ctx.window._yttv = { Ready: function () {} };
       ctx.window._yttv.Ready.instance = { resolveCommand(command) { return command.test; } };
@@ -73,14 +88,16 @@ run(async () => {
       const settled = Promise.allSettled(pending);
       let done = 0;
       pending.forEach((p) => { p.then(() => { done++; }, () => { done++; }); });
-      // Just before the deadline: still looking, every caller waiting.
-      env.now = 29000;
-      env.drain();
+      // Every poll due before the deadline runs, at its own time: still
+      // looking, every caller waiting.
+      const before = env.next;
+      env.advance(29900);
       await flush(); await flush();
       t('resolver: before the deadline every consumer still waits, with one poll scheduled',
-        done === 0 && env.timers.size === 1, `settled ${done}, timers ${env.timers.size}`);
-      env.now = 31000;
-      env.drain();
+        done === 0 && env.timers.size === 1 && env.next - before > 20,
+        `settled ${done}, timers ${env.timers.size}, polls ${env.next - before}`);
+      // The deadline (30 s) plus at most one poll gap (1 s).
+      env.advance(31000);
       t('resolver: timeout rejects every waiting consumer and leaves no poll',
         (await settled).every((r) => r.status === 'rejected') && env.timers.size === 0);
     }
@@ -123,6 +140,20 @@ run(async () => {
     env.drain();
     const found = await finding;
     t('resolver: a candidate that throws is passed over for the one after it', found.dispatchCommand({ test: 'next' }) === 'next');
+  }
+  {
+    // A getter that throws a falsy value still fails the scan (no resolver):
+    // the callers are told at once, not after the deadline.
+    const env = resolver();
+    const waiting = env.Registry.getInstance();
+    env.ctx.window._yttv = { get First() { throw false; }, get Second() { throw new Error('second'); } };
+    env.drain();
+    const outcome = await Promise.race([
+      waiting.then(() => 'resolved', (e) => 'rejected: ' + e),
+      flush().then(flush).then(() => 'still pending')
+    ]);
+    t('resolver: a scan whose first failure is a thrown false still fails, with no poll left',
+      outcome === 'rejected: false' && env.timers.size === 0, outcome);
   }
   {
     // Hooks set while the startup lookup runs out hold once a later lookup
@@ -191,6 +222,87 @@ run(async () => {
     release(registry);
     await flush();
     t('queue: with no other video meanwhile, the late resolver plays the queued one', dispatched.join() === 'queued00001,queued00002', dispatched.join());
+  }
+  {
+    // The queue with every resolver lookup settled by the test, one by one.
+    const queueEnv = () => {
+      const env = { lookups: [], dispatched: [], notes: [] };
+      const win = new EventTarget();
+      win.location = { hash: '#/watch?v=current0001' };
+      env.ctx = { window: win, console: { warn() {} }, setTimeout, clearTimeout,
+        showNotification: (note) => { env.notes.push(note); },
+        ResolveCommandRegistry: { getInstance: () => new Promise((resolve, reject) => { env.lookups.push({ resolve, reject }); }) } };
+      vm.runInNewContext(source('video-queue.js') +
+        '\nthis.addToQueue = addToQueue; this.clearQueue = clearQueue; this.playNextInQueue = playNextInQueue;', env.ctx);
+      env.registry = { dispatchCommand: (command) => { env.dispatched.push(command.watchEndpoint.videoId); } };
+      env.state = (s, videoId) => win.dispatchEvent(Object.assign(new Event('yt-player-state-change'), { detail: { state: s, videoId } }));
+      return env;
+    };
+    {
+      // Next pressed again while the first command waits: nothing is lost.
+      const env = queueEnv();
+      env.ctx.addToQueue('aaaaaaaaaaa', 'A');
+      env.ctx.addToQueue('bbbbbbbbbbb', 'B');
+      env.ctx.playNextInQueue();
+      env.ctx.playNextInQueue();
+      t('queue: Next pressed again during the lookup says the video is on its way, with no new lookup',
+        env.lookups.length === 1 && env.notes[env.notes.length - 1] === 'On its way: A', `lookups ${env.lookups.length} | ${env.notes.join(' / ')}`);
+      env.lookups[0].resolve(env.registry);
+      await flush();
+      t('...the first video plays once, the second stays queued', env.dispatched.join() === 'aaaaaaaaaaa', env.dispatched.join());
+      env.state(1, 'aaaaaaaaaaa');
+      env.state(0, 'aaaaaaaaaaa');
+      env.lookups[1].resolve(env.registry);
+      await flush();
+      t('...and the second plays at the end of the first', env.dispatched.join() === 'aaaaaaaaaaa,bbbbbbbbbbb', env.dispatched.join());
+    }
+    {
+      // An earlier attempt for the same video fails after a newer one started
+      // (put back by a video the viewer chose, then that one's end).
+      const env = queueEnv();
+      env.ctx.addToQueue('aaaaaaaaaaa', 'A');
+      env.state(1, 'current0001');
+      env.state(0, 'current0001');
+      env.state(1, 'chosen00001');
+      env.state(0, 'chosen00001');
+      env.lookups[0].reject(new Error('timed out'));
+      await flush();
+      env.lookups[1].resolve(env.registry);
+      await flush();
+      t('queue: an earlier attempt failing late neither drops the newer one nor reports a failure',
+        env.dispatched.join() === 'aaaaaaaaaaa' && !env.notes.some((note) => note.startsWith('Could not play')),
+        `${env.dispatched.join()} | ${env.notes.join(' / ')}`);
+    }
+    {
+      // A video with no id the player names starts during the lookup.
+      const env = queueEnv();
+      env.ctx.addToQueue('aaaaaaaaaaa', 'A');
+      env.state(1, 'current0001');
+      env.state(0, 'current0001');
+      env.state(1, null);
+      env.lookups[0].resolve(env.registry);
+      await flush();
+      t('queue: a video playing with no id is not replaced', env.dispatched.length === 0, env.dispatched.join());
+      env.state(0, null);
+      env.lookups[1].resolve(env.registry);
+      await flush();
+      t('...and the queued video plays at its end', env.dispatched.join() === 'aaaaaaaaaaa', env.dispatched.join());
+    }
+    {
+      // The queue cleared during the lookup, then another video starts.
+      const env = queueEnv();
+      env.ctx.addToQueue('aaaaaaaaaaa', 'A');
+      env.state(1, 'current0001');
+      env.state(0, 'current0001');
+      env.ctx.clearQueue();
+      env.state(1, 'other000001');
+      env.lookups[0].resolve(env.registry);
+      await flush();
+      env.state(0, 'other000001');
+      await flush();
+      t('queue: a video cleared during its lookup is neither sent late nor put back',
+        env.dispatched.length === 0 && env.lookups.length === 1, `${env.dispatched.join()} | lookups ${env.lookups.length}`);
+    }
   }
   {
     // The legacy EventTarget stand-in (no constructible EventTarget, Chrome
