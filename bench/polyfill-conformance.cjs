@@ -211,7 +211,12 @@ diff('URL concat pattern from utils.handleLaunch', (g) => {
   for (const cb of [undefined, null, 1, 'x', {}]) {
     const label = cb === undefined ? 'undefined' : JSON.stringify(cb);
     // How it settles and the value itself, uncoerced: { ok: 7 } is not { ok: '7' }.
-    const settle = (p) => p.then((value) => ({ ok: value }), (reason) => ({ failed: reason }));
+    // One that has not settled in 2 s is { pending: true }, a failure, not a hang.
+    const settle = (p) => new Promise((resolve) => {
+      const timer = setTimeout(() => resolve({ pending: true }), 2000);
+      p.then((value) => { clearTimeout(timer); resolve({ ok: value }); },
+        (reason) => { clearTimeout(timer); resolve({ failed: reason }); });
+    });
     check('Promise#finally(' + label + ') resolve', await settle(win.Promise.resolve(7).finally(cb)), { ok: 7 });
     check('Promise#finally(' + label + ') reject', await settle(win.Promise.reject(8).finally(cb)), { failed: 8 });
   }

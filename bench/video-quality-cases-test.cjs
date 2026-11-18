@@ -389,6 +389,36 @@ run(async () => {
     for (let i = 0; i < 10 && frames.length; i++) frames.shift()();
     t('...the old switch does not play the new, paused player', plays2 === 0 && frames.length === 0, `${plays2} ${frames.length}`);
   }
+  // ---- The same, replaced between the switch's two frames ----
+  {
+    const { win, p, s, log, emit } = boot({}, { levels: ['auto'] });
+    await wait(50);
+    const frames = [];
+    win.requestAnimationFrame = (cb) => { frames.push(cb); return frames.length; };
+    s.levels = ['hd2160', 'hd1080', 'hd720', 'auto'];
+    emit(1);
+    // The first frame runs on the old player: the range set, the second frame queued.
+    frames.shift()();
+    t('between frames: the first ran on the old player and queued the second',
+      log.calls.includes('range:highres') && frames.length === 1, `${log.calls.join()} ${frames.length}`);
+    const p2 = win.document.createElement('div');
+    p2.id = p.id;
+    for (const k of Object.keys(p)) p2[k] = p[k];
+    let plays2 = 0;
+    let attached2 = 0;
+    p2.playVideo = () => { plays2++; };
+    p2.getPlayerState = () => 2;
+    p2.addEventListener = (type) => { if (type === 'onStateChange') attached2++; };
+    p2.innerHTML = '<video></video>';
+    p.remove();
+    win.document.querySelector('ytlr-app').appendChild(p2);
+    p2.querySelector('video').dispatchEvent(new win.Event('playing'));
+    await wait(30);
+    t('...the new player is attached, the second frame still waits', attached2 === 1 && frames.length === 1,
+      `attached ${attached2}, ${frames.length} frames`);
+    for (let i = 0; i < 10 && frames.length; i++) frames.shift()();
+    t('...the second frame does not play the new, paused player', plays2 === 0, String(plays2));
+  }
   // ---- Watch, then Back before the put-off attach ran ----
   {
     const { win, log } = boot({});
