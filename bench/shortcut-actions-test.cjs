@@ -619,44 +619,71 @@ run(async () => {
       env.backs() === 1, `${env.sent.join()} ${env.toasts()}`);
   }
 
-  // A delayed chapter lookup must belong to the video that requested it.
-  for (const leavePage of [true, false]) {
+  // A delayed chapter lookup must belong to the video that requested it. Its
+  // 500 ms wait and the closing Back's 250 ms are held and run by the test, so
+  // timing cannot pass or fail it; 'none' (no change) shows that the held
+  // timers are the lookup's: there it seeks and closes the controls.
+  for (const change of ['none', 'left watch', 'reused video']) {
     const env = await boot({}, { gap: 10 });
+    const lookup = holdTimeouts(env, 500);
+    const back = holdTimeouts(env, 250);
     const player = env.doc.getElementById('ytlr-player__player-container-player');
     let id = VIDEO_ID;
     player.getVideoData = () => ({ video_id: id });
     await env.press(D(5));
-    if (leavePage) env.doc.body.className = 'WEB_PAGE_TYPE_BROWSE';
-    else id = 'newvideo123'; // YouTube can reuse the element before updating the route.
+    t(n(`pending chapters, ${change}: the lookup is waiting`), /Loading chapters/.test(env.toasts()) && env.vs.time === 100, env.toasts());
+    if (change === 'left watch') env.doc.body.className = 'WEB_PAGE_TYPE_BROWSE';
+    else if (change === 'reused video') id = 'newvideo123'; // YouTube can reuse the element before updating the route.
     player.insertAdjacentHTML('afterend', '<ytlr-multi-markers-player-bar-renderer><div idomkey="progress-bar"><div idomkey="chapter-0" style="width:50%"></div><div idomkey="chapter-1" style="width:50%"></div></div></ytlr-multi-markers-player-bar-renderer>');
-    await wait(850);
-    t(n(`pending chapters, ${leavePage ? 'left watch' : 'reused video'}: no stale seek`), env.vs.time === 100, String(env.vs.time));
-    t(n(`pending chapters, ${leavePage ? 'left watch' : 'reused video'}: no stale Back`), env.backs() === 0, env.sent.join());
-    env.win.close();
-  }
-  {
-    const env = await boot({}, { gap: 10 });
-    const backTimer = holdTimeouts(env, 250);
-    await env.press(D(5));
-    for (let i = 0; i < 40 && backTimer.count() === 0; i++) await wait(50);
-    t(n('chapter controls: the lookup found nothing and queued its closing Back'), backTimer.count() === 1, backTimer.count());
-    env.win.location.hash = '#/';
-    env.doc.body.className = 'WEB_PAGE_TYPE_BROWSE';
     await wait(30);
-    backTimer.run();
-    t(n('...navigation before it runs: the queued Back is cancelled'), env.backs() === 0, env.sent.join());
+    lookup.run();
+    await wait(30);
+    back.run();
+    await wait(30);
+    if (change === 'none') {
+      t(n('pending chapters, no change: it seeks to the next chapter and closes the controls'),
+        env.vs.time === 300 && env.backs() === 1, `${env.vs.time} ${env.sent.join()}`);
+    } else {
+      t(n(`pending chapters, ${change}: no stale seek`), env.vs.time === 100, String(env.vs.time));
+      t(n(`pending chapters, ${change}: no stale Back`), env.backs() === 0, env.sent.join());
+    }
+    env.win.close();
+  }
+  for (const navigate of [false, true]) {
+    // No chapters: the lookup queues its closing Back. Held, it runs after
+    // the navigation (or, as a control, with none: then Back is sent).
+    const env = await boot({}, { gap: 10 });
+    const lookup = holdTimeouts(env, 500);
+    const back = holdTimeouts(env, 250);
+    await env.press(D(5));
+    await wait(30);
+    lookup.run();
+    await wait(30);
+    t(n(`chapter controls${navigate ? '' : ' (control)'}: the lookup found nothing`), /No chapters found/.test(env.toasts()) &&
+      env.backs() === 0, `${env.sent.join()} ${env.toasts()}`);
+    if (navigate) {
+      env.win.location.hash = '#/';
+      env.doc.body.className = 'WEB_PAGE_TYPE_BROWSE';
+    }
+    await wait(30);
+    back.run();
+    t(n(navigate ? '...navigation before it runs: the queued Back is cancelled' : '...with no navigation its queued Back is sent'),
+      env.backs() === (navigate ? 0 : 1), env.sent.join());
     env.win.close();
   }
   {
-    // A lookup discarded by A -> B -> A during its wait: the next press sends
-    // the Enter that loads the chapter bar again.
+    // A lookup discarded by A -> B -> A during its (held) wait: the next press
+    // sends the Enter that loads the chapter bar again.
     const env = await boot({}, { gap: 10 });
+    const lookup = holdTimeouts(env, 500);
     const ENTER = 13;
     await env.press(D(5));
     env.win.location.hash = '#/watch?v=newvideo123';
     await wait(10);
     env.win.location.hash = '#/watch?v=' + VIDEO_ID;
-    await wait(700);
+    await wait(30);
+    lookup.run();
+    await wait(520); // past the shortcut's 500 ms debounce
     await env.press(D(5));
     t(n('chapter lookup discarded by A -> B -> A: the next press loads the bar again'),
       env.sent.filter((c) => c === ENTER).length === 2 && /Loading chapters/.test(env.toasts()), `${env.sent.join()} ${env.toasts()}`);
@@ -710,7 +737,9 @@ run(async () => {
       set: (v) => { writes.push(v); env.vs.time = v; } });
     const seekTimer = holdTimeouts(env, 200);
     await env.press(D(1));
-    t(n('new video before queued seek: the first seek is waiting'), seekTimer.count() > 0 && writes.length === 0, `${seekTimer.count()} ${writes.join()}`);
+    await wait(300);
+    t(n('new video before queued seek: the first seek (+5) is queued and held past its 200 ms'),
+      /Skipped \+5s/.test(env.toasts()) && writes.length === 0, `${env.toasts()} ${writes.join()}`);
     id = 'newvideo123';
     await wait(510); // past the shortcut debounce
     await env.press(D(2));
@@ -724,7 +753,9 @@ run(async () => {
     const env = await boot({ shortcut_key_1: 'seek_15_fwd' }, { gap: 10 });
     const seekTimer = holdTimeouts(env, 200);
     await env.press(D(1));
-    t(n('A to B to A: the seek is queued (its timer held)'), seekTimer.count() > 0 && env.vs.time === 100);
+    await wait(300);
+    t(n('A to B to A: the seek (+5) is queued and held past its 200 ms'),
+      /Skipped \+5s/.test(env.toasts()) && env.vs.time === 100, `${env.toasts()} ${env.vs.time}`);
     env.win.location.hash = '#/watch?v=newvideo123';
     await wait(10);
     env.win.location.hash = '#/watch?v=' + VIDEO_ID;
