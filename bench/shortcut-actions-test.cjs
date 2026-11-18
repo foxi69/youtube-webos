@@ -520,6 +520,24 @@ run(async () => {
     env.vs.time = 590;
     env.video.dispatchEvent(new env.win.Event('seeking'));
     t(n('...a seek short of the end is left alone'), env.vs.time === 590, String(env.vs.time));
+    // A live stream with a finite duration: its end is the live edge.
+    player.getVideoData = () => ({ isLive: true });
+    env.vs.time = 600;
+    env.video.dispatchEvent(new env.win.Event('seeking'));
+    t(n('...a seek to the end of a live stream (its live edge) is left alone'), env.vs.time === 600, String(env.vs.time));
+    player.getVideoData = notLive;
+    // Paused, the viewer seeks near the end: it stays there, by the seek
+    // event and by the timer, and is not played.
+    env.vs.paused = true;
+    const playsPaused = env.vs.plays;
+    env.vs.time = 599.8;
+    env.video.dispatchEvent(new env.win.Event('seeking'));
+    t(n('...paused, a seek near the end stays where it was put (seek event)'), env.vs.time === 599.8, String(env.vs.time));
+    seeking = true;
+    t(n('...and on the timer\'s look during the seek, not played either'), tick(599.8) === 599.8 && env.vs.plays === playsPaused,
+      `${env.vs.time} ${env.vs.plays - playsPaused}`);
+    seeking = false;
+    env.vs.paused = false;
     ended = true;
     env.vs.paused = true;
     const playsBefore = env.vs.plays;
@@ -578,6 +596,7 @@ run(async () => {
     await wait(30);
     t(n('...and leaving the watch page ends it'), tick(599.5) === 599.5);
     env.win.location.hash = '#/shorts/' + VIDEO_ID;
+    env.doc.body.className = 'WEB_PAGE_TYPE_SHORTS';
     await wait(30);
     const video = env.video;
     video.remove();

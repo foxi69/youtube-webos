@@ -69,11 +69,11 @@ function check() {
   const duration = video.duration;
   // No end (Infinity) or a very short video: left alone.
   if (!isFinite(duration) || duration <= END_MARGIN_S * 2) return;
-  // A seek to the very end (on modern builds SponsorBlock's auto-skip of an
-  // outro goes there) or an ended video goes back too: the player moves on
-  // from there. Otherwise, paused or seeking: a viewer who put it near the end
-  // keeps it there.
-  const atEnd = video.ended || (video.seeking && video.currentTime >= duration - END_SNAP_S);
+  // A seek to the very end while it plays (on modern builds SponsorBlock's
+  // auto-skip of an outro goes there) or an ended video goes back too: the
+  // player moves on from there. Otherwise, paused or seeking: a viewer who put
+  // it near the end keeps it there.
+  const atEnd = video.ended || (!video.paused && video.seeking && video.currentTime >= duration - END_SNAP_S);
   if (!atEnd && (video.paused || video.seeking)) return;
   // At most a quarter of the video, so a short one at 2x still plays through.
   const margin = Math.min(END_MARGIN_S * Math.max(1, video.playbackRate || 1), duration / 4);
@@ -90,13 +90,14 @@ function check() {
   }
 }
 
-// A seek to the very end (on modern builds SponsorBlock's auto-skip of an
-// outro goes there) ends the video at once, and the player or the queue moves
-// on before the timer looks (seen on the TV). The seek is sent to the start
-// while it begins. Media events do not bubble: caught on the way down.
+// A seek to the very end while it plays (on modern builds SponsorBlock's
+// auto-skip of an outro goes there) ends the video at once, and the player or
+// the queue moves on before the timer looks (seen on the TV). The seek is sent
+// to the start while it begins. A paused video is the viewer's: left where it
+// was put. Media events do not bubble: caught on the way down.
 document.addEventListener('seeking', (evt) => {
   const video = evt.target;
-  if (repeatId === null || currentVideoId() !== repeatId || video !== getVideo()) return;
+  if (repeatId === null || currentVideoId() !== repeatId || video !== getVideo() || video.paused) return;
   const duration = video.duration;
   if (!isFinite(duration) || duration <= END_MARGIN_S * 2) return;
   if (video.currentTime < duration - END_SNAP_S) return;
