@@ -23,10 +23,15 @@ export interface ResolveCommandHook {
 }
 
 let registry: ResolveCommandRegistry | null = null;
+let initializing: Promise<ResolveCommandRegistry> | null = null;
+// When the lookup in `initializing` started (Date.now()).
+let initializingSince = 0;
+// Outside the registry: a hook set while the resolver is still looked for, or
+// after a startup lookup ran out, is in place once a later lookup finds it.
+const cmds = new Map<string, ResolveCommandHook>();
 
 export class ResolveCommandRegistry {
   #originalFn: ResolveCommand;
-  #cmds = new Map<string, ResolveCommandHook>();
 
   private resolveCommand = (
     command: Record<string, unknown>,
@@ -41,7 +46,7 @@ export class ResolveCommandRegistry {
       console.groupEnd();
     }
 
-    for (const [key, hook] of this.#cmds) {
+    for (const [key, hook] of cmds) {
       if (key in command) {
         return hook(this.#originalFn, command, extra);
       }
@@ -84,11 +89,21 @@ export class ResolveCommandRegistry {
   private static findHookTarget() {
     if (typeof window?._yttv !== 'object') return null;
 
+    // A candidate whose getter throws is passed over; the scan fails with
+    // that error only when no other candidate is the resolver.
+    // Whether one threw is kept apart from what it threw (a getter may throw
+    // false or undefined).
+    let failed = false;
+    let failure: unknown;
     for (const key in window._yttv) {
-      if (this.checkHookTarget(key)) {
-        return key;
+      try {
+        if (this.checkHookTarget(key)) return key;
+      } catch (error) {
+        if (!failed) failure = error;
+        failed = true;
       }
     }
+    if (failed) throw failure;
 
     return null;
   }
@@ -105,7 +120,14 @@ export class ResolveCommandRegistry {
       let delay = 16;
 
       const poll = () => {
-        const hook = this.findHookTarget();
+        let hook: string | null;
+        // A scan that throws (a YouTube getter) ends this lookup, so the
+        // callers waiting on it are let go and a later one can start anew.
+        try {
+          hook = this.findHookTarget();
+        } catch (error) {
+          return reject(error);
+        }
         if (hook) return resolve(hook);
 
         if (Date.now() >= deadline) {
@@ -124,17 +146,40 @@ export class ResolveCommandRegistry {
     });
   }
 
-  static async getInstance() {
+  static async getInstance(retry = true): Promise<ResolveCommandRegistry> {
     if (registry) return registry;
 
-    const key = await this.getHookTarget();
-
-    registry = registry ?? new ResolveCommandRegistry(key);
-    return registry;
+    // Startup consumers share one bounded discovery loop. A failed lookup
+    // must be released too, so a later user action can try again.
+    const calledAt = Date.now();
+    if (!initializing) {
+      initializingSince = calledAt;
+      initializing = this.getHookTarget()
+        .then((key) => (registry = registry ?? new ResolveCommandRegistry(key)))
+        .then(
+          (ready) => { initializing = null; return ready; },
+          (error) => { initializing = null; throw error; }
+        );
+    }
+    const since = initializingSince;
+    try {
+      return await initializing;
+    } catch (error) {
+      // A caller that joined a lookup with less than half of its window left
+      // (a user action late after startup) gets one fresh lookup, shared with
+      // whoever comes then. The startup consumers, there from the start, do not.
+      if (retry && calledAt - since > this.POLL_TIMEOUT_MS / 2) return this.getInstance(false);
+      throw error;
+    }
   }
 
-  setHook(command: string, fn: ResolveCommandHook) {
-    this.#cmds.set(command, fn);
+  /**
+   * Sets hooks by command key, and returns the lookup, for its failure. The
+   * hooks hold whenever the resolver is found, also by a later lookup.
+   */
+  static setHooks(hooks: Record<string, ResolveCommandHook>) {
+    for (const key of Object.keys(hooks)) cmds.set(key, hooks[key]!);
+    return this.getInstance();
   }
 
   dispatchCommand(payload: ResolveCommandPayload, extra?: unknown) {

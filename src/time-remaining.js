@@ -87,7 +87,7 @@ function tick() {
 }
 
 function sync() {
-  const on = configRead('timeRemainingMode') !== 'off' && isWatchPage();
+  const on = configRead('timeRemainingMode') !== 'off' && isWatchPage() && !document.hidden;
   if (on && !timer) {
     timer = setInterval(tick, TICK_MS);
     tick();
@@ -99,6 +99,8 @@ function sync() {
 }
 
 window.addEventListener('ytaf-page-update', sync);
+// A backgrounded TV app needs no layout polling; resume immediately on return.
+document.addEventListener('visibilitychange', sync);
 // From one shown mode to another the timer keeps running: the text changes at once.
 configAddChangeListener('timeRemainingMode', () => {
   sync();

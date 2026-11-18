@@ -72,6 +72,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Typecheck
+        run: npm run typecheck
+
       # Builds both packages and runs every bench test (bench/ci.sh).
       - name: Test
         run: npm test

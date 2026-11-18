@@ -200,6 +200,7 @@ run(async () => {
     return label && label.querySelector('input');
   };
 
+  d.getElementById('outside').focus();
   // ---- Opening, and the tabs before the idle build has run ----
   press(KEY.GREEN);
   const openedAt = Date.now();
@@ -398,11 +399,21 @@ run(async () => {
   await wait(Math.max(0, 550 - (Date.now() - openedAt)));
   press(KEY.BACK);
   t(n('Back closes the panel'), !isOpen());
+  t(n('Back restores the page focus'), focused() === d.getElementById('outside'), describe(focused()));
+  // Opened this time from another element: Escape must give the focus back to
+  // that one, not to the first opener.
+  const second = d.createElement('button');
+  second.id = 'second-opener';
+  second.textContent = 'Other';
+  d.body.appendChild(second);
+  second.focus();
   press(KEY.GREEN);
   t(n('green opens it again on the tab that was open'), isOpen() && focused() === tabs()[4] &&
     shortcuts.style.display === 'block', describe(focused()));
   press(KEY.ESC);
   t(n('Escape closes it too'), !isOpen());
+  t(n('Escape restores the focus to this opener'), focused() === second, describe(focused()));
+  second.remove();
   // A second green within the shortcut debounce would be dropped.
   await wait(250);
   press(KEY.GREEN);
@@ -411,6 +422,32 @@ run(async () => {
   t(n('open again, the focus in the text box'), isOpen() && !!box && focused() === box, describe(focused()));
   press(KEY.BACK);
   t(n('Back closes it from the text box as well'), !!box && !isOpen());
+
+  // The opener disabled while the panel is open: its focus() does nothing,
+  // and the hidden panel must still let go of the focus.
+  await wait(250);
+  press(KEY.GREEN);
+  t(n('open again before the opener is disabled'), isOpen() && panel().contains(focused()), describe(focused()));
+  await wait(550);
+  d.getElementById('outside').disabled = true;
+  press(KEY.BACK);
+  t(n('disabled opener: focus is released from the hidden panel'),
+    !isOpen() && !panel().contains(focused()), describe(focused()));
+  d.getElementById('outside').disabled = false;
+
+  await wait(250);
+  const opener = d.getElementById('outside');
+  opener.focus();
+  press(KEY.GREEN);
+  t(n('open again from the opener, before it is removed'), isOpen() && panel().contains(focused()), describe(focused()));
+  await wait(550);
+  opener.remove();
+  let refocused = 0;
+  opener.focus = () => { refocused++; };
+  press(KEY.BACK);
+  t(n('removed opener: it is not focused again'), refocused === 0, refocused);
+  t(n('removed opener: focus is released from the hidden panel'),
+    !isOpen() && !panel().contains(focused()), describe(focused()));
 
   t(n('no page errors'), errors.length === 0, errors.join(' | '));
 });

@@ -442,6 +442,24 @@ run(async () => {
     t('long press: the feedback panel becomes a menu with the feedback entries',
       builtTexts.join('|') === "Play|Save to Watch later|Save to playlist|Add to queue|Not interested|Don't recommend channel|Block channel: Other",
       builtTexts.join('|'));
+    // A search result's row of a channel's videos: a cluster shelf, with its
+    // videos by cluster and again as plain contents (webOS 25, 2026-11-18).
+    const search = parse({ responseContext: { _pad: pad }, contents: { sectionListRenderer: { contents: [
+      { shelfRenderer: { content: { horizontalListRenderer: { items: [lockup('searchtop01', { longPress: { innertubeCommand: menu } })] } } } },
+      { clusterShelfRenderer: {
+        clusters: [{ clusterRenderer: { items: [lockup('cluster0001', { longPress: { innertubeCommand: menu } })] } }],
+        contents: [{ contents: [lockup('cluster0001', { longPress: { innertubeCommand: menu } })] }]
+      } }
+    ] } } });
+    const menuTexts = (item) => item.lockupViewModel.rendererContext.commandContext.onLongPress.innertubeCommand
+      .showMenuCommand.menu.menuRenderer.items.map((i) => i.menuServiceItemRenderer.text.runs[0].text).join('|');
+    const [top, cluster] = search.contents.sectionListRenderer.contents;
+    t('long press: a search result gets our entries', menuTexts(top.shelfRenderer.content.horizontalListRenderer.items[0]) ===
+      'Save|Add to queue|Block channel: Some Channel', menuTexts(top.shelfRenderer.content.horizontalListRenderer.items[0]));
+    t('long press: a channel\'s row in the search results (a cluster shelf) gets them too, in both its copies',
+      menuTexts(cluster.clusterShelfRenderer.clusters[0].clusterRenderer.items[0]) === 'Save|Add to queue|Block channel: Some Channel' &&
+      menuTexts(cluster.clusterShelfRenderer.contents[0].contents[0]) === 'Save|Add to queue|Block channel: Some Channel',
+      menuTexts(cluster.clusterShelfRenderer.clusters[0].clusterRenderer.items[0]) + ' / ' + menuTexts(cluster.clusterShelfRenderer.contents[0].contents[0]));
     t('long press: Shorts tiles are left alone',
       shortItem.tileRenderer.onLongPressCommand.showMenuCommand.menu.menuRenderer.items.length === 1);
 
