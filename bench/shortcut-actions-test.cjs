@@ -852,6 +852,24 @@ run(async () => {
     t(n('video id unreadable when the seek lands: the seek is applied'), env.vs.time === 105, String(env.vs.time));
     env.win.close();
   }
+  {
+    // Unreadable at the first press, A at the second, B when the seek lands
+    // (route, element and source unchanged): A is kept, B is a change.
+    const env = await boot({ shortcut_key_1: 'seek_15_fwd' }, { gap: 10 });
+    const player = env.doc.getElementById('ytlr-player__player-container-player');
+    let id = '';
+    player.getVideoData = () => { if (!id) throw new Error('not ready'); return { video_id: id }; };
+    const seekTimer = holdTimeouts(env, 200);
+    holdTimeouts(env, 1200);
+    await env.press(D(1));
+    id = VIDEO_ID;
+    await wait(510); // past the shortcut debounce
+    await env.press(D(1));
+    id = 'newvideo123';
+    seekTimer.run();
+    t(n('id unreadable, then A, then B before the seek lands: not applied'), env.vs.time === 100, String(env.vs.time));
+    env.win.close();
+  }
 
   // ---- The key that closes the settings panel ----
   {

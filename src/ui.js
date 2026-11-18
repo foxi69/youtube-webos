@@ -1411,10 +1411,15 @@ function capturePlaybackContext(video) {
   const generation = playbackActionGeneration;
   const route = window.location.hash;
   const src = video.currentSrc || video.src;
-  const id = playbackVideoId();
+  let id = playbackVideoId();
   // An id the player cannot give (now or then) is no change: the route, the
-  // element and its source still decide.
-  const sameId = (now) => !id || !now || now === id;
+  // element and its source still decide. The first id read is kept, so a
+  // later different one is a change even when the capture could not read it.
+  const sameId = (now) => {
+    if (!now) return true;
+    if (!id) id = now;
+    return now === id;
+  };
   return () => generation === playbackActionGeneration && video.isConnected &&
     (isWatchPage() || isShortsPage()) && getVideo() === video &&
     window.location.hash === route && (video.currentSrc || video.src) === src && sameId(playbackVideoId());
