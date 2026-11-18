@@ -23,6 +23,12 @@ export const TypedCustomEvent = CustomEvent as {
 
 interface EmptyEventMap {}
 
+/** The capture mode of add/removeEventListener's options (false or true). */
+export const captureOf = (options: unknown) =>
+  typeof options === 'boolean'
+    ? options
+    : !!(options && (options as EventListenerOptions).capture);
+
 type EventMapValue<
   T extends EmptyEventMap,
   K extends keyof T & string
@@ -44,7 +50,7 @@ interface EventListenerObject<
   handleEvent: EventListener<Self, T, EventName>;
 }
 
-type EventListenerArg<
+export type EventListenerArg<
   Self extends EventTarget,
   T extends EmptyEventMap,
   EventName extends keyof T
@@ -53,10 +59,16 @@ type EventListenerArg<
   | EventListenerObject<Self, T, EventName>
   | null;
 
-interface CustomEventTarget<T extends EmptyEventMap> {
+interface CustomEventTarget<T extends EmptyEventMap> extends EventTarget {
   addEventListener<K extends keyof T & string>(
     type: K,
     callback: EventListenerArg<this, T, K>,
+    options?: boolean | AddEventListenerOptions
+  ): void;
+
+  addEventListener(
+    type: string,
+    callback: EventListenerOrEventListenerObject | null,
     options?: boolean | AddEventListenerOptions
   ): void;
 
@@ -66,6 +78,13 @@ interface CustomEventTarget<T extends EmptyEventMap> {
     options?: boolean | EventListenerOptions
   ): void;
 
+  removeEventListener(
+    type: string,
+    callback: EventListenerOrEventListenerObject | null,
+    options?: boolean | EventListenerOptions
+  ): void;
+
+  dispatchEvent(event: Event): boolean;
   dispatchEvent<K extends keyof T & string>(
     event: EventMapValue<T, K>
   ): boolean;
@@ -79,28 +98,42 @@ interface CustomEventTarget<T extends EmptyEventMap> {
  * dispatch that reports preventDefault().
  */
 class EventTargetShim {
-  private readonly listenerMap = new Map<string, any[]>();
+  // One entry per callback and capture mode, as a real EventTarget keeps them.
+  private readonly listenerMap = new Map<
+    string,
+    { callback: any; capture: boolean; once: boolean }[]
+  >();
 
-  addEventListener(type: string, callback: any): void {
+  addEventListener(type: string, callback: any, options?: unknown): void {
     if (!callback) return;
+    const capture = captureOf(options);
+    const once = !!(options && (options as AddEventListenerOptions).once);
     const list = this.listenerMap.get(type) || [];
-    if (list.indexOf(callback) === -1) list.push(callback);
+    if (!list.some((e) => e.callback === callback && e.capture === capture)) {
+      list.push({ callback, capture, once });
+    }
     this.listenerMap.set(type, list);
   }
 
-  removeEventListener(type: string, callback: any): void {
+  removeEventListener(type: string, callback: any, options?: unknown): void {
     const list = this.listenerMap.get(type);
     if (!list) return;
-    const at = list.indexOf(callback);
+    const capture = captureOf(options);
+    const at = list.findIndex((e) => e.callback === callback && e.capture === capture);
     if (at !== -1) list.splice(at, 1);
   }
 
   dispatchEvent(event: Event): boolean {
     const list = this.listenerMap.get(event.type);
     if (list) {
-      // A snapshot, as a real EventTarget runs listeners: one removed or
-      // added during the dispatch does not change this round.
-      for (const callback of list.slice()) {
+      // A snapshot, as a real EventTarget runs listeners: one added during
+      // the dispatch does not run this round, one removed during it does not
+      // run any more.
+      for (const entry of list.slice()) {
+        if (list.indexOf(entry) === -1) continue;
+        const { callback } = entry;
+        // A one-shot listener is removed before it runs.
+        if (entry.once) this.removeEventListener(event.type, callback, entry.capture);
         try {
           if (typeof callback === 'function') callback.call(this, event);
           else if (callback && typeof callback.handleEvent === 'function') callback.handleEvent(event);

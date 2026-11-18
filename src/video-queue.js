@@ -20,6 +20,9 @@ let endHandled = false;
 // The queued video on its way to the screen: { videoId, title }.
 let opening = null;
 let refusalTimer = null;
+// The queued video whose command still waits for the TV app's resolver (only
+// while it is being looked for; once found, the command goes at once).
+let dispatching = null;
 
 export function addToQueue(videoId, title) {
   for (let i = 0; i < queue.length; i++) {
@@ -34,20 +37,54 @@ export function addToQueue(videoId, title) {
 
 export function clearQueue() {
   queue.length = 0;
+  // A video whose command still waits goes too: it is neither sent late nor
+  // put back. One already sent plays on.
+  if (dispatching) {
+    if (opening === dispatching) opening = null;
+    dispatching = null;
+  }
   showNotification('Queue cleared');
+}
+
+/** The video the watch page's address names, or null away from it. */
+function watchedId() {
+  const m = /^#\/watch\?(?:[^#]*&)?v=([^&]+)/.exec(window.location.hash);
+  return m ? m[1] : null;
 }
 
 /** Plays the next queued video; false when the queue is empty. */
 function playNext() {
-  const next = queue.shift();
-  if (!next) return false;
+  // A video whose command still waits is not lost to a second call (an end
+  // meanwhile): it goes first, in a new attempt.
+  if (dispatching) queue.unshift(dispatching);
+  const item = queue.shift();
+  if (!item) return false;
+  // Each attempt is its own object, so a late answer to an earlier attempt for
+  // the same video finds it no longer current and leaves this one alone.
+  // `from`: the video the watch page showed when this attempt began.
+  const next = { videoId: item.videoId, title: item.title, from: watchedId() };
   clearTimeout(refusalTimer);
   opening = next;
   showNotification(`Next in queue: ${next.title} (${queue.length} left)`);
   // YouTube's own command: a new address alone loses to the step back to Home
   // that YouTube takes right after a video ends.
+  dispatching = next;
   ResolveCommandRegistry.getInstance()
-    .then((registry) => registry.dispatchCommand({ watchEndpoint: { videoId: next.videoId } }))
+    .then(
+      (registry) => {
+        // The viewer started another video meanwhile (see the state listener).
+        if (dispatching !== next) return;
+        dispatching = null;
+        registry.dispatchCommand({ watchEndpoint: { videoId: next.videoId } });
+      },
+      (err) => {
+        // A failed lookup: told only while this attempt is still the current
+        // one (not after a newer attempt or a cleared queue took over).
+        if (dispatching !== next) return;
+        dispatching = null;
+        throw err;
+      }
+    )
     .catch((err) => {
       console.warn('[Queue] Could not play the next video:', err);
       if (opening === next) opening = null;
@@ -57,6 +94,11 @@ function playNext() {
 }
 
 export function playNextInQueue() {
+  // Next pressed again while the next video's command waits: it is on its way.
+  if (dispatching) {
+    showNotification(`On its way: ${dispatching.title}`);
+    return;
+  }
   if (!playNext()) showNotification('The queue is empty');
 }
 
@@ -83,6 +125,19 @@ export function noteQueuePlayability(status) {
 
 window.addEventListener('yt-player-state-change', ({ detail }) => {
   if (!detail) return;
+  // Another video playing on the watch page while the queued one's command
+  // still waits: the viewer chose it. The queued video goes back to the front
+  // and plays at the next end instead. Told by the address, not the event's
+  // id: the video that was on when the attempt began may report PLAYING again
+  // (after buffering, or still playing when Queue Next was pressed), and an
+  // event may name no video.
+  const shown = watchedId();
+  if (detail.state === 1 && dispatching && shown && shown !== dispatching.videoId &&
+      shown !== dispatching.from) {
+    queue.unshift(dispatching);
+    if (opening === dispatching) opening = null;
+    dispatching = null;
+  }
   if (detail.state === 1 && opening && detail.videoId === opening.videoId) {
     opening = null;
     clearTimeout(refusalTimer);

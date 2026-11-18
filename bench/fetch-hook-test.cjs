@@ -315,6 +315,39 @@ async function nativeFetchTv() {
   await call(win, '/youtubei/v1/browse');
   t(n('a response listener alone is still called'), late.length === 1);
   reg.removeEventListener('response', onLate);
+  // Added in both capture modes, removed in one: the browser keeps the other,
+  // and the registry must still dispatch to it.
+  const kept = [];
+  const onKept = (evt) => kept.push(evt.detail);
+  reg.addEventListener('request', onKept);
+  reg.addEventListener('request', onKept, { capture: true });
+  reg.removeEventListener('request', onKept);
+  await call(win, '/youtubei/v1/browse');
+  t(n('a request listener left in its capture registration is still called'), kept.length === 1, kept.length);
+  reg.removeEventListener('request', onKept, true);
+  win.__ytaf_debug__ = true;
+  await call(win, '/probe3');
+  win.__ytaf_debug__ = false;
+  const kept3 = lastRequestNo(env.debug);
+  before = fetched.length;
+  r = await call(win, '/youtubei/v1/browse');
+  t(n('...the request then still reaches the TV\'s fetch'), !r.error && fetched.length === before + 1,
+    r.error || fetched.length - before);
+  t(n('...and not once that one is removed too'), kept.length === 1, kept.length);
+  win.__ytaf_debug__ = true;
+  await call(win, '/probe4');
+  win.__ytaf_debug__ = false;
+  const kept4 = lastRequestNo(env.debug);
+  t(n('...and with no listener left, requests go straight through again (the count does not move)'),
+    kept3 >= 0 && kept4 === kept3 + 1, `request numbers ${kept3} then ${kept4}`);
+  // Options inherited from a prototype count too: a `once` given so runs once.
+  const inherited = [];
+  const onInherited = (evt) => inherited.push(evt.detail);
+  reg.addEventListener('request', onInherited, Object.create({ once: true }));
+  await call(win, '/youtubei/v1/browse');
+  await call(win, '/youtubei/v1/browse');
+  t(n('a request listener added with an inherited once runs once'), inherited.length === 1, inherited.length);
+  reg.removeEventListener('request', onInherited);
 
   // ---- window.__ytaf_debug__: the bodies in the log ----
   win.__ytaf_debug__ = true;
@@ -357,6 +390,30 @@ async function nativeFetchTv() {
   r = await call(win, unreadable);
   t(n('debug: a body that cannot be dumped does not stop the request'), !r.error && fetched.length === before + 1 &&
     fetched[before].resource === unreadable, describe(r));
+  // Dumping a body is diagnostic only: FileReader failures cannot block fetch.
+  const GoodReader = win.FileReader;
+  for (const failure of ['error', 'abort', 'throw']) {
+    win.FileReader = class extends win.EventTarget {
+      readAsDataURL() {
+        if (failure === 'throw') throw new Error('unreadable blob');
+        // In a microtask, with no timer a busy runner could hold back.
+        Promise.resolve().then(() => this.dispatchEvent(new win.Event(failure)));
+      }
+    };
+    const brokenDump = new Request(ORIGIN + '/reader-failure', { method: 'POST', body: 'keep this body' });
+    before = fetched.length;
+    env.debug.length = 0;
+    const result = await Promise.race([
+      call(win, brokenDump),
+      // Only for a request that never ends: everything above settles in microtasks.
+      wait(5000).then(() => ({ error: new Error('debug dump stalled fetch') }))
+    ]);
+    t(n(`debug, FileReader ${failure}: request and response still delivered`),
+      !result.error && fetched.length === before + 1 && result.body === '{"path":"/reader-failure"}', describe(result));
+    t(n('...and no body line is logged for a read that failed'),
+      !debugLine(env.debug, 'Request Body') && !debugLine(env.debug, 'Response Body'), env.debug.map((a) => a[0]).join(' | '));
+  }
+  win.FileReader = GoodReader;
   win.__ytaf_debug__ = false;
 
   // ---- The Tracking Block back on ----

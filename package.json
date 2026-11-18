@@ -18,6 +18,7 @@
     "version": "node tools/sync-version.cjs && git add assets/appinfo.json",
     "prepare": "husky",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
     "prettier-check": "prettier --ignore-path .prettierignore --check .",
     "test": "bash bench/ci.sh",
     "coverage": "c8 bash bench/ci.sh --coverage --late"

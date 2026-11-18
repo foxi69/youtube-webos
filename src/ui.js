@@ -36,6 +36,7 @@ window.addEventListener('scroll', (evt) => {
 }, true);
 
 let lastSafeFocus = null;
+let panelReturnFocus = null;
 let oledKeepAliveTimer = null;
 
 let lastShortcutTime = 0;
@@ -1304,6 +1305,7 @@ function showOptionsPanel(visible) {
   if (visible === undefined || visible === null) visible = true;
   
   if (visible && !optionsPanelVisible) {
+    panelReturnFocus = document.activeElement;
     // The blackout sits above the panel, which would open unseen.
     endOledBlackout();
 
@@ -1351,6 +1353,18 @@ function showOptionsPanel(visible) {
     optionsPanel.blur();
     optionsPanelVisible = false;
     lastSafeFocus = null;
+    const returnFocus = panelReturnFocus;
+    panelReturnFocus = null;
+    // Release the trap before restoring the page's focus. YouTube may have
+    // replaced the original tile while the panel was open.
+    if (returnFocus && returnFocus.isConnected && !optionsPanel.contains(returnFocus)) {
+      returnFocus.focus();
+    }
+    // Also when that focus() did nothing (the page disabled the element): the
+    // hidden panel must not keep the focus.
+    if (optionsPanel.contains(document.activeElement)) {
+      document.activeElement.blur();
+    }
     // A held Back (or whichever key closed the panel) must not go on to
     // YouTube as a page back.
     swallowHeldKey();
@@ -1381,6 +1395,62 @@ document.addEventListener('focus', (e) => {
 window.ytaf_showOptionsPanel = showOptionsPanel;
 
 // --- Video Control Logic ---
+
+// Delayed remote actions belong to one playback context. YouTube reuses the
+// <video> across navigation, so neither the element nor its src alone is enough.
+let playbackActionGeneration = 0;
+let seekContext = null;
+
+function playbackVideoId() {
+  try {
+    const player = document.getElementById(SELECTORS.PLAYER_ID);
+    const data = player && typeof player.getVideoData === 'function' ? player.getVideoData() : null;
+    // Anything but a string is unreadable: a fresh object on each call would
+    // never compare equal.
+    return data && typeof data.video_id === 'string' ? data.video_id : '';
+  } catch { return ''; }
+}
+
+function capturePlaybackContext(video) {
+  const generation = playbackActionGeneration;
+  const route = window.location.hash;
+  const src = video.currentSrc || video.src;
+  let id = playbackVideoId();
+  // An id the player cannot give (now or then) is no change: the route, the
+  // element and its source still decide. The first id read is kept, so a
+  // later different one is a change even when the capture could not read it.
+  const sameId = (now) => {
+    if (!now) return true;
+    if (!id) id = now;
+    return now === id;
+  };
+  return () => generation === playbackActionGeneration && video.isConnected &&
+    (isWatchPage() || isShortsPage()) && getVideo() === video &&
+    window.location.hash === route && (video.currentSrc || video.src) === src && sameId(playbackVideoId());
+}
+
+function resetPendingSeek() {
+  clearTimeout(seekApplyTimer);
+  clearTimeout(seekResetTimer);
+  seekApplyTimer = seekResetTimer = null;
+  seekAccumulator = pendingSeekOffset = 0;
+  seekContext = null;
+  if (activeSeekNotification) activeSeekNotification.remove();
+  activeSeekNotification = null;
+}
+
+function cancelDelayedPlaybackActions() {
+  playbackActionGeneration++;
+  resetPendingSeek();
+  // A chapter lookup waiting for the old playback lets go: a press on the new
+  // one is taken, and may send its own Enter.
+  if (skipChapter.loading) {
+    skipChapter.loading = null;
+    skipChapter.hasForced = false;
+  }
+}
+window.addEventListener('hashchange', cancelDelayedPlaybackActions);
+window.addEventListener('ytaf-page-update', cancelDelayedPlaybackActions);
 
 /**
  * The chapters' start times in seconds. The bar renderer's data has them
@@ -1421,13 +1491,23 @@ async function skipChapter(direction = 'next') {
   const video = getVideo();
   if (!video || !video.duration) return;
 
-  skipChapter.lastSrc = skipChapter.lastSrc || '';
   skipChapter.hasForced = skipChapter.hasForced || false;
 
-  const currentSrc = video.src || window.location.href;
+  // Another video: another address or source, or another readable id. An id
+  // the player cannot give now is no change (the last readable one stays).
+  const base = `${window.location.href}|${video.currentSrc || video.src}`;
+  const id = playbackVideoId();
+  const isCurrent = capturePlaybackContext(video);
+  const closeForcedControls = () => {
+    setTimeout(() => { if (isCurrent() && !optionsPanelVisible) simulateBack(); }, 250);
+  };
   let wasForcedNow = false;
   
-  if (skipChapter.lastSrc !== currentSrc) { skipChapter.lastSrc = currentSrc; skipChapter.hasForced = false; }
+  if (skipChapter.lastBase !== base || (id && skipChapter.lastId && id !== skipChapter.lastId)) {
+    skipChapter.lastBase = base;
+    skipChapter.lastId = id;
+    skipChapter.hasForced = false;
+  } else if (id) skipChapter.lastId = id;
 
   const getChapterEls = () => {
     const bar = document.querySelector('ytlr-multi-markers-player-bar-renderer [idomkey="progress-bar"]');
@@ -1446,15 +1526,24 @@ async function skipChapter(direction = 'next') {
     wasForcedNow = true;
     showNotification('Loading chapters...');
     sendKey(REMOTE_KEYS.ENTER);
-    skipChapter.loading = true;
+    const lookup = {};
+    skipChapter.loading = lookup;
     await new Promise(resolve => setTimeout(resolve, 500));
-    skipChapter.loading = false;
+    // Released by a navigation: a newer lookup may own the state by now.
+    if (skipChapter.loading !== lookup) return;
+    skipChapter.loading = null;
+    // Another playback by now (A -> B -> A included): the Enter loaded nothing
+    // for this one, so the next press may send it again.
+    if (!isCurrent()) {
+      skipChapter.hasForced = false;
+      return;
+    }
     chapterEls = getChapterEls();
   }
 
   if (chapterEls.length === 0) {
     showNotification('No chapters found');
-    if (wasForcedNow) setTimeout(() => simulateBack(), 250);
+    if (wasForcedNow) closeForcedControls();
     return;
   }
 
@@ -1464,7 +1553,7 @@ async function skipChapter(direction = 'next') {
   // A bar without chapter markers.
   if (starts.length === 0) {
     showNotification('No chapters found');
-    if (wasForcedNow) setTimeout(() => simulateBack(), 250);
+    if (wasForcedNow) closeForcedControls();
     return;
   }
 
@@ -1499,16 +1588,18 @@ async function skipChapter(direction = 'next') {
   if (targetTime !== -1 && targetTime < video.duration) {
     video.currentTime = targetTime;
     showNotification(direction === 'next' ? 'Next Chapter' : 'Previous Chapter');
-    if (wasForcedNow) setTimeout(() => simulateBack(), 250);
+    if (wasForcedNow) closeForcedControls();
   } else {
     showNotification(direction === 'next' ? 'No next chapter' : 'Start of video');
-    if (wasForcedNow) setTimeout(() => simulateBack(), 250);
+    if (wasForcedNow) closeForcedControls();
   }
 }
 
 function performBurstSeek(seconds, video) {
     if (!video) video = getVideo();
     if (!video) return;
+    if (seekContext && !seekContext()) resetPendingSeek();
+    if (!seekContext) seekContext = capturePlaybackContext(video);
 	
     // Reset accumulators if direction changes (e.g. going from +15 to -15)
 	if ((seekAccumulator > 0 && seconds < 0) || (seekAccumulator < 0 && seconds > 0)) {
@@ -1537,6 +1628,8 @@ function performBurstSeek(seconds, video) {
     if (seekApplyTimer) clearTimeout(seekApplyTimer);
 
     seekApplyTimer = setTimeout(() => {
+        seekApplyTimer = null;
+        if (!seekContext || !seekContext()) { resetPendingSeek(); return; }
         if (pendingSeekOffset !== 0) {
             // Apply the total calculated seek in one single operation
             video.currentTime += pendingSeekOffset;
@@ -1548,6 +1641,7 @@ function performBurstSeek(seconds, video) {
         seekAccumulator = 0;
         activeSeekNotification = null;
         seekResetTimer = null;
+        seekContext = null;
     }, 1200);
 }
 

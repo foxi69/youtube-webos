@@ -32,6 +32,7 @@ function abortError() {
  */
 export function fetchJsonWithTimeout(url, timeoutMs, opts) {
     const outer = opts && opts.signal ? opts.signal : null;
+    if (outer && outer.aborted) return Promise.reject(abortError());
     const controller = HAS_ABORT_CONTROLLER ? new AbortController() : null;
     let timer = null;
     let onOuterAbort = null;
@@ -50,13 +51,17 @@ export function fetchJsonWithTimeout(url, timeoutMs, opts) {
                 reject(abortError());
                 if (controller) controller.abort();
             };
-            if (outer.aborted) onOuterAbort();
-            else outer.addEventListener('abort', onOuterAbort);
+            outer.addEventListener('abort', onOuterAbort);
         }
     });
 
     const bodyOn = opts && opts.bodyOn ? opts.bodyOn : null;
-    const request = (controller ? fetch(url, { signal: controller.signal }) : fetch(url)).then(
+    // A wrapper can throw before returning a promise. Keep that rejection in
+    // the race too, so the deadline and outer abort listener are cleaned up.
+    const request = Promise.resolve().then(() => {
+        if (outer && outer.aborted) throw abortError();
+        return controller ? fetch(url, { signal: controller.signal }) : fetch(url);
+    }).then(
         response => (response.ok || (bodyOn && bodyOn.indexOf(response.status) !== -1)
             ? response.json().then(data => ({ ok: response.ok, status: response.status, data }))
             : { ok: false, status: response.status, data: null })

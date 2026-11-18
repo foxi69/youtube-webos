@@ -1,4 +1,4 @@
-import { CustomEventTarget, TypedCustomEvent } from '../custom-event-target';
+import { CustomEventTarget, TypedCustomEvent, captureOf, type EventListenerArg } from '../custom-event-target';
 
 export interface StringConvertible {
   toString(): string;
@@ -27,23 +27,63 @@ interface EventMap {
 export class FetchRegistry extends CustomEventTarget<EventMap> {
   #originalFetch: typeof fetch;
   #fetchCount = 0;
-  #listeners: Record<HookedType, Set<unknown>> = {
-    request: new Set(),
-    response: new Set()
+  // By capture mode, [bubble, capture]: the browser keeps a callback once per
+  // mode, so removing one registration can leave the other. A `once` or
+  // `signal` listener the browser drops by itself stays here: that only keeps
+  // the slower path, while a listener the browser has is never missing here.
+  #listeners: Record<HookedType, [Set<unknown>, Set<unknown>]> = {
+    request: [new Set(), new Set()],
+    response: [new Set(), new Set()]
   };
 
-  override addEventListener(type: any, callback: any, options?: any): void {
-    super.addEventListener(type, callback, options);
-    if (callback && isHookedType(type)) this.#listeners[type].add(callback);
+  #hasListeners(type: HookedType) {
+    const [bubble, capture] = this.#listeners[type];
+    return bubble.size + capture.size > 0;
   }
 
+  override addEventListener<K extends keyof EventMap>(
+    type: K,
+    callback: EventListenerArg<this, EventMap, K>,
+    options?: boolean | AddEventListenerOptions
+  ): void;
+  override addEventListener(
+    type: string,
+    callback: EventListenerOrEventListenerObject | null,
+    options?: boolean | AddEventListenerOptions
+  ): void;
+  override addEventListener(type: any, callback: any, options?: any): void {
+    // Capture read once: an options getter could answer otherwise next time.
+    const capture = captureOf(options);
+    // Each option read by name: a spread copies own properties only, and would
+    // drop a `once` or `signal` the options object inherits.
+    super.addEventListener(
+      type,
+      callback,
+      typeof options === 'object' && options
+        ? { capture, once: options.once, passive: options.passive, signal: options.signal }
+        : capture
+    );
+    if (callback && isHookedType(type)) this.#listeners[type][+capture]!.add(callback);
+  }
+
+  override removeEventListener<K extends keyof EventMap>(
+    type: K,
+    callback: EventListenerArg<this, EventMap, K>,
+    options?: boolean | EventListenerOptions
+  ): void;
+  override removeEventListener(
+    type: string,
+    callback: EventListenerOrEventListenerObject | null,
+    options?: boolean | EventListenerOptions
+  ): void;
   override removeEventListener(
     type: any,
     callback: any,
     options?: any
   ): void {
-    super.removeEventListener(type, callback, options);
-    if (callback && isHookedType(type)) this.#listeners[type].delete(callback);
+    const capture = captureOf(options);
+    super.removeEventListener(type, callback, capture);
+    if (callback && isHookedType(type)) this.#listeners[type][+capture]!.delete(callback);
   }
 
   private constructor() {
@@ -73,17 +113,18 @@ export class FetchRegistry extends CustomEventTarget<EventMap> {
     }
     if (!blob.size) return null;
 
-    const fr = new FileReader();
-
-    const res = new Promise<string | ArrayBuffer | null>((resolve) => {
-      fr.addEventListener('load', () => {
-        resolve(fr.result);
-      });
+    // Diagnostics must not stall or reject the real request on a failed read.
+    return new Promise<string | ArrayBuffer | null>((resolve) => {
+      try {
+        const fr = new FileReader();
+        fr.addEventListener('load', () => resolve(fr.result));
+        fr.addEventListener('error', () => resolve(null));
+        fr.addEventListener('abort', () => resolve(null));
+        fr.readAsDataURL(blob);
+      } catch {
+        resolve(null);
+      }
     });
-
-    fr.readAsDataURL(blob);
-
-    return res;
   }
 
   #customFetch = async (
@@ -95,8 +136,8 @@ export class FetchRegistry extends CustomEventTarget<EventMap> {
     // block off is the common case for most sessions.
     if (
       !window.__ytaf_debug__ &&
-      this.#listeners.request.size === 0 &&
-      this.#listeners.response.size === 0
+      !this.#hasListeners('request') &&
+      !this.#hasListeners('response')
     ) {
       return this.#originalFetch(resource as Parameters<typeof fetch>[0], init);
     }
@@ -112,7 +153,7 @@ export class FetchRegistry extends CustomEventTarget<EventMap> {
     }
 
     let reqAllowed = true;
-    if (this.#listeners.request.size > 0) {
+    if (this.#hasListeners('request')) {
       // Against the page: the fetch polyfill (webOS 3) keeps a Request's
       // relative URL as it was given.
       const url = new URL(
@@ -137,7 +178,7 @@ export class FetchRegistry extends CustomEventTarget<EventMap> {
       throw new TypeError('Failed to fetch');
     }
 
-    const res = await this.#originalFetch(resource, init);
+    const res = await this.#originalFetch(resource as Parameters<typeof fetch>[0], init);
 
     if (window.__ytaf_debug__) {
       console.debug(`Response ${this.#fetchCount}:`, res);
@@ -147,7 +188,7 @@ export class FetchRegistry extends CustomEventTarget<EventMap> {
     }
 
     let resAllowed = true;
-    if (this.#listeners.response.size > 0) {
+    if (this.#hasListeners('response')) {
       resAllowed = this.dispatchEvent(
         new TypedCustomEvent('response', { detail: res, cancelable: true })
       );

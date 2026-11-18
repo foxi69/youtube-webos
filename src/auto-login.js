@@ -285,8 +285,7 @@ function answerAccountSelector(resolveCommand, payload, extra) {
   });
 }
 
-ResolveCommandRegistry.getInstance()
-  .then((registry) => registry.setHook('startAccountSelectorCommand', answerAccountSelector))
+ResolveCommandRegistry.setHooks({ startAccountSelectorCommand: answerAccountSelector })
   .catch((err) => console.warn('[Auto Login] No command hook for the account selector:', err && err.message));
 
 export function attemptActiveBypass(force = false) {
