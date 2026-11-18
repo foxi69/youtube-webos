@@ -263,6 +263,7 @@ run(async () => {
       env.ctx.addToQueue('aaaaaaaaaaa', 'A');
       env.state(1, 'current0001');
       env.state(0, 'current0001');
+      env.ctx.window.location.hash = '#/watch?v=chosen00001';
       env.state(1, 'chosen00001');
       env.state(0, 'chosen00001');
       env.lookups[0].reject(new Error('timed out'));
@@ -274,11 +275,12 @@ run(async () => {
         `${env.dispatched.join()} | ${env.notes.join(' / ')}`);
     }
     {
-      // A video with no id the player names starts during the lookup.
+      // Another video starts during the lookup, and the player names no id.
       const env = queueEnv();
       env.ctx.addToQueue('aaaaaaaaaaa', 'A');
       env.state(1, 'current0001');
       env.state(0, 'current0001');
+      env.ctx.window.location.hash = '#/watch?v=chosen00001';
       env.state(1, null);
       env.lookups[0].resolve(env.registry);
       await flush();
@@ -289,12 +291,28 @@ run(async () => {
       t('...and the queued video plays at its end', env.dispatched.join() === 'aaaaaaaaaaa', env.dispatched.join());
     }
     {
+      // Queue Next pressed while the current video plays: during the lookup it
+      // reports PLAYING again (after buffering), with its id and with none.
+      const env = queueEnv();
+      env.ctx.addToQueue('aaaaaaaaaaa', 'A');
+      env.state(1, 'current0001');
+      env.ctx.playNextInQueue();
+      env.state(3, 'current0001');
+      env.state(1, 'current0001');
+      env.state(1, null);
+      env.lookups[0].resolve(env.registry);
+      await flush();
+      t('queue: the video that was on reporting PLAYING again during the lookup does not stop the switch',
+        env.dispatched.join() === 'aaaaaaaaaaa' && env.lookups.length === 1, `${env.dispatched.join()} | lookups ${env.lookups.length}`);
+    }
+    {
       // The queue cleared during the lookup, then another video starts.
       const env = queueEnv();
       env.ctx.addToQueue('aaaaaaaaaaa', 'A');
       env.state(1, 'current0001');
       env.state(0, 'current0001');
       env.ctx.clearQueue();
+      env.ctx.window.location.hash = '#/watch?v=other000001';
       env.state(1, 'other000001');
       env.lookups[0].resolve(env.registry);
       await flush();

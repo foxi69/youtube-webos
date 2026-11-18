@@ -54,7 +54,15 @@ export class FetchRegistry extends CustomEventTarget<EventMap> {
   override addEventListener(type: any, callback: any, options?: any): void {
     // Capture read once: an options getter could answer otherwise next time.
     const capture = captureOf(options);
-    super.addEventListener(type, callback, typeof options === 'object' && options ? { ...options, capture } : capture);
+    // Each option read by name: a spread copies own properties only, and would
+    // drop a `once` or `signal` the options object inherits.
+    super.addEventListener(
+      type,
+      callback,
+      typeof options === 'object' && options
+        ? { capture, once: options.once, passive: options.passive, signal: options.signal }
+        : capture
+    );
     if (callback && isHookedType(type)) this.#listeners[type][+capture]!.add(callback);
   }
 

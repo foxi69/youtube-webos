@@ -46,6 +46,12 @@ export function clearQueue() {
   showNotification('Queue cleared');
 }
 
+/** The video the watch page's address names, or null away from it. */
+function watchedId() {
+  const m = /^#\/watch\?(?:[^#]*&)?v=([^&]+)/.exec(window.location.hash);
+  return m ? m[1] : null;
+}
+
 /** Plays the next queued video; false when the queue is empty. */
 function playNext() {
   // A video whose command still waits is not lost to a second call (an end
@@ -55,7 +61,8 @@ function playNext() {
   if (!item) return false;
   // Each attempt is its own object, so a late answer to an earlier attempt for
   // the same video finds it no longer current and leaves this one alone.
-  const next = { videoId: item.videoId, title: item.title };
+  // `from`: the video the watch page showed when this attempt began.
+  const next = { videoId: item.videoId, title: item.title, from: watchedId() };
   clearTimeout(refusalTimer);
   opening = next;
   showNotification(`Next in queue: ${next.title} (${queue.length} left)`);
@@ -120,10 +127,13 @@ window.addEventListener('yt-player-state-change', ({ detail }) => {
   if (!detail) return;
   // Another video playing on the watch page while the queued one's command
   // still waits: the viewer chose it. The queued video goes back to the front
-  // and plays at the next end instead. One the player names no id for counts
-  // as another too: the queued one is not sent yet, so it is not that one.
-  if (detail.state === 1 && dispatching && detail.videoId !== dispatching.videoId &&
-      window.location.hash.startsWith('#/watch')) {
+  // and plays at the next end instead. Told by the address, not the event's
+  // id: the video that was on when the attempt began may report PLAYING again
+  // (after buffering, or still playing when Queue Next was pressed), and an
+  // event may name no video.
+  const shown = watchedId();
+  if (detail.state === 1 && dispatching && shown && shown !== dispatching.videoId &&
+      shown !== dispatching.from) {
     queue.unshift(dispatching);
     if (opening === dispatching) opening = null;
     dispatching = null;

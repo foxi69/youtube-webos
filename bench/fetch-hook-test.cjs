@@ -340,6 +340,14 @@ async function nativeFetchTv() {
   const kept4 = lastRequestNo(env.debug);
   t(n('...and with no listener left, requests go straight through again (the count does not move)'),
     kept3 >= 0 && kept4 === kept3 + 1, `request numbers ${kept3} then ${kept4}`);
+  // Options inherited from a prototype count too: a `once` given so runs once.
+  const inherited = [];
+  const onInherited = (evt) => inherited.push(evt.detail);
+  reg.addEventListener('request', onInherited, Object.create({ once: true }));
+  await call(win, '/youtubei/v1/browse');
+  await call(win, '/youtubei/v1/browse');
+  t(n('a request listener added with an inherited once runs once'), inherited.length === 1, inherited.length);
+  reg.removeEventListener('request', onInherited);
 
   // ---- window.__ytaf_debug__: the bodies in the log ----
   win.__ytaf_debug__ = true;
