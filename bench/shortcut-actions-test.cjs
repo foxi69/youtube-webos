@@ -551,6 +551,15 @@ run(async () => {
     env.vs.time = 590;
     env.video.dispatchEvent(new env.win.Event('seeking'));
     t(n('...a seek short of the end is left alone'), env.vs.time === 590, String(env.vs.time));
+    // A 3 s video: the window is a quarter of it, 0.75 s.
+    env.vs.duration = 3;
+    env.vs.time = 2.0;
+    env.video.dispatchEvent(new env.win.Event('seeking'));
+    t(n('...a 3 s video: a seek 1.0 s before its end is left alone (window 0.75 s)'), env.vs.time === 2.0, String(env.vs.time));
+    env.vs.time = 2.4;
+    env.video.dispatchEvent(new env.win.Event('seeking'));
+    t(n('...and one 0.6 s before its end is sent to the start'), env.vs.time === 0, String(env.vs.time));
+    env.vs.duration = 600;
     // A live stream with a finite duration: its end is the live edge.
     player.getVideoData = () => ({ isLive: true });
     env.vs.time = 600;

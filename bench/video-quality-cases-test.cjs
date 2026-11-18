@@ -401,12 +401,18 @@ run(async () => {
     nav('browse');
     await wait(50);
     t('watch then Back at once: no player attached after Back', log.listeners === before, `${before} -> ${log.listeners}`);
+    // Control: the same navigation to the watch page alone attaches.
+    nav('watch');
+    await wait(50);
+    t('...control: watch alone attaches', log.listeners === before + 1, `${before} -> ${log.listeners}`);
   }
   // ---- A setting changed just before the app goes to the background ----
   {
     const { win, toggle } = boot({});
     await wait(50);
     toggle('Force Max Quality', false);
+    const before = JSON.parse(win.localStorage.getItem('ytaf-configuration') || '{}');
+    t('hidden: the change is still waiting before the app is hidden', before.forceHighResVideo === true, String(before.forceHighResVideo));
     Object.defineProperty(win.document, 'hidden', { configurable: true, get: () => true });
     win.document.dispatchEvent(new win.Event('visibilitychange'));
     const saved = JSON.parse(win.localStorage.getItem('ytaf-configuration') || '{}');
