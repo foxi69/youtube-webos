@@ -20,6 +20,9 @@ let endHandled = false;
 // The queued video on its way to the screen: { videoId, title }.
 let opening = null;
 let refusalTimer = null;
+// The queued video whose command still waits for the TV app's resolver (only
+// while it is being looked for; once found, the command goes at once).
+let dispatching = null;
 
 export function addToQueue(videoId, title) {
   for (let i = 0; i < queue.length; i++) {
@@ -46,10 +49,17 @@ function playNext() {
   showNotification(`Next in queue: ${next.title} (${queue.length} left)`);
   // YouTube's own command: a new address alone loses to the step back to Home
   // that YouTube takes right after a video ends.
+  dispatching = next;
   ResolveCommandRegistry.getInstance()
-    .then((registry) => registry.dispatchCommand({ watchEndpoint: { videoId: next.videoId } }))
+    .then((registry) => {
+      // The viewer started another video meanwhile (see the state listener).
+      if (dispatching !== next) return;
+      dispatching = null;
+      registry.dispatchCommand({ watchEndpoint: { videoId: next.videoId } });
+    })
     .catch((err) => {
       console.warn('[Queue] Could not play the next video:', err);
+      if (dispatching === next) dispatching = null;
       if (opening === next) opening = null;
       showNotification(`Could not play: ${next.title}`);
     });
@@ -83,6 +93,15 @@ export function noteQueuePlayability(status) {
 
 window.addEventListener('yt-player-state-change', ({ detail }) => {
   if (!detail) return;
+  // Another video playing on the watch page while the queued one's command
+  // still waits: the viewer chose it. The queued video goes back to the front
+  // and plays at the next end instead.
+  if (detail.state === 1 && dispatching && detail.videoId && detail.videoId !== dispatching.videoId &&
+      window.location.hash.startsWith('#/watch')) {
+    queue.unshift(dispatching);
+    if (opening === dispatching) opening = null;
+    dispatching = null;
+  }
   if (detail.state === 1 && opening && detail.videoId === opening.videoId) {
     opening = null;
     clearTimeout(refusalTimer);

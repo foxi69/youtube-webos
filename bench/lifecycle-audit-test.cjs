@@ -160,6 +160,39 @@ run(async () => {
   }
 
   {
+    // The queue's command waits for the resolver while the viewer starts
+    // another video: that video is not replaced, the queued one plays at the
+    // next end.
+    const dispatched = [];
+    let release = null;
+    const win = new EventTarget();
+    win.location = { hash: '#/watch?v=current0001' };
+    const ctx = { window: win, console, setTimeout, clearTimeout, showNotification() {},
+      ResolveCommandRegistry: { getInstance: () => new Promise((resolve) => { release = resolve; }) } };
+    vm.runInNewContext(source('video-queue.js') + '\nthis.addToQueue = addToQueue;', ctx);
+    const registry = { dispatchCommand: (command) => { dispatched.push(command.watchEndpoint.videoId); } };
+    const state = (s, videoId) => win.dispatchEvent(Object.assign(new Event('yt-player-state-change'), { detail: { state: s, videoId } }));
+    ctx.addToQueue('queued00001', 'Queued');
+    state(1, 'current0001');
+    state(0, 'current0001');
+    win.location.hash = '#/watch?v=chosen00001';
+    state(1, 'chosen00001');
+    release(registry);
+    await flush();
+    t('queue: a video the viewer started while the resolver was looked for is not replaced', dispatched.length === 0, dispatched.join());
+    state(0, 'chosen00001');
+    release(registry);
+    await flush();
+    t('...and the queued video plays at the next end', dispatched.join() === 'queued00001', dispatched.join());
+    // Control: nothing else starts meanwhile, and the late resolver plays it.
+    ctx.addToQueue('queued00002', 'Second');
+    state(1, 'queued00001');
+    state(0, 'queued00001');
+    release(registry);
+    await flush();
+    t('queue: with no other video meanwhile, the late resolver plays the queued one', dispatched.join() === 'queued00001,queued00002', dispatched.join());
+  }
+  {
     // The legacy EventTarget stand-in (no constructible EventTarget, Chrome
     // before 64): once, and one registration per capture mode.
     const ctx = { exports: {}, console, Map, CustomEvent: class {} };
