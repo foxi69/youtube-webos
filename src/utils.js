@@ -187,6 +187,16 @@ export function isGuestMode() {
  * the guest's in AUTONAV_FOR_SIGN_OUT. Not known (no record, no account):
  * on, YouTube's default.
  */
+// Whether the video playing is a live stream: the player's own word for it,
+// else a <video> with no end (Jump to Live, Repeat Video).
+export function isLiveStream(player, video) {
+  try {
+    const data = player && typeof player.getVideoData === 'function' ? player.getVideoData() : null;
+    if (data && data.isLive === true) return true;
+  } catch { /* not the player API we know */ }
+  return video.duration === Infinity;
+}
+
 export function isAutoplayOn() {
   try {
     const read = (key) => JSON.parse(window.localStorage.getItem('yt.leanback.default::' + key) || 'null');

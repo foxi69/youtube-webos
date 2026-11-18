@@ -7,7 +7,7 @@
  * YouTube's player takes the <video>'s 'ended' to the next video or the end
  * screen, so the video is sent back to the start just before it gets there.
  */
-import { getVideo } from './utils.js';
+import { getVideo, isLiveStream, SELECTORS } from './utils.js';
 
 // How close to the end the video goes back to the start. 'timeupdate' comes
 // about every 250 ms, so the last one before the end always falls within it.
@@ -47,14 +47,25 @@ function onTimeUpdate(evt) {
     repeatId = null;
     return;
   }
+  // Paused or seeking: a viewer who put it near the end keeps it there.
+  if (video.paused || video.seeking) return;
   const duration = video.duration;
-  // A live stream has no end (Infinity); a very short video is left alone.
+  // No end (Infinity) or a very short video: left alone.
   if (!isFinite(duration) || duration <= END_MARGIN_S * 2) return;
-  if (video.currentTime >= duration - END_MARGIN_S) video.currentTime = 0;
+  if (video.currentTime < duration - END_MARGIN_S) return;
+  // A live stream's end is its live edge, where it plays all along; its
+  // duration is not always Infinity, so the player is asked.
+  if (isLiveStream(document.getElementById(SELECTORS.PLAYER_ID), video)) return;
+  video.currentTime = 0;
 }
 
 // Media events do not bubble; capturing on document covers every <video>.
 document.addEventListener('timeupdate', onTimeUpdate, true);
 window.addEventListener('ytaf-page-update', (evt) => {
   if (!evt.detail || !evt.detail.isWatch) repeatId = null;
+});
+// Another video ends it at once, whether or not that video ever played: back
+// on the first one, repeat stays off.
+window.addEventListener('hashchange', () => {
+  if (repeatId !== null && currentVideoId() !== repeatId) repeatId = null;
 });

@@ -8,7 +8,7 @@ import { initLogoStyle } from './logo-style.js';
 import { initMathLetters } from './math-letters.js';
 import { initPlaybackSpeed, stepSpeed, resetSpeed } from './playback-speed.js';
 import sponsorBlockUI from './Sponsorblock-UI.js';
-import { sendKey, REMOTE_KEYS, COLOR_CODE_MAP, isGuestMode, invalidateGuestModeCache, isWatchPage, isShortsPage, isSearchPage, SELECTORS, getVideo, SYNTHETIC_KEY_FLAG, isAutoplayOn } from './utils.js';
+import { sendKey, REMOTE_KEYS, COLOR_CODE_MAP, isGuestMode, invalidateGuestModeCache, isWatchPage, isShortsPage, isSearchPage, SELECTORS, getVideo, SYNTHETIC_KEY_FLAG, isAutoplayOn, isLiveStream } from './utils.js';
 import { initTrackingBlock, destroyTrackingBlock } from './adblock.js';
 import logoOrangeUrl from './icons/logo-orange.png';
 import logoBlueUrl from './icons/logo-blue.png';
@@ -1909,14 +1909,6 @@ function playPauseLogic(video) {
 // On a live stream that was paused or rewound, back to the live edge
 // (NicholasBly/youtube-webos#148). The player's own seekToLiveHead keeps its
 // live state right; the <video>'s seekable range is the fallback.
-function isLiveStream(player, video) {
-    try {
-        const data = player && typeof player.getVideoData === 'function' ? player.getVideoData() : null;
-        if (data && data.isLive === true) return true;
-    } catch { /* not the player API we know */ }
-    return video.duration === Infinity;
-}
-
 function jumpToLiveLogic(video) {
     const player = document.getElementById(SELECTORS.PLAYER_ID);
     if (!isLiveStream(player, video)) {
