@@ -434,13 +434,20 @@ run(async () => {
     // The module's own timer is caught when a press starts it and run by hand
     // (`tick`), so no check happens unless a test asks for it. `step`: its
     // interval in seconds.
+    // `active`: the ids of its intervals not cleared yet.
     let check = null;
     let step = 0;
+    let nextId = 9e6;
+    const active = new Set();
+    const realClear = env.win.clearInterval;
+    env.win.clearInterval = (id) => { if (!active.delete(id)) realClear(id); };
     const pressRepeat = async () => {
       const real = env.win.setInterval;
       env.win.setInterval = (fn, ms, ...args) => {
         if (!check) { check = fn; step = ms / 1000; }
-        return fn === check ? 9e6 : real(fn, ms, ...args);
+        if (fn !== check) return real(fn, ms, ...args);
+        active.add(++nextId);
+        return nextId;
       };
       try { await env.press(D(5)); } finally { env.win.setInterval = real; }
     };
@@ -465,7 +472,8 @@ run(async () => {
     player.getVideoData = notLive;
     await pressRepeat();
     t(n('repeat video: on, with a toast'), /Repeat Video On/.test(env.toasts()), env.toasts());
-    t(n('...its timer looks at least every 100 ms'), typeof check === 'function' && step > 0 && step <= 0.1, step);
+    t(n('...its timer looks at least every 100 ms, one interval running'),
+      typeof check === 'function' && step > 0 && step <= 0.1 && active.size === 1, `${step} ${active.size}`);
     t(n('...mid-video nothing changes'), tick(300) === 300);
     t(n('...0.6 s before the end it goes back to the start'), tick(599.5) === 0);
     t(n('...and again on the next round'), tick(599.6) === 0);
@@ -473,7 +481,9 @@ run(async () => {
     await pressRepeat();
     t(n('...pressed again: off, in the same message (On and Off are not both shown)'),
       /Repeat Video Off/.test(env.toasts()) && message() === onMessage && tick(599.5) === 599.5, env.toasts());
+    t(n('...its first look after that clears the interval'), active.size === 0, active.size);
     await pressRepeat();
+    t(n('...on again: exactly one interval running'), active.size === 1, active.size);
     env.vs.duration = Infinity;
     t(n('...a live stream (no end) is left alone'), tick(5000) === 5000);
     env.vs.duration = 600;
@@ -497,13 +507,17 @@ run(async () => {
     // Playing at 2x, one look every `step`: at every phase of the timer the
     // video goes back before its end, also the shortest one repeated.
     env.video.playbackRate = 2;
-    for (const duration of [1.3, 1.4, 2, 600]) {
+    // No timer (step 0) would never move on: the simulation needs one.
+    for (const duration of step > 0 ? [1.3, 1.4, 2, 600] : []) {
       env.vs.duration = duration;
       const missed = [];
       for (let phase = 0; phase < 10; phase++) {
         let x = Math.max(0, duration - 3) + (phase / 10) * step * 2;
         tick(x);
-        for (;;) {
+        // At most as many looks as fit in 3 s at 2x, so a sample that does not
+        // move on is a miss, not a hang.
+        for (let look = 0; ; look++) {
+          if (look > 3 / (step * 2)) { missed.push(phase); break; }
           x += step * 2;
           if (x >= duration) { missed.push(phase); break; }
           if (tick(x) === 0) break;
