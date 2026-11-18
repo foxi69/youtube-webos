@@ -425,6 +425,188 @@ run(async () => {
       taken === false && !html.classList.contains('ytaf-audio-only') && env.toasts() === '', env.toasts());
   }
 
+  // ---- Repeat Video ----
+  {
+    const env = await boot({ shortcut_key_5: 'repeat_video' });
+    const player = env.doc.getElementById('ytlr-player__player-container-player');
+    const notLive = () => ({ isLive: false });
+    player.getVideoData = notLive;
+    // The module's own timer is caught when a press starts it and run by hand
+    // (`tick`), so no check happens unless a test asks for it. `step`: its
+    // interval in seconds.
+    // `active`: its intervals not cleared yet, by id; `tick` runs only those,
+    // so an interval the module cleared never runs again.
+    let check = null;
+    let step = 0;
+    let nextId = 9e6;
+    const active = new Map();
+    const realClear = env.win.clearInterval;
+    env.win.clearInterval = (id) => { if (!active.delete(id)) realClear(id); };
+    const pressRepeat = async () => {
+      const real = env.win.setInterval;
+      env.win.setInterval = (fn, ms, ...args) => {
+        if (!check) { check = fn; step = ms / 1000; }
+        if (fn !== check) return real(fn, ms, ...args);
+        active.set(++nextId, fn);
+        return nextId;
+      };
+      try { await env.press(D(5)); } finally { env.win.setInterval = real; }
+    };
+    const tick = (time) => {
+      env.vs.time = time;
+      for (const fn of [...active.values()]) fn();
+      return env.vs.time;
+    };
+    const message = () => env.doc.querySelector('.ytaf-notification-container .message');
+    env.vs.duration = Infinity;
+    await pressRepeat();
+    t(n('repeat video on a live stream: it says so and stays off'),
+      /not on a live stream/.test(env.toasts()) && check === null, env.toasts());
+    env.vs.duration = 1.2;
+    await pressRepeat();
+    t(n('...a video of 1.2 s or less: it says so and stays off'), /too short/.test(env.toasts()) && check === null, env.toasts());
+    env.vs.duration = 600;
+    player.getVideoData = () => ({ isLive: true });
+    await pressRepeat();
+    t(n('...a live stream with a finite duration (the player says live) too'),
+      /not on a live stream/.test(env.toasts()) && check === null, env.toasts());
+    player.getVideoData = notLive;
+    await pressRepeat();
+    t(n('repeat video: on, with a toast'), /Repeat Video On/.test(env.toasts()), env.toasts());
+    t(n('...its timer looks at least every 100 ms, one interval running'),
+      typeof check === 'function' && step > 0 && step <= 0.1 && active.size === 1, `${step} ${active.size}`);
+    t(n('...mid-video nothing changes'), tick(300) === 300);
+    t(n('...0.6 s before the end it goes back to the start'), tick(599.5) === 0);
+    t(n('...and again on the next round'), tick(599.6) === 0);
+    const onMessage = message();
+    await pressRepeat();
+    t(n('...pressed again: off, in the same message (On and Off are not both shown)'),
+      /Repeat Video Off/.test(env.toasts()) && message() === onMessage && tick(599.5) === 599.5, env.toasts());
+    t(n('...its first look after that clears the interval'), active.size === 0, active.size);
+    await pressRepeat();
+    t(n('...on again: exactly one interval running'), active.size === 1, active.size);
+    env.vs.duration = Infinity;
+    t(n('...a live stream (no end) is left alone'), tick(5000) === 5000);
+    env.vs.duration = 600;
+    player.getVideoData = () => ({ isLive: true });
+    t(n('...a live stream with a finite duration (its live edge) is left alone'), tick(599.5) === 599.5);
+    delete player.getVideoData;
+    t(n('...no getVideoData (live or not unknown) is left alone'), tick(599.5) === 599.5);
+    player.getVideoData = () => ({ video_id: VIDEO_ID });
+    t(n('...getVideoData without isLive (live or not unknown) is left alone'), tick(599.5) === 599.5);
+    player.getVideoData = () => { throw new Error('gone'); };
+    t(n('...getVideoData throwing (live or not unknown) is left alone'), tick(599.5) === 599.5);
+    player.getVideoData = notLive;
+    env.vs.paused = true;
+    t(n('...paused near the end (a seek there) stays where it is'), tick(599.5) === 599.5);
+    env.vs.paused = false;
+    t(n('...and goes back to the start once it plays on'), tick(599.6) === 0);
+    let seeking = false, ended = false;
+    Object.defineProperty(env.video, 'seeking', { configurable: true, get: () => seeking });
+    Object.defineProperty(env.video, 'ended', { configurable: true, get: () => ended });
+    seeking = true;
+    t(n('...seeking near the end while playing stays where it is'), tick(599.5) === 599.5);
+    seeking = false;
+    t(n('...and goes back once the seek is done'), tick(599.5) === 0);
+    // SponsorBlock's auto-skip of an outro seeks to the very end on modern builds.
+    seeking = true;
+    t(n('...a seek to the very end (an auto-skip of an outro) goes back at once'), tick(600) === 0);
+    seeking = false;
+    // The seek event itself: the seek is sent to the start before it lands
+    // (the end would move the player on before a look).
+    env.vs.time = 600;
+    env.video.dispatchEvent(new env.win.Event('seeking'));
+    t(n('...a seek to the very end is sent to the start as it begins'), env.vs.time === 0, String(env.vs.time));
+    env.vs.time = 590;
+    env.video.dispatchEvent(new env.win.Event('seeking'));
+    t(n('...a seek short of the end is left alone'), env.vs.time === 590, String(env.vs.time));
+    // A live stream with a finite duration: its end is the live edge.
+    player.getVideoData = () => ({ isLive: true });
+    env.vs.time = 600;
+    env.video.dispatchEvent(new env.win.Event('seeking'));
+    t(n('...a seek to the end of a live stream (its live edge) is left alone'), env.vs.time === 600, String(env.vs.time));
+    player.getVideoData = notLive;
+    // Paused, the viewer seeks near the end: it stays there, by the seek
+    // event and by the timer, and is not played.
+    env.vs.paused = true;
+    const playsPaused = env.vs.plays;
+    env.vs.time = 599.8;
+    env.video.dispatchEvent(new env.win.Event('seeking'));
+    t(n('...paused, a seek near the end stays where it was put (seek event)'), env.vs.time === 599.8, String(env.vs.time));
+    seeking = true;
+    t(n('...and on the timer\'s look during the seek, not played either'), tick(599.8) === 599.8 && env.vs.plays === playsPaused,
+      `${env.vs.time} ${env.vs.plays - playsPaused}`);
+    seeking = false;
+    env.vs.paused = false;
+    ended = true;
+    env.vs.paused = true;
+    const playsBefore = env.vs.plays;
+    t(n('...an ended video goes back to the start and plays'), tick(600) === 0 && env.vs.plays === playsBefore + 1 && !env.vs.paused,
+      `${env.vs.time} ${env.vs.plays - playsBefore}`);
+    ended = false;
+    env.vs.paused = false;
+    delete env.video.seeking;
+    delete env.video.ended;
+    env.video.playbackRate = 2;
+    t(n('...at 2x the window is 1.2 s: 1.1 s before the end it goes back'), tick(598.9) === 0);
+    env.video.playbackRate = 1;
+    t(n('...at 1x 1.1 s before the end is too early'), tick(598.9) === 598.9);
+    // Playing at 2x, one look every `step`: at every phase of the timer the
+    // video goes back before its end, also the shortest one repeated.
+    env.video.playbackRate = 2;
+    // No timer (step 0) would never move on: the simulation needs one.
+    for (const duration of step > 0 ? [1.3, 1.4, 2, 600] : []) {
+      env.vs.duration = duration;
+      const missed = [];
+      for (let phase = 0; phase < 10; phase++) {
+        let x = Math.max(0, duration - 3) + (phase / 10) * step * 2;
+        tick(x);
+        // At most as many looks as fit in 3 s at 2x, so a sample that does not
+        // move on is a miss, not a hang.
+        for (let look = 0; ; look++) {
+          if (look > 3 / (step * 2)) { missed.push(phase); break; }
+          x += step * 2;
+          if (x >= duration) { missed.push(phase); break; }
+          if (tick(x) === 0) break;
+        }
+      }
+      t(n(`...a ${duration} s video at 2x goes back before its end at every timer phase`), missed.length === 0, missed);
+    }
+    env.video.playbackRate = 1;
+    env.vs.duration = 600;
+    // Navigation: no look runs between the page changes, so only the
+    // hashchange listener can end it.
+    env.win.location.hash = '#/watch?v=zyxwvutsrqp';
+    await wait(30);
+    env.win.location.hash = '#/watch?v=' + VIDEO_ID;
+    await wait(30);
+    t(n('...another video ends it, even one that never played (back on the first: off)'), tick(599.5) === 599.5);
+    await pressRepeat();
+    env.win.location.hash = '#/watch?v=zyxwvutsrqp';
+    env.win.location.hash = '#/watch?v=' + VIDEO_ID;
+    await wait(30);
+    t(n('...also with no wait between the two page changes (A -> B -> A)'), tick(599.5) === 599.5);
+    await pressRepeat();
+    env.win.location.hash = '#/watch?v=' + VIDEO_ID + '&t=10';
+    await wait(30);
+    t(n('...another parameter on the same video keeps it on'), tick(599.5) === 0);
+    env.doc.body.className = 'WEB_PAGE_TYPE_BROWSE';
+    await wait(30);
+    env.doc.body.className = 'WEB_PAGE_TYPE_WATCH';
+    await wait(30);
+    t(n('...and leaving the watch page ends it'), tick(599.5) === 599.5);
+    env.win.location.hash = '#/shorts/' + VIDEO_ID;
+    env.doc.body.className = 'WEB_PAGE_TYPE_SHORTS';
+    await wait(30);
+    const video = env.video;
+    video.remove();
+    await pressRepeat();
+    t(n('...on Shorts, also before its <video> is there, it says there is no video to repeat'),
+      /no video to repeat/.test(env.toasts()), env.toasts());
+    player.appendChild(video);
+    t(n('no errors (repeat video)'), env.errors.length === 0, env.errors[0]);
+  }
+
   // ---- Refresh Page ----
   {
     const env = await boot({}, { page: 'WEB_PAGE_TYPE_BROWSE' });

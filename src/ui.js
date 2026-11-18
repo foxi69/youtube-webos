@@ -8,7 +8,7 @@ import { initLogoStyle } from './logo-style.js';
 import { initMathLetters } from './math-letters.js';
 import { initPlaybackSpeed, stepSpeed, resetSpeed } from './playback-speed.js';
 import sponsorBlockUI from './Sponsorblock-UI.js';
-import { sendKey, REMOTE_KEYS, COLOR_CODE_MAP, isGuestMode, invalidateGuestModeCache, isWatchPage, isShortsPage, isSearchPage, SELECTORS, getVideo, SYNTHETIC_KEY_FLAG, isAutoplayOn } from './utils.js';
+import { sendKey, REMOTE_KEYS, COLOR_CODE_MAP, isGuestMode, invalidateGuestModeCache, isWatchPage, isShortsPage, isSearchPage, SELECTORS, getVideo, SYNTHETIC_KEY_FLAG, isAutoplayOn, isLiveStream } from './utils.js';
 import { initTrackingBlock, destroyTrackingBlock } from './adblock.js';
 import logoOrangeUrl from './icons/logo-orange.png';
 import logoBlueUrl from './icons/logo-blue.png';
@@ -21,6 +21,7 @@ import { blockChannel, openFocusedLongPressMenu } from './long-press-menu.js';
 import { VERSION_LABEL } from './version.js';
 import { buildAboutPage } from './about.js';
 import { clearQueue, playNextInQueue } from './video-queue.js';
+import { toggleRepeat } from './repeat-video.js';
 import { titleFormattingSupported, titleFormatChoices } from './dearrow/index.js';
 import { getSidebarEntries, hiddenIds, entryName, SIDEBAR_ENTRIES_EVENT } from './sidebar.js';
 import { onWebClientRefused } from './web-client.js';
@@ -56,6 +57,8 @@ let seekApplyTimer = null;
 let activeSeekNotification = null;
 
 let activePlayPauseNotification = null;
+// Repeat Video's message: updated, or shown again, by the next press.
+let repeatNotification = null;
 let playPauseNotificationTimer = null;
 
 // Lazy load variable
@@ -177,6 +180,7 @@ const ACTION_SCOPES = {
     sb_skip_prev: 'VIDEO',
     sb_manual_skip: 'VIDEO',
     audio_only: 'VIDEO',
+    repeat_video: 'VIDEO',
     jump_to_live: 'VIDEO',
     speed_up: 'VIDEO',
     speed_down: 'VIDEO',
@@ -1907,14 +1911,6 @@ function playPauseLogic(video) {
 // On a live stream that was paused or rewound, back to the live edge
 // (NicholasBly/youtube-webos#148). The player's own seekToLiveHead keeps its
 // live state right; the <video>'s seekable range is the fallback.
-function isLiveStream(player, video) {
-    try {
-        const data = player && typeof player.getVideoData === 'function' ? player.getVideoData() : null;
-        if (data && data.isLive === true) return true;
-    } catch { /* not the player API we know */ }
-    return video.duration === Infinity;
-}
-
 function jumpToLiveLogic(video) {
     const player = document.getElementById(SELECTORS.PLAYER_ID);
     if (!isLiveStream(player, video)) {
@@ -2024,6 +2020,18 @@ function handleShortcutAction(action) {
   // Player Actions - Require Video/Context
   // Player actions only make sense on a watch or Shorts page.
   if (!isWatchPage() && !isShortsPage()) return;
+
+  // Before the <video> is asked for: on Shorts it may not be there yet, and
+  // the key still says there is no video to repeat. One message, updated, so
+  // On and Off are not both on the screen after two quick presses.
+  if (action === 'repeat_video') {
+      const msg = toggleRepeat();
+      // Notifications off: none is shown, and none kept (it would be a no-op).
+      if (configRead('disableNotifications')) return;
+      if (repeatNotification) repeatNotification.update(msg);
+      else repeatNotification = showNotification(msg);
+      return;
+  }
 
   const video = getVideo();
   if (!video) return;
