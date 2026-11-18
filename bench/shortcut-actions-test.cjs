@@ -512,6 +512,14 @@ run(async () => {
     seeking = true;
     t(n('...a seek to the very end (an auto-skip of an outro) goes back at once'), tick(600) === 0);
     seeking = false;
+    // The seek event itself: the seek is sent to the start before it lands
+    // (the end would move the player on before a look).
+    env.vs.time = 600;
+    env.video.dispatchEvent(new env.win.Event('seeking'));
+    t(n('...a seek to the very end is sent to the start as it begins'), env.vs.time === 0, String(env.vs.time));
+    env.vs.time = 590;
+    env.video.dispatchEvent(new env.win.Event('seeking'));
+    t(n('...a seek short of the end is left alone'), env.vs.time === 590, String(env.vs.time));
     ended = true;
     env.vs.paused = true;
     const playsBefore = env.vs.plays;

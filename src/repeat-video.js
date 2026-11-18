@@ -90,6 +90,20 @@ function check() {
   }
 }
 
+// A seek to the very end (on modern builds SponsorBlock's auto-skip of an
+// outro goes there) ends the video at once, and the player or the queue moves
+// on before the timer looks (seen on the TV). The seek is sent to the start
+// while it begins. Media events do not bubble: caught on the way down.
+document.addEventListener('seeking', (evt) => {
+  const video = evt.target;
+  if (repeatId === null || currentVideoId() !== repeatId || video !== getVideo()) return;
+  const duration = video.duration;
+  if (!isFinite(duration) || duration <= END_MARGIN_S * 2) return;
+  if (video.currentTime < duration - END_SNAP_S) return;
+  if (isLiveStream(document.getElementById(SELECTORS.PLAYER_ID), video) !== false) return;
+  video.currentTime = 0;
+}, true);
+
 window.addEventListener('ytaf-page-update', (evt) => {
   if (!evt.detail || !evt.detail.isWatch) repeatId = null;
 });
