@@ -434,11 +434,12 @@ run(async () => {
     // The module's own timer is caught when a press starts it and run by hand
     // (`tick`), so no check happens unless a test asks for it. `step`: its
     // interval in seconds.
-    // `active`: the ids of its intervals not cleared yet.
+    // `active`: its intervals not cleared yet, by id; `tick` runs only those,
+    // so an interval the module cleared never runs again.
     let check = null;
     let step = 0;
     let nextId = 9e6;
-    const active = new Set();
+    const active = new Map();
     const realClear = env.win.clearInterval;
     env.win.clearInterval = (id) => { if (!active.delete(id)) realClear(id); };
     const pressRepeat = async () => {
@@ -446,14 +447,14 @@ run(async () => {
       env.win.setInterval = (fn, ms, ...args) => {
         if (!check) { check = fn; step = ms / 1000; }
         if (fn !== check) return real(fn, ms, ...args);
-        active.add(++nextId);
+        active.set(++nextId, fn);
         return nextId;
       };
       try { await env.press(D(5)); } finally { env.win.setInterval = real; }
     };
     const tick = (time) => {
       env.vs.time = time;
-      if (check) check();
+      for (const fn of [...active.values()]) fn();
       return env.vs.time;
     };
     const message = () => env.doc.querySelector('.ytaf-notification-container .message');
