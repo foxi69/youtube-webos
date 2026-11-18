@@ -1379,7 +1379,28 @@ function dropsByFeedFilters(item, config) {
 /** The rewrites of an item that stays: its long-press menu. */
 function decorateItem(item, config) {
   if (!item || typeof item !== 'object') return;
-  if (config.extendLongPress) extendLongPressMenu(item);
+  if (item.clusterShelfRenderer) decorateClusterShelf(item.clusterShelfRenderer, config);
+  else if (config.extendLongPress) extendLongPressMenu(item);
+}
+
+/**
+ * A search result's row of a channel's videos (a cluster shelf) holds its
+ * videos twice, by cluster and as plain contents; each copy gets the rewrites.
+ * ponytail: rewrites only. The feed filters do not drop videos from it: an
+ * emptied cluster is not known to go away cleanly.
+ */
+function decorateClusterShelf(shelf, config) {
+  const lists = [];
+  if (Array.isArray(shelf.clusters)) {
+    for (let i = 0; i < shelf.clusters.length; i++) lists.push(shelf.clusters[i]?.clusterRenderer?.items);
+  }
+  if (Array.isArray(shelf.contents)) {
+    for (let i = 0; i < shelf.contents.length; i++) lists.push(shelf.contents[i]?.contents);
+  }
+  for (let i = 0; i < lists.length; i++) {
+    if (!Array.isArray(lists[i])) continue;
+    for (let j = 0; j < lists[i].length; j++) decorateItem(lists[i][j], config);
+  }
 }
 
 /** The watch endpoint a tile or a lockup opens, or null. */
