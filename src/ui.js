@@ -1355,7 +1355,10 @@ function showOptionsPanel(visible) {
     // replaced the original tile while the panel was open.
     if (returnFocus && returnFocus.isConnected && !optionsPanel.contains(returnFocus)) {
       returnFocus.focus();
-    } else if (optionsPanel.contains(document.activeElement)) {
+    }
+    // Also when that focus() did nothing (the page disabled the element): the
+    // hidden panel must not keep the focus.
+    if (optionsPanel.contains(document.activeElement)) {
       document.activeElement.blur();
     }
     // A held Back (or whichever key closed the panel) must not go on to
@@ -1500,7 +1503,12 @@ async function skipChapter(direction = 'next') {
     skipChapter.loading = true;
     await new Promise(resolve => setTimeout(resolve, 500));
     skipChapter.loading = false;
-    if (!isCurrent()) return;
+    // Another playback by now (A -> B -> A included): the Enter loaded nothing
+    // for this one, so the next press may send it again.
+    if (!isCurrent()) {
+      skipChapter.hasForced = false;
+      return;
+    }
     chapterEls = getChapterEls();
   }
 

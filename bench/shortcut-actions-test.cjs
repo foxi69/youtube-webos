@@ -153,6 +153,22 @@ async function boot(cfg = {}, opts = {}) {
   return { win, doc: win.document, errors, warnings, clearToasts, video, vs, long, sent, sentAt, backs, toasts, press, clicks, playerButton, byHtml };
 }
 
+
+// Holds the page's timeouts of exactly `ms` (the one under test), so the test
+// decides when they run: `count()` of those waiting, `run()` runs them.
+function holdTimeouts(env, ms) {
+  const held = new Map();
+  let next = 5e6;
+  const realSet = env.win.setTimeout, realClear = env.win.clearTimeout;
+  env.win.setTimeout = (fn, delay, ...args) => {
+    if (delay !== ms) return realSet(fn, delay, ...args);
+    held.set(++next, () => fn(...args));
+    return next;
+  };
+  env.win.clearTimeout = (id) => { if (!held.delete(id)) realClear(id); };
+  return { count: () => held.size, run: () => { const jobs = [...held.values()]; held.clear(); jobs.forEach((f) => { f(); }); } };
+}
+
 run(async () => {
   const f = modern ? 'modern' : 'legacy';
   const n = (s) => `${f}: ${s}`;
@@ -620,12 +636,30 @@ run(async () => {
   }
   {
     const env = await boot({}, { gap: 10 });
+    const backTimer = holdTimeouts(env, 250);
     await env.press(D(5));
-    await wait(550); // lookup finished; its closing Back is still queued.
+    for (let i = 0; i < 40 && backTimer.count() === 0; i++) await wait(50);
+    t(n('chapter controls: the lookup found nothing and queued its closing Back'), backTimer.count() === 1, backTimer.count());
     env.win.location.hash = '#/';
     env.doc.body.className = 'WEB_PAGE_TYPE_BROWSE';
-    await wait(300);
-    t(n('chapter controls: queued Back is cancelled on navigation'), env.backs() === 0, env.sent.join());
+    await wait(30);
+    backTimer.run();
+    t(n('...navigation before it runs: the queued Back is cancelled'), env.backs() === 0, env.sent.join());
+    env.win.close();
+  }
+  {
+    // A lookup discarded by A -> B -> A during its wait: the next press sends
+    // the Enter that loads the chapter bar again.
+    const env = await boot({}, { gap: 10 });
+    const ENTER = 13;
+    await env.press(D(5));
+    env.win.location.hash = '#/watch?v=newvideo123';
+    await wait(10);
+    env.win.location.hash = '#/watch?v=' + VIDEO_ID;
+    await wait(700);
+    await env.press(D(5));
+    t(n('chapter lookup discarded by A -> B -> A: the next press loads the bar again'),
+      env.sent.filter((c) => c === ENTER).length === 2 && /Loading chapters/.test(env.toasts()), `${env.sent.join()} ${env.toasts()}`);
     env.win.close();
   }
 
@@ -664,26 +698,39 @@ run(async () => {
   }
 
   {
-    const env = await boot({ shortcut_key_1: 'seek_15_fwd' }, { gap: 10 });
+    // The seek timer held: the first press (+5) is still waiting when the
+    // video changes; the second is a rewind, so the one write shows which
+    // press was applied.
+    const env = await boot({ shortcut_key_1: 'seek_15_fwd', shortcut_key_2: 'seek_15_back' }, { gap: 10 });
     const player = env.doc.getElementById('ytlr-player__player-container-player');
     let id = VIDEO_ID;
     player.getVideoData = () => ({ video_id: id });
+    const writes = [];
+    Object.defineProperty(env.video, 'currentTime', { configurable: true, get: () => env.vs.time,
+      set: (v) => { writes.push(v); env.vs.time = v; } });
+    const seekTimer = holdTimeouts(env, 200);
     await env.press(D(1));
-    await wait(100); // debounce passed, first seek still waiting.
+    t(n('new video before queued seek: the first seek is waiting'), seekTimer.count() > 0 && writes.length === 0, `${seekTimer.count()} ${writes.join()}`);
     id = 'newvideo123';
-    await env.press(D(1));
-    await wait(250);
-    t(n('new video before queued seek: only the new press is applied'), env.vs.time === 105, String(env.vs.time));
+    await wait(510); // past the shortcut debounce
+    await env.press(D(2));
+    seekTimer.run();
+    t(n('...only the new press is applied: one write, to 95'), writes.length === 1 && writes[0] === 95, writes.join());
     env.win.close();
   }
   {
+    // The seek timer is held until the route is back on A and its hashchange
+    // has been delivered: only that listener can cancel the seek.
     const env = await boot({ shortcut_key_1: 'seek_15_fwd' }, { gap: 10 });
+    const seekTimer = holdTimeouts(env, 200);
     await env.press(D(1));
     env.win.location.hash = '#/watch?v=newvideo123';
     await wait(10);
     env.win.location.hash = '#/watch?v=' + VIDEO_ID;
-    await wait(250);
-    t(n('A to B to A navigation cancels the old queued seek'), env.vs.time === 100, String(env.vs.time));
+    await wait(30);
+    t(n('A to B to A: the seek is still waiting, back on A'), seekTimer.count() > 0 && env.win.location.hash.endsWith(VIDEO_ID));
+    seekTimer.run();
+    t(n('...A to B to A navigation cancels the old queued seek'), env.vs.time === 100, String(env.vs.time));
     env.win.close();
   }
 

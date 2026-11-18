@@ -315,6 +315,18 @@ async function nativeFetchTv() {
   await call(win, '/youtubei/v1/browse');
   t(n('a response listener alone is still called'), late.length === 1);
   reg.removeEventListener('response', onLate);
+  // Added in both capture modes, removed in one: the browser keeps the other,
+  // and the registry must still dispatch to it.
+  const kept = [];
+  const onKept = (evt) => kept.push(evt.detail);
+  reg.addEventListener('request', onKept);
+  reg.addEventListener('request', onKept, { capture: true });
+  reg.removeEventListener('request', onKept);
+  await call(win, '/youtubei/v1/browse');
+  t(n('a request listener left in its capture registration is still called'), kept.length === 1, kept.length);
+  reg.removeEventListener('request', onKept, true);
+  await call(win, '/youtubei/v1/browse');
+  t(n('...and not once that one is removed too'), kept.length === 1, kept.length);
 
   // ---- window.__ytaf_debug__: the bodies in the log ----
   win.__ytaf_debug__ = true;
@@ -368,12 +380,15 @@ async function nativeFetchTv() {
     };
     const brokenDump = new Request(ORIGIN + '/reader-failure', { method: 'POST', body: 'keep this body' });
     before = fetched.length;
+    env.debug.length = 0;
     const result = await Promise.race([
       call(win, brokenDump),
       wait(500).then(() => ({ error: new Error('debug dump stalled fetch') }))
     ]);
     t(n(`debug, FileReader ${failure}: request and response still delivered`),
       !result.error && fetched.length === before + 1 && result.body === '{"path":"/reader-failure"}', describe(result));
+    t(n('...and no body line is logged for a read that failed'),
+      !debugLine(env.debug, 'Request Body') && !debugLine(env.debug, 'Response Body'), env.debug.map((a) => a[0]).join(' | '));
   }
   win.FileReader = GoodReader;
   win.__ytaf_debug__ = false;

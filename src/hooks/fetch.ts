@@ -1,4 +1,4 @@
-import { CustomEventTarget, TypedCustomEvent, type EventListenerArg } from '../custom-event-target';
+import { CustomEventTarget, TypedCustomEvent, captureOf, type EventListenerArg } from '../custom-event-target';
 
 export interface StringConvertible {
   toString(): string;
@@ -27,10 +27,17 @@ interface EventMap {
 export class FetchRegistry extends CustomEventTarget<EventMap> {
   #originalFetch: typeof fetch;
   #fetchCount = 0;
-  #listeners: Record<HookedType, Set<unknown>> = {
-    request: new Set(),
-    response: new Set()
+  // By capture mode, [bubble, capture]: the browser keeps a callback once per
+  // mode, so removing one registration can leave the other.
+  #listeners: Record<HookedType, [Set<unknown>, Set<unknown>]> = {
+    request: [new Set(), new Set()],
+    response: [new Set(), new Set()]
   };
+
+  #hasListeners(type: HookedType) {
+    const [bubble, capture] = this.#listeners[type];
+    return bubble.size + capture.size > 0;
+  }
 
   override addEventListener<K extends keyof EventMap>(
     type: K,
@@ -44,7 +51,7 @@ export class FetchRegistry extends CustomEventTarget<EventMap> {
   ): void;
   override addEventListener(type: any, callback: any, options?: any): void {
     super.addEventListener(type, callback, options);
-    if (callback && isHookedType(type)) this.#listeners[type].add(callback);
+    if (callback && isHookedType(type)) this.#listeners[type][+captureOf(options)]!.add(callback);
   }
 
   override removeEventListener<K extends keyof EventMap>(
@@ -63,7 +70,7 @@ export class FetchRegistry extends CustomEventTarget<EventMap> {
     options?: any
   ): void {
     super.removeEventListener(type, callback, options);
-    if (callback && isHookedType(type)) this.#listeners[type].delete(callback);
+    if (callback && isHookedType(type)) this.#listeners[type][+captureOf(options)]!.delete(callback);
   }
 
   private constructor() {
@@ -116,8 +123,8 @@ export class FetchRegistry extends CustomEventTarget<EventMap> {
     // block off is the common case for most sessions.
     if (
       !window.__ytaf_debug__ &&
-      this.#listeners.request.size === 0 &&
-      this.#listeners.response.size === 0
+      !this.#hasListeners('request') &&
+      !this.#hasListeners('response')
     ) {
       return this.#originalFetch(resource as Parameters<typeof fetch>[0], init);
     }
@@ -133,7 +140,7 @@ export class FetchRegistry extends CustomEventTarget<EventMap> {
     }
 
     let reqAllowed = true;
-    if (this.#listeners.request.size > 0) {
+    if (this.#hasListeners('request')) {
       // Against the page: the fetch polyfill (webOS 3) keeps a Request's
       // relative URL as it was given.
       const url = new URL(
@@ -168,7 +175,7 @@ export class FetchRegistry extends CustomEventTarget<EventMap> {
     }
 
     let resAllowed = true;
-    if (this.#listeners.response.size > 0) {
+    if (this.#hasListeners('response')) {
       resAllowed = this.dispatchEvent(
         new TypedCustomEvent('response', { detail: res, cancelable: true })
       );

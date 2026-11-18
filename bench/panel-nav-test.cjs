@@ -415,8 +415,22 @@ run(async () => {
   press(KEY.BACK);
   t(n('Back closes it from the text box as well'), !!box && !isOpen());
 
+  // The opener disabled while the panel is open: its focus() does nothing,
+  // and the hidden panel must still let go of the focus.
   await wait(250);
   press(KEY.GREEN);
+  t(n('open again before the opener is disabled'), isOpen() && panel().contains(focused()), describe(focused()));
+  await wait(550);
+  d.getElementById('outside').disabled = true;
+  press(KEY.BACK);
+  t(n('disabled opener: focus is released from the hidden panel'),
+    !isOpen() && !panel().contains(focused()), describe(focused()));
+  d.getElementById('outside').disabled = false;
+
+  await wait(250);
+  press(KEY.GREEN);
+  t(n('open again before the opener is removed'), isOpen() && panel().contains(focused()), describe(focused()));
+  await wait(550);
   d.getElementById('outside').remove();
   press(KEY.BACK);
   t(n('removed opener: focus is released from the hidden panel'),

@@ -24,6 +24,8 @@ export interface ResolveCommandHook {
 
 let registry: ResolveCommandRegistry | null = null;
 let initializing: Promise<ResolveCommandRegistry> | null = null;
+// When the lookup in `initializing` started (Date.now()).
+let initializingSince = 0;
 
 export class ResolveCommandRegistry {
   #originalFn: ResolveCommand;
@@ -106,7 +108,14 @@ export class ResolveCommandRegistry {
       let delay = 16;
 
       const poll = () => {
-        const hook = this.findHookTarget();
+        let hook: string | null;
+        // A scan that throws (a YouTube getter) ends this lookup, so the
+        // callers waiting on it are let go and a later one can start anew.
+        try {
+          hook = this.findHookTarget();
+        } catch (error) {
+          return reject(error);
+        }
         if (hook) return resolve(hook);
 
         if (Date.now() >= deadline) {
@@ -125,12 +134,14 @@ export class ResolveCommandRegistry {
     });
   }
 
-  static async getInstance() {
+  static async getInstance(retry = true): Promise<ResolveCommandRegistry> {
     if (registry) return registry;
 
     // Startup consumers share one bounded discovery loop. A failed lookup
     // must be released too, so a later user action can try again.
+    const calledAt = Date.now();
     if (!initializing) {
+      initializingSince = calledAt;
       initializing = this.getHookTarget()
         .then((key) => (registry = registry ?? new ResolveCommandRegistry(key)))
         .then(
@@ -138,7 +149,16 @@ export class ResolveCommandRegistry {
           (error) => { initializing = null; throw error; }
         );
     }
-    return initializing;
+    const since = initializingSince;
+    try {
+      return await initializing;
+    } catch (error) {
+      // A caller that joined a lookup with less than half of its window left
+      // (a user action late after startup) gets one fresh lookup, shared with
+      // whoever comes then. The startup consumers, there from the start, do not.
+      if (retry && calledAt - since > this.POLL_TIMEOUT_MS / 2) return this.getInstance(false);
+      throw error;
+    }
   }
 
   setHook(command: string, fn: ResolveCommandHook) {
