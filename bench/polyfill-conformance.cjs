@@ -207,6 +207,12 @@ diff('URL concat pattern from utils.handleLaunch', (g) => {
   order = [];
   await win.Promise.reject(new Error('e')).finally(() => order.push('f')).catch((e) => order.push('c' + e.message));
   check('Promise#finally reject order', order, ['f', 'ce']);
+  // No callback, or not a function: the result passes on, as the native one.
+  for (const cb of [undefined, null, 1, 'x', {}]) {
+    const label = cb === undefined ? 'undefined' : JSON.stringify(cb);
+    check('Promise#finally(' + label + ') resolve', await win.Promise.resolve(7).finally(cb).then((v) => 'v' + v, (e) => 'e' + e), 'v7');
+    check('Promise#finally(' + label + ') reject', await win.Promise.reject(8).finally(cb).then((v) => 'v' + v, (e) => 'e' + e), 'e8');
+  }
 
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);

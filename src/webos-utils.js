@@ -100,6 +100,15 @@ export function lunaCall(uri, params, onResponse, keep) {
     const payload = JSON.stringify(params);
     bridge = new Bridge();
     liveBridges.push(bridge);
+    // A cancelled call gets no more answers: let go of it too. A bridge
+    // that will not take the wrapper keeps its own cancel.
+    try {
+      const cancel = bridge.cancel;
+      bridge.cancel = function () {
+        release();
+        if (typeof cancel === 'function') return cancel.apply(this, arguments);
+      };
+    } catch { /* not writable */ }
     bridge.onservicecallback = (msg) => {
       let res = null;
       try { res = JSON.parse(msg); } catch { /* not JSON */ }

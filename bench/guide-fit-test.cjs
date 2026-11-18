@@ -25,7 +25,9 @@ function guideEl(win, width) {
   g.measured = 0;
   g.getBoundingClientRect = () => {
     g.measured++;
-    return { top: 0, left: 0, right: width, bottom: 1080, width, height: 1080, x: 0, y: 0 };
+    // Out of the page, an element measures 0, as in a browser.
+    const w = g.isConnected ? width : 0;
+    return { top: 0, left: 0, right: w, bottom: w ? 1080 : 0, width: w, height: w ? 1080 : 0, x: 0, y: 0 };
   };
   return g;
 }
@@ -78,6 +80,20 @@ function boot(cfg, width) {
     await wait(300);
     t('on: an open guide fits the page beside it', win.document.documentElement.hasAttribute('data-ytaf-guide-open'));
     t('no jsdomError', errors.length === 0, errors[0]);
+  }
+  {
+    // On, the open guide removed with no new one: let go, the page let out.
+    const { win, guide, observers } = boot({ fitPageBesideGuide: true }, 400);
+    await wait(300);
+    let resized = 0;
+    win.addEventListener('resize', () => resized++);
+    guide.parentNode.removeChild(guide);
+    await wait(300);
+    const n = guide.measured;
+    await wait(300);
+    t('a removed guide: its observer is disconnected', observers.every((o) => !o.live), observers.map((o) => o.live).join());
+    t('a removed guide: the page is let out, one resize', !win.document.documentElement.hasAttribute('data-ytaf-guide-open') && resized === 1, String(resized));
+    t('a removed guide: no longer measured', guide.measured === n, `${n} -> ${guide.measured}`);
   }
   console.log(`${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);

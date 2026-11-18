@@ -169,6 +169,8 @@ function registerScreenSaverRequest() {
   screenSaverSubscription = lunaCall(TVPOWER_URI + 'registerScreenSaverRequest', { subscribe: true, clientName: SCREENSAVER_CLIENT }, (res) => {
     if (res.returnValue === false) {
       DEBUG && console.info('[ScreensaverFix] Screensaver request refused:', res);
+      // No subscription: the call is over (lunaCall let it go).
+      screenSaverSubscription = null;
       return;
     }
     // The first answer only confirms the subscription; each screensaver the
@@ -177,7 +179,7 @@ function registerScreenSaverRequest() {
     const playing = isVideoPlaying();
     DEBUG && console.info(`[ScreensaverFix] Screensaver request: ${playing ? 'blocked (video playing)' : 'allowed'}`);
     lunaCall(TVPOWER_URI + 'responseScreenSaverRequest', { clientName: SCREENSAVER_CLIENT, ack: !playing, timestamp: res.timestamp });
-  }, () => true);
+  }, (res) => res.returnValue !== false);
 }
 
 registerScreenSaverRequest();

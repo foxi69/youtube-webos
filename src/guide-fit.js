@@ -71,6 +71,14 @@ function update(guide) {
 // The guide appears after start-up and can be re-created; keep watching,
 // and re-check now and then in case a navigation reset the page's state.
 function watch() {
+  if (watched && !watched.isConnected) {
+    // A removed guide: measured once more as closed (the page is let out
+    // now), then let go, observer and all.
+    observer.disconnect();
+    observer = null;
+    update(watched);
+    watched = null;
+  }
   const guide = document.querySelector('ytlr-guide-response');
   if (guide && guide !== watched) {
     // A re-created guide: the old one's observer goes with it, or each one

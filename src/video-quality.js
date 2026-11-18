@@ -21,6 +21,8 @@ let _shouldForce = false;
 let player = null;
 let lastVideoId = null;
 let initTimer = null;
+// The attach a navigation to the watch page put off to the next tick.
+let navInitTimer = null;
 let isDestroyed = false;
 let lastWriteTime = 0;
 let statePollingInterval = null;
@@ -56,6 +58,8 @@ let carriedOver = false;
 document.addEventListener('playing', (evt) => {
   const video = evt.target;
   if (video instanceof HTMLVideoElement && !isWatchPage()) previewSrc = video.currentSrc;
+  // A video playing in a player built again with no page change.
+  else if (dropReplacedPlayer()) handleNavigation();
 }, true);
 // A new source on the element: whatever plays next was loaded, not carried over.
 document.addEventListener('emptied', () => { carriedOver = false; }, true);
@@ -584,6 +588,8 @@ export function destroyVideoQuality() {
     clearTimeout(initTimer);
     initTimer = null;
   }
+  clearTimeout(navInitTimer);
+  navInitTimer = null;
   
   stopStatePolling();
   clearQualityToast();
@@ -679,24 +685,40 @@ export function initVideoQuality() {
   poll();
 }
 
+// YouTube can build the player again without leaving the watch page: the old
+// one, out of the page, sends no more state changes. Let it go; the next
+// navigation check attaches to the new one. True when it was let go.
+function dropReplacedPlayer() {
+  if (!player || player.isConnected) return false;
+  DEBUG && console.info('[VideoQuality] Player replaced: attaching again');
+  destroyVideoQuality();
+  return true;
+}
+
 function handleNavigation(event) {
   const isWatch = (event?.detail?.pageType === 'watch') || isWatchPage();
+  if (isWatch) dropReplacedPlayer();
   
   // Also when the attach at the start of the app gave up before a player came
   // (a minute on Home with none): the flag was left set, and the first video
   // opened after that got no player, so no state events at all.
   if (isWatch && (!_isWatchPageCached || (!player && !initTimer))) {
     DEBUG && console.info('[VideoQuality] Navigation: Entering watch page');
-    setTimeout(initVideoQuality, 0); 
+    if (!navInitTimer) navInitTimer = setTimeout(() => { navInitTimer = null; initVideoQuality(); }, 0);
     
   } else if (isWatch && player) {
     // Attached since the start of the app: a video opened from its preview
     // plays on in the same player and sends no new PLAYING.
     try { scheduleQualityToast(player.getPlayerState?.()); } catch { /* the next state change */ }
 
-  } else if (!isWatch && _isWatchPageCached) {
-    DEBUG && console.info('[VideoQuality] Navigation: Leaving watch page');
-    destroyVideoQuality();
+  } else if (!isWatch) {
+    // Left before the put-off attach ran (Back right away): it must not run.
+    clearTimeout(navInitTimer);
+    navInitTimer = null;
+    if (_isWatchPageCached) {
+      DEBUG && console.info('[VideoQuality] Navigation: Leaving watch page');
+      destroyVideoQuality();
+    }
   }
 }
 

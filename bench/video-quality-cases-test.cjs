@@ -341,5 +341,47 @@ run(async () => {
     t('a video replaced before its notice gets none', playingIn().length === 0, playingIn().join(' | '));
   }
 
+  // ---- A player YouTube builds again on the watch page ----
+  {
+    const { win, p, log } = boot({});
+    await wait(50);
+    t('replaced player: the first one is attached', log.listeners === 1, String(log.listeners));
+    const p2 = win.document.createElement('div');
+    p2.id = p.id;
+    for (const k of Object.keys(p)) p2[k] = p[k];
+    let added = 0;
+    p2.addEventListener = (type) => { if (type === 'onStateChange') added++; };
+    p2.innerHTML = '<video></video>';
+    p.remove();
+    win.document.querySelector('ytlr-app').appendChild(p2);
+    p2.querySelector('video').dispatchEvent(new win.Event('playing'));
+    await wait(50);
+    t('replaced player: the old one is let go', log.calls.includes('removeListener'), log.calls.join());
+    t('replaced player: the new one is attached', added === 1, String(added));
+  }
+  // ---- Watch, then Back before the put-off attach ran ----
+  {
+    const { win, log } = boot({});
+    await wait(50);
+    win.document.body.className = 'WEB_PAGE_TYPE_BROWSE';
+    await wait(50);
+    const before = log.listeners;
+    const nav = (pageType) => win.dispatchEvent(new win.CustomEvent('yt-navigate-finish', { detail: { pageType } }));
+    nav('watch');
+    nav('browse');
+    await wait(50);
+    t('watch then Back at once: no player attached after Back', log.listeners === before, `${before} -> ${log.listeners}`);
+  }
+  // ---- A setting changed just before the app goes to the background ----
+  {
+    const { win, toggle } = boot({});
+    await wait(50);
+    toggle('Force Max Quality', false);
+    Object.defineProperty(win.document, 'hidden', { configurable: true, get: () => true });
+    win.document.dispatchEvent(new win.Event('visibilitychange'));
+    const saved = JSON.parse(win.localStorage.getItem('ytaf-configuration') || '{}');
+    t('hidden: a change still waiting is written at once', saved.forceHighResVideo === false, String(saved.forceHighResVideo));
+  }
+
   t('no jsdomError in any case', allErrors.length === 0, allErrors[0]);
 });

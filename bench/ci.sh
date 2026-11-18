@@ -105,6 +105,7 @@ fork_watch() {
 fork_watch
 build
 run polyfill-conformance
+run luna-release-test
 run launch-test
 run release-bump-test
 run appinfo-test
