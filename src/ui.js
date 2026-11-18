@@ -57,6 +57,8 @@ let seekApplyTimer = null;
 let activeSeekNotification = null;
 
 let activePlayPauseNotification = null;
+// Repeat Video's message: updated, or shown again, by the next press.
+let repeatNotification = null;
 let playPauseNotificationTimer = null;
 
 // Lazy load variable
@@ -2019,6 +2021,18 @@ function handleShortcutAction(action) {
   // Player actions only make sense on a watch or Shorts page.
   if (!isWatchPage() && !isShortsPage()) return;
 
+  // Before the <video> is asked for: on Shorts it may not be there yet, and
+  // the key still says there is no video to repeat. One message, updated, so
+  // On and Off are not both on the screen after two quick presses.
+  if (action === 'repeat_video') {
+      const msg = toggleRepeat();
+      // Notifications off: none is shown, and none kept (it would be a no-op).
+      if (configRead('disableNotifications')) return;
+      if (repeatNotification) repeatNotification.update(msg);
+      else repeatNotification = showNotification(msg);
+      return;
+  }
+
   const video = getVideo();
   if (!video) return;
 
@@ -2085,11 +2099,6 @@ function handleShortcutAction(action) {
         // jesvijonathan's fork via anikettuli's NicholasBly PR #146.
         const on = document.documentElement.classList.toggle('ytaf-audio-only');
         showNotification(`Audio-Only Mode ${on ? 'Enabled' : 'Disabled'}`);
-        break;
-    }
-    case 'repeat_video': {
-        const on = toggleRepeat();
-        showNotification(on === null ? 'Repeat Video: no video to repeat here' : `Repeat Video ${on ? 'On' : 'Off'}`);
         break;
     }
     case 'sb_manual_skip':

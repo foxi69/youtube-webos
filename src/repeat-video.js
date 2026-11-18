@@ -13,9 +13,10 @@
 import { getVideo, isLiveStream, SELECTORS } from './utils.js';
 
 // How often the timer looks, and how close to the end, in seconds of playback
-// at 1x, the video goes back to the start: three looks fall within it. It
-// grows with the playback rate, so at 2x too.
-const CHECK_MS = 200;
+// at 1x, the video goes back to the start. The window grows with the playback
+// rate and is at most a quarter of the video; for the shortest video repeated
+// (over 1.2 s) that is over 0.3 s, more than the 0.2 s a look moves at 2x.
+const CHECK_MS = 100;
 const END_MARGIN_S = 0.6;
 
 // The id of the video being repeated, or null.
@@ -31,24 +32,27 @@ function currentVideoId() {
   return videoIdOf(location.hash);
 }
 
-/** Whether the video open now is being repeated. */
-export function isRepeatOn() {
-  return repeatId !== null && repeatId === currentVideoId();
-}
-
 /**
- * Turns Repeat Video on for the video open now, or off. Returns true (on),
- * false (off) or null when no video is open (Shorts, which loop anyway).
+ * Turns Repeat Video on for the video open now, or off, and returns the
+ * message for it. Not on a page with no video id (Shorts, which loop anyway),
+ * a live stream or a very short video; a video whose length is not known yet
+ * can be turned on.
  */
 export function toggleRepeat() {
-  if (isRepeatOn()) {
+  const id = currentVideoId();
+  if (repeatId !== null && repeatId === id) {
     repeatId = null;
-    return false;
+    return 'Repeat Video Off';
   }
-  repeatId = currentVideoId();
-  if (repeatId === null) return null;
+  if (id === null) return 'Repeat Video: no video to repeat here';
+  const video = getVideo();
+  if (video && isLiveStream(document.getElementById(SELECTORS.PLAYER_ID), video) === true) {
+    return 'Repeat Video: not on a live stream';
+  }
+  if (video && video.duration <= END_MARGIN_S * 2) return 'Repeat Video: the video is too short';
+  repeatId = id;
   if (timer === null) timer = setInterval(check, CHECK_MS);
-  return true;
+  return 'Repeat Video On';
 }
 
 function check() {

@@ -431,76 +431,117 @@ run(async () => {
     const player = env.doc.getElementById('ytlr-player__player-container-player');
     const notLive = () => ({ isLive: false });
     player.getVideoData = notLive;
-    // No media events: the module's own timer (every 200 ms) has to see it.
-    const tick = async (time) => {
+    // The module's own timer is caught when a press starts it and run by hand
+    // (`tick`), so no check happens unless a test asks for it. `step`: its
+    // interval in seconds.
+    let check = null;
+    let step = 0;
+    const pressRepeat = async () => {
+      const real = env.win.setInterval;
+      env.win.setInterval = (fn, ms, ...args) => {
+        if (!check) { check = fn; step = ms / 1000; }
+        return fn === check ? 9e6 : real(fn, ms, ...args);
+      };
+      try { await env.press(D(5)); } finally { env.win.setInterval = real; }
+    };
+    const tick = (time) => {
       env.vs.time = time;
-      await wait(250);
+      if (check) check();
       return env.vs.time;
     };
-    t(n('repeat off: the end of the video is left to YouTube'), await tick(599.5) === 599.5);
-    await env.press(D(5));
-    t(n('repeat video: on, with a toast'), /Repeat Video On/.test(env.toasts()), env.toasts());
-    t(n('...mid-video nothing changes'), await tick(300) === 300);
-    t(n('...0.6 s before the end it goes back to the start'), await tick(599.5) === 0);
-    t(n('...and again on the next round'), await tick(599.6) === 0);
-    await env.press(D(5));
-    t(n('...pressed again: off, with a toast'), /Repeat Video Off/.test(env.toasts()) && await tick(599.5) === 599.5, env.toasts());
-    await env.press(D(5));
+    const message = () => env.doc.querySelector('.ytaf-notification-container .message');
     env.vs.duration = Infinity;
-    t(n('...a live stream (no end) is left alone'), await tick(5000) === 5000);
+    await pressRepeat();
+    t(n('repeat video on a live stream: it says so and stays off'),
+      /not on a live stream/.test(env.toasts()) && check === null, env.toasts());
+    env.vs.duration = 1;
+    await pressRepeat();
+    t(n('...a video of 1.2 s or less: it says so and stays off'), /too short/.test(env.toasts()) && check === null, env.toasts());
     env.vs.duration = 600;
     player.getVideoData = () => ({ isLive: true });
-    t(n('...a live stream with a finite duration (its live edge) is left alone'), await tick(599.5) === 599.5);
+    await pressRepeat();
+    t(n('...a live stream with a finite duration (the player says live) too'),
+      /not on a live stream/.test(env.toasts()) && check === null, env.toasts());
+    player.getVideoData = notLive;
+    await pressRepeat();
+    t(n('repeat video: on, with a toast'), /Repeat Video On/.test(env.toasts()), env.toasts());
+    t(n('...its timer looks at least every 100 ms'), typeof check === 'function' && step > 0 && step <= 0.1, step);
+    t(n('...mid-video nothing changes'), tick(300) === 300);
+    t(n('...0.6 s before the end it goes back to the start'), tick(599.5) === 0);
+    t(n('...and again on the next round'), tick(599.6) === 0);
+    const onMessage = message();
+    await pressRepeat();
+    t(n('...pressed again: off, in the same message (On and Off are not both shown)'),
+      /Repeat Video Off/.test(env.toasts()) && message() === onMessage && tick(599.5) === 599.5, env.toasts());
+    await pressRepeat();
+    env.vs.duration = Infinity;
+    t(n('...a live stream (no end) is left alone'), tick(5000) === 5000);
+    env.vs.duration = 600;
+    player.getVideoData = () => ({ isLive: true });
+    t(n('...a live stream with a finite duration (its live edge) is left alone'), tick(599.5) === 599.5);
     delete player.getVideoData;
-    t(n('...no getVideoData (live or not unknown) is left alone'), await tick(599.5) === 599.5);
+    t(n('...no getVideoData (live or not unknown) is left alone'), tick(599.5) === 599.5);
     player.getVideoData = () => ({ video_id: VIDEO_ID });
-    t(n('...getVideoData without isLive (live or not unknown) is left alone'), await tick(599.5) === 599.5);
+    t(n('...getVideoData without isLive (live or not unknown) is left alone'), tick(599.5) === 599.5);
     player.getVideoData = () => { throw new Error('gone'); };
-    t(n('...getVideoData throwing (live or not unknown) is left alone'), await tick(599.5) === 599.5);
+    t(n('...getVideoData throwing (live or not unknown) is left alone'), tick(599.5) === 599.5);
     player.getVideoData = notLive;
     env.vs.paused = true;
-    t(n('...paused near the end (a seek there) stays where it is'), await tick(599.5) === 599.5);
+    t(n('...paused near the end (a seek there) stays where it is'), tick(599.5) === 599.5);
     env.vs.paused = false;
-    t(n('...and goes back to the start once it plays on'), await tick(599.6) === 0);
-    env.win.location.hash = '#/watch?v=zyxwvutsrqp';
-    await wait(30);
-    t(n('...another video ends it'), await tick(599.5) === 599.5);
-    env.win.location.hash = '#/watch?v=' + VIDEO_ID;
-    await wait(30);
-    t(n('...also when the first video is opened again'), await tick(599.5) === 599.5);
-    await env.press(D(5));
-    env.win.location.hash = '#/watch?v=zyxwvutsrqp';
-    await wait(30);
-    env.win.location.hash = '#/watch?v=' + VIDEO_ID;
-    await wait(30);
-    t(n('...another video that never played still ends it (back on the first: off)'), await tick(599.5) === 599.5);
-    await env.press(D(5));
-    env.win.location.hash = '#/watch?v=zyxwvutsrqp';
-    env.win.location.hash = '#/watch?v=' + VIDEO_ID;
-    await wait(30);
-    t(n('...also with no wait between the two page changes (A -> B -> A)'), await tick(599.5) === 599.5);
-    await env.press(D(5));
-    env.win.location.hash = '#/watch?v=' + VIDEO_ID + '&t=10';
-    await wait(30);
-    t(n('...another parameter on the same video keeps it on'), await tick(599.5) === 0);
+    t(n('...and goes back to the start once it plays on'), tick(599.6) === 0);
     env.video.playbackRate = 2;
-    t(n('...at 2x the window is 1.2 s: 1.1 s before the end it goes back'), await tick(598.9) === 0);
+    t(n('...at 2x the window is 1.2 s: 1.1 s before the end it goes back'), tick(598.9) === 0);
     env.video.playbackRate = 1;
-    t(n('...at 1x 1.1 s before the end is too early'), await tick(598.9) === 598.9);
-    env.vs.duration = 2;
+    t(n('...at 1x 1.1 s before the end is too early'), tick(598.9) === 598.9);
+    // Playing at 2x, one look every `step`: at every phase of the timer the
+    // video goes back before its end, also the shortest one repeated.
     env.video.playbackRate = 2;
-    t(n('...a 2 s video at 2x repeats too, in its last quarter'), await tick(1.2) === 1.2 && await tick(1.6) === 0);
+    for (const duration of [1.3, 1.4, 2, 600]) {
+      env.vs.duration = duration;
+      const missed = [];
+      for (let phase = 0; phase < 10; phase++) {
+        let x = Math.max(0, duration - 3) + (phase / 10) * step * 2;
+        tick(x);
+        for (;;) {
+          x += step * 2;
+          if (x >= duration) { missed.push(phase); break; }
+          if (tick(x) === 0) break;
+        }
+      }
+      t(n(`...a ${duration} s video at 2x goes back before its end at every timer phase`), missed.length === 0, missed);
+    }
     env.video.playbackRate = 1;
     env.vs.duration = 600;
+    // Navigation: no look runs between the page changes, so only the
+    // hashchange listener can end it.
+    env.win.location.hash = '#/watch?v=zyxwvutsrqp';
+    await wait(30);
+    env.win.location.hash = '#/watch?v=' + VIDEO_ID;
+    await wait(30);
+    t(n('...another video ends it, even one that never played (back on the first: off)'), tick(599.5) === 599.5);
+    await pressRepeat();
+    env.win.location.hash = '#/watch?v=zyxwvutsrqp';
+    env.win.location.hash = '#/watch?v=' + VIDEO_ID;
+    await wait(30);
+    t(n('...also with no wait between the two page changes (A -> B -> A)'), tick(599.5) === 599.5);
+    await pressRepeat();
+    env.win.location.hash = '#/watch?v=' + VIDEO_ID + '&t=10';
+    await wait(30);
+    t(n('...another parameter on the same video keeps it on'), tick(599.5) === 0);
     env.doc.body.className = 'WEB_PAGE_TYPE_BROWSE';
     await wait(30);
     env.doc.body.className = 'WEB_PAGE_TYPE_WATCH';
     await wait(30);
-    t(n('...and leaving the watch page ends it'), await tick(599.5) === 599.5);
+    t(n('...and leaving the watch page ends it'), tick(599.5) === 599.5);
     env.win.location.hash = '#/shorts/' + VIDEO_ID;
     await wait(30);
-    await env.press(D(5));
-    t(n('...with no video id in the page (Shorts) it says so'), /no video to repeat/.test(env.toasts()), env.toasts());
+    const video = env.video;
+    video.remove();
+    await pressRepeat();
+    t(n('...on Shorts, also before its <video> is there, it says there is no video to repeat'),
+      /no video to repeat/.test(env.toasts()), env.toasts());
+    player.appendChild(video);
     t(n('no errors (repeat video)'), env.errors.length === 0, env.errors[0]);
   }
 

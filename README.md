@@ -141,7 +141,7 @@ Every coloured button and number key can be set to any of these actions on the *
 - **Playback:** Play/Pause, Fast Forward (Burst), Rewind (Burst), Skip to Next / Previous Chapter,
   **Jump to Live** (back to the live edge of a live stream), Playback Speed +, Playback Speed -, Playback Speed
   Reset (1x), **Repeat Video** (the video starts again at its end instead of going on to the next one; ends with
-  that video)
+  that video; not on live streams or videos of 1.2 s or less, where the key says so)
 - **SponsorBlock:** Manual Skip / Jump to Highlight, Skip to Last SponsorBlock Segment
 - **Panels:** Toggle Subtitles, Toggle Comments, Toggle Description, Save / Watch Later
 - **Screen:** Toggle OLED Black Overlay, **Toggle Audio-Only Mode** (hides the picture and keeps the sound; ends
