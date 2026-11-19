@@ -121,30 +121,61 @@ function withFlagIfPlayerRequest(value: any): any {
   return withNoAdFlag(value, path);
 }
 
-// Search: Upload Date (searchUploadDateModes in config.js): the filter
-// YouTube's own search page sends for it, as a search request's `params`.
-// YouTube no longer honours its "sort by upload date" (CAI=): tried in
-// October 2026, the order stayed by relevance, while these filters held
-// (with Today every result was under a day old). From
-// NicholasBly/youtube-webos#204 (fork watch #51).
-const SEARCH_UPLOAD_PARAMS: Record<string, string> = {
-  hour: 'EgIIAQ==',
-  today: 'EgIIAg==',
-  week: 'EgIIAw==',
-  month: 'EgIIBA==',
-  year: 'EgIIBQ=='
-};
+// Search: Upload Date, Duration, Type and Only (config.js): the filters
+// YouTube's own search page sends for them, as a search request's `params`.
+// They are a protobuf: field 2, the filters, holds upload date (1), type (2),
+// duration (3) and one switch per feature (live 8, subtitles 5, 4K 14, HDR
+// 25), each a varint. Upload date alone is EgIIAw== (This Week). YouTube no
+// longer honours its "sort by upload date" (CAI=): tried in October 2026, the
+// order stayed by relevance, while these filters held (with Today every result
+// was under a day old), so there is no sort here. From
+// NicholasBly/youtube-webos#204 (fork watch #51); the other filters from
+// SmartTube's search options.
+const SEARCH_UPLOAD_DATES: Record<string, number> = { hour: 1, today: 2, week: 3, month: 4, year: 5 };
+const SEARCH_TYPES: Record<string, number> = { video: 1, channel: 2, playlist: 3, movie: 4 };
+const SEARCH_DURATIONS: Record<string, number> = { short: 1, long: 2, medium: 3 };
+const SEARCH_FEATURES: Record<string, number> = { subtitles: 5, live: 8, '4k': 14, hdr: 25 };
+
+function varint(n: number, out: number[]): void {
+  while (n > 127) {
+    out.push((n & 127) | 128);
+    n >>>= 7;
+  }
+  out.push(n);
+}
+
+/** The search `params` for the filters chosen, or '' for none. */
+export function searchParams(uploadDate: string, type: string, duration: string, feature: string): string {
+  const filters: number[] = [];
+  const add = (field: number, value: number | undefined) => {
+    if (!value) return;
+    varint(field << 3, filters);
+    varint(value, filters);
+  };
+  add(1, SEARCH_UPLOAD_DATES[uploadDate]);
+  add(2, SEARCH_TYPES[type]);
+  add(3, SEARCH_DURATIONS[duration]);
+  const featureField = SEARCH_FEATURES[feature];
+  if (featureField) add(featureField, 1);
+  if (!filters.length) return '';
+  const bytes = [0x12];
+  varint(filters.length, bytes);
+  let text = '';
+  for (const b of bytes.concat(filters)) text += String.fromCharCode(b);
+  return btoa(text);
+}
 
 /**
- * `value`, or a copy of it with the upload date filter when it is a search
+ * `value`, or a copy of it with the search filters when it is a search
  * request: an InnerTube body with a `query` and no `params` of its own, so a
  * filter YouTube already sends (a channel's search, a chip) is left alone.
  */
 function withSearchFilter(value: any): any {
   if (typeof value.query !== 'string' || value.params || !value.context) return value;
-  const params = SEARCH_UPLOAD_PARAMS[configRead('searchUploadDate')];
+  const params = searchParams(configRead('searchUploadDate'), configRead('searchType'),
+    configRead('searchDuration'), configRead('searchFeature'));
   if (!params) return value;
-  if (DEBUG) console.info('[JSON.stringify] Search upload date filter', params);
+  if (DEBUG) console.info('[JSON.stringify] Search filters', params);
   // A copy, as for the player flag: YouTube's own object is never written.
   return Object.assign({}, value, { params });
 }

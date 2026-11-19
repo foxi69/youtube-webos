@@ -41,6 +41,28 @@ export const searchUploadDateModes = {
   year: 'This Year'
 };
 
+/** Search: Duration, Type and Only (hooks/json-stringify.ts). */
+export const searchDurationModes = {
+  any: 'Any',
+  short: 'Under 4 min',
+  medium: '4-20 min',
+  long: 'Over 20 min'
+};
+export const searchTypeModes = {
+  any: 'Any',
+  video: 'Videos',
+  channel: 'Channels',
+  playlist: 'Playlists',
+  movie: 'Movies'
+};
+export const searchFeatureModes = {
+  any: 'Any',
+  '4k': '4K',
+  hdr: 'HDR',
+  live: 'Live',
+  subtitles: 'Subtitles'
+};
+
 /** What the clock in the corner shows (NicholasBly/youtube-webos#126). */
 export const clockModes = {
   off: 'Off',
@@ -382,6 +404,9 @@ const configOptions = new Map([
   ['removeLowMemoryStyle', { default: true, desc: 'Remove Black Text Boxes' }],
   ['keyboardSearch', { default: true, desc: 'Type in Search with a Keyboard' }],
   ['searchUploadDate', { default: 'any', desc: 'Search: Upload Date' }],
+  ['searchDuration', { default: 'any', desc: 'Search: Duration' }],
+  ['searchType', { default: 'any', desc: 'Search: Type' }],
+  ['searchFeature', { default: 'any', desc: 'Search: Only' }],
   ['removeBlackBorders', { default: false, desc: 'New Liquid Glass UI' }],
   ['videoPreviews', { default: 'default', desc: 'Video Previews' }],
   // OK on a playing preview carries it on instead of loading the video again (adblock.js).

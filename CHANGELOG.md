@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Added
 
++ Search filters beside Search: Upload Date (Interface): **Search: Duration** (Any, Under 4 min, 4-20 min, Over 20 min), **Search: Type** (Any, Videos, Channels, Playlists, Movies) and **Search: Only** (Any, 4K, HDR, Live, Subtitles). They go out with each search as the filter YouTube's own search page sends, together with the upload date; a search that carries a filter of its own (a channel's search) is left alone. No sort: YouTube no longer honours its sort by upload date. From SmartTube's search options.
 + SponsorBlock: **Ignore Segments Shorter Than** (Off, 1, 2, 3, 5 or 10 s): a shorter segment is not skipped or muted, only shown on the seek bar. From SponsorBlock's own extension and iSponsorBlockTV.
 + SponsorBlock: **Never Skip on These Channels**, a list of channel names (compared without case), edited like Blocked Channels: nothing is skipped or muted on their videos, and the segments stay on the seek bar. A new shortcut action, **SponsorBlock: Never Skip on This Channel (on/off)**, puts the channel of the video playing on the list, or takes it off. From SponsorBlock's own extension and iSponsorBlockTV.
 + SponsorBlock: **Blue just after an auto skip takes it back**: within 8 s of it, the video goes back to where the skip started and that segment plays. Blue still skips a manual segment first; the highlight jump waits those 8 s. Not after a seek elsewhere.
