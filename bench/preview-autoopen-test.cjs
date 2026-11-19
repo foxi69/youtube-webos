@@ -193,7 +193,8 @@ async function responses() {
 }
 
 async function mute() {
-  const run = async (mute) => {
+  // `page`: the page the preview opens as, the watch page or the Shorts page.
+  const run = async (mute, page = 'WEB_PAGE_TYPE_WATCH') => {
     const { win, errors } = boot(Object.assign({}, ALL_OFF, { videoPreviews: mute ? 'muted' : 'sound' }));
     const video = win.document.createElement('video');
     win.document.body.appendChild(video);
@@ -204,21 +205,28 @@ async function mute() {
     video.muted = false;
     fire('volumechange');
     const afterVolume = video.muted;
-    // The preview opened: on the watch page the mute is undone and stays undone.
-    win.document.body.className = 'WEB_PAGE_TYPE_WATCH';
+    // The preview opened: on its page the mute is undone and stays undone.
+    win.document.body.className = page;
     for (let i = 0; i < 20 && video.muted; i++) await tick(win, 5);
-    const onWatch = video.muted;
+    const onPage = video.muted;
     video.muted = false;
     fire('volumechange');
-    return { afterPlaying, afterVolume, onWatch, watchAfterVolume: video.muted, errors };
+    return { afterPlaying, afterVolume, onPage, pageAfterVolume: video.muted, errors };
   };
 
   const on = await run(true);
   t('mute on: playing mutes the preview (precondition)', on.afterPlaying === true);
   t('mute on: a volume change that unmutes the preview mutes it again', on.afterVolume === true);
-  t('mute on: on the watch page the mute is undone', on.onWatch === false);
-  t('mute on: a volume change on the watch page leaves the sound on', on.watchAfterVolume === false);
+  t('mute on: on the watch page the mute is undone', on.onPage === false);
+  t('mute on: a volume change on the watch page leaves the sound on', on.pageAfterVolume === false);
   t('mute on: no page errors', on.errors.length === 0, on.errors.join(' | '));
+
+  // A Short is no preview: on the Shorts page it plays with its sound.
+  const shorts = await run(true, 'WEB_PAGE_TYPE_SHORTS');
+  t('mute on, Shorts: the preview is muted first (precondition)', shorts.afterPlaying === true && shorts.afterVolume === true);
+  t('mute on, Shorts: on the Shorts page the mute is undone', shorts.onPage === false);
+  t('mute on, Shorts: a volume change on the Shorts page leaves the sound on', shorts.pageAfterVolume === false);
+  t('mute on, Shorts: no page errors', shorts.errors.length === 0, shorts.errors.join(' | '));
 
   const offRun = await run(false);
   t('control, With sound: playing leaves the sound on', offRun.afterPlaying === false);
