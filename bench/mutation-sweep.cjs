@@ -31,12 +31,15 @@ let mutants = JSON.parse(fs.readFileSync(listFile, 'utf8'));
 if (only) { const ids = only.split(','); mutants = mutants.filter((m) => ids.includes(m.id)); }
 
 const BUNDLE = 'dist-mut/webOSUserScripts/userScript.js';
-const LEGACY = 'dist-mut-legacy/webOSUserScripts/userScript.js';
+const LEGACY = 'dist/webOSUserScripts/userScript.js';
 
 // Every test bench/ci.sh runs: on the modern bundle (the loop and each
 // `run <test> "$M"`), with no bundle (`run <test>`, `node bench/<test>.cjs`),
 // and the ones it runs on the legacy bundle only, on a legacy build of the
-// mutant. The perf build's test is left out.
+// mutant. That legacy build is dist/ itself, built from each mutant, so the
+// tests that read dist/ with no bundle given (launch-test: dist/index.js)
+// see the mutant too; dist/ is built again from the sources at the end. The
+// perf build's test is left out.
 const ci = fs.readFileSync(path.join(__dirname, 'ci.sh'), 'utf8').replace(/\\\n/g, ' ');
 const tests = [];
 const add = (name, argv) => { if (!tests.some((t) => t.name === name && t.argv.join() === argv.join())) tests.push({ name, argv }); };
@@ -51,11 +54,10 @@ for (const m of ci.matchAll(/^\s*node bench\/([\w-]+)\.cjs\s*$/gm)) add(m[1], []
 for (const m of ci.matchAll(/^\s*run ([\w-]+) "\$B"(.*)$/gm)) {
   if (!modernNames.has(m[1]) && m[1] !== 'perfmon-test') add(m[1], [LEGACY, ...words(m[2])]);
 }
-const needsLegacy = tests.some((t) => t.argv[0] === LEGACY);
 
-// 'dist': the unchanged legacy build the no-bundle tests read; 'legacy', 'modern': the mutant's.
+// 'dist': the legacy build (dist/: the launcher and the legacy bundle); 'modern': dist-mut/.
 function build(kind) {
-  const argv = { dist: [], legacy: ['--output-path', 'dist-mut-legacy'], modern: ['--env', 'modern', '--output-path', 'dist-mut'] }[kind];
+  const argv = { dist: [], modern: ['--env', 'modern', '--output-path', 'dist-mut'] }[kind];
   const r = spawnSync('npx webpack --mode=production --stats errors-only ' + argv.join(' '), { cwd: ROOT, shell: true, encoding: 'utf8' });
   return r.status === 0 ? null : (r.stdout + r.stderr).trim().split('\n').slice(-3).join(' | ');
 }
@@ -81,7 +83,13 @@ function confirm(t) {
 let original = null;
 let originalFile = null;
 const restore = () => { if (originalFile !== null) { fs.writeFileSync(originalFile, original); originalFile = null; } };
-for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => { restore(); process.exit(130); });
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+  process.on(sig, () => {
+    restore();
+    console.error('Stopped: dist/ may hold a mutant\'s build; build it again before using it.');
+    process.exit(130);
+  });
+}
 
 // A run stopped hard (no signal handler) leaves a mutant in place: refuse to
 // start on a tree with changed sources, or it would become the baseline.
@@ -92,10 +100,7 @@ if (changed.status !== 0 || changed.stdout.trim()) {
 }
 
 (async () => {
-  // The tests with no bundle given read dist/ (the legacy build), unchanged by the mutants.
-  const dist = build('dist');
-  if (dist) throw new Error('the legacy build failed: ' + dist);
-  const startBuild = build('modern') || (needsLegacy && build('legacy'));
+  const startBuild = build('dist') || build('modern');
   if (startBuild) throw new Error('the unchanged sources do not build: ' + startBuild);
   const base = await runTests();
   if (base) throw new Error(`the unchanged sources fail ${base.test}: ${base.line}`);
@@ -116,7 +121,7 @@ if (changed.status !== 0 || changed.stdout.trim()) {
     fs.writeFileSync(file, src.replace(m.from, () => m.to));
     const t0 = Date.now();
     try {
-      const err = build('modern') || (needsLegacy && build('legacy'));
+      const err = build('modern') || build('dist');
       const secs = () => ((Date.now() - t0) / 1000).toFixed(0) + 's';
       if (err) { notRun.push(m.id); console.log(`BUILD ${m.id} (${secs()}): does not build: ${err}`); continue; }
       // Killed only by a failure that holds when its test runs again alone;
@@ -139,6 +144,9 @@ if (changed.status !== 0 || changed.stdout.trim()) {
       restore();
     }
   }
+  // dist/ holds the last mutant's build: built from the sources again.
+  const clean = build('dist');
+  if (clean) console.log('dist/ could not be built again from the sources: ' + clean);
   console.log(`\n${killedCount} of ${killedCount + survived.length} killed; survived: ${survived.map((m) => m.id).join(', ') || 'none'}` +
     (notRun.length ? `; not run: ${notRun.join(', ')}` : ''));
   process.exit(survived.length ? 1 : 0);
