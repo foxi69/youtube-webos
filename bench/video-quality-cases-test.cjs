@@ -19,7 +19,7 @@ const fs = require('fs');
 const path = require('path');
 const { JSDOM, VirtualConsole } = require('jsdom');
 const { UA, setUserAgent, applyChrome38Downgrade, applyChrome87Downgrade } = require('./chrome38-env.cjs');
-const { createReporter, trustedKey, wait } = require('./harness.cjs');
+const { createReporter, trustedKey, wait, until } = require('./harness.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
@@ -295,6 +295,48 @@ run(async () => {
     t('and the style that hid them meanwhile is gone again',
       !Array.from(win.document.querySelectorAll('style')).some((st) => /^\.GLc3cc \{ opacity: 0/.test(st.textContent)));
   }
+  // ---- webOS 25: the player replaced while its first video is told to play ----
+  if (modern) {
+    const { win, p, log, toggle } = boot({}, { ua: UA25, state: -1, quality: 'hd2160' });
+    // The enforcer, started at attach, tells the player to play and then sets
+    // its wait for the next attempt in the same step. That wait, the first
+    // after one of the old player's attempts, is held here until the new
+    // player is attached; every other timer runs as usual.
+    const held = [];
+    let holdNext = false;
+    const realSetTimeout = win.setTimeout;
+    win.setTimeout = function (cb, ms, ...rest) {
+      if (holdNext) { holdNext = false; held.push(cb); return 0; }
+      return realSetTimeout.call(win, cb, ms, ...rest);
+    };
+    const playA = p.playVideo;
+    p.playVideo = function () { holdNext = true; return playA.apply(this, arguments); };
+    const attempt = await until(() => held.length === 1, 2000);
+    t('webOS 25, replaced: the first player is told to play, and its next attempt waits',
+      attempt && log.calls.includes('play'), `${log.calls.join()} ${held.length} held`);
+    // Force Max Quality off: the new player starts no enforcer of its own.
+    toggle('Force Max Quality', false);
+    const p2 = win.document.createElement('div');
+    p2.id = p.id;
+    for (const k of Object.keys(p)) p2[k] = p[k];
+    let plays2 = 0;
+    let attached2 = 0;
+    p2.playVideo = () => { plays2++; };
+    p2.getPlayerState = () => 2;
+    p2.addEventListener = (type) => { if (type === 'onStateChange') attached2++; };
+    p2.innerHTML = '<video></video>';
+    p.remove();
+    win.document.querySelector('ytlr-app').appendChild(p2);
+    p2.querySelector('video').dispatchEvent(new win.Event('playing'));
+    await wait(50);
+    t('...the new, paused player is attached, the old attempt still waits', attached2 === 1 && held.length === 1,
+      `attached ${attached2}, ${held.length} held`);
+    // The old player's next attempt runs now, with the new player attached.
+    win.setTimeout = realSetTimeout;
+    for (const cb of held.splice(0)) cb();
+    await wait(50);
+    t('...the old player\'s attempt does not play the new one', plays2 === 0, String(plays2));
+  }
 
   // ---- "Playing in": the label, or the picture's own size ----
   {
@@ -339,6 +381,118 @@ run(async () => {
     s.videoId = 'thirdvideo1';
     await wait(3400);
     t('a video replaced before its notice gets none', playingIn().length === 0, playingIn().join(' | '));
+  }
+
+  // ---- A player YouTube builds again on the watch page ----
+  {
+    const { win, p, log } = boot({});
+    await wait(50);
+    t('replaced player: the first one is attached', log.listeners === 1, String(log.listeners));
+    const p2 = win.document.createElement('div');
+    p2.id = p.id;
+    for (const k of Object.keys(p)) p2[k] = p[k];
+    let added = 0;
+    p2.addEventListener = (type) => { if (type === 'onStateChange') added++; };
+    p2.innerHTML = '<video></video>';
+    p.remove();
+    win.document.querySelector('ytlr-app').appendChild(p2);
+    p2.querySelector('video').dispatchEvent(new win.Event('playing'));
+    await wait(50);
+    t('replaced player: the old one is let go', log.calls.includes('removeListener'), log.calls.join());
+    t('replaced player: the new one is attached', added === 1, String(added));
+  }
+  // ---- The player replaced while its quality switch waits for a frame ----
+  {
+    const { win, p, s, log, emit } = boot({}, { levels: ['auto'] });
+    await wait(50);
+    // Frames from now on wait in a queue the test runs itself.
+    const frames = [];
+    win.requestAnimationFrame = (cb) => { frames.push(cb); return frames.length; };
+    s.levels = ['hd2160', 'hd1080', 'hd720', 'auto'];
+    emit(1);
+    t('switch pending, then replaced: the old player was paused for the switch', log.calls[0] === 'pause', log.calls.join());
+    // Before the switch's frames run: a new player, paused.
+    const p2 = win.document.createElement('div');
+    p2.id = p.id;
+    for (const k of Object.keys(p)) p2[k] = p[k];
+    let plays2 = 0;
+    let attached2 = 0;
+    let quality2 = 0;
+    p2.playVideo = () => { plays2++; };
+    p2.setPlaybackQualityRange = () => { quality2++; };
+    p2.setPlaybackQuality = () => { quality2++; };
+    p2.getPlayerState = () => 2;
+    p2.addEventListener = (type) => { if (type === 'onStateChange') attached2++; };
+    p2.innerHTML = '<video></video>';
+    p.remove();
+    win.document.querySelector('ytlr-app').appendChild(p2);
+    p2.querySelector('video').dispatchEvent(new win.Event('playing'));
+    await wait(30); // the put-off attach (a timer, not a frame)
+    t('...the switch frames still wait, and the new player is attached', frames.length === 1 && attached2 === 1,
+      `${frames.length} frames, attached ${attached2}`);
+    // Both of the switch's frames, the second queued by the first.
+    for (let i = 0; i < 10 && frames.length; i++) frames.shift()();
+    t('...the old switch does not play the new, paused player', plays2 === 0 && frames.length === 0, `${plays2} ${frames.length}`);
+    t('...nor sets the new player\'s quality', quality2 === 0, String(quality2));
+  }
+  // ---- The same, replaced between the switch's two frames ----
+  {
+    const { win, p, s, log, emit } = boot({}, { levels: ['auto'] });
+    await wait(50);
+    const frames = [];
+    win.requestAnimationFrame = (cb) => { frames.push(cb); return frames.length; };
+    s.levels = ['hd2160', 'hd1080', 'hd720', 'auto'];
+    emit(1);
+    // The first frame runs on the old player: the range set, the second frame queued.
+    frames.shift()();
+    t('between frames: the first ran on the old player and queued the second',
+      log.calls.includes('range:highres') && frames.length === 1, `${log.calls.join()} ${frames.length}`);
+    const p2 = win.document.createElement('div');
+    p2.id = p.id;
+    for (const k of Object.keys(p)) p2[k] = p[k];
+    let plays2 = 0;
+    let attached2 = 0;
+    p2.playVideo = () => { plays2++; };
+    p2.getPlayerState = () => 2;
+    p2.addEventListener = (type) => { if (type === 'onStateChange') attached2++; };
+    p2.innerHTML = '<video></video>';
+    p.remove();
+    win.document.querySelector('ytlr-app').appendChild(p2);
+    p2.querySelector('video').dispatchEvent(new win.Event('playing'));
+    await wait(30);
+    t('...the new player is attached, the second frame still waits', attached2 === 1 && frames.length === 1,
+      `attached ${attached2}, ${frames.length} frames`);
+    for (let i = 0; i < 10 && frames.length; i++) frames.shift()();
+    t('...the second frame does not play the new, paused player', plays2 === 0, String(plays2));
+  }
+  // ---- Watch, then Back before the put-off attach ran ----
+  {
+    const { win, log } = boot({});
+    await wait(50);
+    win.document.body.className = 'WEB_PAGE_TYPE_BROWSE';
+    await wait(50);
+    const before = log.listeners;
+    const nav = (pageType) => win.dispatchEvent(new win.CustomEvent('yt-navigate-finish', { detail: { pageType } }));
+    nav('watch');
+    nav('browse');
+    await wait(50);
+    t('watch then Back at once: no player attached after Back', log.listeners === before, `${before} -> ${log.listeners}`);
+    // Control: the same navigation to the watch page alone attaches.
+    nav('watch');
+    await wait(50);
+    t('...control: watch alone attaches', log.listeners === before + 1, `${before} -> ${log.listeners}`);
+  }
+  // ---- A setting changed just before the app goes to the background ----
+  {
+    const { win, toggle } = boot({});
+    await wait(50);
+    toggle('Force Max Quality', false);
+    const before = JSON.parse(win.localStorage.getItem('ytaf-configuration') || '{}');
+    t('hidden: the change is still waiting before the app is hidden', before.forceHighResVideo === true, String(before.forceHighResVideo));
+    Object.defineProperty(win.document, 'hidden', { configurable: true, get: () => true });
+    win.document.dispatchEvent(new win.Event('visibilitychange'));
+    const saved = JSON.parse(win.localStorage.getItem('ytaf-configuration') || '{}');
+    t('hidden: a change still waiting is written at once', saved.forceHighResVideo === false, String(saved.forceHighResVideo));
   }
 
   t('no jsdomError in any case', allErrors.length === 0, allErrors[0]);

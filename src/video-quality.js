@@ -21,6 +21,8 @@ let _shouldForce = false;
 let player = null;
 let lastVideoId = null;
 let initTimer = null;
+// The attach a navigation to the watch page put off to the next tick.
+let navInitTimer = null;
 let isDestroyed = false;
 let lastWriteTime = 0;
 let statePollingInterval = null;
@@ -28,6 +30,9 @@ let lastKnownState = null;
 let _isWatchPageCached = false;
 let videoBeingProcessed = null;
 let kickstartInProgress = false;
+// Counts the players let go: a playback enforcer started for one player stops
+// once that player is let go, and never plays the next one.
+let attachGeneration = 0;
 
 const qualitySetForVideo = new Set();
 // How often a video's quality was put back up after the stream fell on its
@@ -56,6 +61,8 @@ let carriedOver = false;
 document.addEventListener('playing', (evt) => {
   const video = evt.target;
   if (video instanceof HTMLVideoElement && !isWatchPage()) previewSrc = video.currentSrc;
+  // A video playing in a player built again with no page change.
+  else if (dropReplacedPlayer()) handleNavigation();
 }, true);
 // A new source on the element: whatever plays next was loaded, not carried over.
 document.addEventListener('emptied', () => { carriedOver = false; }, true);
@@ -73,12 +80,16 @@ async function ensurePlaybackStarts() {
   if (!IS_WEBOS_25 || hasKickstarted || isDestroyed || !player || kickstartInProgress) return;
 
   kickstartInProgress = true;
+  const generation = attachGeneration;
   if (DEBUG) console.info('[VideoQuality] 🚀 Starting playback enforcer...');
 
   const MAX_ATTEMPTS = 10;
   const INTERVAL_MS = 500;
 
   for (let i = 0; i < MAX_ATTEMPTS; i++) {
+    // Its player let go meanwhile (a player built again, or the page left):
+    // the in-progress flag, reset then, belongs to the next player.
+    if (generation !== attachGeneration) return;
     if (isDestroyed || !player || hasKickstarted) {
       kickstartInProgress = false;
       return;
@@ -127,6 +138,7 @@ async function ensurePlaybackStarts() {
     await new Promise(resolve => setTimeout(resolve, INTERVAL_MS));
   }
 
+  if (generation !== attachGeneration) return;
   kickstartInProgress = false;
   if (DEBUG && !hasKickstarted) {
     console.warn('[VideoQuality] ⚠️ Playback enforcer timed out without confirming PLAYING state.');
@@ -362,12 +374,17 @@ function interceptAndUpgradeQuality(videoId) {
   
   const currentState = player.getPlayerState?.();
   const wasPlaying = currentState === STATE_PLAYING;
+  // The frames below belong to this player: one let go meanwhile (a player
+  // built again, or the page left) leaves them nothing to do, and the next
+  // player is never played for this one.
+  const owner = player;
   
   try {
     if (wasPlaying) player.pauseVideo?.();
   } catch { /* ignore */ }
   
   requestAnimationFrame(() => {
+    if (player !== owner) return;
     const result = setQualityOnPlayer();
     
     if (result.success) {
@@ -375,6 +392,7 @@ function interceptAndUpgradeQuality(videoId) {
     }
     
     requestAnimationFrame(() => {
+      if (player !== owner) return;
       if (wasPlaying) {
         try {
           player.playVideo?.();
@@ -578,12 +596,15 @@ export function destroyVideoQuality() {
   DEBUG && console.info('[VideoQuality] Destroying');
   
   isDestroyed = true;
+  attachGeneration++;
   stopPositionRestore();
   
   if (initTimer) {
     clearTimeout(initTimer);
     initTimer = null;
   }
+  clearTimeout(navInitTimer);
+  navInitTimer = null;
   
   stopStatePolling();
   clearQualityToast();
@@ -679,24 +700,40 @@ export function initVideoQuality() {
   poll();
 }
 
+// YouTube can build the player again without leaving the watch page: the old
+// one, out of the page, sends no more state changes. Let it go; the next
+// navigation check attaches to the new one. True when it was let go.
+function dropReplacedPlayer() {
+  if (!player || player.isConnected) return false;
+  DEBUG && console.info('[VideoQuality] Player replaced: attaching again');
+  destroyVideoQuality();
+  return true;
+}
+
 function handleNavigation(event) {
   const isWatch = (event?.detail?.pageType === 'watch') || isWatchPage();
+  if (isWatch) dropReplacedPlayer();
   
   // Also when the attach at the start of the app gave up before a player came
   // (a minute on Home with none): the flag was left set, and the first video
   // opened after that got no player, so no state events at all.
   if (isWatch && (!_isWatchPageCached || (!player && !initTimer))) {
     DEBUG && console.info('[VideoQuality] Navigation: Entering watch page');
-    setTimeout(initVideoQuality, 0); 
+    if (!navInitTimer) navInitTimer = setTimeout(() => { navInitTimer = null; initVideoQuality(); }, 0);
     
   } else if (isWatch && player) {
     // Attached since the start of the app: a video opened from its preview
     // plays on in the same player and sends no new PLAYING.
     try { scheduleQualityToast(player.getPlayerState?.()); } catch { /* the next state change */ }
 
-  } else if (!isWatch && _isWatchPageCached) {
-    DEBUG && console.info('[VideoQuality] Navigation: Leaving watch page');
-    destroyVideoQuality();
+  } else if (!isWatch) {
+    // Left before the put-off attach ran (Back right away): it must not run.
+    clearTimeout(navInitTimer);
+    navInitTimer = null;
+    if (_isWatchPageCached) {
+      DEBUG && console.info('[VideoQuality] Navigation: Leaving watch page');
+      destroyVideoQuality();
+    }
   }
 }
 

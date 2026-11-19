@@ -18,8 +18,12 @@ import { getVideo, isLiveStream, SELECTORS } from './utils.js';
 // (over 1.2 s) that is over 0.3 s, more than the 0.2 s a look moves at 2x.
 const CHECK_MS = 100;
 const END_MARGIN_S = 0.6;
-// A seek this close to the end lands on it: the player would move on there.
-const END_SNAP_S = 0.3;
+// A seek this close to the end while it plays is sent to the start: on the TV
+// (webOS 25) YouTube moved on about 0.5 s after a seek into the last 0.5, 0.8
+// or 1.0 s, with repeat on or not, and not after one to 1.3 s or more before
+// the end. At most a quarter of the video.
+const END_SNAP_S = 1.2;
+const snapWindow = (duration) => Math.min(END_SNAP_S, duration / 4);
 
 // The id of the video being repeated, or null.
 let repeatId = null;
@@ -73,7 +77,7 @@ function check() {
   // auto-skip of an outro goes there) or an ended video goes back too: the
   // player moves on from there. Otherwise, paused or seeking: a viewer who put
   // it near the end keeps it there.
-  const atEnd = video.ended || (!video.paused && video.seeking && video.currentTime >= duration - END_SNAP_S);
+  const atEnd = video.ended || (!video.paused && video.seeking && video.currentTime >= duration - snapWindow(duration));
   if (!atEnd && (video.paused || video.seeking)) return;
   // At most a quarter of the video, so a short one at 2x still plays through.
   const margin = Math.min(END_MARGIN_S * Math.max(1, video.playbackRate || 1), duration / 4);
@@ -90,9 +94,10 @@ function check() {
   }
 }
 
-// A seek to the very end while it plays (on modern builds SponsorBlock's
-// auto-skip of an outro goes there) ends the video at once, and the player or
-// the queue moves on before the timer looks (seen on the TV). The seek is sent
+// A seek to the end while it plays (on modern builds SponsorBlock's auto-skip
+// of an outro goes there, or the viewer seeks into the last second) ends the
+// video, and the player or the queue moves on before the timer looks (seen on
+// the TV). The seek is sent
 // to the start while it begins. A paused video is the viewer's: left where it
 // was put. Media events do not bubble: caught on the way down.
 document.addEventListener('seeking', (evt) => {
@@ -100,7 +105,7 @@ document.addEventListener('seeking', (evt) => {
   if (repeatId === null || currentVideoId() !== repeatId || video !== getVideo() || video.paused) return;
   const duration = video.duration;
   if (!isFinite(duration) || duration <= END_MARGIN_S * 2) return;
-  if (video.currentTime < duration - END_SNAP_S) return;
+  if (video.currentTime < duration - snapWindow(duration)) return;
   if (isLiveStream(document.getElementById(SELECTORS.PLAYER_ID), video) !== false) return;
   video.currentTime = 0;
 }, true);

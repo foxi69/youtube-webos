@@ -526,9 +526,13 @@ run(async () => {
     Object.defineProperty(env.video, 'seeking', { configurable: true, get: () => seeking });
     Object.defineProperty(env.video, 'ended', { configurable: true, get: () => ended });
     seeking = true;
-    t(n('...seeking near the end while playing stays where it is'), tick(599.5) === 599.5);
+    t(n('...seeking 1.5 s before the end while playing stays where it is'), tick(598.5) === 598.5);
     seeking = false;
-    t(n('...and goes back once the seek is done'), tick(599.5) === 0);
+    t(n('...and goes back once the seek is done and the end is near'), tick(599.5) === 0);
+    // The player moves on after a seek into the last second (seen on the TV).
+    seeking = true;
+    t(n('...seeking into the last second while playing goes back at once'), tick(599.0) === 0);
+    seeking = false;
     // SponsorBlock's auto-skip of an outro seeks to the very end on modern builds.
     seeking = true;
     t(n('...a seek to the very end (an auto-skip of an outro) goes back at once'), tick(600) === 0);
@@ -538,9 +542,24 @@ run(async () => {
     env.vs.time = 600;
     env.video.dispatchEvent(new env.win.Event('seeking'));
     t(n('...a seek to the very end is sent to the start as it begins'), env.vs.time === 0, String(env.vs.time));
+    env.vs.time = 599.0;
+    env.video.dispatchEvent(new env.win.Event('seeking'));
+    t(n('...a seek 1.0 s before the end is sent to the start as it begins'), env.vs.time === 0, String(env.vs.time));
+    env.vs.time = 598.7;
+    env.video.dispatchEvent(new env.win.Event('seeking'));
+    t(n('...a seek 1.3 s before the end is left alone'), env.vs.time === 598.7, String(env.vs.time));
     env.vs.time = 590;
     env.video.dispatchEvent(new env.win.Event('seeking'));
     t(n('...a seek short of the end is left alone'), env.vs.time === 590, String(env.vs.time));
+    // A 3 s video: the window is a quarter of it, 0.75 s.
+    env.vs.duration = 3;
+    env.vs.time = 2.0;
+    env.video.dispatchEvent(new env.win.Event('seeking'));
+    t(n('...a 3 s video: a seek 1.0 s before its end is left alone (window 0.75 s)'), env.vs.time === 2.0, String(env.vs.time));
+    env.vs.time = 2.4;
+    env.video.dispatchEvent(new env.win.Event('seeking'));
+    t(n('...and one 0.6 s before its end is sent to the start'), env.vs.time === 0, String(env.vs.time));
+    env.vs.duration = 600;
     // A live stream with a finite duration: its end is the live edge.
     player.getVideoData = () => ({ isLive: true });
     env.vs.time = 600;

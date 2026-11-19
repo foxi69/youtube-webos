@@ -146,6 +146,16 @@ run(async () => {
     env.win.close();
   }
   {
+    // The TV refuses the subscription: the call is over, nothing is left to cancel.
+    const env = boot();
+    await wait(50);
+    const reg = env.register();
+    reg.answer({ returnValue: false, errorText: 'denied' });
+    env.win.dispatchEvent(new env.win.Event('beforeunload'));
+    t(n('a refused subscription is not held: nothing cancelled at unload'), reg.cancelled === false);
+    env.win.close();
+  }
+  {
     const env = boot();
     await wait(50);
     env.addVideo();

@@ -330,6 +330,8 @@ def(String.prototype, 'padEnd', makePad(false));
 
 if (typeof Promise !== 'undefined') {
   def(Promise.prototype, 'finally', function finallyPolyfill(cb) {
+    // As the native one: no callback (or not a function) passes the result on.
+    if (typeof cb !== 'function') return this.then(cb, cb);
     const C = this.constructor || Promise;
     return this.then(
       (value) => C.resolve(cb()).then(() => value),

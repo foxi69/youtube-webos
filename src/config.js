@@ -569,6 +569,9 @@ const scheduleWrite = () => {
 if (typeof window !== 'undefined') {
   window.addEventListener('beforeunload', flushPendingWrite);
   window.addEventListener('pagehide', flushPendingWrite);
+  // The TV can suspend a hidden app without either of those: a change made
+  // just before it went to the background is written now.
+  document.addEventListener('visibilitychange', () => { if (document.hidden) flushPendingWrite(); });
 }
 if (profileSeeded) scheduleWrite();
 
