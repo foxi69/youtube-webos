@@ -208,6 +208,34 @@ run(async () => {
       JSON.parse(backup.get(KEY)).minVideoLength === '5', JSON.stringify(stored(page.win)));
   }
 
+  // ---- A setting changed in the panel before the copy was read keeps its change ----
+  {
+    const backup = savedCopy([[KEY, JSON.stringify({ minVideoLength: '5', removeUpscaledFormats: true, foxThemeApplied: true })]]);
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const page = boot({ data: backup, log: [], idb: { gate } });
+    await wait(300);
+    trustedKey(page.win, 404, page.win.document.body, 'keydown');
+    trustedKey(page.win, 404, page.win.document.body, 'keyup');
+    await wait(300);
+    const label = Array.prototype.slice.call(page.win.document.querySelectorAll('label'))
+      .find((l) => l.textContent.trim() === 'Skip AI-Upscaled Qualities');
+    const input = label && label.querySelector('input');
+    t('precondition: the switch is on, from the defaults, while the copy is not read yet',
+      !!input && input.checked === true && !!stored(page.win) && stored(page.win).minVideoLength === '0',
+      JSON.stringify(stored(page.win)));
+    if (input) input.click();
+    await wait(300);
+    release();
+    await wait(400);
+    const after = stored(page.win);
+    t('a change made before the copy was read stays, in localStorage and in use',
+      !!after && after.removeUpscaledFormats === false && !!input && input.checked === false, JSON.stringify(after));
+    t('...and the other settings still come back from the copy', !!after && after.minVideoLength === '5', JSON.stringify(after));
+    t('...and the copy gets the change too', JSON.parse(backup.get(KEY)).removeUpscaledFormats === false &&
+      JSON.parse(backup.get(KEY)).minVideoLength === '5', backup.get(KEY));
+  }
+
   // ---- The account in use gets its own restored settings ----
   {
     const backup = savedCopy([

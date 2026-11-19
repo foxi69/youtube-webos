@@ -676,6 +676,12 @@ try { recovering = window.localStorage.getItem(RECOVERING_KEY) === '1'; } catch 
 let backupChecked = !!sharedConfigStored && !recovering;
 // A write made before the copy was read: copied once it has been.
 let backupMissed = false;
+// The settings changed before the copy was read (in the panel, say): the
+// restore leaves them as they are now. The app's own records are not among
+// them: what it wrote meanwhile was the defaults' (foxThemeApplied), and the
+// copy's take their place.
+const changedBeforeRestore = new Set();
+const APP_RECORDS = new Set(['foxThemeApplied', 'captionStyleBackup', 'sbTimeSaved', 'sbSkipCount']);
 function copyToBackup(written) {
   if (!written.length) return;
   if (!backupChecked) { backupMissed = true; return; }
@@ -725,6 +731,7 @@ export function configWrite(key, value) {
   if (oldValue === value) return;
 
   DEBUG && console.info('Changing key', key, 'from', oldValue, 'to', value);
+  if (!backupChecked && !APP_RECORDS.has(key)) changedBeforeRestore.add(key);
   localConfig[key] = value;
   scheduleWrite();
   notifyChange(key, value, oldValue);
@@ -877,6 +884,10 @@ function restoreFromBackup() {
     }
     const shared = records[CONFIG_KEY];
     if (!shared) return false;
+    // A setting changed before the read keeps its new value, in the record
+    // written back and in use.
+    for (const key of changedBeforeRestore) shared[key] = localConfig[key];
+    const sharedText = JSON.stringify(shared);
     restoredRecords = records;
     // What the app wrote meanwhile (foxThemeApplied, say) was the defaults'
     // and is replaced. One record at a time: one too big for the quota does
@@ -891,7 +902,7 @@ function restoreFromBackup() {
           delete records[key];
           continue;
         }
-        window.localStorage.setItem(key, text);
+        window.localStorage.setItem(key, key === CONFIG_KEY ? sharedText : text);
       } catch { /* applied from memory below */ }
     }
     console.info('[Config] Settings restored from the backup copy:', entries.length, 'record(s)');
