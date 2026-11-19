@@ -114,6 +114,19 @@ function boot(cfg, { player = true, events = true, record, ua, quality = 'hd720'
     if (!win.document.querySelector('.ytaf-ui-container')) {
       trustedKey(win, GREEN);
     }
+    // Force Max Quality is a choice row (Off, Max, Up to ...): Right from Off
+    // is Max, Left from Max is Off, one step with no limit between.
+    const row = Array.from(win.document.querySelectorAll('.ytaf-ui-container .shortcut-control-row'))
+      .find((r) => r.querySelector('.shortcut-label')?.textContent.trim() === label);
+    if (row) {
+      const want = on ? 'Max' : 'Off';
+      for (let i = 0; i < 8 && row.querySelector('.current-value').textContent !== want; i++) {
+        row.focus();
+        trustedKey(win, on ? 39 : 37, row);
+      }
+      if (row.querySelector('.current-value').textContent !== want) throw new Error(label + ' did not reach ' + want);
+      return;
+    }
     const input = Array.from(win.document.querySelectorAll('.ytaf-ui-container label'))
       .find((l) => l.querySelector('.label-text')?.textContent === label)?.querySelector('input');
     if (!input) throw new Error(label + ' switch missing');
