@@ -1106,6 +1106,20 @@ run(async () => {
     t(n('a number key bound to nothing goes on to YouTube'), unbound === false);
   }
   {
+    // The search page: a number is typed into YouTube's search, even one bound
+    // to an action that runs on every page (the sleep timer).
+    const env = await boot({}, { page: 'WEB_PAGE_TYPE_SEARCH' });
+    const sleeping = () => env.long.filter((h) => h.kind === 'timeout' && h.ms === 15 * 60000).length;
+    const typed = await env.press(D(K.sleep));
+    t(n('search page: a number bound to the sleep timer goes on to YouTube'),
+      typed === false && sleeping() === 0 && env.toasts() === '', `taken=${typed} timers=${sleeping()} ${env.toasts()}`);
+    env.doc.body.className = 'WEB_PAGE_TYPE_BROWSE';
+    await wait(0); // the page observer (a microtask) sees the class
+    const taken = await env.press(D(K.sleep));
+    t(n('...the same key on the home screen sets the sleep timer'),
+      taken === true && sleeping() === 1 && /Sleep timer: 15 min/.test(env.toasts()), `taken=${taken} timers=${sleeping()} ${env.toasts()}`);
+  }
+  {
     // A binding the settings no longer offer (an older version's action).
     const env = await boot({ shortcut_key_5: 'retired_action' });
     const taken = await env.press(D(5));

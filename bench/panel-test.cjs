@@ -211,6 +211,13 @@ setTimeout(async () => {
     row && row.click();
     await new Promise((r) => setTimeout(r, 1100));
     t('Remaining shows only the remaining time', /content:"-9:00"/.test(text()), text());
+    // At double speed the 540 s left take 270 s. The mode goes round to Both
+    // (End Time, then Both), which writes the text at once.
+    Object.defineProperty(v, 'playbackRate', { configurable: true, value: 2 });
+    row && row.click();
+    row && row.click();
+    t('precondition: back on Both', value() === 'Both', value());
+    t('at 2x the time left is halved', /content:"-4:30 · ends [^"]+"/.test(text()), text());
   }
 
   // ---- Case 6: the Premium logo comes back after YouTube repaints the header ----
