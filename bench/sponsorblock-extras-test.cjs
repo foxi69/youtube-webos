@@ -1,0 +1,189 @@
+/**
+ * SponsorBlock's extras: Ignore Segments Shorter Than, Never Skip on These
+ * Channels (and its shortcut action), the undo of an auto skip with Blue, the
+ * time saved, and Count My Skips on SponsorBlock.
+ *
+ *   node bench/sponsorblock-extras-test.cjs <bundle> [legacy|modern]
+ *
+ * The harness is sponsorblock-skip-test's, with the player's channel name.
+ */
+const { createReporter, flavorFromArgs, readBundle, bootPage, trustedKey, wait } = require('./harness.cjs');
+
+// `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
+// with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
+const { modern } = flavorFromArgs();
+const code = readBundle();
+
+const VIDEO_ID = 'abcdefghijk';
+const PRIMARY = 'https://sponsor.ajay.app/api/skipSegments/';
+const FALLBACK = 'https://sponsorblock.inf.re/api/skipSegments/';
+
+const { t, run } = createReporter();
+
+const seg = (category, start, end, actionType = 'skip') =>
+  ({ UUID: `${category}-${start}`, category, actionType, segment: [start, end] });
+
+// A <video> whose time, play state and duration the test sets.
+function fakeVideo(win, video, duration) {
+  const state = { time: 0, paused: false, muted: false, seeks: [], ready: 4 };
+  const fire = (type) => video.dispatchEvent(new win.Event(type));
+  Object.defineProperties(video, {
+    currentTime: {
+      configurable: true,
+      get: () => state.time,
+      set: (v) => {
+        state.time = v;
+        state.seeks.push(v);
+        fire('seeking');
+        setTimeout(() => fire('seeked'), 5);
+      }
+    },
+    duration: { configurable: true, get: () => duration },
+    paused: { configurable: true, get: () => state.paused },
+    seeking: { configurable: true, get: () => false },
+    readyState: { configurable: true, get: () => state.ready },
+    muted: { configurable: true, get: () => state.muted, set: (v) => { state.muted = !!v; } },
+    play: { configurable: true, value: () => { state.paused = false; fire('playing'); return Promise.resolve(); } },
+    pause: { configurable: true, value: () => { state.paused = true; fire('pause'); } }
+  });
+  // Playback reaching `time`: a timeupdate there, as the element sends.
+  const playTo = async (time) => {
+    state.time = time;
+    fire('timeupdate');
+    await wait(40);   // the rAF loop, the toast, a seek's 'seeked'
+  };
+  return { state, playTo };
+}
+
+/**
+ * The bundle on a watch page with `segments` from the API. `api` decides what
+ * each server answers: { primary: status, fallback: status } (200 by default).
+ */
+async function boot(cfg, segments, opts = {}) {
+  const { win, errors, evaluate } = bootPage({
+    code,
+    bodyClass: 'WEB_PAGE_TYPE_WATCH',
+    inner: '\n    <div id="ytlr-player__player-container-player"><video></video></div>',
+    url: `https://www.youtube.com/tv#/watch?v=${VIDEO_ID}`,
+    ignoreNavigation: true,
+    consoleErrors: false,
+    config: Object.assign({
+      enableAdBlock: false, enableSponsorBlock: true, enableReturnYouTubeDislike: false,
+      enableDeArrow: false, thumbnailQuality: 'off', enableAutoLogin: false,
+      checkForUpdates: false, showWhatsNew: false, sbPeriodicRefresh: false
+    }, cfg),
+    evaluate: false
+  });
+  const asked = [];
+  const reported = [];
+  const api = opts.api || {};
+  win.fetch = (resource, init) => {
+    const url = String(resource && resource.url || resource);
+    if (url.indexOf('/viewedVideoSponsorTime') !== -1) {
+      reported.push((init && init.method) + ' ' + url);
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
+    }
+    if (url.indexOf('/skipSegments/') === -1) return new Promise(() => {});
+    asked.push(url);
+    const status = url.indexOf(PRIMARY) === 0 ? (api.primary || 200) : (api.fallback || 200);
+    const body = [{ videoID: VIDEO_ID, segments: JSON.parse(JSON.stringify(segments)) }];
+    return Promise.resolve({ ok: status === 200, status, json: () => Promise.resolve(body) });
+  };
+  const player = win.document.getElementById('ytlr-player__player-container-player');
+  player.getVideoData = () => ({ video_id: VIDEO_ID, author: 'author' in opts ? opts.author : 'Some Channel' });
+  const video = win.document.querySelector('video');
+  const v = fakeVideo(win, video, 'duration' in opts ? opts.duration : 600);
+  if (opts.startAt) v.state.time = opts.startAt;
+  if (opts.readyState !== undefined) v.state.ready = opts.readyState;
+  // opts.holdClock: the page's Date.now stands still, so a window the bundle
+  // times with it (the highlight's 4 s) cannot run out on a slow machine.
+  if (opts.holdClock) {
+    const held = win.Date.now();
+    win.Date.now = () => held;
+  }
+  evaluate();
+  // The handler starts a moment after the page (about 0.8 s): wait for its
+  // request, then for the answer to be applied.
+  for (let i = 0; i < 100 && !asked.length; i++) await wait(50);
+  await wait(150);
+  const toasts = () => (win.document.querySelector('.ytaf-notification-container') || {}).textContent || '';
+  return { win, errors, asked, reported, video, ...v, toasts, sb: () => win.sponsorblock };
+}
+
+
+const stored = (win) => JSON.parse(win.localStorage.getItem('ytaf-configuration') || '{}');
+const BLUE = 406;
+const press = async (win, code) => {
+  trustedKey(win, code, win.document.body, 'keydown');
+  trustedKey(win, code, win.document.body, 'keyup');
+  await wait(200);
+};
+
+run(async () => {
+  const f = modern ? 'modern' : 'legacy';
+  const n = (s) => `${f}: ${s}`;
+
+  // ---- Ignore Segments Shorter Than ----
+  {
+    const env = await boot({ sbMinSegmentLength: '5' }, [seg('sponsor', 30, 33), seg('selfpromo', 100, 120)]);
+    await env.playTo(30.2);
+    t(n('min length: a 3 s segment is not skipped'), env.state.time === 30.2 && env.state.seeks.length === 0, String(env.state.time));
+    await env.playTo(100.2);
+    t(n('min length: a 20 s one still is'), env.state.time === 120, String(env.state.time));
+    t(n('min length: no page error'), env.errors.length === 0, env.errors[0]);
+  }
+
+  // ---- Never Skip on These Channels ----
+  {
+    const env = await boot({ sbWhitelistChannels: ['some channel'] }, [seg('sponsor', 30, 60)]);
+    await env.playTo(30.2);
+    t(n('whitelist: nothing is skipped on a listed channel (no case)'), env.state.time === 30.2 && env.state.seeks.length === 0);
+  }
+  {
+    const env = await boot({ sbWhitelistChannels: ['Other Channel'] }, [seg('sponsor', 30, 60)]);
+    await env.playTo(30.2);
+    t(n('whitelist: another channel is skipped as before'), env.state.time === 60, String(env.state.time));
+  }
+  {
+    const env = await boot({ shortcut_key_8: 'sb_whitelist_channel' }, [seg('sponsor', 30, 60)]);
+    await press(env.win, 56);
+    t(n('whitelist action: the channel playing goes on the list'),
+      JSON.stringify(stored(env.win).sbWhitelistChannels) === '["Some Channel"]', JSON.stringify(stored(env.win).sbWhitelistChannels));
+    await env.playTo(30.2);
+    t(n('whitelist action: ...and its segment is not skipped'), env.state.time === 30.2, String(env.state.time));
+    await press(env.win, 56);
+    t(n('whitelist action: pressed again, it comes off'), JSON.stringify(stored(env.win).sbWhitelistChannels) === '[]');
+  }
+
+  // ---- Undo with Blue, the time saved ----
+  {
+    const env = await boot({}, [seg('sponsor', 30, 60)]);
+    await env.playTo(30.2);
+    t(n('undo: the segment was skipped'), env.state.time === 60);
+    await wait(300);
+    t(n('stats: the time saved is counted'), Math.round(stored(env.win).sbTimeSaved) === 30 && stored(env.win).sbSkipCount === 1,
+      JSON.stringify([stored(env.win).sbTimeSaved, stored(env.win).sbSkipCount]));
+    await press(env.win, BLUE);
+    t(n('undo: Blue just after goes back to where the skip started'), Math.abs(env.state.time - 30.2) < 0.01, String(env.state.time));
+    await env.playTo(31);
+    t(n('undo: ...and the segment plays'), env.state.time === 31, String(env.state.time));
+    t(n('undo: "Skip undone" is shown'), env.toasts().indexOf('Skip undone') !== -1, env.toasts());
+    t(n('report off: nothing is sent'), env.reported.length === 0, env.reported.join());
+  }
+  {
+    const env = await boot({ sbReportSkips: true }, [seg('sponsor', 30, 60)]);
+    await env.playTo(30.2);
+    await wait(50);
+    t(n('report on: the skipped segment is reported viewed, by its UUID'),
+      env.reported.length === 1 && env.reported[0] === 'POST https://sponsor.ajay.app/api/viewedVideoSponsorTime?UUID=sponsor-30',
+      env.reported.join());
+  }
+  {
+    // After a seek elsewhere, Blue is no undo.
+    const env = await boot({}, [seg('sponsor', 30, 60)]);
+    await env.playTo(30.2);
+    await env.playTo(300);
+    await press(env.win, BLUE);
+    t(n('undo: not after the viewer went somewhere else'), env.state.time === 300, String(env.state.time));
+  }
+});

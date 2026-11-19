@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Added
 
++ SponsorBlock: **Ignore Segments Shorter Than** (Off, 1, 2, 3, 5 or 10 s): a shorter segment is not skipped or muted, only shown on the seek bar. From SponsorBlock's own extension and iSponsorBlockTV.
++ SponsorBlock: **Never Skip on These Channels**, a list of channel names (compared without case), edited like Blocked Channels: nothing is skipped or muted on their videos, and the segments stay on the seek bar. A new shortcut action, **SponsorBlock: Never Skip on This Channel (on/off)**, puts the channel of the video playing on the list, or takes it off. From SponsorBlock's own extension and iSponsorBlockTV.
++ SponsorBlock: **Blue just after an auto skip takes it back**: within 8 s of it, the video goes back to where the skip started and that segment plays. Blue still skips a manual segment first; the highlight jump waits those 8 s. Not after a seek elsewhere.
++ SponsorBlock: the **time saved** by skipping, and the number of skips, at the bottom of the SponsorBlock tab, with a Reset button. Reset All Settings leaves it alone.
++ SponsorBlock: **Count My Skips on SponsorBlock** (off by default): each skipped segment is reported to sponsor.ajay.app as viewed, by its id only, as SponsorBlock's own extension does, for the view counts its submitters see.
 + **Remember Playback Speed** (Player, off by default, under Playback Speed Control): the app starts at the speed last set, not at 1×, and the first video opens at it with no reload, as the next video after a speed change does. A live stream and the tile previews still play at 1×.
 + Shortcuts: a new action, **Toggle Speed (1x / Last)**: from 1× to the last other speed set (1.5× before any), and from any other speed back to 1×.
 + **Subtitle Position** (Player): Default, Higher or Highest. The higher ones lift the subtitles, for a TV or soundbar that covers the bottom of the picture, or text burnt into the video.

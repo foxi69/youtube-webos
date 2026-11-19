@@ -111,6 +111,7 @@ export const shortcutActions = {
   audio_only: 'Toggle Audio-Only Mode',
   repeat_video: 'Repeat Video (on/off)',
   sb_manual_skip: 'Manual Skip / Jump to Highlight',
+  sb_whitelist_channel: 'SponsorBlock: Never Skip on This Channel (on/off)',
   jump_to_live: 'Jump to Live',
   config_menu: 'Open/Close Settings',
   speed_up: 'Playback Speed +',
@@ -224,6 +225,16 @@ export const forceQualityModes = [
   ['480', 'Up to 480p']
 ];
 
+/** Ignore Segments Shorter Than, in seconds ('0': off). */
+export const sbMinSegmentLengthModes = {
+  0: 'Off',
+  1: '1 s',
+  2: '2 s',
+  3: '3 s',
+  5: '5 s',
+  10: '10 s'
+};
+
 /** Subtitle Position (caption-style.js). */
 export const subtitlePositionModes = {
   default: 'Default',
@@ -322,6 +333,15 @@ const configOptions = new Map([
   ['skipSegmentsOnce', { default: false, desc: 'Skip Segments Once' }],
   ['sbFullVideoLabel', { default: false, desc: 'Show an icon when a video is entirely an advertisement' }],
   ['sbShowTimeWithSkips', { default: false, desc: 'Show time with skips removed' }],
+  // Segments shorter than this, in seconds, are not skipped or muted ('0': all are).
+  ['sbMinSegmentLength', { default: '0', desc: 'Ignore Segments Shorter Than' }],
+  // Channel names, compared without case: nothing is skipped on their videos.
+  ['sbWhitelistChannels', { default: [], desc: 'Never Skip on These Channels' }],
+  // Off until switched on: a third party learns which segments were skipped.
+  ['sbReportSkips', { default: false, desc: 'Count My Skips on SponsorBlock' }],
+  // The time skipping saved, in seconds, and the number of skips. Not shown as settings.
+  ['sbTimeSaved', { default: 0, desc: 'SponsorBlock time saved' }],
+  ['sbSkipCount', { default: 0, desc: 'SponsorBlock skips' }],
   ['sbMode_sponsor', { default: 'auto_skip', desc: 'Sponsor' }],
   ['sbMode_intro', { default: 'auto_skip', desc: 'Intermission/Intro' }],
   ['sbMode_outro', { default: 'auto_skip', desc: 'Endcards/Credits' }],
@@ -672,8 +692,8 @@ export function configWrite(key, value) {
 
 // Left alone by a reset: where the settings are kept (a reset must not merge
 // or drop the accounts' profiles), and the records that are not settings
-// (a flag, and YouTube's own caption style).
-const RESET_KEEPS = new Set(['perAccountSettings', 'foxThemeApplied', 'captionStyleBackup']);
+// (a flag, YouTube's own caption style, SponsorBlock's time saved).
+const RESET_KEEPS = new Set(['perAccountSettings', 'foxThemeApplied', 'captionStyleBackup', 'sbTimeSaved', 'sbSkipCount']);
 
 /**
  * Every setting back to its default, told to its listeners as if changed in

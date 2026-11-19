@@ -1,4 +1,4 @@
-import { aiVideoModes, subtitlesAtStartModes, logoStyles, timeRemainingModes, thumbnailQualityModes, videoCodecModes, uiThemes, clockModes, startPageModes, minVideoLengthModes, seekStepModes, maxVideoAgeModes, searchUploadDateModes, dearrowTitleFormats, dearrowThumbnailFallbacks, forceQualityModes, subtitlePositionModes } from './config.js';
+import { aiVideoModes, subtitlesAtStartModes, logoStyles, timeRemainingModes, thumbnailQualityModes, videoCodecModes, uiThemes, clockModes, startPageModes, minVideoLengthModes, seekStepModes, maxVideoAgeModes, searchUploadDateModes, dearrowTitleFormats, dearrowThumbnailFallbacks, forceQualityModes, subtitlePositionModes, sbMinSegmentLengthModes } from './config.js';
 import { configAddChangeListener, configRead, configWrite, configGetDesc, segmentTypes, configGetDefault, shortcutActions, sbModes, sbModesHighlight, videoPreviewModes, videoQualityDisplayModes, configGetProfileStatus } from './config.js';
 import './ui.css';
 import './auto-login.js';
@@ -7,6 +7,7 @@ import { initVideoQuality } from './video-quality.js';
 import { initLogoStyle } from './logo-style.js';
 import { initMathLetters } from './math-letters.js';
 import { initPlaybackSpeed, stepSpeed, resetSpeed, toggleSpeed } from './playback-speed.js';
+import { toggleChannelWhitelist, formatTimeSaved } from './sponsorblock-extras.js';
 import sponsorBlockUI from './Sponsorblock-UI.js';
 import { sendKey, REMOTE_KEYS, COLOR_CODE_MAP, isGuestMode, invalidateGuestModeCache, isWatchPage, isShortsPage, isSearchPage, SELECTORS, getVideo, SYNTHETIC_KEY_FLAG, isAutoplayOn, isLiveStream } from './utils.js';
 import { initTrackingBlock, destroyTrackingBlock } from './adblock.js';
@@ -187,6 +188,7 @@ const ACTION_SCOPES = {
     speed_down: 'VIDEO',
     speed_reset: 'VIDEO',
     speed_toggle: 'VIDEO',
+    sb_whitelist_channel: 'VIDEO',
     // From any page: the queue is filled on Home, and can be started there.
     queue_next: 'GLOBAL',
     queue_clear: 'GLOBAL',
@@ -507,6 +509,27 @@ function createForceQualityControl() {
   configAddChangeListener('maxVideoQuality', updateDisplay);
   updateDisplay();
   return alignControlLabel(container, text);
+}
+
+/**
+ * The time SponsorBlock saved, under its settings: "Time saved: 1 h 23 min
+ * (456 skips)", kept up to date while the panel is open, with a button that
+ * sets it back to nothing.
+ */
+function createSbStatsLine() {
+  const text = createElement('span', {});
+  const update = () => {
+    const count = Number(configRead('sbSkipCount')) || 0;
+    text.textContent = `Time saved: ${formatTimeSaved(configRead('sbTimeSaved'))} (${count} ${count === 1 ? 'skip' : 'skips'})`;
+  };
+  const reset = createElement('button', {
+    class: 'ytaf-list-btn', text: 'Reset', tabIndex: 0,
+    events: { click: () => { configWrite('sbTimeSaved', 0); configWrite('sbSkipCount', 0); } }
+  });
+  configAddChangeListener('sbTimeSaved', update);
+  configAddChangeListener('sbSkipCount', update);
+  update();
+  return createElement('div', { class: 'ytaf-sb-stats', style: { padding: '8px 4px 4px 4.3vh' } }, text, reset);
 }
 
 const createLogoControl = () => createAlignedCycleControl('logoStyle', logoStyles);
@@ -1190,7 +1213,16 @@ function createOptionsPanel() {
       createConfigCheckbox('sbPeriodicRefresh'),
   	createConfigCheckbox('skipSegmentsOnce'),
       createConfigCheckbox('sbFullVideoLabel'),
-      createConfigCheckbox('sbShowTimeWithSkips')
+      createConfigCheckbox('sbShowTimeWithSkips'),
+      createAlignedCycleControl('sbMinSegmentLength', sbMinSegmentLengthModes),
+      createConfigCheckbox('sbReportSkips'),
+      createElement('div', { text: 'Tells sponsor.ajay.app which segments were skipped (their ids only), for the counts SponsorBlock shows their submitters', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
+      createElement('div', { class: 'ytaf-sb-whitelist-title', text: configGetDesc('sbWhitelistChannels'), style: { padding: '8px 4px 4px 4.3vh' } }),
+      createListEditor('sbWhitelistChannels', {
+        placeholder: 'Channel name, then OK',
+        emptyText: 'None. A key set to "SponsorBlock: Never Skip on This Channel" adds the channel playing.'
+      }),
+      createSbStatsLine()
     );
     pageSponsor.appendChild(elmBlock);
     pageSponsor.appendChild(createElement('div', {}, createElement('small', { text: 'Sponsor segments skipping - https://sponsor.ajay.app' })));
@@ -2211,6 +2243,10 @@ function handleShortcutAction(action) {
 
     case 'speed_toggle':
         toggleSpeed();
+        break;
+
+    case 'sb_whitelist_channel':
+        toggleChannelWhitelist();
         break;
     case 'toggle_subs':
         // Resolved here rather than above the switch: only this one action
