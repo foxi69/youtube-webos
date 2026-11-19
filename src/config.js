@@ -914,8 +914,18 @@ function restoreFromBackup() {
     // What the app wrote meanwhile (foxThemeApplied, say) was the defaults'
     // and is replaced. One record at a time: one too big for the quota does
     // not keep the others out.
+    // An account's record still in localStorage is newer than its copy (a
+    // copy can lag: a write that failed, a change before the copy was read)
+    // and stays; only the shared record, gone at the start, and the missing
+    // ones are written back.
     for (const [key, text] of entries) {
-      try { window.localStorage.setItem(key, text); } catch { /* applied from memory below */ }
+      try {
+        if (key !== CONFIG_KEY && window.localStorage.getItem(key) !== null) {
+          delete records[key];
+          continue;
+        }
+        window.localStorage.setItem(key, text);
+      } catch { /* applied from memory below */ }
     }
     console.info('[Config] Settings restored from the backup copy:', entries.length, 'record(s)');
     // The account's profile is loaded below, once the shared values are in:

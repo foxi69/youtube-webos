@@ -10,7 +10,9 @@ const { createReporter, bootPage, trustedKey, wait } = require('./harness.cjs');
 
 const { t, run } = createReporter();
 
-function boot(config, { live = false } = {}) {
+function boot(config, opts = {}) {
+  // opts.live: whether the video playing is live; read on each call, so a test can change it.
+  if (opts.live === undefined) opts.live = false;
   const page = bootPage({
     bodyClass: 'WEB_PAGE_TYPE_WATCH',
     url: 'https://www.youtube.com/tv#/watch?v=aaaaaaaaaaa',
@@ -40,7 +42,7 @@ function boot(config, { live = false } = {}) {
       win.URL.revokeObjectURL = () => {};
       const el = win.document.createElement('div');
       el.id = 'ytlr-player__player-container-player';
-      el.getVideoData = () => ({ video_id: 'aaaaaaaaaaa', isLive: live });
+      el.getVideoData = () => ({ video_id: 'aaaaaaaaaaa', isLive: opts.live });
       el.getCurrentTime = () => 12;
       el.getPlayerState = () => 1;
       el.getPlaybackQuality = () => 'hd1080';
@@ -114,7 +116,8 @@ run(async () => {
   }
   // ---- Toggle Speed on a live stream ----
   {
-    const { win } = boot({ shortcut_key_7: 'speed_toggle', rememberPlaybackSpeed: true, savedPlaybackSpeed: 1.5 }, { live: true });
+    const opts = { live: true };
+    const { win } = boot({ shortcut_key_7: 'speed_toggle', rememberPlaybackSpeed: true, savedPlaybackSpeed: 1.5 }, opts);
     await wait(300);
     const before = stored(win).savedPlaybackSpeed;
     trustedKey(win, 55, win.document.body, 'keydown');
@@ -125,5 +128,8 @@ run(async () => {
     t('...and it still plays at 1x', win.ytafSpeed.getSpeed() === 1);
     t('...with the notice that there is no speed on a live stream',
       (win.document.querySelector('.ytaf-notification-container') || {}).textContent.indexOf('live stream') !== -1);
+    // The next video is not live: it plays at the speed kept.
+    opts.live = false;
+    t('...and the next video that is not live plays at it', win.ytafSpeed.getSpeed() === 1.5, win.ytafSpeed.getSpeed());
   }
 });

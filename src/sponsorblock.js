@@ -823,6 +823,8 @@ class SponsorBlockHandler {
         const onTime = () => { if (video.currentTime >= last.to) this.clearUndone(); };
         this.undone = { keys, until: last.to, video, onTime };
         video.addEventListener('timeupdate', onTime);
+        // Our own seek: the highlight's guard (autoJumpToHighlight) leaves it.
+        this.ownSkipTarget = last.from;
         video.currentTime = last.from;
         this.requestAF(() => showNotification('Skip undone'));
         return true;
@@ -1036,6 +1038,9 @@ class SponsorBlockHandler {
         const old = this.video;
         if (!old) return;
         this._endHighlightGuard();
+        // An undone skip belongs to the <video> it was undone on.
+        this.clearUndone();
+        this.lastAutoSkip = null;
         this.leaveMutedSegment();
         this.stopHighFreqLoop();
         if (this.isTimeListenerActive) {

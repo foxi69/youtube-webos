@@ -8,7 +8,7 @@
  * The page and the API are sponsorblock-fixtures.cjs's.
  */
 const { createReporter, flavorFromArgs, trustedKey, wait } = require('./harness.cjs');
-const { BAR_MULTI, seg, bootSponsorBlock } = require('./sponsorblock-fixtures.cjs');
+const { BAR_MULTI, seg, fakeVideo, bootSponsorBlock } = require('./sponsorblock-fixtures.cjs');
 
 const { modern } = flavorFromArgs();
 
@@ -276,5 +276,37 @@ run(async () => {
     t(n('skip button: names the key Manual Skip is set to'), !!key && key.textContent === 'Red', key ? key.textContent : 'none');
     await env.playTo(61);
     t(n('skip button: gone once the segment is behind'), !env.win.document.querySelector('.ytaf-sb-skip-button'));
+  }
+
+  // ---- Undo, the highlight's guard and a new <video> ----
+  {
+    // Auto Skip to Start jumped to the highlight at 90; a skip from 93 is
+    // undone while the highlight's guard still holds: the undo stays.
+    const clock = {};
+    const env = await boot({ sbMode_highlight: 'auto_skip' }, [seg('poi_highlight', 90, 90, 'poi'), seg('sponsor', 93, 120)], { clock });
+    await wait(100);
+    t(n('undo and highlight: jumped to the highlight first'), env.state.seeks[0] === 90, env.state.seeks.join());
+    await env.playTo(93.2);
+    t(n('undo and highlight: the segment was skipped'), env.state.time === 120, String(env.state.time));
+    await press(env.win, BLUE);
+    await wait(100);
+    t(n('undo and highlight: the undo is not taken back to the highlight'), Math.abs(env.state.time - 93.2) < 0.01, env.state.seeks.join());
+  }
+  {
+    const clock = {};
+    const env = await boot({}, [seg('sponsor', 30, 60)], { clock });
+    await env.playTo(30.2);
+    await press(env.win, BLUE);
+    t(n('undo, new <video>: undone on the first one'), !!env.sb().undone);
+    // YouTube puts another <video> in the player.
+    const box = env.win.document.getElementById('ytlr-player__player-container-player');
+    const old = box.querySelector('video');
+    const el = env.win.document.createElement('video');
+    fakeVideo(env.win, el, 600);
+    box.removeChild(old);
+    box.appendChild(el);
+    await wait(600);
+    t(n('undo, new <video>: the exemption goes with the old one'), env.sb().video === el && !env.sb().undone,
+      `${env.sb().video === el} ${!!env.sb().undone}`);
   }
 });
