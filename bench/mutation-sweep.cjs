@@ -19,6 +19,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawn, spawnSync } = require('child_process');
+const { runAll } = require('./mutation-sweep-run.cjs');
 
 const ROOT = path.join(__dirname, '..');
 const args = process.argv.slice(2);
@@ -61,47 +62,12 @@ function build(kind) {
 
 const FAIL_LINE = /^FAIL|^\s*\w*Error\b/;
 
-// Runs the tests `jobs` at a time, but those in `skip`; resolves with the
-// first one that failed, or null when all passed, once the others it stopped
-// have exited (so a test run again alone after it runs alone). A test process
-// that cannot be started rejects: no result, and the source is put back.
+// Runs the tests `jobs` at a time, but those in `skip` (mutation-sweep-run.cjs):
+// the first failure, or null, once the others it stopped have exited; a test
+// process that cannot be started rejects, so the source is put back.
 function runTests(skip = []) {
-  return new Promise((resolve, reject) => {
-    const queue = tests.filter((t) => !skip.includes(t.name));
-    const running = new Set();
-    let outcome;
-    const settleWhenIdle = () => {
-      if (outcome && !running.size) outcome.error ? reject(outcome.error) : resolve(outcome.result);
-    };
-    const finish = (result, error) => {
-      if (outcome) return;
-      outcome = { result, error };
-      for (const c of running) c.kill();
-      settleWhenIdle();
-    };
-    const next = () => {
-      if (outcome) return settleWhenIdle();
-      if (!queue.length) { if (!running.size) finish(null); return; }
-      const t = queue.shift();
-      let out = '';
-      const child = spawn(process.execPath, [path.join('bench', t.name + '.cjs'), ...t.argv], { cwd: ROOT });
-      child.stdout.on('data', (d) => { out += d; });
-      child.stderr.on('data', (d) => { out += d; });
-      running.add(child);
-      child.on('error', (e) => {
-        running.delete(child);
-        finish(null, new Error(`${t.name} could not be run: ${e.message}`));
-      });
-      child.on('close', (code) => {
-        if (!running.delete(child)) return;
-        if (code !== 0 && !outcome) {
-          const line = out.split('\n').find((l) => FAIL_LINE.test(l)) || 'exit ' + code;
-          finish({ t, test: t.name, line: line.trim().slice(0, 140) });
-        } else next();
-      });
-    };
-    for (let i = 0; i < jobs; i++) next();
-  });
+  return runAll(tests.filter((t) => !skip.includes(t.name)), jobs,
+    (t) => spawn(process.execPath, [path.join('bench', t.name + '.cjs'), ...t.argv], { cwd: ROOT }), FAIL_LINE);
 }
 
 // A failure under load is run again alone: the FAIL line it gives then, or

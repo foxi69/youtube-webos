@@ -15,6 +15,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 node bench/lifecycle-audit-test.cjs
+node bench/mutation-sweep-test.cjs
 
 B=dist/webOSUserScripts/userScript.js
 env=()
