@@ -254,7 +254,7 @@ run(async () => {
     env.video.currentTime = 20;
     await wait(40);
     await env.playTo(30.5);
-    t(n('...the segment is offered, not skipped'), env.state.time === 30.5 && /Sponsored: Press Blue to skip/.test(env.toasts()),
+    t(n('...the segment is offered, not skipped'), env.state.time === 30.5 && !!env.doc.querySelector('.ytaf-sb-skip-button'),
       env.toasts());
     const before = env.overlay();
     await env.pickColor('Self Promotion', '#abcdef');

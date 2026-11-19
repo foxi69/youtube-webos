@@ -7,6 +7,7 @@ import { isLegacyWebOS } from './webos-utils.js';
 import { getVideo } from './utils.js';
 import { currentChannelName, isChannelWhitelisted } from './sponsorblock-extras.js';
 import { fetchJsonWithTimeout } from './fetch-timeout.js';
+import { showSkipButton } from './sponsorblock-skip-button.js';
 import './sponsorblock.css';
 
 // The official server first. The community mirror is only asked when the
@@ -1706,7 +1707,9 @@ class SponsorBlockHandler {
                 const title = categoryName.charAt(0).toUpperCase() + categoryName.slice(1);
 
                 if (this.activeManualNotification) this.activeManualNotification.remove();
-                this.activeManualNotification = showNotification(`${title}: Press Blue to skip`, 0);
+                // The Skip button, bottom right (sponsorblock-skip-button.js):
+                // the key skips it, and so does the Magic Remote pointer.
+                this.activeManualNotification = showSkipButton(title, () => this.handleBlueButton());
             }
             return;
         }

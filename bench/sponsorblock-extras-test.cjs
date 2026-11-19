@@ -241,4 +241,40 @@ run(async () => {
     await wait(700);
     t(n('chapters off: no chapters found'), env.state.time === 10 && env.toasts().indexOf('No chapters found') !== -1, env.toasts());
   }
+  // ---- The Skip button of a Manual Skip segment ----
+  {
+    const env = await boot({ sbMode_sponsor: 'manual_skip' }, [seg('sponsor', 30, 60)]);
+    // The player at the left two thirds of a 1920x1080 screen (a side panel open beside it).
+    const box = { left: 0, top: 0, right: 1280, bottom: 720, width: 1280, height: 720 };
+    env.player.getBoundingClientRect = () => box;
+    Object.defineProperty(env.win, 'innerWidth', { configurable: true, value: 1920 });
+    Object.defineProperty(env.win, 'innerHeight', { configurable: true, value: 1080 });
+    await env.playTo(30.2);
+    const button = () => env.win.document.querySelector('.ytaf-sb-skip-button');
+    t(n('skip button: shown in a Manual Skip segment, naming it and its key'), !!button() &&
+      button().textContent === 'Skip SponsoredBlue', button() ? button().textContent : 'none');
+    t(n('skip button: in the player\'s bottom right, above its controls'),
+      !!button() && button().style.right === '672px' && button().style.bottom === '504px' && button().style.display === '',
+      button() && `${button().style.right} ${button().style.bottom}`);
+    box.width = 0; box.height = 0;
+    await wait(600);
+    t(n('skip button: hidden while the player is not on screen'), button().style.display === 'none');
+    box.width = 1920; box.height = 1080; box.right = 1920; box.bottom = 1080;
+    await wait(600);
+    t(n('skip button: follows the player back to full screen'), button().style.display === '' &&
+      button().style.right === '48px' && button().style.bottom === '216px', `${button().style.right} ${button().style.bottom}`);
+    button().click();
+    await wait(60);
+    t(n('skip button: a click (the Magic Remote pointer) skips the segment'), env.state.time === 60, String(env.state.time));
+    t(n('skip button: and it goes'), !button());
+  }
+  {
+    const env = await boot({ sbMode_sponsor: 'manual_skip', shortcut_key_blue: 'none', shortcut_key_red: 'sb_manual_skip' },
+      [seg('sponsor', 30, 60)]);
+    await env.playTo(30.2);
+    const key = env.win.document.querySelector('.ytaf-sb-skip-key');
+    t(n('skip button: names the key Manual Skip is set to'), !!key && key.textContent === 'Red', key ? key.textContent : 'none');
+    await env.playTo(61);
+    t(n('skip button: gone once the segment is behind'), !env.win.document.querySelector('.ytaf-sb-skip-button'));
+  }
 });

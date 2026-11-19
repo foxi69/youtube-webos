@@ -104,7 +104,10 @@ run(async () => {
     await env.playTo(10);
     await env.playTo(30.2);
     t(n('manual skip: playback stays in the segment'), env.state.time === 30.2 && env.state.seeks.length === 0);
-    t(n('...and a toast offers the blue key'), /Sponsored: Press Blue to skip/.test(env.toasts()), env.toasts());
+    const skipButton = () => env.win.document.querySelector('.ytaf-sb-skip-button');
+    t(n('...and the Skip button offers it, with the blue key'), !!skipButton() &&
+      skipButton().querySelector('.ytaf-sb-skip-label').textContent === 'Skip Sponsored' &&
+      skipButton().querySelector('.ytaf-sb-skip-key').textContent === 'Blue', skipButton() ? skipButton().textContent : 'no button');
     const handled = env.sb().handleBlueButton();
     await wait(40);
     t(n('...which skips it to its end'), handled === true && env.state.time === 60, String(env.state.time));
