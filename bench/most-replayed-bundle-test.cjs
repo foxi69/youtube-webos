@@ -288,6 +288,28 @@ run(async () => {
     env.win.close();
   }
 
+  // The same host element positioned by the page between two redraws (the
+  // bar's size changes too, so the rule is written again): it is read again,
+  // and not made relative from the reading of when it was static.
+  {
+    const env = boot({ answers: { [A]: heatmap(VALUES_A) } });
+    const host = env.doc.querySelector(HOST);
+    env.box(host, 100, 900, 1720, 80);
+    env.box(host.querySelector('[idomkey="progress-bar"]'), 160, 950, 1600, 6);
+    await wait(TICK * 2);
+    t(n('same host positioned later: while static it is made relative (precondition)'),
+      env.rule().includes('position:relative!important;'), env.rule());
+    host.style.position = 'absolute';
+    env.box(host, 100, 880, 1720, 100);
+    env.box(host.querySelector('[idomkey="progress-bar"]'), 160, 940, 1500, 6);
+    await wait(TICK * 2);
+    t(n('...redrawn for its new size'), env.rule().includes('width:1500px;'), env.rule());
+    t(n('...and, now positioned, it is no longer made relative'),
+      env.rule().includes(`${HOST}::after{`) && !env.rule().includes('position:relative!important;'), env.rule());
+    t(n('same host positioned later: no page errors'), env.errors.length === 0, env.errors.join(' | '));
+    env.win.close();
+  }
+
   // ---- The setting off from the start ----
   {
     const env = boot({ on: false, answers: { [A]: heatmap(VALUES_A) } });
