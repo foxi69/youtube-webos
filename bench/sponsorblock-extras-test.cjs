@@ -8,7 +8,7 @@
  * The page and the API are sponsorblock-fixtures.cjs's.
  */
 const { createReporter, flavorFromArgs, trustedKey, wait } = require('./harness.cjs');
-const { seg, bootSponsorBlock } = require('./sponsorblock-fixtures.cjs');
+const { BAR_MULTI, seg, bootSponsorBlock } = require('./sponsorblock-fixtures.cjs');
 
 const { modern } = flavorFromArgs();
 
@@ -189,5 +189,37 @@ run(async () => {
     await wait(1300);
     await env.playTo(30.5);
     t(n('whitelist, channel known and not listed: skipped'), env.state.time === 60, String(env.state.time));
+  }
+  // ---- Community chapters ----
+  {
+    const chapter = (start, end, name) => Object.assign(seg('chapter', start, end, 'chapter'), { description: name });
+    const segments = [chapter(30, 60, 'Intro'), chapter(100, 200, 'Main part'), seg('sponsor', 300, 330)];
+    // With the seek bar, so the sponsor segment's mark is drawn and the chapters' are not.
+    const env = await boot({ shortcut_key_4: 'chapter_skip_prev' }, segments, { bar: BAR_MULTI });
+    const KEY_5 = 53;
+    const chapterKey = async () => { await press(env.win, KEY_5); await wait(700); };
+    await env.playTo(30.2);
+    t(n('chapters: a chapter is not skipped'), env.state.time === 30.2, String(env.state.time));
+    t(n('chapters: and has no mark on the bar'), env.marks().length === 1, String(env.marks().length));
+    await env.playTo(10);
+    await chapterKey();
+    t(n('chapters: Next Chapter goes to the first chapter, with its name'),
+      env.state.time === 30 && env.toasts().indexOf('Next Chapter: Intro') !== -1, `${env.state.time} ${env.toasts()}`);
+    await chapterKey();
+    t(n('chapters: ...then to its end'), env.state.time === 60, String(env.state.time));
+    await chapterKey();
+    t(n('chapters: ...then to the next one'), env.state.time === 100 && env.toasts().indexOf('Main part') !== -1, String(env.state.time));
+    env.state.time = 101.5;
+    await press(env.win, 52);
+    await wait(700);
+    t(n('chapters: Previous Chapter just after a start goes to the stop before it'), env.state.time === 60, String(env.state.time));
+  }
+  {
+    const env = await boot({ sbCommunityChapters: false },
+      [Object.assign(seg('chapter', 30, 60, 'chapter'), { description: 'Intro' })]);
+    await env.playTo(10);
+    await press(env.win, 53);
+    await wait(700);
+    t(n('chapters off: no chapters found'), env.state.time === 10 && env.toasts().indexOf('No chapters found') !== -1, env.toasts());
   }
 });

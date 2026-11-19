@@ -1180,6 +1180,8 @@ function createOptionsPanel() {
       createConfigCheckbox('sbFullVideoLabel'),
       createConfigCheckbox('sbShowTimeWithSkips'),
       createAlignedCycleControl('sbMinSegmentLength', sbMinSegmentLengthModes),
+      createConfigCheckbox('sbCommunityChapters'),
+      createElement('div', { text: 'Skip to Next/Previous Chapter goes by the chapters SponsorBlock users made, on a video with none of its own', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
       createConfigCheckbox('sbReportSkips'),
       createElement('div', { text: 'Tells sponsor.ajay.app which segments were skipped (their ids only), for the counts SponsorBlock shows their submitters', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
       createElement('div', { class: 'ytaf-sb-whitelist-title', text: configGetDesc('sbWhitelistChannels'), style: { padding: '8px 4px 4px 4.3vh' } }),
@@ -1528,6 +1530,46 @@ function chapterStarts(chapterEls, duration) {
   });
 }
 
+/**
+ * Skip to Next/Previous Chapter on a video with no chapters of its own: the
+ * community's chapters from SponsorBlock (sponsorblock.js communityChapters),
+ * with Use Community Chapters on. Their starts and ends are the stops; the
+ * chapter's name comes with the notice. False when there are none.
+ */
+function skipCommunityChapter(video, direction) {
+  if (!configRead('sbCommunityChapters') || !window.sponsorblock ||
+      typeof window.sponsorblock.communityChapters !== 'function') return false;
+  const chapters = window.sponsorblock.communityChapters();
+  if (!chapters.length) return false;
+  const stops = [0];
+  for (const chapter of chapters) stops.push(chapter.start, chapter.end);
+  const sorted = stops.filter((at, i, all) => at < video.duration && all.indexOf(at) === i).sort((a, b) => a - b);
+  const now = video.currentTime;
+  let target = -1;
+  if (direction === 'next') {
+    target = sorted.find((at) => at > now + 1);
+    if (target === undefined) target = -1;
+  } else {
+    let current = 0;
+    let previous = 0;
+    for (const at of sorted) {
+      if (at > now) break;
+      previous = current;
+      current = at;
+    }
+    target = now - current > 3 ? current : previous;
+  }
+  if (target === -1) {
+    showNotification(direction === 'next' ? 'No next chapter' : 'Start of video');
+    return true;
+  }
+  video.currentTime = target;
+  const chapter = chapters.find((c) => c.start === target);
+  const label = direction === 'next' ? 'Next Chapter' : 'Previous Chapter';
+  showNotification(chapter && chapter.name ? `${label}: ${chapter.name}` : label);
+  return true;
+}
+
 async function skipChapter(direction = 'next') {
   if(isShortsPage()) return;
   // A press during the wait below would find no chapters yet.
@@ -1586,7 +1628,7 @@ async function skipChapter(direction = 'next') {
   }
 
   if (chapterEls.length === 0) {
-    showNotification('No chapters found');
+    if (!skipCommunityChapter(video, direction)) showNotification('No chapters found');
     if (wasForcedNow) closeForcedControls();
     return;
   }
@@ -1596,7 +1638,7 @@ async function skipChapter(direction = 'next') {
 
   // A bar without chapter markers.
   if (starts.length === 0) {
-    showNotification('No chapters found');
+    if (!skipCommunityChapter(video, direction)) showNotification('No chapters found');
     if (wasForcedNow) closeForcedControls();
     return;
   }

@@ -293,6 +293,7 @@ Return YouTube Dislike sends the id of every video you open to returnyoutubedisl
 | Show an icon when a video is entirely an advertisement | Off |
 | Show time with skips removed | Off |
 | Ignore Segments Shorter Than (1, 2, 3, 5, 10 s) | Off |
+| Use Community Chapters When a Video Has None | On |
 | Count My Skips on SponsorBlock | Off |
 | Never Skip on These Channels | Empty |
 

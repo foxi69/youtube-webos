@@ -362,6 +362,8 @@ const configOptions = new Map([
   ['sbShowTimeWithSkips', { default: false, desc: 'Show time with skips removed' }],
   // Segments shorter than this, in seconds, are not skipped or muted ('0': all are).
   ['sbMinSegmentLength', { default: '0', desc: 'Ignore Segments Shorter Than' }],
+  // Skip to Next/Previous Chapter on a video without chapters: SponsorBlock's (ui.js).
+  ['sbCommunityChapters', { default: true, desc: 'Use Community Chapters When a Video Has None' }],
   // Channel names, compared without case: nothing is skipped on their videos.
   ['sbWhitelistChannels', { default: [], desc: 'Never Skip on These Channels' }],
   // Off until switched on: a third party learns which segments were skipped.
