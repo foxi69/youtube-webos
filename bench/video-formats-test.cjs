@@ -93,6 +93,24 @@ run(async () => {
     const both = boot({ forceQuality: 'up1080', removeUpscaledFormats: true }).parse(player(mixed));
     t('both: each filter drops its own (the upscaled 1080p, the real 1440p)', itags(both) === '398,251', itags(both));
   }
+  // ---- Up to as the only filter on ----
+  {
+    // Every other filter of player responses off: Ad Blocking (and the
+    // filters under it), the upscaled formats, end cards, thumbnails, nag
+    // screens, captions at start, original audio, the long-press menu, DeArrow.
+    const alone = {
+      enableAdBlock: false, removeUpscaledFormats: false, hideEndcards: false, thumbnailQuality: 'off',
+      enableAutoLogin: false, subtitlesAtStart: 'youtube', forceOriginalAudio: false,
+      extendLongPressMenu: false, enableDeArrow: false, enableLegacyEmojiFix: false
+    };
+    const withAds = (formats) => Object.assign(player(formats), { adPlacements: [{ a: 1 }] });
+    const max = boot(Object.assign({}, alone, { forceQuality: 'max' })).parse(withAds(list()));
+    t('nothing else on: with Max, a player response is left as it is (its ads too)',
+      itags(max) === '401,400,399,398,251' && max.adPlacements.length === 1, itags(max) + ' ' + max.adPlacements.length);
+    const capped = boot(Object.assign({}, alone, { forceQuality: 'up1080' })).parse(withAds(list()));
+    t('nothing else on: Up to 1080p still drops the formats above it',
+      itags(capped) === '399,398,251' && capped.adPlacements.length === 1, itags(capped) + ' ' + capped.adPlacements.length);
+  }
 
   // ---- The panel row ----
   {

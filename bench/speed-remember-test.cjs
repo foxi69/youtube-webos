@@ -6,7 +6,7 @@
  *
  * Usage: node bench/speed-remember-test.cjs <bundle> [legacy|modern]
  */
-const { createReporter, bootPage, trustedKey, wait } = require('./harness.cjs');
+const { createReporter, bootPage, trustedKey, wait, until } = require('./harness.cjs');
 
 const { t, run } = createReporter();
 
@@ -92,6 +92,35 @@ run(async () => {
   {
     const { win } = boot({ rememberPlaybackSpeed: true, savedPlaybackSpeed: 1.5, enablePlaybackSpeed: false });
     t('on, with Playback Speed Control off: 1x', win.ytafSpeed.getSpeed() === 1, win.ytafSpeed.getSpeed());
+  }
+  // ---- The panel: Remember Playback Speed follows Playback Speed Control ----
+  {
+    const { win, errors } = boot({ rememberPlaybackSpeed: true, savedPlaybackSpeed: 1.5, enablePlaybackSpeed: false });
+    const box = (start) => {
+      const label = [...win.document.querySelectorAll('.ytaf-ui-container label')]
+        .find((l) => l.textContent.trim().startsWith(start));
+      return label && label.querySelector('input[type=checkbox]');
+    };
+    trustedKey(win, 404);
+    await until(() => box('Remember Playback Speed'));
+    const remember = box('Remember Playback Speed');
+    const control = box('Playback Speed Control');
+    t('the panel has Playback Speed Control and Remember Playback Speed', !!remember && !!control);
+    if (!remember || !control) return;
+    t('Playback Speed Control off: Remember Playback Speed is greyed out',
+      remember.disabled === true && remember.closest('label').style.opacity === '0.5',
+      remember.disabled + ' ' + remember.closest('label').style.opacity);
+    control.checked = true;
+    control.dispatchEvent(new win.Event('change', { bubbles: true }));
+    t('...turned on in the panel: Remember Playback Speed is usable',
+      remember.disabled === false && remember.closest('label').style.opacity === '1',
+      remember.disabled + ' ' + remember.closest('label').style.opacity);
+    // The start ran with it off: the stored speed was not set then, so it is
+    // not taken up now either.
+    t('...the video still plays at 1x, not the speed stored for the start', win.ytafSpeed.getSpeed() === 1, win.ytafSpeed.getSpeed());
+    win.ytafSpeed.setSpeed(2, { immediate: true });
+    t('...while a speed set now applies', win.ytafSpeed.getSpeed() === 2, win.ytafSpeed.getSpeed());
+    t('...with no page error', errors.length === 0, errors[0]);
   }
   {
     const { win } = boot({ rememberPlaybackSpeed: true, savedPlaybackSpeed: 7 });

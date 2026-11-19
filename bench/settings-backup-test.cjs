@@ -6,7 +6,7 @@
  *
  * Usage: node bench/settings-backup-test.cjs [dist/webOSUserScripts/userScript.js] [legacy|modern]
  */
-const { createReporter, bootPage, trustedKey, wait, UA } = require('./harness.cjs');
+const { createReporter, bootPage, trustedKey, wait, until, UA } = require('./harness.cjs');
 
 const KEY = 'ytaf-configuration';
 
@@ -479,6 +479,70 @@ run(async () => {
       JSON.stringify(stored(second.win)));
     t('...the copy is not replaced by the defaults of the failed run', JSON.parse(backup.get(KEY)).minVideoLength === '5', backup.get(KEY));
     t('...and the mark is gone', second.win.localStorage.getItem('ytaf-settings-recovering') === null);
+  }
+
+  // ---- A failed read, then a start that changes a setting before the copy is read again ----
+  {
+    const backup = savedCopy([[KEY, JSON.stringify({ minVideoLength: '5', removeUpscaledFormats: true, foxThemeApplied: true })]]);
+    const before = backup.get(KEY);
+    const first = boot({ data: backup, log: [], idb: { failAfter: 0 } });
+    await wait(700);
+    const left = {};
+    for (let i = 0; i < first.win.localStorage.length; i++) {
+      const k = first.win.localStorage.key(i);
+      left[k] = first.win.localStorage.getItem(k);
+    }
+    t('precondition (recovering): the failed run left its defaults and the mark',
+      left['ytaf-settings-recovering'] === '1' && !!left[KEY] && JSON.parse(left[KEY]).minVideoLength === '0',
+      JSON.stringify(left));
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const log = [];
+    const page = boot({ data: backup, log, storage: left, idb: { gate } });
+    await wait(300);
+    trustedKey(page.win, 404, page.win.document.body, 'keydown');
+    trustedKey(page.win, 404, page.win.document.body, 'keyup');
+    await until(() => page.win.document.querySelector('.ytaf-ui-container label'));
+    const label = Array.prototype.slice.call(page.win.document.querySelectorAll('label'))
+      .find((l) => l.textContent.trim() === 'Skip AI-Upscaled Qualities');
+    const input = label && label.querySelector('input');
+    t('precondition (recovering): the switch is on, from the defaults, while the copy is not read yet',
+      !!input && input.checked === true, String(input && input.checked));
+    if (input) input.click();
+    // Written to localStorage: a copy of that write would be made in the same
+    // turn (the database is open by now), so it is checked at once.
+    const written = await until(() => stored(page.win).removeUpscaledFormats === false);
+    t('...precondition: the change was written to localStorage', written, JSON.stringify(stored(page.win)));
+    t('recovering: a write before the copy was read again is not copied over it', backup.get(KEY) === before && log.length === 0,
+      `${backup.get(KEY)} ${log.join()}`);
+    release();
+    await until(() => stored(page.win).minVideoLength === '5');
+    t('...once read, its settings come back, with the change kept',
+      stored(page.win).minVideoLength === '5' && stored(page.win).removeUpscaledFormats === false, JSON.stringify(stored(page.win)));
+    await until(() => log.length > 0);
+    t('...and the copy gets the change then, with its other settings',
+      JSON.parse(backup.get(KEY)).minVideoLength === '5' && JSON.parse(backup.get(KEY)).removeUpscaledFormats === false, backup.get(KEY));
+  }
+
+  // ---- The app's own records written before the copy was read take the copy's ----
+  {
+    // A copy from before the Fox theme: the flag is the copy's (false), not
+    // the true the app writes at start, so the next start moves its theme once.
+    const backup = savedCopy([[KEY, JSON.stringify({ minVideoLength: '5', uiTheme: 'blue-force-field', foxThemeApplied: false })]]);
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const page = boot({ data: backup, log: [], idb: { gate } });
+    const wrote = await until(() => !!stored(page.win) && stored(page.win).foxThemeApplied === true);
+    t('precondition: the app writes its flag before the copy is read', wrote, JSON.stringify(stored(page.win)));
+    release();
+    await until(() => stored(page.win).minVideoLength === '5');
+    t('the copy\'s flag takes the place of the one the app wrote',
+      stored(page.win).minVideoLength === '5' && stored(page.win).uiTheme === 'blue-force-field' && stored(page.win).foxThemeApplied === false,
+      JSON.stringify(stored(page.win)));
+    const next = boot({ data: backup, log: [], storage: { [KEY]: page.win.localStorage.getItem(KEY) } });
+    await until(() => stored(next.win).foxThemeApplied === true);
+    t('...so the next start moves the restored theme to Fox once',
+      stored(next.win).uiTheme === 'fox' && stored(next.win).foxThemeApplied === true, JSON.stringify(stored(next.win)));
   }
 
   // ---- A database that does not open, then the next start ----
