@@ -666,7 +666,14 @@ function writeNow() {
  * no settings in localStorage reads the copy first, and copies nothing until
  * then: the defaults it starts with would replace the copy it is about to read.
  */
-let backupChecked = !!sharedConfigStored;
+// Set in localStorage while the copy has not been read back: a run whose read
+// failed leaves it, so the next start tries again instead of taking the
+// settings that run stored (its defaults) for the real ones and copying them
+// over the copy.
+const RECOVERING_KEY = 'ytaf-settings-recovering';
+let recovering = false;
+try { recovering = window.localStorage.getItem(RECOVERING_KEY) === '1'; } catch { /* no storage */ }
+let backupChecked = !!sharedConfigStored && !recovering;
 // A write made before the copy was read: copied once it has been.
 let backupMissed = false;
 function copyToBackup(written) {
@@ -869,7 +876,7 @@ function restoreFromBackup() {
       } catch { /* not a settings record */ }
     }
     const shared = records[CONFIG_KEY];
-    if (!shared) return;
+    if (!shared) return false;
     restoredRecords = records;
     // What the app wrote meanwhile (foxThemeApplied, say) was the defaults'
     // and is replaced. One record at a time: one too big for the quota does
@@ -899,14 +906,19 @@ function restoreFromBackup() {
       const profile = readAccountProfile();
       if (profile !== null) switchProfile(profile);
     }
-  }).then(() => {
+    return true;
+  }).then((restored) => {
+    try { window.localStorage.removeItem(RECOVERING_KEY); } catch { /* no storage */ }
     backupChecked = true;
+    // No copy, while localStorage has settings (a run after a failed read
+    // whose copy turned out empty): those are copied.
+    if (!restored && sharedConfigStored) copyStoredToBackup();
     // Copied only if something was written meanwhile: with nothing changed
     // there is nothing to keep.
     if (backupMissed) scheduleWrite();
   }, () => {
-    // The copy could not be read: it is left as it is, and nothing is copied
-    // over it this run.
+    // The copy could not be read: it is left as it is, nothing is copied over
+    // it this run, and the next start reads it again (RECOVERING_KEY stays).
   });
 }
 /**
@@ -927,8 +939,12 @@ function copyStoredToBackup() {
   copyToBackup(entries);
 }
 if (typeof window !== 'undefined') {
-  if (sharedConfigStored) setTimeout(copyStoredToBackup, BACKUP_COPY_DELAY_MS);
-  else restoreFromBackup();
+  if (sharedConfigStored && !recovering) {
+    setTimeout(copyStoredToBackup, BACKUP_COPY_DELAY_MS);
+  } else {
+    try { window.localStorage.setItem(RECOVERING_KEY, '1'); } catch { /* no storage */ }
+    restoreFromBackup();
+  }
 }
 
 export function configAddChangeListener(key, callback) {

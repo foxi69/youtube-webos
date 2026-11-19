@@ -11,52 +11,72 @@ const { createReporter, bootPage, trustedKey, wait, UA } = require('./harness.cj
 const KEY = 'ytaf-configuration';
 
 /**
- * A small IndexedDB: one database, one object store, kept in `data` across
- * page loads. opts.gate: a promise the cursor waits for before its first
- * record; opts.failAfter: the cursor fails after that many records.
+ * A small IndexedDB: one database whose records are kept in `data` across
+ * page loads, with its version and object stores on data.version and
+ * data.stores. As the real one: a database opened at a higher version gets
+ * onupgradeneeded before onsuccess, and a transaction on a store that was
+ * never created throws NotFoundError, so the app must create its store.
+ * opts.gate: a promise the cursor waits for before its first record;
+ * opts.failAfter: the cursor fails after that many records.
  */
 function fakeIndexedDB(data, log, opts = {}) {
   const later = (fn) => setTimeout(fn, 1);
-  const request = (fill) => {
-    const req = { result: undefined, onsuccess: null, onerror: null };
-    later(() => { fill(req); if (req.onsuccess) req.onsuccess(); });
-    return req;
-  };
-  const transaction = () => {
+  if (!data.stores) data.stores = new Set();
+  const notFound = (name) => Object.assign(new Error(`No objectStore named ${name}`), { name: 'NotFoundError' });
+  const transaction = (name) => {
+    if (!data.stores.has(name)) throw notFound(name);
     const tx = { oncomplete: null, onerror: null, onabort: null };
     const done = () => later(() => tx.oncomplete && tx.oncomplete());
-    tx.objectStore = () => ({
-      put(value, key) { data.set(key, value); log.push('put ' + key); done(); },
-      delete(key) { data.delete(key); done(); },
-      openCursor() {
-        const keys = Array.from(data.keys()).sort();
-        let i = 0;
-        const req = { result: null, onsuccess: null, onerror: null };
-        const step = () => later(() => {
-          if (opts.failAfter !== undefined && i >= opts.failAfter) {
-            req.error = new Error('read failed');
-            if (req.onerror) req.onerror();
-            return;
-          }
-          const key = keys[i++];
-          req.result = key === undefined ? null : { key, value: data.get(key), continue: step };
-          if (req.onsuccess) req.onsuccess();
-        });
-        if (opts.gate) opts.gate.then(step);
-        else step();
-        return req;
-      }
-    });
+    tx.objectStore = (storeName) => {
+      if (storeName !== name) throw notFound(storeName);
+      return {
+        put(value, key) { data.set(key, value); log.push('put ' + key); done(); },
+        delete(key) { data.delete(key); done(); },
+        openCursor() {
+          const keys = Array.from(data.keys()).sort();
+          let i = 0;
+          const req = { result: null, onsuccess: null, onerror: null };
+          const step = () => later(() => {
+            if (opts.failAfter !== undefined && i >= opts.failAfter) {
+              req.error = new Error('read failed');
+              if (req.onerror) req.onerror();
+              return;
+            }
+            const key = keys[i++];
+            req.result = key === undefined ? null : { key, value: data.get(key), continue: step };
+            if (req.onsuccess) req.onsuccess();
+          });
+          if (opts.gate) opts.gate.then(step);
+          else step();
+          return req;
+        }
+      };
+    };
     return tx;
   };
-  const db = { transaction, createObjectStore() {} };
+  const db = { transaction, createObjectStore(name) { data.stores.add(name); } };
   return {
-    open() {
-      const req = request((r) => { r.result = db; });
-      later(() => req.onupgradeneeded && req.onupgradeneeded());
+    open(name, version = 1) {
+      const req = { result: undefined, onsuccess: null, onerror: null, onupgradeneeded: null };
+      later(() => {
+        req.result = db;
+        if (version > (data.version || 0)) {
+          data.version = version;
+          if (req.onupgradeneeded) req.onupgradeneeded();
+        }
+        if (req.onsuccess) req.onsuccess();
+      });
       return req;
     }
   };
+}
+
+/** A copy that an earlier run of the app left: the database with its store, and these records. */
+function savedCopy(entries) {
+  const data = new Map(entries);
+  data.version = 1;
+  data.stores = new Set(['kv']);
+  return data;
 }
 
 function boot({ config, storage, data, log, noIdb, idb = {}, setup }) {
@@ -146,7 +166,7 @@ run(async () => {
   t('...and nothing threw', second.errors.length === 0, second.errors[0]);
 
   // ---- Per-account profiles go back too ----
-  const profiles = new Map([
+  const profiles = savedCopy([
     [KEY, JSON.stringify({ perAccountSettings: true, foxThemeApplied: true })],
     [KEY + '::0123456789abcdef', JSON.stringify({ minVideoLength: '20' })]
   ]);
@@ -167,7 +187,7 @@ run(async () => {
 
   // ---- The copy is not written over before it was read ----
   {
-    const backup = new Map([[KEY, JSON.stringify({ minVideoLength: '5', foxThemeApplied: true })]]);
+    const backup = savedCopy([[KEY, JSON.stringify({ minVideoLength: '5', foxThemeApplied: true })]]);
     const before = backup.get(KEY);
     let release;
     const gate = new Promise((r) => { release = r; });
@@ -184,7 +204,7 @@ run(async () => {
 
   // ---- The account in use gets its own restored settings ----
   {
-    const backup = new Map([
+    const backup = savedCopy([
       [KEY, JSON.stringify({ perAccountSettings: true, foxThemeApplied: true, minVideoLength: '1' })],
       [PROFILE_KEY, JSON.stringify({ minVideoLength: '20' })]
     ]);
@@ -199,7 +219,7 @@ run(async () => {
 
   // ---- localStorage refuses the account's record (quota) ----
   {
-    const backup = new Map([
+    const backup = savedCopy([
       [KEY, JSON.stringify({ perAccountSettings: true, foxThemeApplied: true, minVideoLength: '1' })],
       [PROFILE_KEY, JSON.stringify({ minVideoLength: '20' })]
     ]);
@@ -222,7 +242,7 @@ run(async () => {
   // ---- Quota, then a switch to another account whose record did not fit ----
   {
     const OTHER_KEY = KEY + '::' + hashString('accountId=def');
-    const backup = new Map([
+    const backup = savedCopy([
       [KEY, JSON.stringify({ perAccountSettings: true, foxThemeApplied: true, minVideoLength: '1' })],
       [PROFILE_KEY, JSON.stringify({ minVideoLength: '20' })],
       [OTHER_KEY, JSON.stringify({ minVideoLength: '10' })]
@@ -253,7 +273,7 @@ run(async () => {
 
   // ---- A read that fails part way ----
   {
-    const backup = new Map([
+    const backup = savedCopy([
       [KEY, JSON.stringify({ minVideoLength: '5', foxThemeApplied: true })],
       [KEY + '::zzzz', JSON.stringify({ minVideoLength: '20' })]
     ]);
@@ -262,6 +282,27 @@ run(async () => {
     await wait(700);
     t('a failed read restores nothing', !!stored(page.win) && stored(page.win).minVideoLength === '0', JSON.stringify(stored(page.win)));
     t('...and copies nothing over the copy', backup.get(KEY) === shared && backup.has(KEY + '::zzzz'), backup.get(KEY));
+  }
+
+  // ---- A failed read, then the next start ----
+  {
+    const backup = savedCopy([[KEY, JSON.stringify({ minVideoLength: '5', foxThemeApplied: true })]]);
+    const first = boot({ data: backup, log: [], idb: { failAfter: 0 } });
+    await wait(700);
+    // What that run left in localStorage: the defaults it wrote, and the mark that the copy was not read.
+    const left = {};
+    for (let i = 0; i < first.win.localStorage.length; i++) {
+      const k = first.win.localStorage.key(i);
+      left[k] = first.win.localStorage.getItem(k);
+    }
+    t('a failed read leaves the mark for the next start', left['ytaf-settings-recovering'] === '1' && !!left[KEY],
+      JSON.stringify(Object.keys(left)));
+    const second = boot({ data: backup, log: [], storage: left });
+    await wait(1800);
+    t('the next start reads the copy again and takes its settings', !!stored(second.win) && stored(second.win).minVideoLength === '5',
+      JSON.stringify(stored(second.win)));
+    t('...the copy is not replaced by the defaults of the failed run', JSON.parse(backup.get(KEY)).minVideoLength === '5', backup.get(KEY));
+    t('...and the mark is gone', second.win.localStorage.getItem('ytaf-settings-recovering') === null);
   }
 
   // ---- No IndexedDB ----
