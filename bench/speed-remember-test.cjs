@@ -112,4 +112,18 @@ run(async () => {
     await wait(200);
     t('toggle from 1x goes to the last other speed (2x)', win.ytafSpeed.getSpeed() === 2, win.ytafSpeed.getSpeed());
   }
+  // ---- Toggle Speed on a live stream ----
+  {
+    const { win } = boot({ shortcut_key_7: 'speed_toggle', rememberPlaybackSpeed: true, savedPlaybackSpeed: 1.5 }, { live: true });
+    await wait(300);
+    const before = stored(win).savedPlaybackSpeed;
+    trustedKey(win, 55, win.document.body, 'keydown');
+    trustedKey(win, 55, win.document.body, 'keyup');
+    await wait(400);
+    t('toggle on a live stream: the speed kept for the next video stays', stored(win).savedPlaybackSpeed === before && before === 1.5,
+      JSON.stringify([before, stored(win).savedPlaybackSpeed]));
+    t('...and it still plays at 1x', win.ytafSpeed.getSpeed() === 1);
+    t('...with the notice that there is no speed on a live stream',
+      (win.document.querySelector('.ytaf-notification-container') || {}).textContent.indexOf('live stream') !== -1);
+  }
 });

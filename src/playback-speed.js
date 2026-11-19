@@ -633,7 +633,13 @@ export function createSpeedController({
   }
 
   // Toggle Speed (1x / Last): from 1x to `other`, from any other speed to 1x.
+  // Not on a live stream, which plays at 1x whatever is set: the speed set
+  // stays for the next video that is not live.
   function toggle(other) {
+    if (isLive()) {
+      refuseLive();
+      return;
+    }
     setSpeed(currentSpeed === 1 ? other : 1);
   }
 
