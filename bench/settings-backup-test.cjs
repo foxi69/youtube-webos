@@ -219,6 +219,38 @@ run(async () => {
     t('quota: ...and its copy is not written over', JSON.parse(backup.get(PROFILE_KEY)).minVideoLength === '20', backup.get(PROFILE_KEY));
   }
 
+  // ---- Quota, then a switch to another account whose record did not fit ----
+  {
+    const OTHER_KEY = KEY + '::' + hashString('accountId=def');
+    const backup = new Map([
+      [KEY, JSON.stringify({ perAccountSettings: true, foxThemeApplied: true, minVideoLength: '1' })],
+      [PROFILE_KEY, JSON.stringify({ minVideoLength: '20' })],
+      [OTHER_KEY, JSON.stringify({ minVideoLength: '10' })]
+    ]);
+    const page = boot({
+      data: backup, log: [], storage: IDENTITY,
+      setup: (w) => {
+        const set = w.Storage.prototype.setItem;
+        // The other account's record is the one that does not fit, until the app writes a smaller one.
+        let refused = false;
+        w.Storage.prototype.setItem = function (key, value) {
+          if (key === OTHER_KEY && !refused) { refused = true; throw new Error('QuotaExceededError'); }
+          return set.call(this, key, value);
+        };
+      }
+    });
+    await wait(700);
+    // "Who's watching" picks the other account.
+    page.win.localStorage.setItem('yt.leanback.default::last-identity-used', JSON.stringify({ data: { accountId: 'def' } }));
+    page.win.dispatchEvent(new page.win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: true } }));
+    page.win.dispatchEvent(new page.win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: false } }));
+    await wait(600);
+    t('quota, another account later: it gets its restored settings, not the shared ones',
+      await panelValue(page.win, 'Hide Videos Shorter Than') === '10 min', await panelValue(page.win, 'Hide Videos Shorter Than'));
+    t('quota, another account later: its copy keeps its own values', JSON.parse(backup.get(OTHER_KEY)).minVideoLength === '10',
+      backup.get(OTHER_KEY));
+  }
+
   // ---- A read that fails part way ----
   {
     const backup = new Map([

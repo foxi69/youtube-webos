@@ -757,7 +757,13 @@ function notifyChange(key, newValue, oldValue) {
  * each had been changed in the panel. The outgoing account's pending write is
  * flushed to its own profile first.
  */
-function switchProfile(profile, restored = null) {
+// The records restoreFromBackup took from the copy, kept for the session: a
+// profile localStorage refused to take back (quota) is loaded from here, for
+// the account in use and for one switched to later. Without it that account
+// was seeded afresh, and the smaller record, written, replaced its copy.
+let restoredRecords = null;
+
+function switchProfile(profile) {
   if (profile === activeProfile) return;
   flushPendingWrite();
   const previous = activeProfile;
@@ -767,7 +773,7 @@ function switchProfile(profile, restored = null) {
   if (storesProfile(profile)) {
     // Restored from the backup copy: its record, also when localStorage
     // refused to take it back (quota), so the account is not seeded afresh.
-    incoming = loadStored(profileStorageKey(profile)) || (restored && restored[profileStorageKey(profile)]) || null;
+    incoming = loadStored(profileStorageKey(profile)) || (restoredRecords && restoredRecords[profileStorageKey(profile)]) || null;
   }
   if (!incoming) {
     // An account seen for the first time (and every guest session) starts
@@ -864,6 +870,7 @@ function restoreFromBackup() {
     }
     const shared = records[CONFIG_KEY];
     if (!shared) return;
+    restoredRecords = records;
     // What the app wrote meanwhile (foxThemeApplied, say) was the defaults'
     // and is replaced. One record at a time: one too big for the quota does
     // not keep the others out.
@@ -890,7 +897,7 @@ function restoreFromBackup() {
     activeProfile = null;
     if (localConfig.perAccountSettings) {
       const profile = readAccountProfile();
-      if (profile !== null) switchProfile(profile, records);
+      if (profile !== null) switchProfile(profile);
     }
   }).then(() => {
     backupChecked = true;
