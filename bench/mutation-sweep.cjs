@@ -13,8 +13,8 @@
  * mutants.json (bench/mutants.json by default): [{ id, file, from, to, why }],
  * `from` found exactly once in `file`. A mutant with `equivalent` (why no
  * test can tell it from the original) is listed and not run. Prints one line
- * per mutant and a summary; exits 1 when a mutant survived. The legacy-only tests are left
- * out: a mutant of a legacy-only module is reported as not covered here.
+ * per mutant and a summary; exits 1 when a mutant survived, 2 when the run
+ * itself broke (a build or a test that could not run to its end).
  */
 const fs = require('fs');
 const path = require('path');
@@ -63,8 +63,13 @@ for (const m of ci.matchAll(/^\s*run ([\w-]+) "\$B"(.*)$/gm)) {
 // 'dist': the legacy build (dist/: the launcher and the legacy bundle); 'modern': dist-mut/.
 function build(kind) {
   const argv = { dist: [], modern: ['--env', 'modern', '--output-path', 'dist-mut'] }[kind];
-  const r = spawnSync('npx webpack --mode=production --stats errors-only ' + argv.join(' '), { cwd: ROOT, shell: true, encoding: 'utf8' });
-  return r.status === 0 ? null : (r.stdout + r.stderr).trim().split('\n').slice(-3).join(' | ');
+  const r = spawnSync('npx webpack --mode=production --stats errors-only ' + argv.join(' '),
+    { cwd: ROOT, shell: true, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  // Stopped (a signal) or not run at all: no answer about the mutant.
+  if (r.error || r.signal) throw new Error(`the ${kind} build did not finish: ${r.error ? r.error.message : r.signal}`);
+  if (r.status === 0) return null;
+  // A failed build is always a message, also one that printed nothing.
+  return ((r.stdout + r.stderr).trim().split('\n').slice(-3).join(' | ') || `exit ${r.status}`);
 }
 
 const FAIL_LINE = /^FAIL|^\s*\w*Error\b/;
@@ -84,7 +89,11 @@ function runTests(skip = []) {
 function confirm(t) {
   const r = spawnSync(process.execPath, [path.join('bench', t.name + '.cjs'), ...t.argv],
     { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-  if (r.error) throw new Error(`${t.name}, run again alone, did not finish: ${r.error.message}`);
+  // Not started, stopped by spawnSync, or ended by a signal (Ctrl-C, the OOM
+  // killer): no result, never a kill.
+  if (r.error || r.signal) {
+    throw new Error(`${t.name}, run again alone, did not finish: ${r.error ? r.error.message : 'stopped by ' + r.signal}`);
+  }
   if (r.status === 0) return null;
   return ((r.stdout + r.stderr).split('\n').find((l) => FAIL_LINE.test(l)) || 'exit ' + r.status).trim().slice(0, 140);
 }
@@ -169,7 +178,8 @@ if (changed.status !== 0 || changed.stdout.trim()) {
   // A run that broke after a mutant's build: dist/ is built again from the
   // sources, or the viewer is told it is not.
   if (distFromMutant) {
-    const clean = build('dist');
+    let clean;
+    try { clean = build('dist'); } catch (err) { clean = err.message; }
     if (clean) console.error('dist/ may hold a build of a mutant and could not be built again: ' + clean);
   }
   process.exit(2);

@@ -103,4 +103,17 @@ run(async () => {
     await tick();
     t('nothing to run: null', s.now !== 'pending' && s.now.value === null, JSON.stringify(s.now));
   }
+  {
+    // One at a time: a test that passed lets the next one in the queue start.
+    const h = harness();
+    const s = watch(runAll(items('a', 'b', 'c'), 1, h.start, FAIL_LINE));
+    t('one job: only the first starts', !!h.children.a && !h.children.b && !h.children.c, Object.keys(h.children).join());
+    h.children.a.exit(0);
+    t('...the first passed: the second starts, the third waits', !!h.children.b && !h.children.c, Object.keys(h.children).join());
+    h.children.b.exit(0);
+    t('...the second passed: the third starts', !!h.children.c, Object.keys(h.children).join());
+    h.children.c.exit(0);
+    await tick();
+    t('...and null once all three passed', s.now !== 'pending' && s.now.value === null, JSON.stringify(s.now));
+  }
 });
