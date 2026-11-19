@@ -100,6 +100,11 @@ async function boot(cfg, segments, opts = {}) {
     const held = win.Date.now();
     win.Date.now = () => held;
   }
+  // opts.clock: the page's Date.now is { now }, moved by the test.
+  if (opts.clock) {
+    opts.clock.now = win.Date.now();
+    win.Date.now = () => opts.clock.now;
+  }
   evaluate();
   // The handler starts a moment after the page (about 0.8 s): wait for its
   // request, then for the answer to be applied.
@@ -155,8 +160,10 @@ run(async () => {
   }
 
   // ---- Undo with Blue, the time saved ----
+  // The page's clock stands still unless moved: the 8 s window cannot run out on a slow machine.
   {
-    const env = await boot({}, [seg('sponsor', 30, 60)]);
+    const clock = {};
+    const env = await boot({}, [seg('sponsor', 30, 60)], { clock });
     await env.playTo(30.2);
     t(n('undo: the segment was skipped'), env.state.time === 60);
     await wait(300);
@@ -178,11 +185,60 @@ run(async () => {
       env.reported.join());
   }
   {
-    // After a seek elsewhere, Blue is no undo.
-    const env = await boot({}, [seg('sponsor', 30, 60)]);
+    // After a seek elsewhere, Blue is no undo (the clock held, so only the distance decides).
+    const clock = {};
+    const env = await boot({}, [seg('sponsor', 30, 60)], { clock });
     await env.playTo(30.2);
     await env.playTo(300);
     await press(env.win, BLUE);
     t(n('undo: not after the viewer went somewhere else'), env.state.time === 300, String(env.state.time));
+  }
+  {
+    // More than 8 s later, where playback would be by then: no undo.
+    const clock = {};
+    const env = await boot({}, [seg('sponsor', 30, 60)], { clock });
+    await env.playTo(30.2);
+    clock.now += 9000;
+    await env.playTo(69);
+    await press(env.win, BLUE);
+    t(n('undo: not after its 8 s'), env.state.time === 69, String(env.state.time));
+  }
+  {
+    // Two segments back to back, skipped in one jump: both play after the undo.
+    const clock = {};
+    const env = await boot({}, [seg('sponsor', 30, 40), seg('selfpromo', 40, 60)], { clock });
+    await env.playTo(30.2);
+    t(n('undo, two segments: skipped in one jump'), env.state.time === 60, String(env.state.time));
+    await press(env.win, BLUE);
+    await env.playTo(35);
+    await env.playTo(40.1);
+    t(n('undo, two segments: the second one plays too'), env.state.time === 40.1, String(env.state.time));
+    t(n('undo, two segments: the exemption lasts while playback is inside them'), !!env.sb().undone);
+    await env.playTo(62);
+    t(n('undo, two segments: passing them ends it'), env.sb().undone === null);
+  }
+  {
+    // A refresh puts a segment before it: the undo still frees the skipped one.
+    const clock = {};
+    const env = await boot({}, [seg('sponsor', 30, 60)], { clock });
+    await env.playTo(30.2);
+    env.sb().applyRefreshedSegments([seg('selfpromo', 5, 10), seg('sponsor', 30, 60)], 'refreshed');
+    await wait(50);
+    await press(env.win, BLUE);
+    t(n('undo after a refresh: Blue goes back'), Math.abs(env.state.time - 30.2) < 0.01, String(env.state.time));
+    await env.playTo(31);
+    t(n('undo after a refresh: the segment it skipped plays'), env.state.time === 31, String(env.state.time));
+  }
+
+  // ---- The channel not known yet ----
+  {
+    const opts = { author: '' };
+    const env = await boot({ sbWhitelistChannels: ['Some Channel'] }, [seg('sponsor', 30, 60)], opts);
+    await env.playTo(30.2);
+    t(n('whitelist, channel unknown: nothing skipped yet'), env.state.time === 30.2, String(env.state.time));
+    opts.author = 'Other Channel';
+    await wait(1300);
+    await env.playTo(30.5);
+    t(n('whitelist, channel known and not listed: skipped'), env.state.time === 60, String(env.state.time));
   }
 });

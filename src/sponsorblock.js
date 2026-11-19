@@ -662,6 +662,7 @@ class SponsorBlockHandler {
         // as it does everywhere else.
         if (this.tempWhitelistIndex !== -1 &&
             chain.segments.some(seg => seg.originalIndex === this.tempWhitelistIndex)) return false;
+        if (chain.segments.some(seg => this.isUndone(seg))) return false;
         // With "Skip Segments Once", a chain already skipped (the viewer went
         // back to the start) plays through like any other skipped segment.
         if (configGetAll().skipSegmentsOnce && this.skippedSegmentIndices &&
@@ -705,26 +706,56 @@ class SponsorBlockHandler {
     }
 
     /**
-     * Whether the video's channel is on Never Skip on These Channels. While
-     * the player does not know the channel yet, the segments are built again
-     * once it does (a few tries a second apart).
+     * Whether nothing is to be skipped for Never Skip on These Channels: the
+     * video's channel is on the list, or, with a list, its channel is not known
+     * yet. Then the segments are built again once it is (a try a second, ten
+     * at most); a channel still unknown after that counts as not listed.
      */
     channelWhitelisted() {
         const list = configRead('sbWhitelistChannels');
         if (!Array.isArray(list) || !list.length) return false;
         const name = currentChannelName();
-        if (!name) {
-            if (!this.channelRetryTimer && (this.channelRetries || 0) < CHANNEL_RETRIES && !this.isDestroyed) {
+        if (name) return isChannelWhitelisted(name);
+        if ((this.channelRetries || 0) >= CHANNEL_RETRIES) return false;
+        if (!this.channelRetryTimer && !this.isDestroyed) {
+            this.channelRetryTimer = setTimeout(() => {
+                this.channelRetryTimer = null;
+                if (this.isDestroyed) return;
                 this.channelRetries = (this.channelRetries || 0) + 1;
-                this.channelRetryTimer = setTimeout(() => {
-                    this.channelRetryTimer = null;
-                    if (!this.isDestroyed && currentChannelName()) this.rebuildSkipSegments();
-                    else if (!this.isDestroyed) this.channelWhitelisted();
-                }, CHANNEL_RETRY_MS);
-            }
+                if (currentChannelName() || this.channelRetries >= CHANNEL_RETRIES) this.rebuildSkipSegments();
+                else this.channelWhitelisted();
+            }, CHANNEL_RETRY_MS);
+        }
+        return true;
+    }
+
+    /** A segment's identity across refreshes: its UUID, or its category and times. */
+    segmentKey(index) {
+        const seg = this.segments && this.segments[index];
+        if (!seg) return '';
+        return seg.UUID || `${seg.category}@${seg.segment[0]}-${seg.segment[1]}`;
+    }
+
+    /**
+     * Whether a skip segment belongs to an undone skip: those segments play
+     * until playback passes where the skip had gone.
+     */
+    isUndone(skipSeg) {
+        const undone = this.undone;
+        if (!undone || !this.video) return false;
+        if (this.video.currentTime >= undone.until) {
+            this.clearUndone();
             return false;
         }
-        return isChannelWhitelisted(name);
+        return undone.keys.has(this.segmentKey(skipSeg.originalIndex));
+    }
+
+    /** Ends an undone skip's exemption (playback passed it, or the handler goes). */
+    clearUndone() {
+        const undone = this.undone;
+        if (!undone) return;
+        this.undone = null;
+        undone.video.removeEventListener('timeupdate', undone.onTime);
     }
 
     /**
@@ -736,7 +767,7 @@ class SponsorBlockHandler {
     noteSkip(from, to, indices) {
         const saved = to - from;
         if (!(saved > 0)) return;
-        this.lastAutoSkip = { from, to, index: indices[0], at: Date.now() };
+        this.lastAutoSkip = { from, to, keys: indices.map(i => this.segmentKey(i)), at: Date.now() };
         try {
             configWrite('sbTimeSaved', (Number(configRead('sbTimeSaved')) || 0) + saved);
             configWrite('sbSkipCount', (Number(configRead('sbSkipCount')) || 0) + 1);
@@ -752,7 +783,11 @@ class SponsorBlockHandler {
         }
     }
 
-    /** The last auto skip, taken back: back to where it started, and that segment plays. */
+    /**
+     * The last auto skip, taken back: back to where it started, and every
+     * segment it jumped over plays (isUndone). Kept by the segments' identity,
+     * so a refresh of the list meanwhile does not point it at another one.
+     */
     undoLastSkip() {
         const last = this.lastAutoSkip;
         if (!last || !this.video || Date.now() - last.at > UNDO_WINDOW_MS) return false;
@@ -761,8 +796,17 @@ class SponsorBlockHandler {
         const elapsed = (Date.now() - last.at) / 1000;
         if (Math.abs(this.video.currentTime - last.to) > elapsed * 2 + 2) return false;
         this.lastAutoSkip = null;
-        this.tempWhitelistIndex = last.index;
-        this.video.currentTime = last.from;
+        const keys = new Set(last.keys.filter(Boolean));
+        // Its segments gone in a refresh: nothing left to take back.
+        if (!this.segments.some((seg, i) => keys.has(this.segmentKey(i)))) return false;
+        this.clearUndone();
+        // Its own timeupdate listener: the skip listener is off once no
+        // segment is ahead, and playback passing the skip must end it.
+        const video = this.video;
+        const onTime = () => { if (video.currentTime >= last.to) this.clearUndone(); };
+        this.undone = { keys, until: last.to, video, onTime };
+        video.addEventListener('timeupdate', onTime);
+        video.currentTime = last.from;
         this.requestAF(() => showNotification('Skip undone'));
         return true;
     }
@@ -1646,6 +1690,7 @@ class SponsorBlockHandler {
         if (seg.originalIndex === this.tempWhitelistIndex) {
             return;
         }
+        if (this.isUndone(seg)) return;
 
         const config = configGetAll();
         if (config.skipSegmentsOnce && this.skippedSegmentIndices.has(seg.originalIndex)) {
@@ -2001,6 +2046,7 @@ class SponsorBlockHandler {
             clearTimeout(this.channelRetryTimer);
             this.channelRetryTimer = null;
         }
+        this.clearUndone();
 
         this.toggleTimeListener(false);
         
