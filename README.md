@@ -386,6 +386,9 @@ in [CHANGELOG.md](CHANGELOG.md).
   and it lasts until the app closes. Playback Speed Control on webOS 4-6 and 22 (AAC audio only), Remove Mixes,
   Hide Videos Older Than, Hide Repeated Videos, Hide Left Menu Entries, Remove Black Text Boxes and Keep App Open
   When Paused.
+- *0.10.0:* tile previews again on most newer TVs (webOS 22 to 25), with a countdown on the tile; Repeat Video and
+  Open Long-Press Menu as shortcut actions; Open Playing Previews Without Reloading; Open Comments at the End of a
+  Video; DeArrow's Title Formatting on webOS 3-6.
 
 <details>
 <summary><b>Fixed</b></summary>
@@ -411,6 +414,9 @@ in [CHANGELOG.md](CHANGELOG.md).
   every tile that needs it; Up and Down in the settings panel and in What's New.
 - *0.9.2:* the clock after standby; chapter skip on a bar without chapters; AI, Shorts and live filters beside the
   player; DeArrow frees its thumbnail copies when switched off; a notification no longer shows twice.
+- *0.10.0:* previews no longer open the video by themselves or go into the watch history; playback speed on
+  webOS 4-6, and 0.5× and 0.75× on every TV that has it; translated subtitles from the first line; New Liquid Glass UI on the
+  player's left buttons; chapter skips land on the chapter's start.
 </details>
 
 <details>
