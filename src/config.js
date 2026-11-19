@@ -1,3 +1,5 @@
+import { backupWrite, backupReadAll } from './config-backup.js';
+
 const CONFIG_KEY = 'ytaf-configuration';
 
 export const segmentTypes = {
@@ -546,7 +548,8 @@ function pickAccountValues(source) {
 // those holders. Use Object.assign(localConfig, defaultConfig) to reset.
 // sharedConfig is what CONFIG_KEY holds: everything with per-account settings
 // off, and the device settings plus the shared profile with them on.
-const sharedConfig = loadStored(CONFIG_KEY) || {};
+const sharedConfigStored = loadStored(CONFIG_KEY);
+const sharedConfig = sharedConfigStored || {};
 // The account profile in use, or null while the shared settings are.
 let activeProfile = null;
 let profileSeeded = false;
@@ -567,20 +570,44 @@ if (sharedConfig.perAccountSettings) {
 let pendingWriteTimer = null;
 function writeNow() {
   pendingWriteTimer = null;
+  const written = [];
   try {
     if (activeProfile) {
       for (const key of DEVICE_KEYS) sharedConfig[key] = localConfig[key];
-      window.localStorage[CONFIG_KEY] = JSON.stringify(sharedConfig);
+      const shared = JSON.stringify(sharedConfig);
+      window.localStorage[CONFIG_KEY] = shared;
+      written.push([CONFIG_KEY, shared]);
       if (storesProfile(activeProfile)) {
-        window.localStorage[profileStorageKey(activeProfile)] = JSON.stringify(pickAccountValues(localConfig));
+        const own = JSON.stringify(pickAccountValues(localConfig));
+        window.localStorage[profileStorageKey(activeProfile)] = own;
+        written.push([profileStorageKey(activeProfile), own]);
       }
     } else {
       Object.assign(sharedConfig, localConfig);
-      window.localStorage[CONFIG_KEY] = JSON.stringify(localConfig);
+      const shared = JSON.stringify(localConfig);
+      window.localStorage[CONFIG_KEY] = shared;
+      written.push([CONFIG_KEY, shared]);
     }
   }
   catch { /* quota / SecurityError on private mode */ }
+  copyToBackup(written);
 }
+
+/*
+ * The copy of the settings in IndexedDB (config-backup.js), for when YouTube
+ * TV empties localStorage. Each write is copied there. An app that starts with
+ * no settings in localStorage reads the copy first, and copies nothing until
+ * then: the defaults it starts with would replace the copy it is about to read.
+ */
+let backupChecked = !!sharedConfigStored;
+// A write made before the copy was read: copied once it has been.
+let backupMissed = false;
+function copyToBackup(written) {
+  if (!written.length) return;
+  if (!backupChecked) { backupMissed = true; return; }
+  backupWrite(written).catch(() => { /* best effort */ });
+}
+
 const flushPendingWrite = () => {
   if (pendingWriteTimer !== null) { clearTimeout(pendingWriteTimer); writeNow(); }
 };
@@ -735,6 +762,70 @@ if (typeof window !== 'undefined') {
     checkAccountChange();
     recheckTimers = [setTimeout(checkAccountChange, 1500), setTimeout(checkAccountChange, 5000)];
   });
+}
+
+/**
+ * Started with no settings in localStorage: the copy in IndexedDB, if there is
+ * one, is written back to localStorage and its values take the place of the
+ * defaults, told to every listener as if changed in the panel. The settings of
+ * each account go back too, and the account in use gets its own. A setting read
+ * only once at start (a codec, say) takes the restored value from the next
+ * start.
+ */
+function restoreFromBackup() {
+  backupReadAll(CONFIG_KEY).then((entries) => {
+    let shared = null;
+    for (const [key, text] of entries) {
+      if (key === CONFIG_KEY) {
+        try { shared = JSON.parse(text); } catch { shared = null; }
+      }
+    }
+    // What the app wrote meanwhile (foxThemeApplied, say) was the defaults'
+    // and is replaced; the restored values are written again just after.
+    if (!shared || typeof shared !== 'object') return;
+    try {
+      for (const [key, text] of entries) window.localStorage.setItem(key, text);
+    } catch { /* the values still apply for this run */ }
+    console.info('[Config] Settings restored from the backup copy:', entries.length, 'record(s)');
+    for (const key of Object.keys(shared)) {
+      if (!configOptions.has(key)) continue;
+      sharedConfig[key] = shared[key];
+      const oldValue = localConfig[key];
+      if (oldValue === shared[key]) continue;
+      localConfig[key] = shared[key];
+      notifyChange(key, shared[key], oldValue);
+    }
+    if (localConfig.perAccountSettings) {
+      const profile = readAccountProfile();
+      if (profile !== null) switchProfile(profile);
+    }
+  }).catch(() => { /* no copy */ }).then(() => {
+    backupChecked = true;
+    // Copied only if something was written meanwhile: with nothing changed
+    // there is nothing to keep.
+    if (backupMissed) scheduleWrite();
+  });
+}
+/**
+ * Settings that were in localStorage at the start are copied as they are, a
+ * little after the start, so the copy is there before anything is changed
+ * (settings stored by a version without the copy included).
+ */
+const BACKUP_COPY_DELAY_MS = 1500;
+function copyStoredToBackup() {
+  const entries = [];
+  try {
+    const storage = window.localStorage;
+    for (let i = 0; i < storage.length; i++) {
+      const key = storage.key(i);
+      if (key === CONFIG_KEY || (key && key.indexOf(CONFIG_KEY + '::') === 0)) entries.push([key, storage.getItem(key)]);
+    }
+  } catch { return; }
+  copyToBackup(entries);
+}
+if (typeof window !== 'undefined') {
+  if (sharedConfigStored) setTimeout(copyStoredToBackup, BACKUP_COPY_DELAY_MS);
+  else restoreFromBackup();
 }
 
 export function configAddChangeListener(key, callback) {
