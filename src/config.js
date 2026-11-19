@@ -116,6 +116,7 @@ export const shortcutActions = {
   speed_up: 'Playback Speed +',
   speed_down: 'Playback Speed -',
   speed_reset: 'Playback Speed Reset (1x)',
+  speed_toggle: 'Toggle Speed (1x / Last)',
   queue_next: 'Play Next in Queue',
   queue_clear: 'Clear Queue',
   long_press_menu: 'Open Long-Press Menu'
@@ -387,6 +388,11 @@ const configOptions = new Map([
   ['forceVideoCodec', { default: 'auto', desc: 'Force Video Codec' }],
   ['subtitleTranslateLang', { default: 'off', desc: 'Auto-Translate Subtitles' }],
   ['enablePlaybackSpeed', { default: true, desc: 'Playback Speed Control' }],
+  // playback-speed.js: the speed of the last run, set again at the start.
+  ['rememberPlaybackSpeed', { default: false, desc: 'Remember Playback Speed' }],
+  // The last speed set, and the last one other than 1x (Toggle Speed). Not shown in the panel.
+  ['savedPlaybackSpeed', { default: 1, desc: 'Last playback speed' }],
+  ['toggleSpeed', { default: 1.5, desc: 'Speed for Toggle Speed' }],
   ['blockWebosCast', { default: true, desc: 'Block webOS Cast Service (webOS 25)' }],
   ['disableNotifications', { default: false, desc: 'Disable Notifications' }],
   // A fox button in the top-right corner that the Magic Remote pointer can

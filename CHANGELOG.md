@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Added
 
++ **Remember Playback Speed** (Player, off by default, under Playback Speed Control): the app starts at the speed last set, not at 1×, and the first video opens at it with no reload, as the next video after a speed change does. A live stream and the tile previews still play at 1×.
++ Shortcuts: a new action, **Toggle Speed (1x / Last)**: from 1× to the last other speed set (1.5× before any), and from any other speed back to 1×.
 + **Subtitle Position** (Player): Default, Higher or Highest. The higher ones lift the subtitles, for a TV or soundbar that covers the bottom of the picture, or text burnt into the video.
 + The settings are kept in a second place, the TV app's IndexedDB, as well as in localStorage, where they have always been. YouTube TV empties localStorage now and then, and every setting went back to its default with it. An app that starts with no settings in localStorage takes them from the copy, with each account's settings when Separate Settings for Each Account is on; they apply at once, and a setting read only as the app starts (Force Video Codec, say) from the next start. The settings an older version stored are copied a moment after the first start of this one. No setting. From Zucchiniii's fork.
 + **Skip AI-Upscaled Qualities** (Player, on by default): the qualities YouTube makes by upscaling a smaller video with AI ("Super resolution") are taken out of the video's list, so neither YouTube's adaptive stream nor Force Max Quality picks them; the real ones play. Each such format says so in its tags (`xtags`, the pair `sr=1`); a video that has only upscaled formats keeps them. From [VacuumTube](https://github.com/shy1132/VacuumTube).

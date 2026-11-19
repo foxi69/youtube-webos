@@ -6,7 +6,7 @@ import './return-dislike.js';
 import { initVideoQuality } from './video-quality.js';
 import { initLogoStyle } from './logo-style.js';
 import { initMathLetters } from './math-letters.js';
-import { initPlaybackSpeed, stepSpeed, resetSpeed } from './playback-speed.js';
+import { initPlaybackSpeed, stepSpeed, resetSpeed, toggleSpeed } from './playback-speed.js';
 import sponsorBlockUI from './Sponsorblock-UI.js';
 import { sendKey, REMOTE_KEYS, COLOR_CODE_MAP, isGuestMode, invalidateGuestModeCache, isWatchPage, isShortsPage, isSearchPage, SELECTORS, getVideo, SYNTHETIC_KEY_FLAG, isAutoplayOn, isLiveStream } from './utils.js';
 import { initTrackingBlock, destroyTrackingBlock } from './adblock.js';
@@ -186,6 +186,7 @@ const ACTION_SCOPES = {
     speed_up: 'VIDEO',
     speed_down: 'VIDEO',
     speed_reset: 'VIDEO',
+    speed_toggle: 'VIDEO',
     // From any page: the queue is filled on Home, and can be started there.
     queue_next: 'GLOBAL',
     queue_clear: 'GLOBAL',
@@ -1112,6 +1113,11 @@ function createOptionsPanel() {
     updateFeedSection();
   };
 
+  // Remember Playback Speed acts only with Playback Speed Control on.
+  const elRememberSpeed = createConfigCheckbox('rememberPlaybackSpeed');
+  const updateRememberSpeedRow = () => setState(elRememberSpeed, configRead('enablePlaybackSpeed') !== false);
+  configAddChangeListener('enablePlaybackSpeed', updateRememberSpeedRow);
+  updateRememberSpeedRow();
   // --- Page 2: Player ---
   makePage(1).appendChild(createSection('Video Player',
   [createForceQualityControl(),
@@ -1121,6 +1127,7 @@ function createOptionsPanel() {
   createAlignedCycleControl('showVideoQuality', videoQualityDisplayModes),
   createElement('div', { text: 'At Start: a notice with the quality for a few seconds when a video starts. Under Title: a tag after the channel, views and date line', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   createConfigCheckbox('enablePlaybackSpeed'),
+  elRememberSpeed,
   createVideoCodecControl(),
   createAlignedCycleControl('subtitleTranslateLang', subtitleTranslateLanguages),
   createAlignedCycleControl('subtitlesAtStart', subtitlesAtStartModes),
@@ -2200,6 +2207,10 @@ function handleShortcutAction(action) {
 
     case 'speed_reset':
         resetSpeed();
+        break;
+
+    case 'speed_toggle':
+        toggleSpeed();
         break;
     case 'toggle_subs':
         // Resolved here rather than above the switch: only this one action

@@ -287,10 +287,16 @@ run(async () => {
     Object.defineProperty(open, 'keyCode', { get: () => 404 });
     dispatchTrusted(win.document.body, open);
     for (let i = 0; i < 20; i++) pump();
-    const input = Array.from(win.document.querySelectorAll('label'))
-      .find((label) => label.querySelector('.label-text')?.textContent === 'Force Max Quality')?.querySelector('input');
-    if (!input) throw new Error('Force Max Quality control missing');
-    const flip = (on) => { input.checked = on; input.dispatchEvent(new win.Event('change')); };
+    // A choice row: Left from Max goes to Off, Right from Off back to Max.
+    const row = Array.from(win.document.querySelectorAll('.shortcut-control-row'))
+      .find((r) => r.querySelector('.shortcut-label')?.textContent.trim() === 'Force Max Quality');
+    if (!row) throw new Error('Force Max Quality control missing');
+    const flip = (on) => {
+      const press = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
+      Object.defineProperty(press, 'keyCode', { get: () => (on ? 39 : 37) });
+      row.focus();
+      dispatchTrusted(row, press);
+    };
     // Capture a fresh retained choice on this video, then explicitly override it.
     writeQuality(win, 480, 2160);
     speed.setSpeed(1.5, { immediate: true });
