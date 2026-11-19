@@ -477,41 +477,6 @@ function alignControlLabel(control, text) {
 }
 
 /**
- * Force Max Quality: Off, Max or Up to N lines, one row that writes both
- * forceHighResVideo and maxVideoQuality (config.js forceQualityModes). Off
- * clears the limit too, so a limit never acts while forcing is off.
- */
-function createForceQualityControl() {
-  const keys = forceQualityModes.map((mode) => mode[0]);
-  const current = () => {
-    if (!configRead('forceHighResVideo')) return 'off';
-    const limit = String(configRead('maxVideoQuality'));
-    return keys.indexOf(limit) > 1 ? limit : 'max';
-  };
-  const label = () => forceQualityModes[keys.indexOf(current())][1];
-  const cycle = (dir) => {
-    let idx = keys.indexOf(current());
-    idx = dir === 'next' ? (idx + 1) % keys.length : (idx - 1 + keys.length) % keys.length;
-    const mode = keys[idx];
-    if (mode === 'off') {
-      configWrite('forceHighResVideo', false);
-      configWrite('maxVideoQuality', '0');
-    } else {
-      configWrite('maxVideoQuality', mode === 'max' ? '0' : mode);
-      configWrite('forceHighResVideo', true);
-    }
-    updateDisplay();
-  };
-  const text = configGetDesc('forceHighResVideo');
-  const { container, updateDisplay } = createGenericControlRow(text, label,
-    () => cycle('prev'), () => cycle('next'), () => cycle('next'));
-  configAddChangeListener('forceHighResVideo', updateDisplay);
-  configAddChangeListener('maxVideoQuality', updateDisplay);
-  updateDisplay();
-  return alignControlLabel(container, text);
-}
-
-/**
  * The time SponsorBlock saved, under its settings: "Time saved: 1 h 23 min
  * (456 skips)", kept up to date while the panel is open, with a button that
  * sets it back to nothing.
@@ -1143,7 +1108,7 @@ function createOptionsPanel() {
   updateRememberSpeedRow();
   // --- Page 2: Player ---
   makePage(1).appendChild(createSection('Video Player',
-  [createForceQualityControl(),
+  [createAlignedCycleControl('forceQuality', forceQualityModes),
   createElement('div', { text: 'Up to: the best quality the video has up to that size; a change applies from the next video', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   createConfigCheckbox('removeUpscaledFormats'),
   createElement('div', { text: 'YouTube\'s "Super resolution" levels are upscaled from a smaller video by AI; the real ones play instead', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),

@@ -232,20 +232,25 @@ export const maxVideoAgeModes = {
 };
 
 /**
- * Force Max Quality, as the panel shows it: Off, Max (the best level the video
- * has) or the best level up to a number of lines. One row for two settings:
- * forceHighResVideo (whether to force) and maxVideoQuality (the limit, '0' for
- * none). An array, as an object would list the number keys first.
+ * Force Max Quality: Off (YouTube picks), Max (the best level the video has)
+ * or the best level up to a number of lines (adblock.js drops the formats
+ * above it). The keys are not bare numbers, which an object lists first.
  */
-export const forceQualityModes = [
-  ['off', 'Off'],
-  ['max', 'Max'],
-  ['2160', 'Up to 2160p (4K)'],
-  ['1440', 'Up to 1440p'],
-  ['1080', 'Up to 1080p'],
-  ['720', 'Up to 720p'],
-  ['480', 'Up to 480p']
-];
+export const forceQualityModes = {
+  off: 'Off',
+  max: 'Max',
+  up2160: 'Up to 2160p (4K)',
+  up1440: 'Up to 1440p',
+  up1080: 'Up to 1080p',
+  up720: 'Up to 720p',
+  up480: 'Up to 480p'
+};
+
+/** The lines a Force Max Quality mode stops at: 0 for Off and Max. */
+export function forceQualityLines(mode) {
+  const match = /^up(\d+)$/.exec(String(mode));
+  return match ? Number(match[1]) : 0;
+}
 
 /** Ignore Segments Shorter Than, in seconds ('0': off). */
 export const sbMinSegmentLengthModes = {
@@ -423,10 +428,8 @@ const configOptions = new Map([
   // by default, and nothing is gained by turning it off.
   ['enableLegacyEmojiFix', { default: true, desc: 'Emoji + Characters Fix' }],
   ['hideGuestSignInPrompts', { default: false, desc: 'Guest Mode: Hide Sign-in Buttons' }],
-  ['forceHighResVideo', { default: false, desc: 'Force Max Quality' }],
-  // Force Max Quality's limit, in lines ('0': none): the best level up to it.
-  // Set from the same panel row as forceHighResVideo (forceQualityModes).
-  ['maxVideoQuality', { default: '0', desc: 'Force Max Quality Up To' }],
+  // forceQualityModes: Off, Max or the best level up to a number of lines.
+  ['forceQuality', { default: 'off', desc: 'Force Max Quality' }],
   // Drops the formats YouTube upscaled with AI from player responses (adblock.js).
   ['removeUpscaledFormats', { default: true, desc: 'Skip AI-Upscaled Qualities' }],
   ['showVideoQuality', { default: 'off', desc: 'Show Video Quality' }],

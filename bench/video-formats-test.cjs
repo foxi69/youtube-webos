@@ -71,26 +71,28 @@ run(async () => {
 
   // ---- Force Max Quality: Up to ----
   {
-    const capped = boot({ forceHighResVideo: true, maxVideoQuality: '1080', removeUpscaledFormats: false });
+    const capped = boot({ forceQuality: 'up1080', removeUpscaledFormats: false });
     t('up to 1080p: the formats above it go, audio stays',
       itags(capped.parse(player(list()))) === '399,398,251', itags(capped.parse(player(list()))));
-    t('up to 1080p: a vertical 1080x1920 counts as 1080p',
-      itags(capped.parse(player([video(299, 1080, 1920), video(298, 720, 1280), audio]))) === '299,298,251');
+    // With a 1440p format to drop beside them, so a height-only test (1920 > 1080) would drop the vertical ones too.
+    const vertical = capped.parse(player([video(299, 1080, 1920), video(298, 720, 1280), video(398, 1280, 720), video(400, 2560, 1440), audio]));
+    t('up to 1080p: a vertical 1080x1920 counts as 1080p, by its short side',
+      itags(vertical) === '299,298,398,251', itags(vertical));
     t('up to 1080p: only the label to go by',
       itags(capped.parse(player([{ itag: 1, mimeType: 'video/mp4', qualityLabel: '1440p60' }, { itag: 2, mimeType: 'video/mp4', qualityLabel: '1080p60' }]))) === '2');
     t('up to 480p: a video with nothing that small keeps its formats',
-      itags(boot({ forceHighResVideo: true, maxVideoQuality: '480' }).parse(player([video(399, 1920, 1080), video(398, 1280, 720), audio]))) === '399,398,251');
+      itags(boot({ forceQuality: 'up480' }).parse(player([video(399, 1920, 1080), video(398, 1280, 720), audio]))) === '399,398,251');
     t('Max: no limit',
-      itags(boot({ forceHighResVideo: true, maxVideoQuality: '0', removeUpscaledFormats: false }).parse(player(list()))) === '401,400,399,398,251');
-    t('a stored limit does nothing while Force Max Quality is off',
-      itags(boot({ forceHighResVideo: false, maxVideoQuality: '720', removeUpscaledFormats: false }).parse(player(list()))) === '401,400,399,398,251');
+      itags(boot({ forceQuality: 'max', removeUpscaledFormats: false }).parse(player(list()))) === '401,400,399,398,251');
+    t('Off: no limit',
+      itags(boot({ forceQuality: 'off', removeUpscaledFormats: false }).parse(player(list()))) === '401,400,399,398,251');
     t('both: the upscaled format and the ones above the limit',
-      itags(boot({ forceHighResVideo: true, maxVideoQuality: '1440', removeUpscaledFormats: true }).parse(player(list()))) === '400,399,398,251');
+      itags(boot({ forceQuality: 'up1440', removeUpscaledFormats: true }).parse(player(list()))) === '400,399,398,251');
   }
 
   // ---- The panel row ----
   {
-    const { win } = boot({ forceHighResVideo: false, maxVideoQuality: '0' });
+    const { win } = boot({ forceQuality: 'off' });
     trustedKey(win, 404, win.document.body, 'keydown');
     trustedKey(win, 404, win.document.body, 'keyup');
     await wait(300);
@@ -99,7 +101,7 @@ run(async () => {
     const value = () => row.querySelector('.current-value').textContent;
     const stored = () => {
       const c = JSON.parse(win.localStorage.getItem('ytaf-configuration') || '{}');
-      return c.forceHighResVideo + '/' + c.maxVideoQuality;
+      return c.forceQuality;
     };
     const press = (code) => { row.focus(); trustedKey(win, code, row, 'keydown'); trustedKey(win, code, row, 'keyup'); };
     const right = () => press(39);
@@ -107,13 +109,13 @@ run(async () => {
     t('panel: Force Max Quality is a choice row starting at Off', !!row && value() === 'Off', row ? value() : 'no row');
     if (row) {
       right(); await wait(260);
-      t('panel: Right picks Max', value() === 'Max' && stored() === 'true/0', value() + ' ' + stored());
+      t('panel: Right picks Max', value() === 'Max' && stored() === 'max', value() + ' ' + stored());
       right(); right(); right(); await wait(260);
-      t('panel: then Up to 1080p', value() === 'Up to 1080p' && stored() === 'true/1080', value() + ' ' + stored());
+      t('panel: then Up to 1080p', value() === 'Up to 1080p' && stored() === 'up1080', value() + ' ' + stored());
       left(); left(); left(); left(); await wait(260);
-      t('panel: Left back to Off clears the limit', value() === 'Off' && stored() === 'false/0', value() + ' ' + stored());
+      t('panel: Left back to Off', value() === 'Off' && stored() === 'off', value() + ' ' + stored());
       left(); await wait(260);
-      t('panel: Left from Off goes round to Up to 480p', value() === 'Up to 480p' && stored() === 'true/480', value() + ' ' + stored());
+      t('panel: Left from Off goes round to Up to 480p', value() === 'Up to 480p' && stored() === 'up480', value() + ' ' + stored());
     }
   }
 });

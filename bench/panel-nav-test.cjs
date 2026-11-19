@@ -304,11 +304,11 @@ run(async () => {
     maxQuality === rowNamed(player, 'Force Max Quality') && focused() === maxQuality && value(maxQuality) === 'Off',
     describe(focused()));
   press(KEY.OK);
-  t(n('OK picks Max and saves Force Max Quality on, with no limit'), value(maxQuality) === 'Max' &&
-    await stored('forceHighResVideo') === true && await stored('maxVideoQuality') === '0' && focused() === maxQuality,
+  t(n('OK picks Max and saves it'), value(maxQuality) === 'Max' &&
+    await stored('forceQuality') === 'max' && focused() === maxQuality,
     value(maxQuality));
   press(KEY.LEFT);
-  t(n('Left back to Off saves it off'), value(maxQuality) === 'Off' && await stored('forceHighResVideo') === false,
+  t(n('Left back to Off saves it off'), value(maxQuality) === 'Off' && await stored('forceQuality') === 'off',
     value(maxQuality));
 
   // A checkbox: Skip AI-Upscaled Qualities, on by default.

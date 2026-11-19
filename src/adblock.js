@@ -1,4 +1,4 @@
-import { configGetAll, configAddChangeListener } from './config';
+import { configGetAll, configAddChangeListener, forceQualityLines } from './config';
 import { isShortsPage, isSearchPage } from './utils';
 import { getWebOSVersion } from './webos-utils';
 import { FetchRegistry } from './hooks/fetch';
@@ -92,8 +92,7 @@ const CONFIG_KEYS = {
   BLOCKED_KEYWORDS: 'blockedKeywords',
   ORIGINAL_AUDIO: 'forceOriginalAudio',
   UPSCALED: 'removeUpscaledFormats',
-  MAX_QUALITY: 'maxVideoQuality',
-  FORCE_QUALITY: 'forceHighResVideo',
+  FORCE_QUALITY: 'forceQuality',
   LONG_PRESS: 'extendLongPressMenu',
   DEARROW: 'enableDeArrow',
   HIDDEN_SIDEBAR: 'hiddenSidebarEntries',
@@ -351,8 +350,8 @@ function recomputeFilterFlags() {
   cfgFlags.disableAutoCaptions = cfgSnapshot[CONFIG_KEYS.AUTO_CAPTIONS] === 'off';
   cfgFlags.forceOriginalAudio = !!cfgSnapshot[CONFIG_KEYS.ORIGINAL_AUDIO];
   cfgFlags.dropUpscaled = !!cfgSnapshot[CONFIG_KEYS.UPSCALED];
-  // The limit belongs to Force Max Quality: Off leaves every level to YouTube.
-  cfgFlags.maxVideoLines = cfgSnapshot[CONFIG_KEYS.FORCE_QUALITY] ? Number(cfgSnapshot[CONFIG_KEYS.MAX_QUALITY]) || 0 : 0;
+  // Force Max Quality's Up to: the formats above it go (Off and Max: none).
+  cfgFlags.maxVideoLines = forceQualityLines(cfgSnapshot[CONFIG_KEYS.FORCE_QUALITY]);
   // The feed filters are Ad Blocking's, like the other item filters.
   cfgFlags.hideWatched = adBlock && !!cfgSnapshot[CONFIG_KEYS.HIDE_WATCHED];
   cfgFlags.minLengthSeconds = adBlock ? (Number(cfgSnapshot[CONFIG_KEYS.MIN_LENGTH]) || 0) * 60 : 0;

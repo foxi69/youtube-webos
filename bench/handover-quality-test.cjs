@@ -34,7 +34,7 @@ async function run(scenario) {
     raf: 'manual',
     frameTime: 0,
     config: {
-      forceHighResVideo: true, enableAdBlock: false, enableSponsorBlock: false,
+      forceQuality: 'max', enableAdBlock: false, enableSponsorBlock: false,
       enableReturnYouTubeDislike: false, thumbnailQuality: 'off', enableAutoLogin: false
     },
     fetch: () => Promise.reject(new Error('offline'))

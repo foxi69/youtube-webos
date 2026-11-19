@@ -237,7 +237,7 @@ run(async () => {
   // A video that starts at its best level gets no range (it would reload),
   // and after a seek the stream fell to 1080p by itself (seen on webOS 25).
   for (const variant of ['falls', 'byHand', 'throws', 'throwsAfter', 'alwaysThrows']) {
-    const win = await boot({ forceHighResVideo: true },
+    const win = await boot({ forceQuality: 'max' },
       { html: '<body class="WEB_PAGE_TYPE_WATCH"></body>', url: 'https://www.youtube.com/tv#/watch?v=' + VIDEO, speed: 20 });
     const player = makePlayer(win, -1);
     let quality = 'hd1440';

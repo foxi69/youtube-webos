@@ -645,7 +645,7 @@ export function initVideoQuality() {
   isDestroyed = false;
   _isWatchPageCached = true;
   
-  _shouldForce = configRead('forceHighResVideo');
+  _shouldForce = configRead('forceQuality') !== 'off';
   
   setLocalStorageQuality();
   
@@ -751,8 +751,11 @@ function setupListeners() {
     // Registered once for the session, not per attach: the option is also
     // switched off from the home screen, where the module is detached, and the
     // 4320p record it wrote must go then too.
-    configAddChangeListener('forceHighResVideo', (evt) => {
-      _shouldForce = !!evt.detail.newValue;
+    configAddChangeListener('forceQuality', (evt) => {
+      const wasForcing = _shouldForce;
+      _shouldForce = evt.detail.newValue !== 'off';
+      // From Max to Up to (or back) it keeps forcing: nothing to set up again.
+      if (_shouldForce === wasForcing) return;
       if (_shouldForce) {
         clearSpeedQualityPick();
         cachedQualitySettings = null;

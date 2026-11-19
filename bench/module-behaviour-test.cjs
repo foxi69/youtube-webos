@@ -212,7 +212,7 @@ run(async () => {
   // A 1440p video that plays in 720p is not "max" (it used to count as max
   // because 720p is a named level, so nothing was ever upgraded).
   for (const [start, want] of [['hd720', 1], ['hd1440', 0]]) {
-    const { win, pump } = boot({ forceHighResVideo: true },
+    const { win, pump } = boot({ forceQuality: 'max' },
       '<body class="WEB_PAGE_TYPE_WATCH"><div id="ytlr-player__player-container-player"></div></body>',
       'https://www.youtube.com/tv#/watch?v=abc');
     const p = win.document.getElementById('ytlr-player__player-container-player');
@@ -233,7 +233,7 @@ run(async () => {
   // Levels not listed yet (only 'auto'): nothing is asked and the video is
   // not paused. A request the player does not follow shows no toast.
   for (const [levels, moves, name] of [[['auto'], true, 'levels not listed yet'], [['hd1440', 'hd720', 'auto'], false, 'the player does not switch']]) {
-    const { win, pump } = boot({ forceHighResVideo: true },
+    const { win, pump } = boot({ forceQuality: 'max' },
       '<body class="WEB_PAGE_TYPE_WATCH"><div id="ytlr-player__player-container-player"></div></body>',
       'https://www.youtube.com/tv#/watch?v=abc');
     const p = win.document.getElementById('ytlr-player__player-container-player');

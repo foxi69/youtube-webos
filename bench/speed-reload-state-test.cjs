@@ -50,7 +50,7 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
     frameTime: 0,
     config: {
       enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-      thumbnailQuality: 'off', enableAutoLogin: false, forceHighResVideo: force
+      thumbnailQuality: 'off', enableAutoLogin: false, forceQuality: force ? 'max' : 'off'
     },
     fetch: () => Promise.reject(new Error('offline')),
     beforeEval(win) {

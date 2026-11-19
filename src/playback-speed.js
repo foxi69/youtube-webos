@@ -472,7 +472,7 @@ export function createSpeedController({
       setRange(player, cap);
     } else if (fromSpeed > CAP_ABOVE) {
       // A pick in YouTube's menu wins over Force Max Quality.
-      const quality = viewerPick() || (configRead('forceHighResVideo') ? 'highres' : 'auto');
+      const quality = viewerPick() || (configRead('forceQuality') !== 'off' ? 'highres' : 'auto');
       setRange(player, quality);
     }
     if (!videoId) return;
