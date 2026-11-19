@@ -722,8 +722,13 @@ class SponsorBlockHandler {
                 this.channelRetryTimer = null;
                 if (this.isDestroyed) return;
                 this.channelRetries = (this.channelRetries || 0) + 1;
-                if (currentChannelName() || this.channelRetries >= CHANNEL_RETRIES) this.rebuildSkipSegments();
-                else this.channelWhitelisted();
+                if (currentChannelName() || this.channelRetries >= CHANNEL_RETRIES) {
+                    this.rebuildSkipSegments();
+                    // An Auto Skip to Start that waited for the channel.
+                    this._jumpIfPending();
+                } else {
+                    this.channelWhitelisted();
+                }
             }, CHANNEL_RETRY_MS);
         }
         return true;
@@ -1711,6 +1716,14 @@ class SponsorBlockHandler {
         for (let i = segmentIdx + 1; i < this.skipSegments.length; i++) {
             const next = this.skipSegments[i];
 
+            // A segment of an undone skip plays: the jump stops at its start,
+            // and is none at all if that start is already behind (a refresh
+            // put a segment before it that overlaps it).
+            if (this.isUndone(next)) {
+                if (next.start < jumpTarget) jumpTarget = next.start;
+                break;
+            }
+
             if (next.mode !== 'auto_skip') {
                 // A manual segment already behind the playhead has had its
                 // turn: stopping at its start sent the skip backwards, into
@@ -1787,6 +1800,12 @@ class SponsorBlockHandler {
     // highlight in the first few seconds is answered with one re-jump. A
     // segment skipped meanwhile (one right after the highlight) is no such seek.
     autoJumpToHighlight() {
+        // Never Skip on These Channels: no jump by itself there either (Blue
+        // still jumps). A channel not known yet: the jump waits for it.
+        if (this.channelWhitelisted()) {
+            if (!currentChannelName()) this.highlightPending = true;
+            return;
+        }
         if (!this.jumpToNextHighlight()) return;
         const video = this.video;
         const target = this.highlightSegment.segment[0];

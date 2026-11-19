@@ -137,6 +137,48 @@ run(async () => {
     t(n('undo after a refresh: the segment it skipped plays'), env.state.time === 31, String(env.state.time));
   }
 
+  {
+    // A refresh puts a segment that overlaps the undone one before it: no
+    // jump through the undone one from there.
+    const clock = {};
+    const env = await boot({}, [seg('sponsor', 30, 60)], { clock });
+    await env.playTo(30.2);
+    await press(env.win, BLUE);
+    t(n('undo, then an overlapping segment: Blue went back'), Math.abs(env.state.time - 30.2) < 0.01, String(env.state.time));
+    env.sb().applyRefreshedSegments([seg('selfpromo', 20, 35), seg('sponsor', 30, 60)], 'overlap');
+    await wait(50);
+    await env.playTo(30.5);
+    await env.playTo(31);
+    t(n('undo, then an overlapping segment: the undone one still plays'), env.state.time === 31, String(env.state.time));
+    // Back in the new segment before the undone one: its skip stops at the undone one's start.
+    await env.playTo(25);
+    t(n('undo, then an overlapping segment: a skip from before it stops at its start'), env.state.time === 30, String(env.state.time));
+  }
+
+  // ---- Never Skip on These Channels and the highlight ----
+  {
+    const env = await boot({ sbWhitelistChannels: ['Some Channel'], sbMode_highlight: 'auto_skip' },
+      [seg('poi_highlight', 90, 91, 'poi')]);
+    await wait(200);
+    t(n('whitelist: no jump to the highlight on a listed channel'), env.state.seeks.length === 0, env.state.seeks.join());
+  }
+  {
+    const env = await boot({ sbWhitelistChannels: ['Other Channel'], sbMode_highlight: 'auto_skip' },
+      [seg('poi_highlight', 90, 91, 'poi')]);
+    await wait(200);
+    t(n('whitelist: another channel jumps to the highlight as before'), env.state.seeks[0] === 90, env.state.seeks.join());
+  }
+  {
+    const opts = { author: '' };
+    const env = await boot({ sbWhitelistChannels: ['Other Channel'], sbMode_highlight: 'auto_skip' },
+      [seg('poi_highlight', 90, 91, 'poi')], opts);
+    await wait(200);
+    t(n('whitelist, channel unknown: the highlight jump waits'), env.state.seeks.length === 0, env.state.seeks.join());
+    opts.author = 'Some Channel';
+    await wait(1300);
+    t(n('whitelist, channel known and not listed: the jump comes then'), env.state.seeks[0] === 90, env.state.seeks.join());
+  }
+
   // ---- The channel not known yet ----
   {
     const opts = { author: '' };
