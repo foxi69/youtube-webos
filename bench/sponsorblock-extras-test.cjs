@@ -16,7 +16,6 @@ const code = readBundle();
 
 const VIDEO_ID = 'abcdefghijk';
 const PRIMARY = 'https://sponsor.ajay.app/api/skipSegments/';
-const FALLBACK = 'https://sponsorblock.inf.re/api/skipSegments/';
 
 const { t, run } = createReporter();
 
