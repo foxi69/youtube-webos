@@ -8,7 +8,7 @@
  *
  * Usage: node bench/speed-reload-state-test.cjs <bundle> [legacy|modern]
  */
-const { createReporter, readBundle, bootPage, failingXHR, dispatchTrusted, wait: sleep } = require('./harness.cjs');
+const { createReporter, readBundle, bootPage, failingXHR, trustedKey, wait: sleep } = require('./harness.cjs');
 
 // With `modern`, bootPage runs the modern bundle (webOS 22 and newer) in a
 // Chrome 87 environment with a webOS 23 user agent, instead of the legacy one
@@ -27,7 +27,8 @@ const writeQuality = (win, height, previous) => win.localStorage.setItem('yt-pla
 }));
 
 // A trusted key press, as the remote sends: the speed keys too.
-const pressKey = (win) => dispatchTrusted(win.document.body, new win.KeyboardEvent('keydown', { bubbles: true }));
+// A press of some key (keyCode 0): the viewer's, for the subtitle and quality checks.
+const pressKey = (win) => trustedKey(win, 0);
 
 // lateRecord: the record follows each range call by 50 ms (true) or that many ms.
 // reloadTrack: the subtitles YouTube's reload turns on (else it toggles them).
@@ -196,7 +197,7 @@ run(async () => {
     const { win, p, speed, emit } = boot(720, { manualPlayback: true });
     speed.setSpeed(1.5, { immediate: true });
     // A real key during buffering changes the viewer's choice before PLAYING.
-    dispatchTrusted(win.document.body, new win.KeyboardEvent('keydown', { bubbles: true }));
+    trustedKey(win, 0);
     p.track = EN;
     emit(1);
     await sleep(600);
@@ -283,19 +284,15 @@ run(async () => {
     emit(-1); emit(3); emit(1); pump(); pump();
     t('the next video is not held back by the previous video quality override',
       log.ranges.includes('highres'), log.ranges.join());
-    const open = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-    Object.defineProperty(open, 'keyCode', { get: () => 404 });
-    dispatchTrusted(win.document.body, open);
+    trustedKey(win, 404);
     for (let i = 0; i < 20; i++) pump();
     // A choice row: Left from Max goes to Off, Right from Off back to Max.
     const row = Array.from(win.document.querySelectorAll('.shortcut-control-row'))
       .find((r) => r.querySelector('.shortcut-label')?.textContent.trim() === 'Force Max Quality');
     if (!row) throw new Error('Force Max Quality control missing');
     const flip = (on) => {
-      const press = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-      Object.defineProperty(press, 'keyCode', { get: () => (on ? 39 : 37) });
       row.focus();
-      dispatchTrusted(row, press);
+      trustedKey(win, on ? 39 : 37, row);
     };
     // Capture a fresh retained choice on this video, then explicitly override it.
     writeQuality(win, 480, 2160);

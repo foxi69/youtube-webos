@@ -387,11 +387,20 @@ function bootPage(opts = {}) {
  * A key of the remote, as a trusted event (the app ignores untrusted ones):
  * `code` is the keyCode (404 green, 461 back, 13 OK, 37-40 the arrows).
  * target: document.body by default; type: 'keydown' by default; init: more
- * for the KeyboardEvent ({ repeat: true }). Returns the event.
+ * for the KeyboardEvent ({ repeat: true, key: 'a', ctrlKey: true }), and
+ * init.props, own properties set on the event before it is sent
+ * ({ __ytafSynthetic: true } for a key the app made itself). Returns the
+ * event: its defaultPrevented says whether the app took the press.
  */
 function trustedKey(win, code, target, type = 'keydown', init) {
-  const event = new win.KeyboardEvent(type, Object.assign({ bubbles: true, cancelable: true }, init));
+  const options = Object.assign({ bubbles: true, cancelable: true }, init);
+  const props = options.props;
+  delete options.props;
+  const event = new win.KeyboardEvent(type, options);
   Object.defineProperty(event, 'keyCode', { get: () => code, configurable: true });
+  if (props) {
+    for (const name of Object.keys(props)) Object.defineProperty(event, name, { value: props[name], configurable: true });
+  }
   dispatchTrusted(target || win.document.body, event);
   return event;
 }
