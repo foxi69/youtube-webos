@@ -266,6 +266,46 @@ run(async () => {
     t('...and in its copy', JSON.parse(backup.get(PROFILE_KEY)).removeUpscaledFormats === false, backup.get(PROFILE_KEY));
   }
 
+  // ---- ...and when the account's record survived in localStorage, but localStorage refuses the changed one ----
+  {
+    const backup = savedCopy([
+      [KEY, JSON.stringify({ perAccountSettings: true, foxThemeApplied: true, minVideoLength: '1' })],
+      [PROFILE_KEY, JSON.stringify({ minVideoLength: '20', removeUpscaledFormats: true })]
+    ]);
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const oldLocal = JSON.stringify({ minVideoLength: '10', removeUpscaledFormats: true });
+    let refused = 0;
+    const page = boot({
+      data: backup, log: [], idb: { gate },
+      storage: Object.assign({ [PROFILE_KEY]: oldLocal }, IDENTITY),
+      setup: (w) => {
+        const set = w.Storage.prototype.setItem;
+        w.Storage.prototype.setItem = function (key, value) {
+          if (key === PROFILE_KEY) { refused++; throw new Error('QuotaExceededError'); }
+          return set.call(this, key, value);
+        };
+      }
+    });
+    await wait(300);
+    trustedKey(page.win, 404, page.win.document.body, 'keydown');
+    trustedKey(page.win, 404, page.win.document.body, 'keyup');
+    await wait(300);
+    const label = Array.prototype.slice.call(page.win.document.querySelectorAll('label'))
+      .find((l) => l.textContent.trim() === 'Skip AI-Upscaled Qualities');
+    const input = label && label.querySelector('input');
+    t('precondition (refused write): the switch is on while the copy is not read yet', !!input && input.checked === true);
+    if (input) input.click();
+    await wait(300);
+    release();
+    await wait(700);
+    // setItem is what the restore writes the changed record with.
+    t('...precondition: the changed record was refused', refused > 0, String(refused));
+    t('refused write: the change stays in use over the old local record, which gives the account its other settings',
+      !!input && input.checked === false && await panelValue(page.win, 'Hide Videos Shorter Than') === '10 min',
+      `${input && input.checked} / ${await panelValue(page.win, 'Hide Videos Shorter Than')}`);
+  }
+
   // ---- The account in use gets its own restored settings ----
   {
     const backup = savedCopy([

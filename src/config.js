@@ -635,6 +635,12 @@ if (sharedConfig.perAccountSettings) {
 // Debounce localStorage writes — rapid input (e.g. color picker drag) was
 // stringifying the entire ~50-key config object on every event.
 let pendingWriteTimer = null;
+// An account record localStorage refused to take (quota), by its key: the
+// account's settings as they are now, which win over the older record still
+// there when the account is loaded again (after a restore that changed it, or
+// a switch to another account and back).
+const unwrittenRecords = {};
+
 function writeNow() {
   pendingWriteTimer = null;
   const written = [];
@@ -645,9 +651,16 @@ function writeNow() {
       window.localStorage[CONFIG_KEY] = shared;
       written.push([CONFIG_KEY, shared]);
       if (storesProfile(activeProfile)) {
-        const own = JSON.stringify(pickAccountValues(localConfig));
-        window.localStorage[profileStorageKey(activeProfile)] = own;
-        written.push([profileStorageKey(activeProfile), own]);
+        const key = profileStorageKey(activeProfile);
+        const values = pickAccountValues(localConfig);
+        const own = JSON.stringify(values);
+        try {
+          window.localStorage[key] = own;
+          delete unwrittenRecords[key];
+          written.push([key, own]);
+        } catch {
+          unwrittenRecords[key] = values;
+        }
       }
     } else {
       Object.assign(sharedConfig, localConfig);
@@ -787,7 +800,8 @@ function switchProfile(profile) {
   if (storesProfile(profile)) {
     // Restored from the backup copy: its record, also when localStorage
     // refused to take it back (quota), so the account is not seeded afresh.
-    incoming = loadStored(profileStorageKey(profile)) || (restoredRecords && restoredRecords[profileStorageKey(profile)]) || null;
+    const key = profileStorageKey(profile);
+    incoming = unwrittenRecords[key] || loadStored(key) || (restoredRecords && restoredRecords[key]) || null;
   }
   if (!incoming) {
     // An account seen for the first time (and every guest session) starts
@@ -935,7 +949,12 @@ function restoreFromBackup() {
         if (record && changed.length) {
           for (const k of changed) record[k] = localConfig[k];
           records[key] = record;
-          try { window.localStorage.setItem(key, JSON.stringify(record)); } catch { /* applied from memory */ }
+          try {
+            window.localStorage.setItem(key, JSON.stringify(record));
+          } catch {
+            // Refused (quota): applied from memory, over the older record still in localStorage.
+            unwrittenRecords[key] = record;
+          }
         }
         switchProfile(profile);
       }
