@@ -241,7 +241,7 @@ without one stays at 1×. Not on webOS 3.
 ones are left out, so YouTube's own adaptive stream stays under it too (a vertical video counts by its short
 side); a change applies from the next video. **Skip AI-Upscaled Qualities** leaves out YouTube's "Super
 resolution" qualities, upscaled from a smaller video by AI. The subtitle style picked in YouTube's own settings is
-kept: YouTube lets it run out after a month, and lost it whenever its storage was emptied.
+kept: YouTube gives it an expiry date, and lost it whenever its storage was emptied.
 
 Return YouTube Dislike sends the id of every video you open to returnyoutubedislikeapi.com.
 </details>

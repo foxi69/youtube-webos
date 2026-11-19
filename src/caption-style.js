@@ -4,9 +4,10 @@
  * KEEPING THE STYLE
  *   YouTube TV keeps the caption style chosen in its settings (font, size,
  *   colours, background) in localStorage as yt-player-caption-display-settings,
- *   a record of { data, expiration, creation } that runs out after 30 days;
- *   then, and whenever localStorage is emptied, the style went back to
- *   YouTube's default. Here the record's expiration is moved a year on, before
+ *   a record of { data, expiration, creation } that runs out at its
+ *   expiration (TizenTube's users saw it go after about a month); then, and
+ *   whenever localStorage is emptied, the style went back to YouTube's
+ *   default. Here the record's expiration is moved a year on, before
  *   YouTube reads it, and its data is copied to the settings
  *   (captionStyleBackup); a record that is gone is written back from the copy.
  *   Looked at when the app starts, when the page changes (at most every 5 s,
