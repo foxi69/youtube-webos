@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/foxi69/youtube-webos/main/screenshots/banner.svg" alt="YouTube Foxtended for LG webOS TVs" width="100%">
+  <img src="https://raw.githubusercontent.com/foxi69/youtube-webos/main/screenshots/social-preview.png" alt="YouTube Foxtended for LG webOS TVs: no ads, SponsorBlock, Return Dislike, DeArrow, a programmable remote and auto-translated subtitles; webOS 3 to 25+, Homebrew Channel, GPL-3.0" width="100%">
 </p>
 
 <p align="center">
