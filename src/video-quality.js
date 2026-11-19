@@ -30,6 +30,9 @@ let lastKnownState = null;
 let _isWatchPageCached = false;
 let videoBeingProcessed = null;
 let kickstartInProgress = false;
+// Counts the players let go: a playback enforcer started for one player stops
+// once that player is let go, and never plays the next one.
+let attachGeneration = 0;
 
 const qualitySetForVideo = new Set();
 // How often a video's quality was put back up after the stream fell on its
@@ -77,12 +80,16 @@ async function ensurePlaybackStarts() {
   if (!IS_WEBOS_25 || hasKickstarted || isDestroyed || !player || kickstartInProgress) return;
 
   kickstartInProgress = true;
+  const generation = attachGeneration;
   if (DEBUG) console.info('[VideoQuality] 🚀 Starting playback enforcer...');
 
   const MAX_ATTEMPTS = 10;
   const INTERVAL_MS = 500;
 
   for (let i = 0; i < MAX_ATTEMPTS; i++) {
+    // Its player let go meanwhile (a player built again, or the page left):
+    // the in-progress flag, reset then, belongs to the next player.
+    if (generation !== attachGeneration) return;
     if (isDestroyed || !player || hasKickstarted) {
       kickstartInProgress = false;
       return;
@@ -131,6 +138,7 @@ async function ensurePlaybackStarts() {
     await new Promise(resolve => setTimeout(resolve, INTERVAL_MS));
   }
 
+  if (generation !== attachGeneration) return;
   kickstartInProgress = false;
   if (DEBUG && !hasKickstarted) {
     console.warn('[VideoQuality] ⚠️ Playback enforcer timed out without confirming PLAYING state.');
@@ -588,6 +596,7 @@ export function destroyVideoQuality() {
   DEBUG && console.info('[VideoQuality] Destroying');
   
   isDestroyed = true;
+  attachGeneration++;
   stopPositionRestore();
   
   if (initTimer) {

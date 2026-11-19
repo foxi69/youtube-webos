@@ -295,6 +295,32 @@ run(async () => {
     t('and the style that hid them meanwhile is gone again',
       !Array.from(win.document.querySelectorAll('style')).some((st) => /^\.GLc3cc \{ opacity: 0/.test(st.textContent)));
   }
+  // ---- webOS 25: the player replaced while its first video is told to play ----
+  if (modern) {
+    const { win, p, log, emit, toggle } = boot({}, { ua: UA25, state: -1, quality: 'hd2160' });
+    emit(-1);
+    await wait(100);
+    t('webOS 25, replaced: the first player is told to play', log.calls.includes('play'), log.calls.join());
+    // Force Max Quality off: the new player starts no enforcer of its own.
+    toggle('Force Max Quality', false);
+    const p2 = win.document.createElement('div');
+    p2.id = p.id;
+    for (const k of Object.keys(p)) p2[k] = p[k];
+    let plays2 = 0;
+    let attached2 = 0;
+    p2.playVideo = () => { plays2++; };
+    p2.getPlayerState = () => 2;
+    p2.addEventListener = (type) => { if (type === 'onStateChange') attached2++; };
+    p2.innerHTML = '<video></video>';
+    p.remove();
+    win.document.querySelector('ytlr-app').appendChild(p2);
+    p2.querySelector('video').dispatchEvent(new win.Event('playing'));
+    await wait(50);
+    t('...the new, paused player is attached', attached2 === 1, String(attached2));
+    // Past the old player's next attempts (one every 500 ms).
+    await wait(1200);
+    t('...the old player\'s attempts do not play the new one', plays2 === 0, String(plays2));
+  }
 
   // ---- "Playing in": the label, or the picture's own size ----
   {
