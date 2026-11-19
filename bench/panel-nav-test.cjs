@@ -300,14 +300,30 @@ run(async () => {
   steps = 0;
   while (focused() !== rows[0] && steps++ < 20) press(KEY.UP);
   const maxQuality = rows[0];
-  t(n('the first Player row is the Force Max Quality checkbox'),
-    maxQuality === checkboxNamed(player, 'Force Max Quality') && focused() === maxQuality, describe(focused()));
+  t(n('the first Player row is the Force Max Quality choice row'),
+    maxQuality === rowNamed(player, 'Force Max Quality') && focused() === maxQuality && value(maxQuality) === 'Off',
+    describe(focused()));
   press(KEY.OK);
-  t(n('OK ticks a checkbox and saves it'), maxQuality.checked === true && await stored('forceHighResVideo') === true &&
-    focused() === maxQuality, 'checked=' + maxQuality.checked);
+  t(n('OK picks Max and saves Force Max Quality on, with no limit'), value(maxQuality) === 'Max' &&
+    await stored('forceHighResVideo') === true && await stored('maxVideoQuality') === '0' && focused() === maxQuality,
+    value(maxQuality));
+  press(KEY.LEFT);
+  t(n('Left back to Off saves it off'), value(maxQuality) === 'Off' && await stored('forceHighResVideo') === false,
+    value(maxQuality));
+
+  // A checkbox: Skip AI-Upscaled Qualities, on by default.
+  const upscaled = checkboxNamed(player, 'Skip AI-Upscaled Qualities');
+  steps = 0;
+  while (focused() !== upscaled && steps++ < 5) press(KEY.DOWN);
+  t(n('Down reaches the Skip AI-Upscaled Qualities checkbox'), !!upscaled && focused() === upscaled, describe(focused()));
   press(KEY.OK);
-  t(n('OK again unticks it'), maxQuality.checked === false && await stored('forceHighResVideo') === false,
-    'checked=' + maxQuality.checked);
+  t(n('OK unticks a checkbox and saves it'), upscaled.checked === false && await stored('removeUpscaledFormats') === false &&
+    focused() === upscaled, 'checked=' + upscaled.checked);
+  press(KEY.OK);
+  t(n('OK again ticks it'), upscaled.checked === true && await stored('removeUpscaledFormats') === true,
+    'checked=' + upscaled.checked);
+  steps = 0;
+  while (focused() !== rows[0] && steps++ < 20) press(KEY.UP);
 
   // ---- The two-column Filters section ----
   press(KEY.UP);

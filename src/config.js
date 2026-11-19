@@ -205,6 +205,22 @@ export const maxVideoAgeModes = {
   730: '2 years'
 };
 
+/**
+ * Force Max Quality, as the panel shows it: Off, Max (the best level the video
+ * has) or the best level up to a number of lines. One row for two settings:
+ * forceHighResVideo (whether to force) and maxVideoQuality (the limit, '0' for
+ * none). An array, as an object would list the number keys first.
+ */
+export const forceQualityModes = [
+  ['off', 'Off'],
+  ['max', 'Max'],
+  ['2160', 'Up to 2160p (4K)'],
+  ['1440', 'Up to 1440p'],
+  ['1080', 'Up to 1080p'],
+  ['720', 'Up to 720p'],
+  ['480', 'Up to 480p']
+];
+
 /** Left/Right Seek Step, in seconds while the player controls are hidden. '0': YouTube's own. */
 export const seekStepModes = {
   0: "YouTube's Default",
@@ -349,6 +365,11 @@ const configOptions = new Map([
   ['enableLegacyEmojiFix', { default: true, desc: 'Emoji + Characters Fix' }],
   ['hideGuestSignInPrompts', { default: false, desc: 'Guest Mode: Hide Sign-in Buttons' }],
   ['forceHighResVideo', { default: false, desc: 'Force Max Quality' }],
+  // Force Max Quality's limit, in lines ('0': none): the best level up to it.
+  // Set from the same panel row as forceHighResVideo (forceQualityModes).
+  ['maxVideoQuality', { default: '0', desc: 'Force Max Quality Up To' }],
+  // Drops the formats YouTube upscaled with AI from player responses (adblock.js).
+  ['removeUpscaledFormats', { default: true, desc: 'Skip AI-Upscaled Qualities' }],
   ['showVideoQuality', { default: 'off', desc: 'Show Video Quality' }],
   ['forceVideoCodec', { default: 'auto', desc: 'Force Video Codec' }],
   ['subtitleTranslateLang', { default: 'off', desc: 'Auto-Translate Subtitles' }],
