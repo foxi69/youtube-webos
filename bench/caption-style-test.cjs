@@ -87,4 +87,17 @@ run(async () => {
     t('Subtitle Position Default: no class, no stylesheet',
       !win.document.documentElement.className.includes('ytaf-subs') && !win.document.getElementById('ytaf-subtitle-position'));
   }
+  // ---- A style changed just before the app goes to the background ----
+  {
+    const now = Date.now();
+    const { win } = boot({ captionStyleBackup: { [KEY]: STYLE } }, { [KEY]: JSON.stringify({ data: STYLE, expiration: now + 200 * DAY, creation: now }) });
+    await wait(300);
+    const NEW = JSON.stringify({ fontSizeIncrement: 3 });
+    win.localStorage.setItem(KEY, JSON.stringify({ data: NEW, expiration: now + 200 * DAY, creation: now }));
+    Object.defineProperty(win.document, 'hidden', { configurable: true, get: () => true });
+    win.document.dispatchEvent(new win.Event('visibilitychange'));
+    // At once, with no wait: the TV can suspend the app right after.
+    const kept = settings(win).captionStyleBackup;
+    t('going to the background: the new style is copied and written at once', !!kept && kept[KEY] === NEW, JSON.stringify(kept));
+  }
 });

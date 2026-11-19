@@ -21,7 +21,7 @@
  *   the picture, or text burnt into the video. A class on <html>, read by a
  *   static rule, so a caption window YouTube draws again keeps it.
  */
-import { configRead, configWrite, configAddChangeListener } from './config.js';
+import { configRead, configWrite, configAddChangeListener, configFlush } from './config.js';
 
 const CAPTION_KEYS = ['yt-player-caption-display-settings'];
 const BACKUP_KEY = 'captionStyleBackup';
@@ -97,7 +97,13 @@ if (typeof window !== 'undefined') {
   window.addEventListener('ytaf-page-update', () => {
     if (Date.now() - lastCheck >= MIN_CHECK_GAP_MS) keepCaptionStyle();
   });
-  document.addEventListener('visibilitychange', () => { if (document.hidden) keepCaptionStyle(); });
+  // config.js writes its waiting changes on this event before this listener
+  // runs: a style copied now is written at once too, before the TV suspends the app.
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) return;
+    keepCaptionStyle();
+    configFlush();
+  });
   // A copy that came back with the settings (config-backup.js) after the look above.
   configAddChangeListener(BACKUP_KEY, () => keepCaptionStyle());
   applySubtitlePosition();

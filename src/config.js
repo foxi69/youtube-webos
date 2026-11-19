@@ -690,6 +690,11 @@ if (typeof window !== 'undefined') {
 }
 if (profileSeeded) scheduleWrite();
 
+/** Writes a change still waiting now (a module that changes a setting as the app goes to the background). */
+export function configFlush() {
+  flushPendingWrite();
+}
+
 function configExists(key) { return configOptions.has(key); }
 
 export function configGetDesc(key) {
