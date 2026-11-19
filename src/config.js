@@ -386,6 +386,8 @@ const configOptions = new Map([
   ['subtitlesAtStart', { default: 'youtube', desc: 'Subtitles When a Video Starts' }],
   // Drops the dubbed audio tracks from the player response, so the original plays.
   ['forceOriginalAudio', { default: false, desc: 'Prefer Original Audio over Dubbed' }],
+  // audio-only.js: Audio-Only Mode asks the player for the sound alone.
+  ['audioOnlyStream', { default: false, desc: 'Audio-Only Mode Streams Audio Only' }],
   // caption-style.js: the subtitles lifted above where YouTube puts them.
   ['subtitlePosition', { default: 'default', desc: 'Subtitle Position' }],
   // caption-style.js: YouTube's own caption style record, kept. Not shown in the panel.

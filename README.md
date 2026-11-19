@@ -218,6 +218,7 @@ and search alone.
 | Subtitles When a Video Starts (YouTube's Choice, Off, Translated: only the Auto-Translate Subtitles language) | YouTube's Choice |
 | Subtitle Position (Default, Higher, Highest) | Default |
 | Prefer Original Audio over Dubbed | Off |
+| Audio-Only Mode Streams Audio Only | Off |
 | Show Remaining Time / End Time (Remaining, End Time, Both) | Off |
 | Show Most Replayed Graph Above the Seek Bar | Off |
 | Hide Endcards | Off |

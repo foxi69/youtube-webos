@@ -8,6 +8,7 @@ import { initLogoStyle } from './logo-style.js';
 import { initMathLetters } from './math-letters.js';
 import { initPlaybackSpeed, stepSpeed, resetSpeed, toggleSpeed } from './playback-speed.js';
 import { toggleChannelWhitelist, formatTimeSaved } from './sponsorblock-extras.js';
+import { toggleAudioOnly } from './audio-only.js';
 import sponsorBlockUI from './Sponsorblock-UI.js';
 import { sendKey, REMOTE_KEYS, COLOR_CODE_MAP, isGuestMode, invalidateGuestModeCache, isWatchPage, isShortsPage, isSearchPage, SELECTORS, getVideo, SYNTHETIC_KEY_FLAG, isAutoplayOn, isLiveStream } from './utils.js';
 import { initTrackingBlock, destroyTrackingBlock } from './adblock.js';
@@ -155,9 +156,6 @@ function findPlayerButton(match) {
 }
 
 window.addEventListener('ytaf-page-update', (e) => {
-    // Audio-only ends with the watch page, so home-screen previews are not
-    // left invisible.
-    if (!e.detail.isWatch && !e.detail.isShorts) document.documentElement.classList.remove('ytaf-audio-only');
     if (e.detail.isWatch) {
         cachedSelectors.comments = null;
         cachedSelectors.description = null;
@@ -1123,6 +1121,8 @@ function createOptionsPanel() {
   createAlignedCycleControl('subtitlePosition', subtitlePositionModes),
   createElement('div', { text: 'Lifts the subtitles, for a TV or soundbar that covers the bottom of the picture. Their font, size and colours are in YouTube\'s own settings, and are kept now', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   createConfigCheckbox('forceOriginalAudio'),
+  createConfigCheckbox('audioOnlyStream'),
+  createElement('div', { text: 'With the Audio-Only Mode action: only the sound is downloaded and played, not the hidden picture. The video loads again where it is when the mode goes on or off', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   createAlignedCycleControl('timeRemainingMode', timeRemainingModes),
   createConfigCheckbox('showMostReplayed'),
   createConfigCheckbox('hideEndcards'),
@@ -2238,15 +2238,9 @@ function handleShortcutAction(action) {
             showNotification('SponsorBlock not loaded');
         }
         break;
-    case 'audio_only': {
-        // The picture is hidden, the sound keeps playing - for music and
-        // podcasts on an OLED panel. A class on <html> rather than a style on
-        // the element, so it survives YouTube replacing the <video>. From
-        // jesvijonathan's fork via anikettuli's NicholasBly PR #146.
-        const on = document.documentElement.classList.toggle('ytaf-audio-only');
-        showNotification(`Audio-Only Mode ${on ? 'Enabled' : 'Disabled'}`);
+    case 'audio_only':
+        toggleAudioOnly();
         break;
-    }
     case 'sb_manual_skip':
         try {
           if (window.sponsorblock) {

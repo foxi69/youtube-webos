@@ -1,4 +1,5 @@
 import { configGetAll, configAddChangeListener, forceQualityLines } from './config';
+import { streamsAudioOnly, makeAudioOnly } from './audio-only.js';
 import { isShortsPage, isSearchPage } from './utils';
 import { getWebOSVersion } from './webos-utils';
 import { FetchRegistry } from './hooks/fetch';
@@ -823,6 +824,8 @@ function filterResponse(data, text) {
   // response with previews has these.
   if (text.indexOf(AUTOTRANSITION_KEY) !== -1 || (cfgFlags.continuePreviews && BLOCK_ADOPTION_RE.test(text)))
     fixPreviewCommands(data, cfgFlags.continuePreviews);
+  // Audio-Only Mode streaming the sound alone, whatever else is on.
+  if (streamsAudioOnly()) makeAudioOnly(data);
   if (!anyResponseFilterEnabled) return;
 
   // The legacy emoji fix walks every item it filters; a text without an
