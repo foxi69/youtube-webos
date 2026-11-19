@@ -50,9 +50,25 @@ function formatTitle(title, isCustom) {
   );
 }
 
+/**
+ * Casual Mode: casual voters said YouTube's own title is fine (funny,
+ * creative, clever, descriptive or other: any of them, by at least one vote),
+ * for the title the video has now. A vote names the title it was cast for;
+ * one for an earlier title does not count. As DeArrow's own Casual mode with
+ * its default settings (videoBranding.ts shouldShowCasualOnVideo).
+ */
+export function casualKeepsOriginal(video) {
+  const votes = video.raw && Array.isArray(video.raw.casualVotes) ? video.raw.casualVotes : null;
+  if (!votes || !votes.length) return false;
+  const original = typeof video.original === 'string' ? video.original.trim().toLowerCase() : '';
+  return votes.some((vote) => !!vote && Number(vote.count) >= 1 &&
+    (!vote.title || (typeof vote.title === 'string' && vote.title.trim().toLowerCase() === original)));
+}
+
 /** The crowdsourced title the settings let a video show: the top one when it is trusted, else null. */
 export function crowdsourcedTitle(video) {
   if (!configRead('dearrowCrowdTitles')) return null;
+  if (configRead('dearrowCasualMode') && casualKeepsOriginal(video)) return null;
   const custom = video.raw && Array.isArray(video.raw.titles) ? video.raw.titles[0] : null;
   return isTrusted(custom) && typeof custom.title === 'string' ? custom : null;
 }

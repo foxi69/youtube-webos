@@ -90,6 +90,7 @@ export const SELECTORS = {
 export const DEARROW_CONFIG_KEYS = [
   'enableDeArrow',
   'dearrowCrowdTitles',
+  'dearrowCasualMode',
   'dearrowTitleFormatting',
   'dearrowCleanEmojis',
   'dearrowCrowdThumbnails',

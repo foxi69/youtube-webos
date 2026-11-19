@@ -1253,7 +1253,8 @@ function createOptionsPanel() {
     // a seventh tab does not fit the panel's width. The legacy build has
     // Title Case alone (dearrow/formatter-legacy.js).
     const elDeArrowBadge = createConfigCheckbox('dearrowShowBadge');
-    const deArrowTitleRows = [createConfigCheckbox('dearrowCrowdTitles')];
+    const deArrowTitleRows = [createConfigCheckbox('dearrowCrowdTitles'), createConfigCheckbox('dearrowCasualMode'),
+      createElement('div', { text: 'Keeps YouTube\'s own title where DeArrow\'s casual voters found it fine (funny, clever, descriptive...), instead of a crowdsourced one', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } })];
     if (titleFormattingSupported) {
       deArrowTitleRows.push(
         createAlignedCycleControl('dearrowTitleFormatting', titleFormatChoices(dearrowTitleFormats)),

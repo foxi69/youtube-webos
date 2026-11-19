@@ -57,6 +57,8 @@ function boot(cfg, { copySize = 1000 } = {}) {
     enableDeArrow: true, dearrowTitleFormatting: 'disable', dearrowThumbnailFallback: 'original'
   }, cfg)));
   const known = new Set();
+  // Casual votes by video id: [{ id, count, title }] in the branding answer.
+  const casual = new Map();
   win.fetch = (url) => {
     url = String(url);
     fetched.push(url);
@@ -65,6 +67,7 @@ function boot(cfg, { copySize = 1000 } = {}) {
     known.forEach((id) => {
       if (prefixOf(id) === prefix) {
         answer[id] = { titles: [{ title: 'Calm ' + id, original: false, votes: 1 }], thumbnails: [{ timestamp: 12.5, original: false, votes: 1 }] };
+        if (casual.has(id)) answer[id].casualVotes = casual.get(id);
       }
     });
     return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(answer) });
@@ -117,7 +120,7 @@ function boot(cfg, { copySize = 1000 } = {}) {
     input.checked = on;
     input.dispatchEvent(new win.Event('change'));
   };
-  return { win, errors, fetched, images, parse, toggle, known };
+  return { win, errors, fetched, images, parse, toggle, known, casual };
 }
 
 function tile(id, title) {
@@ -231,4 +234,32 @@ run(async () => {
   }
 
   t('no jsdomError in any case', allErrors.length === 0, allErrors[0]);
+  // ---- Casual Mode ----
+  {
+    const { win, parse, known, casual, errors } = boot({ dearrowCasualMode: true });
+    for (const id of ['casualfine1', 'casualold01', 'nocasual001']) known.add(id);
+    casual.set('casualfine1', [{ id: 'funny', count: 1, title: 'loud casualfine1' }]);
+    // A vote for the title the video had before: it does not count.
+    casual.set('casualold01', [{ id: 'descriptive', count: 2, title: 'An older title' }]);
+    const els = ['casualfine1', 'casualold01', 'nocasual001'].map((id) => render(win, id, 'Loud ' + id));
+    parse(browse(['casualfine1', 'casualold01', 'nocasual001'].map((id) => tile(id, 'Loud ' + id))));
+    await waitFor(() => shownTitle(els[1]) === 'Calm casualold01' && shownTitle(els[2]) === 'Calm nocasual001', 2000);
+    await wait(200);
+    t('casual: a title casual voters found fine stays YouTube\'s', shownTitle(els[0]) === 'Loud casualfine1', shownTitle(els[0]));
+    t('casual: a vote for an earlier title does not count', shownTitle(els[1]) === 'Calm casualold01', shownTitle(els[1]));
+    t('casual: a video with no casual votes gets the crowdsourced title', shownTitle(els[2]) === 'Calm nocasual001', shownTitle(els[2]));
+    t('casual: the thumbnail is still DeArrow\'s', shownThumb(els[0]).includes('COPY'), shownThumb(els[0]).slice(0, 80));
+    t('no jsdomError (casual)', errors.length === 0, errors[0]);
+    win.close();
+  }
+  {
+    const { win, parse, known, casual } = boot({ dearrowCasualMode: false });
+    known.add('casualfine2');
+    casual.set('casualfine2', [{ id: 'funny', count: 1, title: 'loud casualfine2' }]);
+    const el = render(win, 'casualfine2', 'Loud casualfine2');
+    parse(browse([tile('casualfine2', 'Loud casualfine2')]));
+    await waitFor(() => shownTitle(el) === 'Calm casualfine2', 2000);
+    t('casual off: the crowdsourced title, casual votes or not', shownTitle(el) === 'Calm casualfine2', shownTitle(el));
+    win.close();
+  }
 });

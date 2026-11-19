@@ -341,6 +341,7 @@ The actions each key can take are listed under [Remote control](#-remote-control
 | DeArrow | Off |
 | Show the DeArrow Logo on Crowdsourced Titles/Thumbnails | On |
 | Crowdsourced Titles | On |
+| Casual Mode: Keep Titles Voted Fine | Off |
 | Title Formatting (Disabled, Title Case; on the webOS 22+ package also Sentence case, lower case, First letter uppercase, Capitalize Words) | Title Case on an English TV, else Disabled |
 | Remove Emojis and Fancy Text | On |
 | Crowdsourced Thumbnails | On |

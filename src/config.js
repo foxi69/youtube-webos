@@ -469,6 +469,8 @@ const configOptions = new Map([
   ['enableDeArrow', { default: false, desc: 'DeArrow' }],
   ['dearrowShowBadge', { default: true, desc: 'Show the DeArrow Logo on Crowdsourced Titles/Thumbnails' }],
   ['dearrowCrowdTitles', { default: true, desc: 'Crowdsourced Titles' }],
+  // dearrow/titles.js: YouTube's title stays where casual voters found it fine.
+  ['dearrowCasualMode', { default: false, desc: 'Casual Mode: Keep Titles Voted Fine' }],
   // Every title shown, crowdsourced or YouTube's own (the legacy build: Title Case alone).
   ['dearrowTitleFormatting', { default: isEnglishUI ? 'title_case' : 'disable', desc: 'Title Formatting' }],
   ['dearrowCleanEmojis', { default: true, desc: 'Remove Emojis and Fancy Text' }],
