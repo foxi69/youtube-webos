@@ -13,18 +13,12 @@
  *
  * Usage: node bench/thumbnail-quality-test.cjs <bundle> [legacy|modern]
  */
-const fs = require('fs');
-const path = require('path');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, applyChrome87Downgrade, UA, setUserAgent } = require('./chrome38-env.cjs');
-const { createReporter, trustedKey, wait } = require('./harness.cjs');
+const { createReporter, readBundle, bootPage, trustedKey, wait } = require('./harness.cjs');
 
-const ROOT = path.resolve(__dirname, '..');
-const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
-// `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
-// with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
-const modern = process.argv[3] === 'modern';
-const bundle = fs.readFileSync(bundlePath, 'utf8');
+// The bundle of the command line; bootPage gives it the environment the
+// command line names (legacy: Chrome 38 with a webOS 3 user agent; modern:
+// Chrome 87 with a webOS 23 one).
+const bundle = readBundle();
 
 const GREEN = 404;
 const pad = 'z'.repeat(600);
@@ -50,17 +44,18 @@ function boot(cfg, { head = () => big, image = () => ({ width: 1280 }), stored, 
   const images = [];
   // Both kinds of probe, in the order they started: 'head <url>' or 'image <url>'.
   const probes = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => { errors.push(e.message); allErrors.push(e.message); });
-  const dom = new JSDOM(`<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app>${html}</ytlr-app></body></html>`,
-    { runScripts: 'outside-only', url: 'https://www.youtube.com/tv', virtualConsole: vc, pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, modern ? UA.webos23 : UA.webos3);
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  // Chrome 23 has it; the Chrome 38 environment takes it away all the same.
-  win.Element.prototype.remove = function remove() { if (this.parentNode) this.parentNode.removeChild(this); };
-  win.launchParams = '{}';
-  win.fetch = () => Promise.reject(new Error('offline'));
+  // The page in its environment (the user agent, the Chrome 38 or 87 one,
+  // Element#remove); the stubs below go in before the bundle runs.
+  const page = bootPage({
+    code: bundle,
+    inner: html,
+    launchParams: '{}',
+    consoleErrors: false,
+    onError: (text) => { errors.push(text); allErrors.push(text); },
+    fetch: () => Promise.reject(new Error('offline')),
+    evaluate: false
+  });
+  const win = page.win;
   win.XMLHttpRequest = class {
     open(method, url) { this._method = method; this._url = url; }
     send() {
@@ -106,7 +101,7 @@ function boot(cfg, { head = () => big, image = () => ({ width: 1280 }), stored, 
     enableReturnYouTubeDislike: false, enableAutoLogin: false, enableDeArrow: false,
     thumbnailQuality: 'eager'
   }, cfg)));
-  win.eval(bundle);
+  page.evaluate();
   const NS = win.JSON.stringify;
   const parse = (obj) => win.JSON.parse(NS(obj));
   const pump = () => { const q = rafQ; rafQ = []; for (const cb of q) cb(Date.now()); };
