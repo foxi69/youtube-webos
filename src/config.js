@@ -648,8 +648,12 @@ function writeNow() {
     if (activeProfile) {
       for (const key of DEVICE_KEYS) sharedConfig[key] = localConfig[key];
       const shared = JSON.stringify(sharedConfig);
-      window.localStorage[CONFIG_KEY] = shared;
-      written.push([CONFIG_KEY, shared]);
+      // Each record on its own: a shared record refused (quota) does not keep
+      // the account's from being written, or kept in memory.
+      try {
+        window.localStorage[CONFIG_KEY] = shared;
+        written.push([CONFIG_KEY, shared]);
+      } catch { /* the account's record is still written below */ }
       if (storesProfile(activeProfile)) {
         const key = profileStorageKey(activeProfile);
         const values = pickAccountValues(localConfig);

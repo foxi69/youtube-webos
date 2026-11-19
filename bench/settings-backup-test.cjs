@@ -375,6 +375,62 @@ run(async () => {
       backup.get(OTHER_KEY));
   }
 
+  // ---- The shared record refused: an account's change is still written, and kept across a switch away and back ----
+  {
+    const OTHER_KEY = KEY + '::' + hashString('accountId=def');
+    const refuseShared = { on: false, refused: 0 };
+    const page = boot({
+      data: new Map(), log: [],
+      storage: Object.assign({
+        [KEY]: JSON.stringify({ perAccountSettings: true, foxThemeApplied: true }),
+        [PROFILE_KEY]: JSON.stringify({ removeUpscaledFormats: true }),
+        [OTHER_KEY]: JSON.stringify({ removeUpscaledFormats: true })
+      }, IDENTITY),
+      // The app writes the records by assignment (localStorage[key] = text):
+      // a stand-in that refuses the shared record, by assignment or setItem.
+      setup: (w) => {
+        const real = w.localStorage;
+        const refuse = (key) => {
+          if (refuseShared.on && key === KEY) { refuseShared.refused++; throw new Error('QuotaExceededError'); }
+        };
+        const proxy = new Proxy(real, {
+          get(target, prop) {
+            if (prop === 'setItem') return (key, value) => { refuse(key); target.setItem(key, value); };
+            const value = Reflect.get(target, prop);
+            return typeof value === 'function' ? value.bind(target) : value;
+          },
+          set(target, prop, value) { refuse(prop); target.setItem(prop, String(value)); return true; }
+        });
+        Object.defineProperty(w, 'localStorage', { configurable: true, get: () => proxy });
+      }
+    });
+    await wait(400);
+    const switchTo = async (accountId) => {
+      page.win.localStorage.setItem('yt.leanback.default::last-identity-used', JSON.stringify({ data: { accountId } }));
+      page.win.dispatchEvent(new page.win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: true } }));
+      page.win.dispatchEvent(new page.win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: false } }));
+      await wait(300);
+    };
+    const box = () => {
+      const label = Array.prototype.slice.call(page.win.document.querySelectorAll('label'))
+        .find((l) => l.textContent.trim() === 'Skip AI-Upscaled Qualities');
+      return label && label.querySelector('input');
+    };
+    await panelValue(page.win, 'Hide Videos Shorter Than');
+    t('precondition (shared refused): the account starts with the switch on', !!box() && box().checked === true);
+    refuseShared.on = true;
+    if (box()) box().click();
+    await wait(400);
+    t('...precondition: the shared record was refused', refuseShared.refused > 0, String(refuseShared.refused));
+    t('shared refused: the account\'s change is still written to its record',
+      !!stored(page.win, PROFILE_KEY) && stored(page.win, PROFILE_KEY).removeUpscaledFormats === false,
+      JSON.stringify(stored(page.win, PROFILE_KEY)));
+    await switchTo('def');
+    t('...precondition: the other account has its own setting (on)', !!box() && box().checked === true);
+    await switchTo('abc');
+    t('...and switched away and back, the account has its change', !!box() && box().checked === false);
+  }
+
   // ---- An account record still in localStorage is newer than its copy ----
   {
     const backup = savedCopy([
