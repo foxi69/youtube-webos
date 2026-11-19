@@ -375,7 +375,10 @@ run(async () => {
     for (const k of Object.keys(p)) p2[k] = p[k];
     let plays2 = 0;
     let attached2 = 0;
+    let quality2 = 0;
     p2.playVideo = () => { plays2++; };
+    p2.setPlaybackQualityRange = () => { quality2++; };
+    p2.setPlaybackQuality = () => { quality2++; };
     p2.getPlayerState = () => 2;
     p2.addEventListener = (type) => { if (type === 'onStateChange') attached2++; };
     p2.innerHTML = '<video></video>';
@@ -388,6 +391,7 @@ run(async () => {
     // Both of the switch's frames, the second queued by the first.
     for (let i = 0; i < 10 && frames.length; i++) frames.shift()();
     t('...the old switch does not play the new, paused player', plays2 === 0 && frames.length === 0, `${plays2} ${frames.length}`);
+    t('...nor sets the new player\'s quality', quality2 === 0, String(quality2));
   }
   // ---- The same, replaced between the switch's two frames ----
   {
