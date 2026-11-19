@@ -217,6 +217,15 @@ run(async () => {
     const env = await boot({ shortcut_key_4: 'chapter_skip_prev' }, segments, { bar: BAR_MULTI });
     const KEY_5 = 53;
     const chapterKey = async () => { await press(env.win, KEY_5); await wait(700); };
+    // The API sends chapters only when asked for by their action type.
+    const actionTypes = env.asked.map((u) => new URL(u).searchParams.get('actionTypes'));
+    t(n('chapters: the request asks for the chapter action type'),
+      JSON.stringify(actionTypes) === JSON.stringify(['["skip","mute","full","chapter"]']), JSON.stringify(actionTypes));
+    // The segment list lists the sponsor segment (it does list), but not the chapters.
+    const listed = Array.prototype.map.call(env.doc.querySelectorAll('.sb-segments-popup .sb-segment-row .sb-segment-time'),
+      (r) => r.textContent);
+    t(n('chapters: the segment list has only the sponsor segment'),
+      JSON.stringify(listed) === '["05:00 to 05:30"]', JSON.stringify(listed));
     await env.playTo(30.2);
     t(n('chapters: a chapter is not skipped'), env.state.time === 30.2, String(env.state.time));
     t(n('chapters: and has no mark on the bar'), env.marks().length === 1, String(env.marks().length));
