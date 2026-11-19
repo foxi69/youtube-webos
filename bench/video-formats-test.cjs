@@ -88,6 +88,10 @@ run(async () => {
       itags(boot({ forceQuality: 'off', removeUpscaledFormats: false }).parse(player(list()))) === '401,400,399,398,251');
     t('both: the upscaled format and the ones above the limit',
       itags(boot({ forceQuality: 'up1440', removeUpscaledFormats: true }).parse(player(list()))) === '400,399,398,251');
+    // An upscaled format under the limit and a real one above it: each filter has its own to drop.
+    const mixed = [video(399, 1920, 1080, SR), video(400, 2560, 1440), video(398, 1280, 720), audio];
+    const both = boot({ forceQuality: 'up1080', removeUpscaledFormats: true }).parse(player(mixed));
+    t('both: each filter drops its own (the upscaled 1080p, the real 1440p)', itags(both) === '398,251', itags(both));
   }
 
   // ---- The panel row ----
