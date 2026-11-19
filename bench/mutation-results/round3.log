@@ -1,0 +1,21 @@
+baseline: 89 tests pass; 17 mutants, 10 at a time
+killed queue-refused-hash (78s) by lifecycle-audit-test: FAIL queue: a refusal settling with another video on screen is not reported and moves nothing
+killed queue-unplayable (76s) by lifecycle-audit-test: FAIL queue: a queued video refused with UNPLAYABLE is reported and the next one plays
+killed queue-opening-id (76s) by lifecycle-audit-test: FAIL queue: the previous video playing again does not count as the queued one opening
+killed watch-hidden-start (33s) by watch-time-test: FAIL a 'playing' in the background does not count
+killed watch-hidden-resume (32s) by watch-time-test: FAIL the player page showing again in the background does not count
+killed countdown-live (35s) by preview-countdown-test: FAIL a live preview: the tile's time stays
+killed remaining-rate (34s) by panel-test: FAIL at 2x the time left is halved
+killed mute-shorts (34s) by preview-autoopen-test: FAIL mute on, Shorts: on the Shorts page the mute is undone
+killed sb-final-seek (78s) by sponsorblock-skip-test: FAIL modern: a chain whose last segment adds 0.7 s: one jump to that segment's end
+killed sb-auto-mode (80s) by sponsorblock-skip-test: FAIL modern: ...and the video does not jump as it opens
+killed config-same-profile (31s) by per-account-test: FAIL guest chosen again: the session keeps its change
+killed config-guest-state (28s) by per-account-test: FAIL guest: panel says the guest's changes are not kept
+killed filters-duration (42s) by feed-features-test: FAIL a badge that is no length (NEW) is passed over: the length after it still drops a short video, keeps a long one
+killed menu-lockup-type (41s) by feed-features-test: FAIL long press: a Mix or a playlist lockup is left alone, a video lockup beside them gets our entries
+killed menu-marker (42s) by feed-features-test: FAIL long press: a menu the fallback walk meets twice gets our entries once
+killed menu-channel (40s) by feed-features-test: FAIL long press: a tile without a channel gets no Block channel entry, one with a channel does
+killed keys-search-digits (157s) by shortcut-actions-test: FAIL modern: search page: a number bound to the sleep timer goes on to YouTube
+
+17 of 17 killed; survived: none
+exit 0
