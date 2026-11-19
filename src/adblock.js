@@ -809,8 +809,10 @@ function filterResponse(data, text) {
   // The left menu, whatever else is on.
   if (cfgFlags.sidebar) applySidebar(data);
   // No setting for the auto-open: one native search of the text, only a
-  // response with previews has these.
-  if (text.indexOf(AUTOTRANSITION_KEY) !== -1 || (cfgFlags.continuePreviews && BLOCK_ADOPTION_RE.test(text)))
+  // response with previews has these. A playlist page is walked whatever its
+  // preview commands hold.
+  if (text.indexOf(AUTOTRANSITION_KEY) !== -1 || text.indexOf(PLAYLIST_LIST_KEY) !== -1 ||
+    (cfgFlags.continuePreviews && BLOCK_ADOPTION_RE.test(text)))
     fixPreviewCommands(data, cfgFlags.continuePreviews);
   if (!anyResponseFilterEnabled) return;
 
@@ -1785,7 +1787,16 @@ function keepOriginalAudio(holder) {
 // stops it and loads the video again. The flag is cleared wherever the
 // response has it, however deep: where it sits is not in any schema here.
 // (From Zucchiniii's fork, fork watch #139.)
+//
+// A playlist page (Watch Later and every other VL... list) gets a preview
+// command on each of its rows too, but the TV app does not put the player on
+// the row there: it plays full screen behind the page, unseen, while the
+// row's time counts down (heard, with Video Previews With sound). The rows'
+// preview command is dropped, and their focus command with it when that was
+// all it held (as on a webOS 25 TV, 2026-11-19).
 const AUTOTRANSITION_KEY = '"autotransitionDelayMs"';
+// playlistVideoListRenderer and playlistVideoListContinuation.
+const PLAYLIST_LIST_KEY = '"playlistVideoList';
 const BLOCK_ADOPTION_RE = /"blockAdoption"\s*:\s*true/;
 const PREVIEW_MAX_DEPTH = 40;
 
@@ -1796,6 +1807,16 @@ function fixPreviewCommands(data, allowHandover) {
   while (idx < queue.length) {
     const obj = queue[idx++];
     const depth = queue[idx++];
+    const playlist = obj.playlistVideoListRenderer || obj.playlistVideoListContinuation;
+    if (playlist && Array.isArray(playlist.contents)) {
+      for (const row of playlist.contents) {
+        const tile = row && row.tileRenderer;
+        const focus = tile && tile.onFocusCommand;
+        if (!focus || !focus.startInlinePlaybackCommand) continue;
+        delete focus.startInlinePlaybackCommand;
+        if (!Object.keys(focus).length) delete tile.onFocusCommand;
+      }
+    }
     if (allowHandover && obj.blockAdoption === true) obj.blockAdoption = false;
     if (obj.autotransitionDelayMs !== undefined) {
       obj.autotransitionDelayMs = -1;

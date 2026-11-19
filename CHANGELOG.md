@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## Fixes
+
++ Watch Later and the other playlist pages no longer play a preview nobody sees. YouTube sends a preview for each row of a playlist page too, but the TV app does not put the player on the row there: it played full screen behind the page while the row's time counted down, heard with Video Previews set to With sound. The rows' preview is dropped, so focusing a row plays nothing; OK opens the video as before, and Home, search and Subscriptions keep their previews. Seen on a webOS 25 TV in 0.10.0; NicholasBly/youtube-webos#227 reports previews that are "just playing audio".
+
 ## [0.10.0] - 2026/11/19
 
 Tile previews back on most newer TVs (webOS 22 to 25), now with a countdown, kept out of the watch history and no longer opening the video by themselves; four new actions and options (Repeat Video, Open Long-Press Menu, Open Playing Previews Without Reloading, Open Comments at the End of a Video); DeArrow's Title Formatting on webOS 3-6; settings that worked on the same thing merged into one row each (Video Previews, Show Video Quality, AI Videos, Max Thumbnail Quality, Subtitles When a Video Starts), which start at their defaults, as the old settings are not carried over; and Playback Speed Control fixes for webOS 4-6 (#97), with 0.5× and 0.75× playing through on every TV that has the speed (webOS 4 and newer). Ships both packages: `_webOS22+.ipk` for webOS 22 and newer, and the legacy `.ipk` for webOS 3-6.
