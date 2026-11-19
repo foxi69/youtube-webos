@@ -60,7 +60,8 @@ function formatTitle(title, isCustom) {
 export function casualKeepsOriginal(video) {
   const votes = video.raw && Array.isArray(video.raw.casualVotes) ? video.raw.casualVotes : null;
   if (!votes || !votes.length) return false;
-  const original = typeof video.original === 'string' ? video.original.trim().toLowerCase() : '';
+  const own = untranslatedOrOriginal(video);
+  const original = typeof own === 'string' ? own.trim().toLowerCase() : '';
   return votes.some((vote) => !!vote && Number(vote.count) >= 1 &&
     (!vote.title || (typeof vote.title === 'string' && vote.title.trim().toLowerCase() === original)));
 }
@@ -82,7 +83,16 @@ export async function resolveTitle(video) {
   const custom = crowdsourcedTitle(video);
   if (custom) return (await formatTitle(custom.title, true)) || null;
 
+  // Untranslated Titles: the title as uploaded, where YouTube shows a translation.
+  const untranslated = configRead('dearrowUntranslatedTitles') ? video.untranslated : null;
+  if (untranslated) return (await formatTitle(untranslated, false)) || untranslated;
+
   if (!video.original) return null;
   const formatted = await formatTitle(video.original, false);
   return formatted && formatted !== video.original ? formatted : null;
+}
+
+/** YouTube's own title of a video: as uploaded when Untranslated Titles knows it, else as shown. */
+function untranslatedOrOriginal(video) {
+  return (configRead('dearrowUntranslatedTitles') && video.untranslated) || video.original;
 }

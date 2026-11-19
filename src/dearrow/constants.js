@@ -91,6 +91,7 @@ export const DEARROW_CONFIG_KEYS = [
   'enableDeArrow',
   'dearrowCrowdTitles',
   'dearrowCasualMode',
+  'dearrowUntranslatedTitles',
   'dearrowTitleFormatting',
   'dearrowCleanEmojis',
   'dearrowCrowdThumbnails',

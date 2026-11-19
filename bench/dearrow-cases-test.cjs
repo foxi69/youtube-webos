@@ -59,9 +59,17 @@ function boot(cfg, { copySize = 1000 } = {}) {
   const known = new Set();
   // Casual votes by video id: [{ id, count, title }] in the branding answer.
   const casual = new Map();
+  // Titles as uploaded, by video id, for YouTube's oEmbed answer.
+  const uploaded = new Map();
   win.fetch = (url) => {
     url = String(url);
     fetched.push(url);
+    if (url.indexOf('https://www.youtube.com/oembed?') === 0) {
+      const id = decodeURIComponent(url).split('v=').pop();
+      const title = uploaded.get(id);
+      return Promise.resolve(title ? { ok: true, status: 200, json: () => Promise.resolve({ title }) }
+        : { ok: false, status: 404, json: () => Promise.resolve({}) });
+    }
     const prefix = url.split('/').pop();
     const answer = {};
     known.forEach((id) => {
@@ -120,7 +128,7 @@ function boot(cfg, { copySize = 1000 } = {}) {
     input.checked = on;
     input.dispatchEvent(new win.Event('change'));
   };
-  return { win, errors, fetched, images, parse, toggle, known, casual };
+  return { win, errors, fetched, images, parse, toggle, known, casual, uploaded };
 }
 
 function tile(id, title) {
@@ -260,6 +268,34 @@ run(async () => {
     parse(browse([tile('casualfine2', 'Loud casualfine2')]));
     await waitFor(() => shownTitle(el) === 'Calm casualfine2', 2000);
     t('casual off: the crowdsourced title, casual votes or not', shownTitle(el) === 'Calm casualfine2', shownTitle(el));
+    win.close();
+  }
+  // ---- Untranslated Titles ----
+  {
+    const { win, parse, known, uploaded, fetched, errors } = boot({ dearrowUntranslatedTitles: true, dearrowCrowdTitles: false });
+    for (const id of ['translated1', 'sametitle01']) known.add(id);
+    uploaded.set('translated1', 'How I built a boat');
+    uploaded.set('sametitle01', 'Hogyan építettem hajót');
+    const els = [render(win, 'translated1', 'Hogyan építettem csónakot'), render(win, 'sametitle01', 'Hogyan építettem hajót')];
+    parse(browse([tile('translated1', 'Hogyan építettem csónakot'), tile('sametitle01', 'Hogyan építettem hajót')]));
+    await waitFor(() => shownTitle(els[0]) === 'How I built a boat', 2000);
+    t('untranslated: a translated title shows as uploaded', shownTitle(els[0]) === 'How I built a boat', shownTitle(els[0]));
+    t('untranslated: a title YouTube did not translate stays', shownTitle(els[1]) === 'Hogyan építettem hajót', shownTitle(els[1]));
+    const asked = fetched.filter((u) => u.indexOf('/oembed?') !== -1);
+    t('untranslated: YouTube is asked once per video, on its own origin',
+      asked.length === 2 && asked.every((u) => u.indexOf('https://www.youtube.com/oembed?') === 0), asked.join(' '));
+    t('no jsdomError (untranslated)', errors.length === 0, errors[0]);
+    win.close();
+  }
+  {
+    const { win, parse, known, uploaded, fetched } = boot({ dearrowUntranslatedTitles: false, dearrowCrowdTitles: false });
+    known.add('translated2');
+    uploaded.set('translated2', 'How I built a boat');
+    const el = render(win, 'translated2', 'Hogyan építettem csónakot');
+    parse(browse([tile('translated2', 'Hogyan építettem csónakot')]));
+    await wait(600);
+    t('untranslated off: nothing asked, the title as shown',
+      shownTitle(el) === 'Hogyan építettem csónakot' && !fetched.some((u) => u.indexOf('/oembed?') !== -1), shownTitle(el));
     win.close();
   }
 });
