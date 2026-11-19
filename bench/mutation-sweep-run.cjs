@@ -51,7 +51,9 @@ function runAll(queue, jobs, start, failLine) {
       if (child.stderr) child.stderr.on('data', (d) => { out += d; });
       running.add(child);
       child.on('error', (e) => {
-        running.delete(child);
+        // A child that never started (no pid) is gone now. One that runs (its
+        // kill() failed, say) is still counted until its 'close'.
+        if (child.pid === undefined) running.delete(child);
         finish(null, new Error(`${t.name} could not be run: ${e.message}`));
       });
       child.on('close', (code) => {

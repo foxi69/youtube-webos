@@ -15,17 +15,23 @@ const FAIL_LINE = /^FAIL/;
 const { t, run } = createReporter();
 const tick = () => new Promise((r) => setImmediate(r));
 
-// Stand-in children, by test name: each records kill() and is ended by the test.
+// Stand-in children, by test name: each records kill() and is ended by the
+// test. As Node's: a started child has a pid; one that could not start has
+// none and emits 'error', then 'close'; a running one can emit 'error' (a
+// failed kill()) and still runs until its 'close'.
 function harness() {
   const children = {};
+  let pid = 1000;
   const start = (item) => {
     const c = new EventEmitter();
     c.stdout = new EventEmitter();
     c.stderr = new EventEmitter();
+    c.pid = ++pid;
     c.killed = false;
     c.kill = () => { c.killed = true; };
     c.exit = (code, text = '') => { if (text) c.stdout.emit('data', text); c.emit('close', code); };
-    c.fail = (message) => c.emit('error', new Error(message));
+    c.fail = (message) => { c.pid = undefined; c.emit('error', new Error(message)); c.emit('close', -2); };
+    c.failRunning = (message) => c.emit('error', new Error(message));
     children[item.name] = c;
     return c;
   };
@@ -115,5 +121,19 @@ run(async () => {
     h.children.c.exit(0);
     await tick();
     t('...and null once all three passed', s.now !== 'pending' && s.now.value === null, JSON.stringify(s.now));
+  }
+  {
+    // A running child whose kill() fails: Node tells it with an 'error', and
+    // the child runs on. The run waits for its 'close'.
+    const h = harness();
+    const s = watch(runAll(items('a', 'b'), 2, h.start, FAIL_LINE));
+    h.children.a.exit(1, 'FAIL x\n');
+    h.children.b.failRunning('kill EPERM');
+    await tick();
+    t('a failed kill() of a running child: still pending while it runs', s.now === 'pending', JSON.stringify(s.now));
+    h.children.b.exit(null);
+    await tick();
+    t('...and it rejects with that error once the child has closed', s.now !== 'pending' && /b could not be run: kill EPERM/.test(s.now.error),
+      JSON.stringify(s.now));
   }
 });
