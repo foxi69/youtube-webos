@@ -12,7 +12,8 @@ const DAY = 24 * 60 * 60 * 1000;
 const STYLE = JSON.stringify({ fontSizeIncrement: 2, color: '#ffff00', background: '#000000' });
 
 function boot(config, storage) {
-  return bootPage({
+  let NS;
+  const page = bootPage({
     bodyClass: 'WEB_PAGE_TYPE_BROWSE',
     userAgent: UA.webos23,
     launchParams: '{}',
@@ -21,8 +22,11 @@ function boot(config, storage) {
     storage,
     consoleErrors: false,
     restoreRemove: false,
+    setup: (w) => { NS = w.JSON.stringify; },
     fetch: () => Promise.reject(new Error('offline'))
   });
+  page.parse = (obj) => page.win.JSON.parse(NS(obj));
+  return page;
 }
 
 const record = (win) => JSON.parse(win.localStorage.getItem(KEY) || 'null');
@@ -99,5 +103,24 @@ run(async () => {
     // At once, with no wait: the TV can suspend the app right after.
     const kept = settings(win).captionStyleBackup;
     t('going to the background: the new style is copied and written at once', !!kept && kept[KEY] === NEW, JSON.stringify(kept));
+  }
+  // ---- Subtitle Delay ----
+  {
+    const track = () => ({ wireMagic: 'pb3', events: [{ tStartMs: 1000, dDurationMs: 2000, segs: [{ utf8: 'a' }] }, { tStartMs: 300 }, { id: 1 }] });
+    const later = boot({ subtitleDelay: 'p500' });
+    await wait(50);
+    const shifted = later.parse(track());
+    t('0.5 s Later: each event starts 500 ms later', shifted.events[0].tStartMs === 1500 && shifted.events[1].tStartMs === 800 &&
+      shifted.events[0].dDurationMs === 2000, JSON.stringify(shifted.events));
+    const earlier = boot({ subtitleDelay: 'm500' });
+    await wait(50);
+    const back = earlier.parse(track());
+    t('0.5 s Earlier: 500 ms earlier, never before 0', back.events[0].tStartMs === 500 && back.events[1].tStartMs === 0,
+      JSON.stringify(back.events));
+    const other = later.parse({ responseContext: {}, events: [{ tStartMs: 1000 }] });
+    t('a response that is no caption track is left alone', other.events[0].tStartMs === 1000);
+    const off = boot({ subtitleDelay: 'off' });
+    await wait(50);
+    t('Off: the track as it came', off.parse(track()).events[0].tStartMs === 1000);
   }
 });

@@ -262,6 +262,29 @@ export const sbMinSegmentLengthModes = {
   10: '10 s'
 };
 
+/**
+ * Subtitle Delay (caption-style.js), in milliseconds: m = earlier, p = later.
+ * Not bare numbers as keys: an object lists those first, out of order.
+ */
+export const subtitleDelayModes = {
+  m2000: '2 s Earlier',
+  m1000: '1 s Earlier',
+  m500: '0.5 s Earlier',
+  m250: '0.25 s Earlier',
+  off: 'Off',
+  p250: '0.25 s Later',
+  p500: '0.5 s Later',
+  p1000: '1 s Later',
+  p2000: '2 s Later'
+};
+
+/** A Subtitle Delay mode in milliseconds (negative: earlier); 0 for Off. */
+export function subtitleDelayMs(mode) {
+  const match = /^([mp])(\d+)$/.exec(String(mode));
+  if (!match) return 0;
+  return (match[1] === 'm' ? -1 : 1) * Number(match[2]);
+}
+
 /** Subtitle Position (caption-style.js). */
 export const subtitlePositionModes = {
   default: 'Default',
@@ -392,6 +415,8 @@ const configOptions = new Map([
   ['audioOnlyStream', { default: false, desc: 'Audio-Only Mode Streams Audio Only' }],
   // caption-style.js: the subtitles lifted above where YouTube puts them.
   ['subtitlePosition', { default: 'default', desc: 'Subtitle Position' }],
+  // caption-style.js: the subtitles' times moved (subtitleDelayModes).
+  ['subtitleDelay', { default: 'off', desc: 'Subtitle Delay' }],
   // caption-style.js: YouTube's own caption style record, kept. Not shown in the panel.
   ['captionStyleBackup', { default: {}, desc: 'Subtitle style kept' }],
   ['seekStep', { default: '0', desc: 'Left/Right Seek Step (Controls Hidden)' }],

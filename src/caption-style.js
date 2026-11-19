@@ -21,7 +21,7 @@
  *   the picture, or text burnt into the video. A class on <html>, read by a
  *   static rule, so a caption window YouTube draws again keeps it.
  */
-import { configRead, configWrite, configAddChangeListener, configFlush } from './config.js';
+import { configRead, configWrite, configAddChangeListener, configFlush, subtitleDelayMs } from './config.js';
 
 const CAPTION_KEYS = ['yt-player-caption-display-settings'];
 const BACKUP_KEY = 'captionStyleBackup';
@@ -92,7 +92,47 @@ export function applySubtitlePosition() {
   if (POSITION_CLASSES[mode]) injectPositionStyle();
 }
 
+/*
+ * SUBTITLE DELAY (Player)
+ *   Subtitles shown earlier or later than the video says, for a track out of
+ *   step with the sound (a reupload, a dub). YouTube loads a track as JSON
+ *   ("json3": wireMagic pb3, events with tStartMs) and parses it with
+ *   JSON.parse, so each event's start is moved before the player sees it.
+ *   Applies to the next track loaded (subtitles turned off and on, another
+ *   video). From MickLesk's fork (subtitle-offset.ts).
+ */
+export function shiftCaptions(track, delayMs) {
+  if (!track || track.wireMagic !== 'pb3' || !Array.isArray(track.events) || !delayMs) return 0;
+  let moved = 0;
+  for (const event of track.events) {
+    if (!event || typeof event !== 'object' || typeof event.tStartMs !== 'number') continue;
+    event.tStartMs = Math.max(0, event.tStartMs + delayMs);
+    moved++;
+  }
+  return moved;
+}
+
+// Kept current: read on every JSON.parse the app makes.
+let delayMs = 0;
+
+function installDelayHook() {
+  const original = JSON.parse;
+  JSON.parse = function (text, reviver) {
+    const out = original.call(this, text, reviver);
+    // With a delay set, a caption track only, told by its first characters
+    // (lastIndexOf from 40 looks at those alone): everything else YouTube
+    // parses goes through with a number compare.
+    if (delayMs && typeof text === 'string' && text.lastIndexOf('"wireMagic"', 40) !== -1) {
+      try { shiftCaptions(out, delayMs); } catch { /* the track as it came */ }
+    }
+    return out;
+  };
+}
+
 if (typeof window !== 'undefined') {
+  delayMs = subtitleDelayMs(configRead('subtitleDelay'));
+  configAddChangeListener('subtitleDelay', ({ detail }) => { delayMs = subtitleDelayMs(detail.newValue); });
+  installDelayHook();
   keepCaptionStyle();
   window.addEventListener('ytaf-page-update', () => {
     if (Date.now() - lastCheck >= MIN_CHECK_GAP_MS) keepCaptionStyle();

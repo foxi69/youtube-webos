@@ -1,4 +1,4 @@
-import { aiVideoModes, subtitlesAtStartModes, logoStyles, timeRemainingModes, thumbnailQualityModes, videoCodecModes, uiThemes, clockModes, startPageModes, minVideoLengthModes, seekStepModes, maxVideoAgeModes, searchUploadDateModes, dearrowTitleFormats, dearrowThumbnailFallbacks, forceQualityModes, subtitlePositionModes, sbMinSegmentLengthModes, searchDurationModes, searchTypeModes, searchFeatureModes } from './config.js';
+import { aiVideoModes, subtitlesAtStartModes, logoStyles, timeRemainingModes, thumbnailQualityModes, videoCodecModes, uiThemes, clockModes, startPageModes, minVideoLengthModes, seekStepModes, maxVideoAgeModes, searchUploadDateModes, dearrowTitleFormats, dearrowThumbnailFallbacks, forceQualityModes, subtitlePositionModes, subtitleDelayModes, sbMinSegmentLengthModes, searchDurationModes, searchTypeModes, searchFeatureModes } from './config.js';
 import { configAddChangeListener, configRead, configWrite, configGetDesc, segmentTypes, configGetDefault, shortcutActions, sbModes, sbModesHighlight, videoPreviewModes, videoQualityDisplayModes, configGetProfileStatus } from './config.js';
 import './ui.css';
 import './auto-login.js';
@@ -1119,6 +1119,8 @@ function createOptionsPanel() {
   createAlignedCycleControl('subtitlesAtStart', subtitlesAtStartModes),
   createElement('div', { text: 'Off: no subtitles until you turn them on. Translated: only the Auto-Translate Subtitles language above', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   createAlignedCycleControl('subtitlePosition', subtitlePositionModes),
+  createAlignedCycleControl('subtitleDelay', subtitleDelayModes),
+  createElement('div', { text: 'For subtitles out of step with the sound. Applies to the next subtitles loaded: turn them off and on again', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   createElement('div', { text: 'Lifts the subtitles, for a TV or soundbar that covers the bottom of the picture. Their font, size and colours are in YouTube\'s own settings, and are kept now', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   createConfigCheckbox('forceOriginalAudio'),
   createConfigCheckbox('audioOnlyStream'),
