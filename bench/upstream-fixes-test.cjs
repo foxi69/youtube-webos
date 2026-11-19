@@ -188,16 +188,18 @@ setTimeout(async () => {
     await wait(20);
     win.document.querySelectorAll('.ytaf-tab-btn')[1].click();
     await wait(20);
-    const box = Array.from(win.document.querySelectorAll('#ytaf-page-player label'))
-      .find((l) => l.textContent.trim() === 'Force Max Quality').querySelector('input');
+    // A choice row: Right from Off is Max, Left from Max is Off.
+    const row = Array.from(win.document.querySelectorAll('#ytaf-page-player .shortcut-control-row'))
+      .find((r) => r.querySelector('.shortcut-label').textContent.trim() === 'Force Max Quality');
+    const flip = (on) => { row.focus(); trustedKey(win, on ? 39 : 37, row); };
     const stored = () => win.localStorage.getItem('yt-player-quality');
-    box.click();
+    flip(true);
     await wait(20);
     const first = !!stored();
-    box.click();
+    flip(false);
     await wait(20);
     const cleared = !stored();
-    box.click();
+    flip(true);
     await wait(20);
     const again = !!stored();
     clock.frozenAt = null;
