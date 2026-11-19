@@ -89,6 +89,8 @@ function confirm(t) {
   return ((r.stdout + r.stderr).split('\n').find((l) => FAIL_LINE.test(l)) || 'exit ' + r.status).trim().slice(0, 140);
 }
 
+// dist/ holds a mutant's build (from the mutant's build until it is built again from the sources).
+let distFromMutant = false;
 let original = null;
 let originalFile = null;
 const restore = () => { if (originalFile !== null) { fs.writeFileSync(originalFile, original); originalFile = null; } };
@@ -130,6 +132,7 @@ if (changed.status !== 0 || changed.stdout.trim()) {
     fs.writeFileSync(file, src.replace(m.from, () => m.to));
     const t0 = Date.now();
     try {
+      distFromMutant = true;
       const err = build('modern') || build('dist');
       const secs = () => ((Date.now() - t0) / 1000).toFixed(0) + 's';
       if (err) { notRun.push(m.id); console.log(`BUILD ${m.id} (${secs()}): does not build: ${err}`); continue; }
@@ -155,8 +158,19 @@ if (changed.status !== 0 || changed.stdout.trim()) {
   }
   // dist/ holds the last mutant's build: built from the sources again.
   const clean = build('dist');
+  if (!clean) distFromMutant = false;
   if (clean) console.log('dist/ could not be built again from the sources: ' + clean);
   console.log(`\n${killedCount} of ${killedCount + survived.length} killed; survived: ${survived.map((m) => m.id).join(', ') || 'none'}` +
     (notRun.length ? `; not run: ${notRun.join(', ')}` : ''));
   process.exit(survived.length ? 1 : 0);
-})().catch((e) => { restore(); console.error(e.message); process.exit(2); });
+})().catch((e) => {
+  restore();
+  console.error(e.message);
+  // A run that broke after a mutant's build: dist/ is built again from the
+  // sources, or the viewer is told it is not.
+  if (distFromMutant) {
+    const clean = build('dist');
+    if (clean) console.error('dist/ may hold a build of a mutant and could not be built again: ' + clean);
+  }
+  process.exit(2);
+});
