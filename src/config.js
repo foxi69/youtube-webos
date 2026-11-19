@@ -223,6 +223,13 @@ export const forceQualityModes = [
   ['480', 'Up to 480p']
 ];
 
+/** Subtitle Position (caption-style.js). */
+export const subtitlePositionModes = {
+  default: 'Default',
+  raised: 'Higher',
+  high: 'Highest'
+};
+
 /** Left/Right Seek Step, in seconds while the player controls are hidden. '0': YouTube's own. */
 export const seekStepModes = {
   0: "YouTube's Default",
@@ -331,6 +338,10 @@ const configOptions = new Map([
   ['subtitlesAtStart', { default: 'youtube', desc: 'Subtitles When a Video Starts' }],
   // Drops the dubbed audio tracks from the player response, so the original plays.
   ['forceOriginalAudio', { default: false, desc: 'Prefer Original Audio over Dubbed' }],
+  // caption-style.js: the subtitles lifted above where YouTube puts them.
+  ['subtitlePosition', { default: 'default', desc: 'Subtitle Position' }],
+  // caption-style.js: YouTube's own caption style record, kept. Not shown in the panel.
+  ['captionStyleBackup', { default: {}, desc: 'Subtitle style kept' }],
   ['seekStep', { default: '0', desc: 'Left/Right Seek Step (Controls Hidden)' }],
   // Remaining time and/or the wall-clock end time beside the duration.
   ['timeRemainingMode', { default: 'off', desc: 'Show Remaining Time / End Time' }],
@@ -460,6 +471,8 @@ const DEVICE_KEYS = new Set([
   'keyboardSearch',
   'disableAnimations',
   'keepAppOpenWhenPaused',
+  // YouTube keeps its caption style once for the TV, not per account.
+  'captionStyleBackup',
   // Read when the app starts, before "Who's watching" picks an account.
   'startPage'
 ]);
@@ -652,8 +665,9 @@ export function configWrite(key, value) {
 }
 
 // Left alone by a reset: where the settings are kept (a reset must not merge
-// or drop the accounts' profiles), and a flag that is not a setting.
-const RESET_KEEPS = new Set(['perAccountSettings', 'foxThemeApplied']);
+// or drop the accounts' profiles), and the records that are not settings
+// (a flag, and YouTube's own caption style).
+const RESET_KEEPS = new Set(['perAccountSettings', 'foxThemeApplied', 'captionStyleBackup']);
 
 /**
  * Every setting back to its default, told to its listeners as if changed in
