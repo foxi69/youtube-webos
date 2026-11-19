@@ -277,6 +277,22 @@ run(async () => {
       backup.get(OTHER_KEY));
   }
 
+  // ---- An account record still in localStorage is newer than its copy ----
+  {
+    const backup = savedCopy([
+      [KEY, JSON.stringify({ perAccountSettings: true, foxThemeApplied: true })],
+      [PROFILE_KEY, JSON.stringify({ minVideoLength: '20' })]
+    ]);
+    // The shared record is gone; the account's stayed, changed since the copy was made.
+    const local = Object.assign({}, IDENTITY, { [PROFILE_KEY]: JSON.stringify({ minVideoLength: '3' }) });
+    const page = boot({ data: backup, log: [], storage: local });
+    await wait(700);
+    t('a record still in localStorage is kept, not replaced by its copy',
+      stored(page.win, PROFILE_KEY).minVideoLength === '3' && await panelValue(page.win, 'Hide Videos Shorter Than') === '3 min',
+      JSON.stringify(stored(page.win, PROFILE_KEY)));
+    t('...and the shared record still comes back from the copy', !!stored(page.win) && stored(page.win).perAccountSettings === true);
+  }
+
   // ---- A read that fails part way ----
   {
     const backup = savedCopy([
