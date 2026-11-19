@@ -167,8 +167,9 @@ if (changed.status !== 0 || changed.stdout.trim()) {
   }
   // dist/ holds the last mutant's build: built from the sources again.
   const clean = build('dist');
-  if (!clean) distFromMutant = false;
-  if (clean) console.log('dist/ could not be built again from the sources: ' + clean);
+  // Not built again: the run is broken (exit 2); the catch below tries once more.
+  if (clean) throw new Error('dist/ could not be built again from the sources: ' + clean);
+  distFromMutant = false;
   console.log(`\n${killedCount} of ${killedCount + survived.length} killed; survived: ${survived.map((m) => m.id).join(', ') || 'none'}` +
     (notRun.length ? `; not run: ${notRun.join(', ')}` : ''));
   process.exit(survived.length ? 1 : 0);

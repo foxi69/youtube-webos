@@ -212,15 +212,21 @@ run(async () => {
     win.addEventListener('ytaf-profile-change', () => { profileChanges++; });
     holdRechecks.on = true;
     await chooseAccount(win, GUEST);
+    t('guest chosen again: at once, the session keeps its change and no profile change is told',
+      ryd.checked === false && profileChanges === 0, 'checked=' + ryd.checked + ' profile changes=' + profileChanges);
     const guestRechecks = runRechecks();
     t('guest chosen again: the session keeps its change, also after the selector\'s two rechecks',
       guestRechecks === '1500,5000' && ryd.checked === false && profileChanges === 0,
       'rechecks=' + guestRechecks + ' checked=' + ryd.checked + ' profile changes=' + profileChanges);
     // Then an account: the switch does happen, from the shared settings.
     await chooseAccount(win, ACCOUNT_A);
+    // At once, as the selector is left: before any recheck has run.
+    t('...an account chosen next: its settings are applied live at once, with one profile change',
+      ryd.checked === true && profileChanges === 1 && statusText() === 'Using this account\'s own settings',
+      'checked=' + ryd.checked + ' profile changes=' + profileChanges + ' ' + statusText());
     const accountRechecks = runRechecks();
     holdRechecks.on = false;
-    t('...an account chosen next: its settings are applied live, one profile change after its two rechecks',
+    t('...and still one profile change once its two rechecks ran',
       accountRechecks === '1500,5000' && ryd.checked === true && profileChanges === 1 &&
       statusText() === 'Using this account\'s own settings',
     'rechecks=' + accountRechecks + ' checked=' + ryd.checked + ' profile changes=' + profileChanges + ' ' + statusText());
