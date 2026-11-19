@@ -48,7 +48,14 @@ export class ResolveCommandRegistry {
 
     for (const [key, hook] of cmds) {
       if (key in command) {
-        return hook(this.#originalFn, command, extra);
+        // A hook of ours that throws must not break YouTube's command: the
+        // command goes on to YouTube's own resolver instead.
+        try {
+          return hook(this.#originalFn, command, extra);
+        } catch (e) {
+          console.warn('[app_api] command hook failed for', key, e);
+          return this.#originalFn(command, extra);
+        }
       }
     }
 

@@ -126,6 +126,21 @@ run(async () => {
     win.close();
   }
 
+  // ---- An error in the state handler stays out of YouTube's player ----
+  {
+    const win = await boot({}, { html: '<body class="WEB_PAGE_TYPE_WATCH"></body>', url: 'https://www.youtube.com/tv#/watch?v=' + VIDEO, speed: 20 });
+    const player = makePlayer(win, -1);
+    win.document.body.appendChild(player.el);
+    const attached = await until(() => player.listeners.length === 1, 3000);
+    // The handler's first step, the shared state event, fails.
+    win.CustomEvent = function () { throw new Error('boom'); };
+    let threw = null;
+    try { player.emit(1); } catch (e) { threw = e; }
+    t('a state handler that throws does not throw into the player\'s event dispatch', attached && threw === null,
+      threw ? String(threw) : `listeners=${player.listeners.length}`);
+    win.close();
+  }
+
   // ---- A tile preview on Home, then the video opened ----
   {
     const win = await boot({ subtitleTranslateLang: 'hu', subtitlesAtStart: 'translated', showVideoQuality: 'start' },

@@ -491,6 +491,16 @@ function scheduleQualityToast(actualState) {
   }, QUALITY_TOAST_DELAY_MS);
 }
 
+// Registered on YouTube's own player: an error of ours must not reach its
+// event dispatch, where it would stop the player's other listeners.
+function onPlayerStateChange(state) {
+  try {
+    handleStateChange(state);
+  } catch (e) {
+    console.warn('[VideoQuality] State change handler failed:', e);
+  }
+}
+
 function handleStateChange(state) {
   if (isDestroyed || !player) return;
 
@@ -612,7 +622,7 @@ export function destroyVideoQuality() {
 
   if (player) {
     try {
-      player.removeEventListener?.('onStateChange', handleStateChange);
+      player.removeEventListener?.('onStateChange', onPlayerStateChange);
     } catch { /* ignore */ }
   }
   
@@ -653,7 +663,7 @@ export function initVideoQuality() {
       
       try {
         if (player.addEventListener) {
-            player.addEventListener('onStateChange', handleStateChange);
+            player.addEventListener('onStateChange', onPlayerStateChange);
             listenerAttached = true;
             DEBUG && console.log('[VideoQuality] Native listener attached');
         }
