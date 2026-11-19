@@ -1110,9 +1110,13 @@ run(async () => {
     // to an action that runs on every page (the sleep timer).
     const env = await boot({}, { page: 'WEB_PAGE_TYPE_SEARCH' });
     const sleeping = () => env.long.filter((h) => h.kind === 'timeout' && h.ms === 15 * 60000).length;
+    // Where YouTube's own key listeners are: what reaches the document, bubbling.
+    const reached = [];
+    env.doc.addEventListener('keydown', (e) => { reached.push(e.keyCode); });
     const typed = await env.press(D(K.sleep));
     t(n('search page: a number bound to the sleep timer goes on to YouTube'),
-      typed === false && sleeping() === 0 && env.toasts() === '', `taken=${typed} timers=${sleeping()} ${env.toasts()}`);
+      typed === false && sleeping() === 0 && env.toasts() === '' && reached.join() === String(D(K.sleep)),
+      `taken=${typed} timers=${sleeping()} reached=${reached.join()} ${env.toasts()}`);
     env.doc.body.className = 'WEB_PAGE_TYPE_BROWSE';
     await wait(0); // the page observer (a microtask) sees the class
     const taken = await env.press(D(K.sleep));

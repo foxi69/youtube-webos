@@ -25,7 +25,12 @@ const ROOT = path.join(__dirname, '..');
 const args = process.argv.slice(2);
 const flag = (name) => { const i = args.indexOf(name); return i === -1 ? null : args.splice(i, 2)[1]; };
 const only = flag('--only');
-const jobs = Number(flag('--jobs')) || Math.max(2, require('os').cpus().length - 2);
+const jobsArg = flag('--jobs');
+const jobs = jobsArg === null ? Math.max(2, require('os').cpus().length - 2) : Number(jobsArg);
+if (!Number.isInteger(jobs) || jobs < 1) {
+  console.error(`--jobs takes a whole number from 1 up, not "${jobsArg}"`);
+  process.exit(2);
+}
 const listFile = path.resolve(args[0] || path.join(__dirname, 'mutants.json'));
 let mutants = JSON.parse(fs.readFileSync(listFile, 'utf8'));
 if (only) { const ids = only.split(','); mutants = mutants.filter((m) => ids.includes(m.id)); }
@@ -73,9 +78,13 @@ function runTests(skip = []) {
 }
 
 // A failure under load is run again alone: the FAIL line it gives then, or
-// null when it passes (a test that failed only side by side with others).
+// null when it passes (a test that failed only side by side with others). A
+// run that did not end by itself (not started, or stopped by spawnSync, e.g.
+// past its output limit) throws: no result, and the source is put back.
 function confirm(t) {
-  const r = spawnSync(process.execPath, [path.join('bench', t.name + '.cjs'), ...t.argv], { cwd: ROOT, encoding: 'utf8' });
+  const r = spawnSync(process.execPath, [path.join('bench', t.name + '.cjs'), ...t.argv],
+    { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  if (r.error) throw new Error(`${t.name}, run again alone, did not finish: ${r.error.message}`);
   if (r.status === 0) return null;
   return ((r.stdout + r.stderr).split('\n').find((l) => FAIL_LINE.test(l)) || 'exit ' + r.status).trim().slice(0, 140);
 }

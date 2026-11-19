@@ -205,25 +205,31 @@ async function mute() {
     video.muted = false;
     fire('volumechange');
     const afterVolume = video.muted;
+    // The volume changes the mute toggles queued run here, while the page is
+    // still Home: after this only the page change can undo the mute.
+    for (let i = 0; i < 3; i++) await tick(win, 0);
+    const beforePage = video.muted;
     // The preview opened: on its page the mute is undone and stays undone.
     win.document.body.className = page;
     for (let i = 0; i < 20 && video.muted; i++) await tick(win, 5);
     const onPage = video.muted;
     video.muted = false;
     fire('volumechange');
-    return { afterPlaying, afterVolume, onPage, pageAfterVolume: video.muted, errors };
+    return { afterPlaying, afterVolume, beforePage, onPage, pageAfterVolume: video.muted, errors };
   };
 
   const on = await run(true);
   t('mute on: playing mutes the preview (precondition)', on.afterPlaying === true);
   t('mute on: a volume change that unmutes the preview mutes it again', on.afterVolume === true);
+  t('mute on: ...and it is still muted once the queued volume changes ran (precondition)', on.beforePage === true);
   t('mute on: on the watch page the mute is undone', on.onPage === false);
   t('mute on: a volume change on the watch page leaves the sound on', on.pageAfterVolume === false);
   t('mute on: no page errors', on.errors.length === 0, on.errors.join(' | '));
 
   // A Short is no preview: on the Shorts page it plays with its sound.
   const shorts = await run(true, 'WEB_PAGE_TYPE_SHORTS');
-  t('mute on, Shorts: the preview is muted first (precondition)', shorts.afterPlaying === true && shorts.afterVolume === true);
+  t('mute on, Shorts: the preview is muted first, also once the queued volume changes ran (precondition)',
+    shorts.afterPlaying === true && shorts.afterVolume === true && shorts.beforePage === true);
   t('mute on, Shorts: on the Shorts page the mute is undone', shorts.onPage === false);
   t('mute on, Shorts: a volume change on the Shorts page leaves the sound on', shorts.pageAfterVolume === false);
   t('mute on, Shorts: no page errors', shorts.errors.length === 0, shorts.errors.join(' | '));
