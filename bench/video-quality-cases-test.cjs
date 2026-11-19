@@ -19,7 +19,7 @@ const fs = require('fs');
 const path = require('path');
 const { JSDOM, VirtualConsole } = require('jsdom');
 const { UA, setUserAgent, applyChrome38Downgrade, applyChrome87Downgrade } = require('./chrome38-env.cjs');
-const { createReporter, trustedKey, wait } = require('./harness.cjs');
+const { createReporter, trustedKey, wait, until } = require('./harness.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
@@ -297,10 +297,23 @@ run(async () => {
   }
   // ---- webOS 25: the player replaced while its first video is told to play ----
   if (modern) {
-    const { win, p, log, emit, toggle } = boot({}, { ua: UA25, state: -1, quality: 'hd2160' });
-    emit(-1);
-    await wait(100);
-    t('webOS 25, replaced: the first player is told to play', log.calls.includes('play'), log.calls.join());
+    const { win, p, log, toggle } = boot({}, { ua: UA25, state: -1, quality: 'hd2160' });
+    // The enforcer, started at attach, tells the player to play and then sets
+    // its wait for the next attempt in the same step. That wait, the first
+    // after one of the old player's attempts, is held here until the new
+    // player is attached; every other timer runs as usual.
+    const held = [];
+    let holdNext = false;
+    const realSetTimeout = win.setTimeout;
+    win.setTimeout = function (cb, ms, ...rest) {
+      if (holdNext) { holdNext = false; held.push(cb); return 0; }
+      return realSetTimeout.call(win, cb, ms, ...rest);
+    };
+    const playA = p.playVideo;
+    p.playVideo = function () { holdNext = true; return playA.apply(this, arguments); };
+    const attempt = await until(() => held.length === 1, 2000);
+    t('webOS 25, replaced: the first player is told to play, and its next attempt waits',
+      attempt && log.calls.includes('play'), `${log.calls.join()} ${held.length} held`);
     // Force Max Quality off: the new player starts no enforcer of its own.
     toggle('Force Max Quality', false);
     const p2 = win.document.createElement('div');
@@ -316,10 +329,13 @@ run(async () => {
     win.document.querySelector('ytlr-app').appendChild(p2);
     p2.querySelector('video').dispatchEvent(new win.Event('playing'));
     await wait(50);
-    t('...the new, paused player is attached', attached2 === 1, String(attached2));
-    // Past the old player's next attempts (one every 500 ms).
-    await wait(1200);
-    t('...the old player\'s attempts do not play the new one', plays2 === 0, String(plays2));
+    t('...the new, paused player is attached, the old attempt still waits', attached2 === 1 && held.length === 1,
+      `attached ${attached2}, ${held.length} held`);
+    // The old player's next attempt runs now, with the new player attached.
+    win.setTimeout = realSetTimeout;
+    for (const cb of held.splice(0)) cb();
+    await wait(50);
+    t('...the old player\'s attempt does not play the new one', plays2 === 0, String(plays2));
   }
 
   // ---- "Playing in": the label, or the picture's own size ----
