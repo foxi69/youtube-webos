@@ -16,28 +16,34 @@ const STORE = 'kv';
 
 let dbPromise = null;
 
+/**
+ * The database: null on a TV with no IndexedDB at all (there is no copy
+ * there, and never was one); a database that is there but does not open
+ * (an error, blocked, a throw) rejects, so a read of it is not taken for an
+ * empty copy.
+ */
 function openDb() {
   if (dbPromise) return dbPromise;
-  dbPromise = new Promise((resolve) => {
+  dbPromise = new Promise((resolve, reject) => {
     let idb;
     try { idb = window.indexedDB || null; } catch { idb = null; }
     if (!idb) { resolve(null); return; }
     let request;
     try { request = idb.open(DB_NAME, 1); }
-    catch { resolve(null); return; }
+    catch (e) { reject(e); return; }
     request.onupgradeneeded = () => {
       try { request.result.createObjectStore(STORE); } catch { /* there already */ }
     };
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => resolve(null);
-    request.onblocked = () => resolve(null);
+    request.onerror = () => reject(request.error || new Error('backup database failed to open'));
+    request.onblocked = () => reject(new Error('backup database blocked'));
   });
   return dbPromise;
 }
 
-/** Writes each [key, text] pair; a key whose text is null is deleted. */
+/** Writes each [key, text] pair; a key whose text is null is deleted. False when it could not. */
 export function backupWrite(entries) {
-  return openDb().then((db) => {
+  return openDb().catch(() => null).then((db) => {
     if (!db) return false;
     return new Promise((resolve) => {
       try {
