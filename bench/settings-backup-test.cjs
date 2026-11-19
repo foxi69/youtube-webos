@@ -236,6 +236,36 @@ run(async () => {
       JSON.parse(backup.get(KEY)).minVideoLength === '5', backup.get(KEY));
   }
 
+  // ---- The same with Separate Settings for Each Account: the account's restored profile keeps the change too ----
+  {
+    const backup = savedCopy([
+      [KEY, JSON.stringify({ perAccountSettings: true, foxThemeApplied: true, minVideoLength: '1' })],
+      [PROFILE_KEY, JSON.stringify({ minVideoLength: '20', removeUpscaledFormats: true })]
+    ]);
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const page = boot({ data: backup, log: [], storage: IDENTITY, idb: { gate } });
+    await wait(300);
+    trustedKey(page.win, 404, page.win.document.body, 'keydown');
+    trustedKey(page.win, 404, page.win.document.body, 'keyup');
+    await wait(300);
+    const label = Array.prototype.slice.call(page.win.document.querySelectorAll('label'))
+      .find((l) => l.textContent.trim() === 'Skip AI-Upscaled Qualities');
+    const input = label && label.querySelector('input');
+    t('precondition (accounts): the switch is on while the copy is not read yet', !!input && input.checked === true);
+    if (input) input.click();
+    await wait(300);
+    release();
+    await wait(700);
+    const profile = stored(page.win, PROFILE_KEY);
+    t('accounts: the change stays in use once the account has loaded its restored profile',
+      !!input && input.checked === false && await panelValue(page.win, 'Hide Videos Shorter Than') === '20 min',
+      `${input && input.checked} / ${await panelValue(page.win, 'Hide Videos Shorter Than')}`);
+    t('...and is in the account\'s record, with its other settings', !!profile && profile.removeUpscaledFormats === false &&
+      profile.minVideoLength === '20', JSON.stringify(profile));
+    t('...and in its copy', JSON.parse(backup.get(PROFILE_KEY)).removeUpscaledFormats === false, backup.get(PROFILE_KEY));
+  }
+
   // ---- The account in use gets its own restored settings ----
   {
     const backup = savedCopy([

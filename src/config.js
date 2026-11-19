@@ -925,7 +925,20 @@ function restoreFromBackup() {
     activeProfile = null;
     if (localConfig.perAccountSettings) {
       const profile = readAccountProfile();
-      if (profile !== null) switchProfile(profile);
+      if (profile !== null) {
+        // The account's own settings changed before the read keep their
+        // change too: its record, from localStorage or the copy, takes them
+        // before the account loads it.
+        const key = storesProfile(profile) ? profileStorageKey(profile) : null;
+        const record = key && (loadStored(key) || records[key]);
+        const changed = Array.from(changedBeforeRestore).filter((k) => !DEVICE_KEYS.has(k));
+        if (record && changed.length) {
+          for (const k of changed) record[k] = localConfig[k];
+          records[key] = record;
+          try { window.localStorage.setItem(key, JSON.stringify(record)); } catch { /* applied from memory */ }
+        }
+        switchProfile(profile);
+      }
     }
     return true;
   }).then((restored) => {
