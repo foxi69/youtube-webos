@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [0.10.0] - 2026/11/19
 
-Tile previews back on most newer TVs (webOS 22 to 25), now with a countdown, kept out of the watch history and no longer opening the video by themselves; three new actions and options (Repeat Video, Open Long-Press Menu, Open Playing Previews Without Reloading); DeArrow's Title Formatting on webOS 3-6; settings that worked on the same thing merged into one row each (Video Previews, Show Video Quality, AI Videos, Max Thumbnail Quality, Subtitles When a Video Starts), which start at their defaults, as the old settings are not carried over; and Playback Speed Control fixes for webOS 4-6 (#97), with slow speeds that play through on every TV. Ships both packages: `_webOS22+.ipk` for webOS 22 and newer, and the legacy `.ipk` for webOS 3-6.
+Tile previews back on most newer TVs (webOS 22 to 25), now with a countdown, kept out of the watch history and no longer opening the video by themselves; four new actions and options (Repeat Video, Open Long-Press Menu, Open Playing Previews Without Reloading, Open Comments at the End of a Video); DeArrow's Title Formatting on webOS 3-6; settings that worked on the same thing merged into one row each (Video Previews, Show Video Quality, AI Videos, Max Thumbnail Quality, Subtitles When a Video Starts), which start at their defaults, as the old settings are not carried over; and Playback Speed Control fixes for webOS 4-6 (#97), with 0.5× and 0.75× playing through on every TV that has the speed (webOS 4 and newer). Ships both packages: `_webOS22+.ipk` for webOS 22 and newer, and the legacy `.ipk` for webOS 3-6.
 
 ## Added
 
@@ -18,6 +18,7 @@ Tile previews back on most newer TVs (webOS 22 to 25), now with a countdown, kep
 + Tile previews count down: while a preview plays, the time on its tile shows what is left of the video, as on YouTube's web pages; YouTube TV left it at the full length. The tile's own time comes back when the preview stops, the focus moves on or the video opens. A live badge stays as it is. Also on the search results, whose tiles are of YouTube's newer kind (`yt-lockup-view-model`) on webOS 25: they had no countdown.
 + Shortcuts: a new action, **Open Long-Press Menu**, opens the focused video's long-press menu as a held OK would, with "Add to queue" when More Options in the Long-Press Menu is on. Phone remote apps that use LG's network remote API can only send whole key presses, so they could not open this menu. It is on no key by default. Requested in #143.
 + **Open Playing Previews Without Reloading** (UI Tweaks, off by default, experimental): OK on a tile whose preview is already playing carries that playback on, full screen, instead of stopping it and loading the video again. YouTube hands a playing preview over to the watch page this way by itself after a few seconds; for OK the server forbids it on TVs with a flag on the preview's data (`blockAdoption`), which is cleared in the response, and YouTube's player resize animation is switched on, so the preview grows into the watch page. With Force Max Quality on, that setting no longer forces the top quality on a preview carried over this way (which loaded it again and undid the hand-over): YouTube raises its quality by itself, without a reload, about 25 s in. On a webOS 25 TV OK handed the preview over in 8 of 8 tries, with Force Max Quality on and off. Should YouTube rename the flag, the switch does nothing and videos open as they do today. From Zucchiniii's fork (fork watch #139), where it was measured on an LG C5.
++ **Open Comments at the End of a Video** (Player, off by default): when a video ends on the watch page, the comments panel opens, as Toggle Comments would open it. Only with YouTube's Autoplay off: with autoplay on, the panel would stop the countdown to the next video for good. Not on Shorts, not with a side panel already open, not on a video without comments, and not when a key was pressed in the last 3 s; once per video, so a closed panel stays closed on the end screen. Requested in #160.
 
 ## Changed
 
@@ -64,12 +65,20 @@ Tile previews back on most newer TVs (webOS 22 to 25), now with a countdown, kep
 + Skip to Next/Previous Chapter lands on the chapter's own start. It worked the start out from the widths on the progress bar, which are whole pixels (a few seconds off), and on a long video with many chapters the bar draws only some of them, which put the skip minutes off (NicholasBly/youtube-webos#225, point 3).
 + DeArrow on the search results: a result drawn before DeArrow's answer came now gets its title and thumbnail on screen, as tiles elsewhere do; it kept YouTube's until it was drawn again. Search results are YouTube's newer kind of tile (`yt-lockup-view-model`) on webOS 25, which the on-screen pass did not look at.
 + DeArrow, Without a Crowdsourced Thumbnail set to Start, Middle or End (or the Random Frame's stand-in): on the search results and the newer Home rows the frame was squashed, with black bars above and below. YouTube's frames are 4:3 with the picture between bars and those tiles stretch their image to 16:9; it is now cropped to the picture.
++ Hide Left Menu Entries lists the entries under English names (Search, Subscriptions, Gaming...) whatever the TV's language, like the rest of the panel; they showed YouTube's own titles in the menu's language. Hiding still goes by the entry, so nothing stored changes.
++ **Playback Speed Control**, above 1×: a next video that YouTube starts low (a 60 fps one at 480p30 on webOS 25) is raised to the speed's cap (1080p, or the viewer's lower pick) once it has played 2 s. Only once per playback, so a slow line no longer has it loaded again at every pause or seek, and the raise no longer starts the video over: the picture stops for a moment instead. After a speed reload, a video that fell below a lower pick (720p) is raised to it too, and a seek made right at the start of a next video is no longer moved back.
++ SponsorBlock: no highlight jump and no "Jumped to Highlight" on a video YouTube cannot play ("This video isn't available"), with Auto Skip to Start or with Blue. A playable video that loads after its segments came is jumped once it loads, as before.
 
 ## Docs
 
 + README: the app's name and "LG webOS TVs" in the first lines, three more highlights (Playback speed, A video queue, Updates on the TV), a note on getting the Homebrew Channel (rooting or the Developer Mode app), and Open Comments at the End of a Video in the Player tab, where it was missing.
 + README: the SponsorBlock tab lists Intermission/Intro and Endcards/Credits under the names the panel shows, and the fork trail picture's description names no version.
 + README screenshots: the settings panel's title and the About tab no longer show a version (0.9.1 on the themes picture, 0.9.2 on the tabs), so they do not go stale with each release.
+## Tests
+
++ The bench tests run on one shared harness (`bench/harness.cjs`: `createReporter`, `bootPage`, `trustedKey`), which boots the bundle on a page, collects its errors and reports each check; the tests that each had their own copy of that code use it now.
++ The coverage floor is 93.5% of lines, 92% of functions and 82% of branches; a CI run below it fails.
++ The subtitle tests that waited on the track list run on the test's own clock, so they no longer depend on the machine's speed.
 
 ## Build
 
@@ -77,6 +86,9 @@ Tile previews back on most newer TVs (webOS 22 to 25), now with a countdown, kep
 + That step cannot stop the Homebrew update: if `release-bump` fails (a tag like `v1.0.0-beta`, a fork trail without three flags), the run shows a warning, undoes what it wrote, and still commits `repo.json`. Before, the failure ended the step before the commit, so Homebrew Channel would not have offered the release.
 + CI: the job summary of every Build & Test run failed to upload ("supports content up to a size of 1024k, got 1271k"), twice a run. `tools/fork-watch-test.py` runs the fork watch on 400 test forks, and its ~1.3 MB report went into the real job summary. The test now writes it to a file of its own, and checks that the whole report is there, past where the issue is cut.
 + Line endings: `build-local.cmd` and `build-local modern.cmd` are stored with LF like every other file, and still checked out with CRLF. They were stored with CRLF, so a fresh checkout showed both as modified. The files on disk are byte for byte the same.
++ Tools: `tools/yt-tv-snapshot.cjs` takes a snapshot of what youtube.com/tv sends for previews (its code and the preview data on Home), and names what changed against the stored one (`bench/fixtures/yt-tv-snapshot.json`). [YouTube TV watch](.github/workflows/yt-tv-watch.yml) runs every day on youtube.com/tv's public code and opens an issue when an anchor the app depends on changes.
++ Fork watch: a fork whose branch shares no history with this repository is read by its own commits.
++ CI runs `npm run typecheck` (`tsc --noEmit`) and `bench/lifecycle-audit-test.cjs`.
 
 ## [0.9.2] - 2026/11/11
 
