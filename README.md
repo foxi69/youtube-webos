@@ -140,9 +140,11 @@ Every coloured button and number key can be set to any of these actions on the *
 
 - **Playback:** Play/Pause, Fast Forward (Burst), Rewind (Burst), Skip to Next / Previous Chapter,
   **Jump to Live** (back to the live edge of a live stream), Playback Speed +, Playback Speed -, Playback Speed
-  Reset (1x), **Repeat Video** (the video starts again at its end instead of going on to the next one; ends with
+  Reset (1x), **Toggle Speed (1x / Last)** (from 1× to the last other speed, 1.5× before any, and back),
+  **Repeat Video** (the video starts again at its end instead of going on to the next one; ends with
   that video; not on live streams or videos of 1.2 s or less)
-- **SponsorBlock:** Manual Skip / Jump to Highlight, Skip to Last SponsorBlock Segment
+- **SponsorBlock:** Manual Skip / Jump to Highlight (just after an auto skip, it takes the skip back), Skip to Last
+  SponsorBlock Segment, **Never Skip on This Channel** (the channel playing goes on the list, or off it)
 - **Panels:** Toggle Subtitles, Toggle Comments, Toggle Description, Save / Watch Later
 - **Screen:** Toggle OLED Black Overlay, **Toggle Audio-Only Mode** (hides the picture and keeps the sound; ends
   when you leave the video), **Sleep Timer** (each press steps 15/30/60/90/120 min, then off; pauses the video
@@ -206,12 +208,15 @@ and search alone.
 
 | Setting | Default |
 |---|---|
-| Force Max Quality | Off |
+| Force Max Quality (Off, Max, Up to 2160p, 1440p, 1080p, 720p, 480p) | Off |
+| Skip AI-Upscaled Qualities | On |
 | Show Video Quality (Off, At Start, Under Title, Both) | Off |
 | Force Video Codec (Auto, AV1, VP9, AVC, HEVC, Avoid AV1) | Auto |
 | Playback Speed Control (webOS 4 and newer; on webOS 4-6 and 22 with AAC audio only) | On |
+| Remember Playback Speed | Off |
 | Auto-Translate Subtitles (pick a language) | Off |
 | Subtitles When a Video Starts (YouTube's Choice, Off, Translated: only the Auto-Translate Subtitles language) | YouTube's Choice |
+| Subtitle Position (Default, Higher, Highest) | Default |
 | Prefer Original Audio over Dubbed | Off |
 | Show Remaining Time / End Time (Remaining, End Time, Both) | Off |
 | Show Most Replayed Graph Above the Seek Bar | Off |
@@ -228,9 +233,15 @@ Korean and Chinese. The chosen language is pinned to the top of the subtitle men
 it, a "*Language* (auto-translated)" track is added, translated by YouTube's own servers.
 
 **Playback Speed Control** unlocks YouTube's Speed menu: 0.25× to 2× with the pitch kept. Every launch starts at
-1×, and off 1× a video with surround audio plays in stereo. webOS 4-6 and 22 have no WebCodecs, so there the audio
+1×, or with **Remember Playback Speed** on at the speed last set (a live stream still plays at 1×), and off 1× a video with surround audio plays in stereo. webOS 4-6 and 22 have no WebCodecs, so there the audio
 is decoded the older way, which works with **AAC audio only**: off 1× the video plays its AAC track, and a video
 without one stays at 1×. Not on webOS 3.
+
+**Force Max Quality** plays the best quality the video has, or with *Up to* the best up to that size: the bigger
+ones are left out, so YouTube's own adaptive stream stays under it too (a vertical video counts by its short
+side); a change applies from the next video. **Skip AI-Upscaled Qualities** leaves out YouTube's "Super
+resolution" qualities, upscaled from a smaller video by AI. The subtitle style picked in YouTube's own settings is
+kept: YouTube lets it run out after a month, and lost it whenever its storage was emptied.
 
 Return YouTube Dislike sends the id of every video you open to returnyoutubedislikeapi.com.
 </details>
@@ -255,6 +266,9 @@ Return YouTube Dislike sends the id of every video you open to returnyoutubedisl
 | Disable Notifications | Off |
 | Type in Search with a Keyboard | On |
 | Search: Upload Date (Any Time, Last Hour, Today, This Week, This Month, This Year) | Any Time |
+| Search: Duration (Any, Under 4 min, 4-20 min, Over 20 min) | Any |
+| Search: Type (Any, Videos, Channels, Playlists, Movies) | Any |
+| Search: Only (Any, 4K, HDR, Live, Subtitles) | Any |
 | Settings Button for the Pointer | On |
 | Disable Animations | Off |
 | Keep App Open When Paused | Off |
@@ -277,8 +291,14 @@ Return YouTube Dislike sends the id of every video you open to returnyoutubedisl
 | Skip Segments Once | Off |
 | Show an icon when a video is entirely an advertisement | Off |
 | Show time with skips removed | Off |
+| Ignore Segments Shorter Than (1, 2, 3, 5, 10 s) | Off |
+| Count My Skips on SponsorBlock | Off |
+| Never Skip on These Channels | Empty |
 
-Each category can be set to Auto Skip, Manual Skip, Show in Seek Bar or Disable, and has its own colour.
+Each category can be set to Auto Skip, Manual Skip, Show in Seek Bar or Disable, and has its own colour. Blue
+within 8 s of an auto skip takes it back. The bottom of the tab shows the time skipping has saved. **Count My Skips
+on SponsorBlock** tells sponsor.ajay.app which segments were skipped (their ids only), as SponsorBlock's own
+extension does.
 </details>
 
 <details>
@@ -342,9 +362,11 @@ subscribed channels or Home, once YouTube has loaded the menu; a ticked one is g
 | Show What's New After an Update | On |
 
 The tab shows the version and has a **Check for Updates Now** button. **Reset All Settings** needs a second press
-within a few seconds, and puts every setting back to its default, apart from Separate Settings for Each Account itself. With that on, it
+within a few seconds, and puts every setting back to its default, apart from Separate Settings for Each Account itself and SponsorBlock's
+time saved. With that on, it
 resets this account's settings and the ones the whole TV shares; the other accounts keep theirs. **Support** has the
-Ko-fi and project pages as QR codes.
+Ko-fi and project pages as QR codes. The settings are kept twice on the TV: when YouTube empties its storage, the app takes
+them back from the second copy at its next start.
 </details>
 
 ## 🆕 What this fork adds
