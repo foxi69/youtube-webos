@@ -8,7 +8,7 @@
  * The page and the API are sponsorblock-fixtures.cjs's.
  */
 const { createReporter, flavorFromArgs, trustedKey, wait } = require('./harness.cjs');
-const { seg, bootSponsorBlock } = require('./sponsorblock-fixtures.cjs');
+const { seg, fakeVideo, bootSponsorBlock } = require('./sponsorblock-fixtures.cjs');
 
 const { modern } = flavorFromArgs();
 
