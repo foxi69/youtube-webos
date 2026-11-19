@@ -55,11 +55,15 @@ export function backupWrite(entries) {
   });
 }
 
-/** Every [key, text] pair whose key starts with `prefix`, or [] when there is no copy. */
+/**
+ * Every [key, text] pair whose key starts with `prefix`; [] when there is no
+ * copy (no IndexedDB, or an empty one). A read that fails part way rejects, so
+ * a part of the copy is never taken for all of it.
+ */
 export function backupReadAll(prefix) {
   return openDb().then((db) => {
     if (!db) return [];
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const out = [];
       try {
         const request = db.transaction(STORE, 'readonly').objectStore(STORE).openCursor();
@@ -70,8 +74,8 @@ export function backupReadAll(prefix) {
           if (key.indexOf(prefix) === 0 && typeof cursor.value === 'string') out.push([key, cursor.value]);
           cursor.continue();
         };
-        request.onerror = () => resolve(out);
-      } catch { resolve(out); }
+        request.onerror = () => reject(request.error || new Error('backup read failed'));
+      } catch (e) { reject(e); }
     });
   });
 }

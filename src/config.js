@@ -752,14 +752,18 @@ function notifyChange(key, newValue, oldValue) {
  * each had been changed in the panel. The outgoing account's pending write is
  * flushed to its own profile first.
  */
-function switchProfile(profile) {
+function switchProfile(profile, restored = null) {
   if (profile === activeProfile) return;
   flushPendingWrite();
   const previous = activeProfile;
   activeProfile = profile;
 
   let incoming = null;
-  if (storesProfile(profile)) incoming = loadStored(profileStorageKey(profile));
+  if (storesProfile(profile)) {
+    // Restored from the backup copy: its record, also when localStorage
+    // refused to take it back (quota), so the account is not seeded afresh.
+    incoming = loadStored(profileStorageKey(profile)) || (restored && restored[profileStorageKey(profile)]) || null;
+  }
   if (!incoming) {
     // An account seen for the first time (and every guest session) starts
     // from the shared settings.
@@ -800,7 +804,11 @@ function checkAccountChange() {
   switchProfile(profile);
 }
 
+// Set while restoreFromBackup applies the copy, which loads the profile itself.
+let restoringBackup = false;
+
 configAddChangeListener('perAccountSettings', ({ detail }) => {
+  if (restoringBackup) return;
   if (detail.newValue) {
     // The account carries on with exactly the settings it has now.
     activeProfile = readAccountProfile();
@@ -842,36 +850,51 @@ if (typeof window !== 'undefined') {
  */
 function restoreFromBackup() {
   backupReadAll(CONFIG_KEY).then((entries) => {
-    let shared = null;
+    const records = {};
     for (const [key, text] of entries) {
-      if (key === CONFIG_KEY) {
-        try { shared = JSON.parse(text); } catch { shared = null; }
-      }
+      try {
+        const value = JSON.parse(text);
+        if (value && typeof value === 'object') records[key] = value;
+      } catch { /* not a settings record */ }
     }
+    const shared = records[CONFIG_KEY];
+    if (!shared) return;
     // What the app wrote meanwhile (foxThemeApplied, say) was the defaults'
-    // and is replaced; the restored values are written again just after.
-    if (!shared || typeof shared !== 'object') return;
-    try {
-      for (const [key, text] of entries) window.localStorage.setItem(key, text);
-    } catch { /* the values still apply for this run */ }
-    console.info('[Config] Settings restored from the backup copy:', entries.length, 'record(s)');
-    for (const key of Object.keys(shared)) {
-      if (!configOptions.has(key)) continue;
-      sharedConfig[key] = shared[key];
-      const oldValue = localConfig[key];
-      if (oldValue === shared[key]) continue;
-      localConfig[key] = shared[key];
-      notifyChange(key, shared[key], oldValue);
+    // and is replaced. One record at a time: one too big for the quota does
+    // not keep the others out.
+    for (const [key, text] of entries) {
+      try { window.localStorage.setItem(key, text); } catch { /* applied from memory below */ }
     }
+    console.info('[Config] Settings restored from the backup copy:', entries.length, 'record(s)');
+    // The account's profile is loaded below, once the shared values are in:
+    // the perAccountSettings listener, told of the change, would make it the
+    // active one with the shared values and write those over it.
+    restoringBackup = true;
+    try {
+      for (const key of Object.keys(shared)) {
+        if (!configOptions.has(key)) continue;
+        sharedConfig[key] = shared[key];
+        const oldValue = localConfig[key];
+        if (oldValue === shared[key]) continue;
+        localConfig[key] = shared[key];
+        notifyChange(key, shared[key], oldValue);
+      }
+    } finally {
+      restoringBackup = false;
+    }
+    activeProfile = null;
     if (localConfig.perAccountSettings) {
       const profile = readAccountProfile();
-      if (profile !== null) switchProfile(profile);
+      if (profile !== null) switchProfile(profile, records);
     }
-  }).catch(() => { /* no copy */ }).then(() => {
+  }).then(() => {
     backupChecked = true;
     // Copied only if something was written meanwhile: with nothing changed
     // there is nothing to keep.
     if (backupMissed) scheduleWrite();
+  }, () => {
+    // The copy could not be read: it is left as it is, and nothing is copied
+    // over it this run.
   });
 }
 /**
