@@ -325,12 +325,22 @@ run(async () => {
     // A refusal of the queued video on its way: A is sent at the current
     // video's end, then YouTube answers with `status`; the settle timer is the
     // test's. `before` runs between the send and the answer, `after` before
-    // the timer fires. Returns what was told and sent.
+    // the timer fires. The clock is the test's: it stands 1 ms short of the
+    // settle time first, then at it. Returns what was told and sent then, and
+    // just before.
     const refusal = async (status, { before = () => {}, after = () => {} } = {}) => {
       const env = queueEnv();
-      let settle = null;
-      env.ctx.setTimeout = (fn) => { settle = fn; return 1; };
-      env.ctx.clearTimeout = () => { settle = null; };
+      let now = 0;
+      const timers = new Map();
+      let nextId = 0;
+      env.ctx.setTimeout = (fn, ms = 0) => { timers.set(++nextId, { fn, at: now + ms }); return nextId; };
+      env.ctx.clearTimeout = (id) => { timers.delete(id); };
+      const advanceTo = (to) => {
+        now = to;
+        for (const [id, timer] of [...timers].sort((a, b) => a[1].at - b[1].at)) {
+          if (timer.at <= now && timers.has(id)) { timers.delete(id); timer.fn(); }
+        }
+      };
       env.ctx.addToQueue('aaaaaaaaaaa', 'A');
       env.ctx.addToQueue('bbbbbbbbbbb', 'B');
       env.state(1, 'current0001');
@@ -341,15 +351,19 @@ run(async () => {
       before(env);
       env.ctx.noteQueuePlayability(status);
       after(env);
-      if (settle) settle();
+      advanceTo(1999);
+      const early = { refused: env.notes.includes('Could not play: A'), lookups: env.lookups.length };
+      advanceTo(2000);
       if (env.lookups[1]) env.lookups[1].resolve(env.registry);
       await flush();
-      return { refused: env.notes.includes('Could not play: A'), sent: env.dispatched.join() };
+      return { early, refused: env.notes.includes('Could not play: A'), sent: env.dispatched.join() };
     };
     {
       for (const status of ['ERROR', 'UNPLAYABLE']) {
         const r = await refusal(status);
-        t(`queue: a queued video refused with ${status} is reported and the next one plays`,
+        t(`queue: a queued video refused with ${status}: still waited for at 1999 ms (not reported, nothing next)`,
+          !r.early.refused && r.early.lookups === 1, JSON.stringify(r.early));
+        t(`queue: ...${status} at 2000 ms: reported, and the next one plays`,
           r.refused && r.sent === 'aaaaaaaaaaa,bbbbbbbbbbb', JSON.stringify(r));
       }
       const r = await refusal('LOGIN_REQUIRED');

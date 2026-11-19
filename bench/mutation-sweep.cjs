@@ -62,20 +62,25 @@ function build(kind) {
 const FAIL_LINE = /^FAIL|^\s*\w*Error\b/;
 
 // Runs the tests `jobs` at a time, but those in `skip`; resolves with the
-// first one that failed (and stops the others), or null when all passed.
+// first one that failed, or null when all passed, once the others it stopped
+// have exited (so a test run again alone after it runs alone). A test process
+// that cannot be started rejects: no result, and the source is put back.
 function runTests(skip = []) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const queue = tests.filter((t) => !skip.includes(t.name));
     const running = new Set();
-    let done = false;
-    const finish = (result) => {
-      if (done) return;
-      done = true;
+    let outcome;
+    const settleWhenIdle = () => {
+      if (outcome && !running.size) outcome.error ? reject(outcome.error) : resolve(outcome.result);
+    };
+    const finish = (result, error) => {
+      if (outcome) return;
+      outcome = { result, error };
       for (const c of running) c.kill();
-      resolve(result);
+      settleWhenIdle();
     };
     const next = () => {
-      if (done) return;
+      if (outcome) return settleWhenIdle();
       if (!queue.length) { if (!running.size) finish(null); return; }
       const t = queue.shift();
       let out = '';
@@ -83,9 +88,13 @@ function runTests(skip = []) {
       child.stdout.on('data', (d) => { out += d; });
       child.stderr.on('data', (d) => { out += d; });
       running.add(child);
-      child.on('close', (code) => {
+      child.on('error', (e) => {
         running.delete(child);
-        if (code !== 0 && !done) {
+        finish(null, new Error(`${t.name} could not be run: ${e.message}`));
+      });
+      child.on('close', (code) => {
+        if (!running.delete(child)) return;
+        if (code !== 0 && !outcome) {
           const line = out.split('\n').find((l) => FAIL_LINE.test(l)) || 'exit ' + code;
           finish({ t, test: t.name, line: line.trim().slice(0, 140) });
         } else next();
@@ -145,10 +154,12 @@ if (changed.status !== 0 || changed.stdout.trim()) {
       const secs = () => ((Date.now() - t0) / 1000).toFixed(0) + 's';
       if (err) { notRun.push(m.id); console.log(`BUILD ${m.id} (${secs()}): does not build: ${err}`); continue; }
       // Killed only by a failure that holds when its test runs again alone;
-      // a test that passes alone is noted and left out of the next round.
+      // a test that passes alone is noted and left out of the next round,
+      // until the rest of the suite has run through (each round leaves one
+      // more out, so this ends): survival is told only after that.
       let killed = null;
       const flaky = [];
-      for (let round = 0; round < 3 && !killed; round++) {
+      while (!killed) {
         const failed = await runTests(flaky);
         if (!failed) break;
         const line = confirm(failed.t);
