@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.10.0] - 2026/11/19
+
+Tile previews back on most newer TVs (webOS 22 to 25), now with a countdown, kept out of the watch history and no longer opening the video by themselves; three new actions and options (Repeat Video, Open Long-Press Menu, Open Playing Previews Without Reloading); DeArrow's Title Formatting on webOS 3-6; settings that worked on the same thing merged into one row each (Video Previews, Show Video Quality, AI Videos, Max Thumbnail Quality, Subtitles When a Video Starts), which start at their defaults, as the old settings are not carried over; and Playback Speed Control fixes for webOS 4-6 (#97), with slow speeds that play through on every TV. Ships both packages: `_webOS22+.ipk` for webOS 22 and newer, and the legacy `.ipk` for webOS 3-6.
+
 ## Added
 
 + Shortcuts: a new action, **Repeat Video (on/off)**: the video playing now starts again from its beginning at its end, instead of going on to the next video or YouTube's end screen. Pressed again it is off, and it ends with that video: another video, or leaving the watch page, turns it off. Not on live streams, which have no end, or on videos of 1.2 s or less. A seek into the video's last 1.2 s while it plays starts it again too, or into its last quarter for a video shorter than 4.8 s (the last 0.75 s of a 3 s one): YouTube goes on to the next video from there.
@@ -2204,7 +2208,8 @@ SponsorBlock Optimizations:
 
 - Created basic web app which launches YouTube TV.
 
-[Unreleased]: https://github.com/foxi69/youtube-webos/compare/v0.9.2...main
+[Unreleased]: https://github.com/foxi69/youtube-webos/compare/v0.10.0...main
+[0.10.0]: https://github.com/foxi69/youtube-webos/compare/v0.9.2...v0.10.0
 [0.9.2]: https://github.com/foxi69/youtube-webos/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/foxi69/youtube-webos/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/foxi69/youtube-webos/compare/v0.8.8...v0.9.0
