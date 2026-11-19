@@ -292,13 +292,17 @@ run(async () => {
       await waitFor(() => a.status.textContent !== during);
       return [during, a.status.textContent];
     };
-    const [during, newer] = await check(listing('0.9.10'));
+    // A patch number with one digit more than the installed one's.
+    const [major, minor, patch] = INSTALLED.split('.').map(Number);
+    const NEWER = `${major}.${minor}.${patch + 10}`;
+    const [during, newer] = await check(listing(NEWER));
     t(n('Check for Updates Now: "Checking" while it reads'), during === 'Checking for updates...', during);
-    t(n('0.9.10 is newer than 0.9.2 (numbers, not text)'), newer === 'Version 0.9.10 is available.', newer);
-    t(n('...and About offers to install it'), a.shown(a.install) && a.install.textContent === 'Download and Install 0.9.10');
-    t(n('0.9.2.0 is the same version'), (await check(listing(INSTALLED + '.0')))[1] === `Up to date (latest release: ${INSTALLED}.0).`,
+    t(n(`${NEWER} is newer than ${INSTALLED}`), newer === `Version ${NEWER} is available.`, newer);
+    t(n('...and About offers to install it'), a.shown(a.install) && a.install.textContent === `Download and Install ${NEWER}`);
+    t(n(`${INSTALLED}.0 is the same version`), (await check(listing(INSTALLED + '.0')))[1] === `Up to date (latest release: ${INSTALLED}.0).`,
       a.status.textContent);
-    t(n('an older release is not offered'), (await check(listing('0.9.1')))[1] === 'Up to date (latest release: 0.9.1).',
+    // From 0.10 on, 0.9.1 sorts after the installed version as text.
+    t(n('an older release is not offered (0.9.1: numbers, not text)'), (await check(listing('0.9.1')))[1] === 'Up to date (latest release: 0.9.1).',
       a.status.textContent);
     const ERR = 'Could not check for updates (no connection to GitHub).';
     t(n('a server error: could not check'), (await check({ status: 500 }))[1] === ERR, a.status.textContent);

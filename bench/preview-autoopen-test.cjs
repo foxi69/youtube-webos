@@ -2,7 +2,8 @@
  * Tile previews never open full screen by themselves: every preview command's
  * autotransitionDelayMs becomes -1 and its forceSeamlessAutotransition false,
  * with no setting and every other use of the JSON.parse hook off
- * (adblock.js, stopPreviewAutoOpen). And Video Previews, Without sound, mutes again when
+ * (adblock.js, stopPreviewAutoOpen). A playlist page's rows (Watch Later) get no
+ * preview at all, as the TV plays it unseen behind the page there. And Video Previews, Without sound, mutes again when
  * YouTube unmutes the video on a volume change (mute-previews.js).
  *
  * The field values are a webOS 25 TV's (2026-11-14): the preview starts 3 s
@@ -126,6 +127,39 @@ async function responses() {
   const c = commands(cont);
   t('continuation: the delay is -1 and the seamless flag false', c.length === 1 &&
     c[0].autotransitionDelayMs === -1 && c[0].forceSeamlessAutotransition === false, JSON.stringify(c[0]));
+
+  // A playlist page (Watch Later, as a webOS 25 TV gets it): its rows lose the
+  // preview, as the TV plays it unseen behind the page there. A focus command
+  // with more in it keeps the rest.
+  const row = (id) => Object.assign(tile(id, 39000, true, 0).tileRenderer, { onSelectCommand: { watchEndpoint: { videoId: id } } });
+  const mixed = row('wwwwwwwwww3');
+  mixed.onFocusCommand.logFocusCommand = { kept: true };
+  const list = { playlistVideoListRenderer: { playlistId: 'WL',
+    contents: [{ tileRenderer: row('wwwwwwwwww1') }, { tileRenderer: row('wwwwwwwwww2') }, { tileRenderer: mixed }] } };
+  const twoColumn = { twoColumnRenderer: { leftColumn: { entityMetadataRenderer: {} }, rightColumn: list } };
+  const wlRaw = { responseContext: { _pad: pad },
+    contents: { tvBrowseRenderer: { content: { tvSurfaceContentRenderer: { content: twoColumn } } } } };
+  t('precondition: the playlist rows carry three preview commands', commands(wlRaw).length === 3);
+  const wl = P(wlRaw);
+  const rows = wl.contents.tvBrowseRenderer.content.tvSurfaceContentRenderer.content.twoColumnRenderer.rightColumn.playlistVideoListRenderer.contents;
+  t('playlist page: no preview command is left', commands(wl).length === 0, JSON.stringify(commands(wl)).slice(0, 120));
+  t('...the rows whose focus command was only the preview have none', !('onFocusCommand' in rows[0].tileRenderer) && !('onFocusCommand' in rows[1].tileRenderer));
+  t('...a focus command with more in it keeps the rest', JSON.stringify(rows[2].tileRenderer.onFocusCommand) === '{"logFocusCommand":{"kept":true}}',
+    JSON.stringify(rows[2].tileRenderer.onFocusCommand));
+  t('...and each row still opens its video', rows.every((r, i) => r.tileRenderer.onSelectCommand.watchEndpoint.videoId === ['wwwwwwwwww1', 'wwwwwwwwww2', 'wwwwwwwwww3'][i]));
+  const wlMore = P({ responseContext: { _pad: pad }, continuationContents: { playlistVideoListContinuation: {
+    contents: [{ tileRenderer: row('wwwwwwwwww4') }] } } });
+  t('playlist continuation: its rows lose the preview too', commands(wlMore).length === 0 &&
+    !('onFocusCommand' in wlMore.continuationContents.playlistVideoListContinuation.contents[0].tileRenderer));
+  // A preview command without autotransitionDelayMs: the page is walked all the same.
+  const bare = row('wwwwwwwwww5');
+  delete bare.onFocusCommand.startInlinePlaybackCommand.autotransitionDelayMs;
+  const bareRaw = { responseContext: { _pad: pad }, continuationContents: { playlistVideoListContinuation: {
+    contents: [{ tileRenderer: bare }] } } };
+  t('precondition: that row has a preview command and no autotransitionDelayMs',
+    commands(bareRaw).length === 1 && !JSON.stringify(bareRaw).includes('autotransitionDelayMs'));
+  t('playlist: a preview command without autotransitionDelayMs is dropped too',
+    commands(P(bareRaw)).length === 0, JSON.stringify(commands(P(bareRaw))).slice(0, 120));
 
   // No seamless flag in the command: none is added.
   const noFlag = commands(P(browse([tile('nnnnnnnnnn1', 39000, undefined, 0)])));
