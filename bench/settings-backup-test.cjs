@@ -17,7 +17,8 @@ const KEY = 'ytaf-configuration';
  * onupgradeneeded before onsuccess, and a transaction on a store that was
  * never created throws NotFoundError, so the app must create its store.
  * opts.gate: a promise the cursor waits for before its first record;
- * opts.failAfter: the cursor fails after that many records.
+ * opts.failAfter: the cursor fails after that many records; opts.openFails:
+ * the database does not open (onerror).
  */
 function fakeIndexedDB(data, log, opts = {}) {
   const later = (fn) => setTimeout(fn, 1);
@@ -59,6 +60,11 @@ function fakeIndexedDB(data, log, opts = {}) {
     open(name, version = 1) {
       const req = { result: undefined, onsuccess: null, onerror: null, onupgradeneeded: null };
       later(() => {
+        if (opts.openFails) {
+          req.error = new Error('open failed');
+          if (req.onerror) req.onerror();
+          return;
+        }
         req.result = db;
         if (version > (data.version || 0)) {
           data.version = version;
@@ -303,6 +309,25 @@ run(async () => {
       JSON.stringify(stored(second.win)));
     t('...the copy is not replaced by the defaults of the failed run', JSON.parse(backup.get(KEY)).minVideoLength === '5', backup.get(KEY));
     t('...and the mark is gone', second.win.localStorage.getItem('ytaf-settings-recovering') === null);
+  }
+
+  // ---- A database that does not open, then the next start ----
+  {
+    const backup = savedCopy([[KEY, JSON.stringify({ minVideoLength: '5', foxThemeApplied: true })]]);
+    const first = boot({ data: backup, log: [], idb: { openFails: true } });
+    await wait(700);
+    const left = {};
+    for (let i = 0; i < first.win.localStorage.length; i++) {
+      const k = first.win.localStorage.key(i);
+      left[k] = first.win.localStorage.getItem(k);
+    }
+    t('a database that does not open is no empty copy: the mark stays', left['ytaf-settings-recovering'] === '1',
+      JSON.stringify(Object.keys(left)));
+    const second = boot({ data: backup, log: [], storage: left });
+    await wait(1800);
+    t('...and the next start, with the database opening, gets the copy back',
+      !!stored(second.win) && stored(second.win).minVideoLength === '5' && JSON.parse(backup.get(KEY)).minVideoLength === '5',
+      JSON.stringify(stored(second.win)));
   }
 
   // ---- No IndexedDB ----
