@@ -549,6 +549,9 @@ class SponsorBlockHandler {
             this._startBarWatch();
             this.drawOverlay();
             this.updateLabels();
+            // An Auto Skip to Start that waited for the channel, with Never
+            // Skip on These Channels changed meanwhile (emptied, say).
+            this._jumpIfPending();
         };
         
         const configKeys = [...Object.values(CONFIG_MAPPING), ...EXTRA_CONFIG_KEYS];
@@ -726,8 +729,10 @@ class SponsorBlockHandler {
                     this.rebuildSkipSegments();
                     // An Auto Skip to Start that waited for the channel.
                     this._jumpIfPending();
-                } else {
-                    this.channelWhitelisted();
+                } else if (!this.channelWhitelisted()) {
+                    // The list was emptied meanwhile: nothing to wait for.
+                    this.rebuildSkipSegments();
+                    this._jumpIfPending();
                 }
             }, CHANNEL_RETRY_MS);
         }

@@ -272,6 +272,25 @@ run(async () => {
     t(n('whitelist, channel known and not listed: the jump comes then'), env.state.seeks[0] === 90, env.state.seeks.join());
   }
 
+  {
+    // The channel not known yet, and the list emptied while the jump waits: it comes.
+    const opts = { author: '' };
+    const env = await boot({ sbWhitelistChannels: ['Other Channel'], sbMode_highlight: 'auto_skip' },
+      [seg('poi_highlight', 90, 91, 'poi')], opts);
+    await wait(200);
+    t(n('whitelist emptied while the jump waits: it waits first'), env.state.seeks.length === 0, env.state.seeks.join());
+    // The panel, on its SponsorBlock tab, where the list is.
+    trustedKey(env.win, 404);
+    await wait(100);
+    env.win.document.querySelectorAll('.ytaf-tab-btn')[3].click();
+    await wait(100);
+    const entry = Array.prototype.slice.call(env.win.document.querySelectorAll('.ytaf-list-btn'))
+      .find((b) => b.textContent === '\u2715 Other Channel');
+    if (entry) entry.click();
+    await wait(1300);
+    t(n('whitelist emptied while the jump waits: the jump comes'), !!entry && env.state.seeks[0] === 90, env.state.seeks.join());
+  }
+
   // ---- The channel not known yet ----
   {
     const opts = { author: '' };
