@@ -129,6 +129,7 @@ run caption-style-test "$B" legacy
 run speed-remember-test "$B" legacy
 run sponsorblock-extras-test "$B" legacy
 run audio-only-test "$B" legacy
+run queue-shelf-test "$B" legacy
 run pivot-filters-test "$B"
 run settings-reset-test "$B"
 run upstream-fixes-test "$B"
@@ -217,7 +218,7 @@ run appinfo-test
 # Chrome 87 environment (webOS 22). Left out: dependency-test (the emoji
 # fix), speed-legacy-install-test and emoji-loop-test, legacy-only modules.
 for t in smoke adblock-test panel-test module-behaviour-test upstream-fixes-test \
-  new-features-test feed-features-test video-formats-test settings-backup-test caption-style-test speed-remember-test sponsorblock-extras-test audio-only-test dislike-timing-test per-account-test \
+  new-features-test feed-features-test video-formats-test settings-backup-test caption-style-test speed-remember-test sponsorblock-extras-test audio-only-test queue-shelf-test dislike-timing-test per-account-test \
   pivot-filters-test settings-reset-test preview-handover-test speed-preview-test \
   whats-new-test guide-fit-test keyboard-search-test screensaver-test quality-tag-test \
   watch-time-test search-filter-test low-memory-style-test review-fixes-test \

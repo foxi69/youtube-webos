@@ -66,7 +66,7 @@
     </td>
     <td valign="top">
       <h3>📋 A video queue</h3>
-      "Add to queue" in the long-press menu of any video (More Options in the Long-Press Menu): the queued videos play one after another.
+      "Add to queue" in the long-press menu of any video (More Options in the Long-Press Menu): the queued videos play one after another, and a Queue row under the player shows them.
     </td>
     <td valign="top">
       <h3>🔔 Updates on the TV</h3>

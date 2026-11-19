@@ -6,7 +6,7 @@ import { FetchRegistry } from './hooks/fetch';
 import { upgradeResponseThumbnails } from './thumbnail-quality.js';
 import { raiseRowsAhead } from './rows-ahead.js';
 import { itemTitle, itemChannel, itemDurationSeconds, itemWatchedPercent, itemAgeDays, keepsWatchedVideos, playingPlaylistId, isMixItem } from './feed-filters.js';
-import { extendLongPressMenu } from './long-press-menu.js';
+import { extendLongPressMenu, queueShelf } from './long-press-menu.js';
 import { noteQueuePlayability } from './video-queue.js';
 import { applyDeArrow } from './dearrow/index.js';
 import { extractAiVideoId } from './ai-video-id.js';
@@ -788,6 +788,25 @@ function filterSafely(data, text) {
   } catch (e) {
     if (DEBUG) console.error('[AdBlock] Error during filtering:', e);
   }
+  try {
+    addQueueShelf(data);
+  } catch (e) {
+    if (DEBUG) console.error('[AdBlock] Queue row failed:', e);
+  }
+}
+
+/**
+ * The Queue row, first under the player in a watch-next response, after the
+ * filters (Hide Recommended Videos leaves it), whatever is on.
+ */
+function addQueueShelf(data) {
+  const rows = data.contents && data.contents.singleColumnWatchNextResults &&
+    data.contents.singleColumnWatchNextResults.pivot &&
+    data.contents.singleColumnWatchNextResults.pivot.sectionListRenderer &&
+    data.contents.singleColumnWatchNextResults.pivot.sectionListRenderer.contents;
+  if (!Array.isArray(rows)) return;
+  const shelf = queueShelf();
+  if (shelf) rows.unshift(shelf);
 }
 
 /**
@@ -1458,7 +1477,8 @@ function hideRecommendedVideos(data, schema) {
   const playlistId = data.currentVideoEndpoint?.watchEndpoint?.playlistId;
   const kept = playlistId ? list.contents.filter((entry) => isPlaylistRow(entry, playlistId)) : [];
   if (DEBUG) debugLog(`NEXT: Hid ${list.contents.length - kept.length} recommended row(s)`);
-  if (!kept.length && results && results.pivot) {
+  // Nothing left: the rows go, unless the Queue row comes (addQueueShelf).
+  if (!kept.length && results && results.pivot && !queueShelf()) {
     delete results.pivot;
     return;
   }
