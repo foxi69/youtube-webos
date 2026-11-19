@@ -48,11 +48,21 @@ export class ResolveCommandRegistry {
 
     for (const [key, hook] of cmds) {
       if (key in command) {
-        // A hook of ours that throws must not break YouTube's command: the
-        // command goes on to YouTube's own resolver instead.
+        // A hook of ours that throws before it hands anything to YouTube's
+        // resolver must not break the command: it goes to the resolver
+        // instead. One that throws after (YouTube's resolver threw, or a
+        // hook that hands on several commands failed part way) is passed
+        // on: the command, or a part of it, already ran, and must not run
+        // twice.
+        let delegated = false;
+        const delegate: ResolveCommand = (cmd, ex) => {
+          delegated = true;
+          return this.#originalFn(cmd, ex);
+        };
         try {
-          return hook(this.#originalFn, command, extra);
+          return hook(delegate, command, extra);
         } catch (e) {
+          if (delegated) throw e;
           console.warn('[app_api] command hook failed for', key, e);
           return this.#originalFn(command, extra);
         }
