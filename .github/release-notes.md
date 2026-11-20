@@ -9,9 +9,10 @@
 </p>
 
 <p align="center">
-  <b>Ad-free YouTube for LG TVs</b>, with SponsorBlock, Return YouTube Dislike, DeArrow and a programmable remote.<br>
-  Built on <a href="https://github.com/NicholasBly/youtube-webos">NicholasBly/youtube-webos</a>, plus the best of every other fork of the project.
+  <b>Ad-free YouTube for LG TVs</b>, with SponsorBlock, Return YouTube Dislike, DeArrow and a programmable remote.
 </p>
+
+**New in @VERSION@:** @SUMMARY@
 
 ## ⬇️ Download
 

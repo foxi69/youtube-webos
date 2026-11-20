@@ -1,0 +1,7 @@
+baseline: 88 tests pass; 25 mutants, 10 at a time
+SURVIVED queue-refused-hash (175s): a refusal is reported for a video not on screen
+SURVIVED queue-unplayable (175s): an UNPLAYABLE queued video is not reported
+SURVIVED queue-opening-id (175s): any video playing counts as the queued one opening
+killed queue-from (74s) by lifecycle-audit-test: FAIL queue: the video that was on reporting PLAYING again during the lookup does not stop the switch
+SURVIVED watch-hidden-start (175s): watch time counts while the app is hidden
+SURVIVED watch-hidden-resume (175s): coming back counts while still hidden

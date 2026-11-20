@@ -1,0 +1,39 @@
+baseline: 89 tests pass; 35 mutants, 10 at a time
+killed queue-dup (40s) by feed-features-test: FAIL queue: an empty queue leaves the end to YouTube
+SURVIVED queue-refused-hash (178s): a refusal is reported for a video not on screen
+SURVIVED queue-unplayable (181s): an UNPLAYABLE queued video is not reported
+SURVIVED queue-opening-id (177s): any video playing counts as the queued one opening
+killed queue-end-watch (43s) by feed-features-test: FAIL queue: a preview ending on the home screen starts nothing
+SURVIVED watch-hidden-start (180s): watch time counts while the app is hidden
+SURVIVED watch-hidden-resume (178s): coming back counts while still hidden
+SURVIVED countdown-live (180s): a live preview gets a countdown
+SURVIVED remaining-rate (180s): the time left ignores the playback speed
+killed remaining-controls (82s) by lifecycle-audit-test: FAIL time-remaining.js: resume immediately checks the page, with exactly one interval
+killed remaining-hidden (80s) by lifecycle-audit-test: FAIL time-remaining.js: hidden, the running interval is the one cleared, with no page read
+killed remaining-live (32s) by panel-test: FAIL remaining time hidden on a live stream
+SURVIVED mute-shorts (177s): Shorts count as previews and are muted
+SURVIVED replayed-host (179s): the host is restyled on every pass
+SURVIVED sb-search (180s): the segment search is off by one at a boundary
+SURVIVED sb-final-seek (181s): adjacent segments are not joined
+SURVIVED sb-auto-mode (181s): every segment is auto-skipped
+SURVIVED sb-categories (181s): segments are drawn with no category on
+killed speed-capped-once (292s) by speed-reload-state-test: FAIL fallen again after its watch, a later play does not raise it once more
+killed speed-now (297s) by speed-reload-state-test: FAIL at the cap, the position check does not read the quality record
+killed config-guest (27s) by per-account-test: FAIL guest: a change is not stored
+SURVIVED config-same-profile (177s): the same account switches its settings again
+SURVIVED config-guest-state (183s): the guest's settings state is wrong
+SURVIVED filters-duration (178s): a text that is not a duration is read as one
+killed filters-mix-lockup (41s) by feed-features-test: FAIL Remove Mixes drops Mix tiles and lockups, keeps albums, playlists and videos in a Mix
+killed filters-mix-browse (41s) by feed-features-test: FAIL Remove Mixes drops Mix tiles and lockups, keeps albums, playlists and videos in a Mix
+killed filters-units (41s) by feed-features-test: FAIL Hide Videos Older Than a year: older ones go, in every language read; the title and the channel do not count, no date stays
+killed menu-tile-style (41s) by feed-features-test: FAIL long press: Shorts tiles are left alone
+SURVIVED menu-lockup-type (181s): a mix or playlist lockup gets our entries
+SURVIVED menu-marker (179s): our entries are added twice
+SURVIVED menu-channel (177s): Block channel without a channel
+SURVIVED keys-search-digits (176s): digits are taken on the search page
+killed keys-scope (79s) by speed-cases-test: FAIL and the key goes on to YouTube
+killed repeat-paused (151s) by shortcut-actions-test: FAIL modern: ...paused, a seek near the end stays where it was put (seek event)
+killed repeat-hash-other (151s) by shortcut-actions-test: FAIL modern: ...another video ends it, even one that never played (back on the first: off)
+
+15 of 35 killed; survived: queue-refused-hash, queue-unplayable, queue-opening-id, watch-hidden-start, watch-hidden-resume, countdown-live, remaining-rate, mute-shorts, replayed-host, sb-search, sb-final-seek, sb-auto-mode, sb-categories, config-same-profile, config-guest-state, filters-duration, menu-lockup-type, menu-marker, menu-channel, keys-search-digits
+exit 1

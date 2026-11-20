@@ -115,6 +115,19 @@ run(async () => {
     const { win, parse, errors } = boot(filters);
     t('feed filters drop watched, short, blocked channel and keyword items',
       ids(parse(feed())) === 'watched50__,long1234___,noduration_,hourlong___', ids(parse(feed())));
+    {
+      // A badge that is no length (NEW, LIVE) before the one that is: it is
+      // passed over, and the length after it is read.
+      const badged = (id, duration) => {
+        const item = lockup(id, { duration });
+        item.lockupViewModel.contentImage.thumbnailViewModel.overlays[0].thumbnailBottomOverlayViewModel.badges
+          .unshift({ thumbnailBadgeViewModel: { text: 'NEW' } });
+        return item;
+      };
+      const r = ids(parse(browse([badged('newshort___', '3:10'), badged('newlong____', '12:34')])));
+      t('a badge that is no length (NEW) is passed over: the length after it still drops a short video, keeps a long one',
+        r === 'newlong____', r);
+    }
 
     t('the history keeps watched videos (browse_id in the response)',
       ids(parse(Object.assign(feed(), browse(itemsOf(feed()), 'FEhistory')))).indexOf('watched95__') !== -1);
@@ -462,6 +475,41 @@ run(async () => {
       menuTexts(cluster.clusterShelfRenderer.clusters[0].clusterRenderer.items[0]) + ' / ' + menuTexts(cluster.clusterShelfRenderer.contents[0].contents[0]));
     t('long press: Shorts tiles are left alone',
       shortItem.tileRenderer.onLongPressCommand.showMenuCommand.menu.menuRenderer.items.length === 1);
+    {
+      // A Mix and a playlist come as lockups too, with a watch endpoint: Add to
+      // queue and Block channel are for videos only. Beside them, a video
+      // lockup gets them (the control).
+      const typed = (id, contentType) => {
+        const item = lockup(id, { longPress: { innertubeCommand: menu } });
+        item.lockupViewModel.contentType = contentType;
+        item.lockupViewModel.rendererContext.commandContext.onTap.innertubeCommand.watchEndpoint.playlistId = 'RD' + id;
+        return item;
+      };
+      const [video, mix, playlist] = itemsOf(parse(browse([typed('videolock01', 'LOCKUP_CONTENT_TYPE_VIDEO'),
+        typed('mixlock0001', 'LOCKUP_CONTENT_TYPE_MIX'), typed('playlistlk1', 'LOCKUP_CONTENT_TYPE_PLAYLIST')])));
+      t('long press: a Mix or a playlist lockup is left alone, a video lockup beside them gets our entries',
+        menuTexts(video) === 'Save|Add to queue|Block channel: Some Channel' && menuTexts(mix) === 'Save' && menuTexts(playlist) === 'Save',
+        menuTexts(video) + ' / ' + menuTexts(mix) + ' / ' + menuTexts(playlist));
+    }
+    {
+      // No channel on the tile: Add to queue, but no Block channel. Beside it,
+      // one with a channel gets both (the control).
+      const [nameless, named] = itemsOf(parse(browse([tile('nochannel01', { channel: '', longPress: menu }),
+        tile('channel0001', { channel: 'Chan', longPress: menu })]))).map((i) => i.tileRenderer.onLongPressCommand
+        .showMenuCommand.menu.menuRenderer.items.map((x) => x.menuServiceItemRenderer.text.runs[0].text).join('|'));
+      t('long press: a tile without a channel gets no Block channel entry, one with a channel does',
+        nameless === 'Save|Add to queue' && named === 'Save|Add to queue|Block channel: Chan', nameless + ' / ' + named);
+    }
+    {
+      // A response no schema knows goes through the fallback walk, which finds
+      // the watch-next rows twice: as the pivot's section list and as the
+      // first section list. The menu met again keeps one set of our entries.
+      const moved = parse({ responseContext: { _pad: 'z'.repeat(11000) }, contents: { movedWatchNextResults: { pivot: { sectionListRenderer: { contents: [
+        { shelfRenderer: { content: { horizontalListRenderer: { items: [lockup('fallback001', { longPress: { innertubeCommand: menu } })] } } } }
+      ] } } } } });
+      const texts = menuTexts(moved.contents.movedWatchNextResults.pivot.sectionListRenderer.contents[0].shelfRenderer.content.horizontalListRenderer.items[0]);
+      t('long press: a menu the fallback walk meets twice gets our entries once', texts === 'Save|Add to queue|Block channel: Some Channel', texts);
+    }
 
     const resolve = win._yttv.resolver.instance.resolveCommand;
     t('long press: our action is not passed to YouTube', resolve(blockItem.menuServiceItemRenderer.serviceEndpoint) === true && resolved.length === 0);

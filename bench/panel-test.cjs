@@ -211,6 +211,23 @@ setTimeout(async () => {
     row && row.click();
     await new Promise((r) => setTimeout(r, 1100));
     t('Remaining shows only the remaining time', /content:"-9:00"/.test(text()), text());
+    // At double speed the 540 s left take 270 s. The mode goes round to Both
+    // (End Time, then Both), which writes the text at once. The page's clock
+    // stands at 12:00:00 here, so the end is 12:04 (12:09 if the speed were
+    // left out), in the page's own time format.
+    const fixedNow = new win.Date(2026, 0, 1, 12, 0, 0).getTime();
+    const realNow = win.Date.now;
+    win.Date.now = () => fixedNow;
+    const at = (ms) => new win.Intl.DateTimeFormat(win.navigator.language, { hour: 'numeric', minute: 'numeric' })
+      .format(new win.Date(fixedNow + ms));
+    Object.defineProperty(v, 'playbackRate', { configurable: true, value: 2 });
+    row && row.click();
+    row && row.click();
+    win.Date.now = realNow;
+    t('precondition: back on Both, and 270 s and 540 s from the clock read differently', value() === 'Both' &&
+      at(270000) !== at(540000), value() + ' ' + at(270000) + ' / ' + at(540000));
+    t('at 2x the time left is halved, and the end is 270 s away', text().includes(`content:"-4:30 · ends ${at(270000)}"`),
+      text() + ' expected ends ' + at(270000));
   }
 
   // ---- Case 6: the Premium logo comes back after YouTube repaints the header ----

@@ -121,6 +121,18 @@ run(async () => {
   live.focus();
   tick(30);
   t('a live badge stays', badgeOf(live) === 'ÉLŐ', badgeOf(live));
+  // A live preview on a tile that shows a time: the player says it is live, so
+  // the time stays; the same tile with a video that is not live counts down.
+  const liveTimed = addTile(win, 'tttttttttt1', '5:00');
+  state.id = 'tttttttttt1';
+  state.duration = 300;
+  state.live = true;
+  liveTimed.focus();
+  tick(30);
+  t('a live preview: the tile\'s time stays', badgeOf(liveTimed) === '5:00', badgeOf(liveTimed));
+  state.live = false;
+  tick(30);
+  t('...the same tile, not live: counts down (300 - 30 s -> 4:30)', badgeOf(liveTimed) === '4:30', badgeOf(liveTimed));
   const other = addTile(win, 'oooooooooo1', 'Új');
   state.id = 'oooooooooo1';
   state.duration = 300;

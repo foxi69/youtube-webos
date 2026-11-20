@@ -141,6 +141,30 @@ run(async () => {
       env.state.seeks.join(','));
   }
 
+  // ---- The start chain takes in a segment that adds under a second ----
+  {
+    const env = await boot({}, [seg('intro', 0, 15), seg('sponsor', 15.1, 15.8)]);
+    t(n('a chain whose last segment adds 0.7 s: one jump to that segment\'s end'),
+      env.state.time === 15.8 && env.state.seeks.join() === '15.8', env.state.seeks.join(','));
+    t(n('...with one toast naming both'), env.toasts() === 'Skipped intro, sponsored', env.toasts());
+  }
+
+  // ---- A manual segment from 0:00 is not part of a start chain ----
+  {
+    const env = await boot({ sbMode_sponsor: 'manual_skip' }, [seg('sponsor', 0, 20), seg('intro', 20.1, 40)]);
+    const list = (env.sb() && env.sb().skipSegments || []).map((s) => `${s.start}-${s.end}:${s.mode}`).join();
+    // The list is built right before the start chain runs, in the same task.
+    t(n('manual segment from 0:00: both segments are in the skip list'),
+      list === '0-20:manual_skip,20.1-40:auto_skip', list);
+    t(n('...and the video does not jump as it opens'), env.state.time === 0 && env.state.seeks.length === 0,
+      env.state.seeks.join(','));
+    await env.playTo(0.2);
+    t(n('...the blue key is offered for it'), env.toasts() === 'Sponsored: Press Blue to skip', env.toasts());
+    const handled = env.sb().handleBlueButton();
+    await wait(40);
+    t(n('...which skips it to its end'), handled === true && env.state.seeks.join() === '20', env.state.seeks.join(','));
+  }
+
   // ---- The start chain when the segments come before the video's metadata (common on a TV) ----
   {
     const env = await boot({}, [seg('intro', 0, 15), seg('sponsor', 15.1, 40)], { readyState: 0 });
