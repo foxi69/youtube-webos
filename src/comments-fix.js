@@ -69,21 +69,60 @@ function isZero(v) {
   return v === '0' || v === '0px' || v === '0rem';
 }
 
-function findCollapsingSelectors() {
+function namesCloseClass(sel) {
+  for (let j = 0; j < CLOSE_CLASSES.length; j++) {
+    if (sel.indexOf('.' + CLOSE_CLASSES[j]) !== -1) return true;
+  }
+  return false;
+}
+
+// Only what the rule collapses is undone: the element keeps every other value
+// it has (.AmQJbe has an inline width that a blanket `width: auto !important`
+// would beat).
+function collapsedOverrides(s) {
+  const out = [];
+  if (s.display === 'none') out.push('display: block');
+  if (isZero(s.height)) out.push('height: auto');
+  if (isZero(s.width)) out.push('width: auto');
+  if (isZero(s.maxHeight)) out.push('max-height: none');
+  return out;
+}
+
+// A selector list split on its top-level commas (not those inside :is() or [attr]).
+function splitSelectorList(text) {
+  const parts = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '(' || ch === '[') depth++;
+    else if (ch === ')' || ch === ']') depth--;
+    else if (ch === ',' && depth === 0) {
+      parts.push(text.slice(start, i).trim());
+      start = i + 1;
+    }
+  }
+  parts.push(text.slice(start).trim());
+  return parts.filter(Boolean);
+}
+
+// A minified sheet merges rules with the same body into one selector list, so
+// only the selectors of a list that name a closing class are overridden: the
+// whole list would keep unrelated classes (.zylon-hidden) laid out.
+function findCollapsingRules() {
   const rules = collectRules();
-  const sels = [];
+  const found = [];
   for (let i = 0; i < rules.length; i++) {
     const r = rules[i];
-    const sel = r.selectorText;
-    let usesCloseClass = false;
-    for (let j = 0; j < CLOSE_CLASSES.length; j++) {
-      if (sel.indexOf('.' + CLOSE_CLASSES[j]) !== -1) { usesCloseClass = true; break; }
+    if (!namesCloseClass(r.selectorText)) continue;
+    const overrides = collapsedOverrides(r.style);
+    if (!overrides.length) continue;
+    const parts = splitSelectorList(r.selectorText);
+    for (let k = 0; k < parts.length; k++) {
+      if (namesCloseClass(parts[k])) found.push({ selector: parts[k], overrides });
     }
-    if (!usesCloseClass) continue;
-    const s = r.style;
-    if (s.display === 'none' || isZero(s.height) || isZero(s.width) || isZero(s.maxHeight)) sels.push(sel);
   }
-  return sels;
+  return found;
 }
 
 function applyFix(fromStartup) {
@@ -93,20 +132,19 @@ function applyFix(fromStartup) {
     scans++;
   }
 
-  const sels = findCollapsingSelectors();
+  const found = findCollapsingRules();
   if (!styleEl) {
     styleEl = document.createElement('style');
     styleEl.id = 'ytaf-comments-close-fix';
     (document.head || document.documentElement).appendChild(styleEl);
   }
 
-  if (sels.length) {
+  if (found.length) {
     foundRules = true;
-    styleEl.textContent = sels.map((s) =>
-      s + ' { display: block !important; height: auto !important; width: auto !important;' +
-      ' max-height: none !important; visibility: hidden !important; }'
+    styleEl.textContent = found.map((r) =>
+      r.selector + ' { ' + r.overrides.concat('visibility: hidden').map((d) => d + ' !important;').join(' ') + ' }'
     ).join('\n');
-    console.info('[CommentsFix] Close-collapse override applied to: ' + sels.join(' , '));
+    console.info('[CommentsFix] Close-collapse override applied to: ' + found.map((r) => r.selector).join(' , '));
   } else {
     styleEl.textContent = FALLBACK_CSS;
     if (!fromStartup) console.info('[CommentsFix] No collapsing close rule found (scan ' + scans + '/' + MAX_SCANS + '), using fallback');

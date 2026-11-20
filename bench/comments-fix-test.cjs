@@ -105,10 +105,44 @@ run(async () => {
     t(n('a max-height: 0 rule two blocks deep is found'), text.indexOf('.xmQAdc .list {') !== -1, text);
     t(n('a width: 0rem rule is found'), text.indexOf('.frHKed .rail {') !== -1, text);
     t(n('a closing-class rule with real sizes is left alone'), text.indexOf('.grow') === -1, text);
-    t(n('every override keeps the element laid out but hidden'),
-      text.split('\n').length === 3 && text.split('\n').every((l) =>
-        /\{ display: block !important; height: auto !important; width: auto !important; max-height: none !important; visibility: hidden !important; \}$/.test(l)),
+    t(n('each override undoes only what its rule collapses, and hides'),
+      text === 'ytlr-animated-overlay.xmQAdc .AmQJbe { display: block !important; visibility: hidden !important; }\n' +
+        '.xmQAdc .list { max-height: none !important; visibility: hidden !important; }\n' +
+        '.frHKed .rail { width: auto !important; visibility: hidden !important; }',
       text);
+  }
+
+  // ---- A minified list: rules with the same body merged into one ----
+  {
+    const h = boot(`.zylon-hidden, ${OVERLAY_SEL}, :is(.a, .b).frHKed .x { height: 0px; width: 0px; }
+      .frHKed .list, .zylon-other { display: none; }`, {
+      before(win) {
+        // YouTube's own inline width on the panel's box.
+        win.document.querySelector('.AmQJbe').style.width = '640px';
+        const z = win.document.createElement('div');
+        z.className = 'zylon-hidden';
+        win.document.body.appendChild(z);
+      }
+    });
+    const text = h.fixText();
+    t(n('merged list: only its closing-class selectors are overridden'),
+      text === `${OVERLAY_SEL} { height: auto !important; width: auto !important; visibility: hidden !important; }\n` +
+        ':is(.a, .b).frHKed .x { height: auto !important; width: auto !important; visibility: hidden !important; }\n' +
+        '.frHKed .list { display: block !important; visibility: hidden !important; }',
+      text);
+    t(n('merged list: an unrelated class in it keeps its own rule'),
+      h.win.getComputedStyle(h.doc.querySelector('.zylon-hidden')).height === '0px' &&
+        h.win.getComputedStyle(h.doc.querySelector('.zylon-hidden')).visibility !== 'hidden',
+      h.win.getComputedStyle(h.doc.querySelector('.zylon-hidden')).height);
+    t(n('merged list: reported per selector'),
+      h.infos.length === 1 && h.infos[0].endsWith(`applied to: ${OVERLAY_SEL} , :is(.a, .b).frHKed .x , .frHKed .list`), h.infos.join(' | '));
+  }
+  {
+    // Only height collapses: the panel keeps YouTube's inline width.
+    const h = boot(`${OVERLAY_SEL} { height: 0px; }`, {
+      before(win) { win.document.querySelector('.AmQJbe').style.width = '640px'; }
+    });
+    t(n('a height-only rule: the inline width stays'), h.box().width === '640px' && h.box().height === 'auto', `${h.box().width} ${h.box().height}`);
   }
 
   // ---- A constructed sheet, and a cross-origin one that cannot be read ----
