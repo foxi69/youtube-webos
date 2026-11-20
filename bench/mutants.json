@@ -4,7 +4,7 @@
   {"id":"queue-unplayable","file":"src/video-queue.js","from":"if (!opening || (status !== 'ERROR' && status !== 'UNPLAYABLE')) return;","to":"if (!opening || status !== 'ERROR') return;","why":"an UNPLAYABLE queued video is not reported"},
   {"id":"queue-opening-id","file":"src/video-queue.js","from":"if (detail.state === 1 && opening && detail.videoId === opening.videoId) {","to":"if (detail.state === 1 && opening) {","why":"any video playing counts as the queued one opening"},
   {"id":"queue-end-watch","file":"src/video-queue.js","from":"if (endHandled || !queue.length || !window.location.hash.startsWith('#/watch')) return;","to":"if (endHandled || !queue.length) return;","why":"the queue plays on at an end off the watch page"},
-  {"id":"queue-from","file":"src/video-queue.js","from":"shown !== dispatching.from","to":"true","why":"the video that was on, playing again, counts as the viewer's choice"},
+  {"id":"queue-from","file":"src/video-queue.js","from":"shown !== attempt.from","to":"true","why":"the video that was on, playing again, counts as the viewer's choice"},
   {"id":"watch-hidden-start","file":"src/watch-time.js","from":"if ((isWatchPage() || isShortsPage()) && !document.hidden) start(video);","to":"if (isWatchPage() || isShortsPage()) start(video);","why":"watch time counts while the app is hidden"},
   {"id":"watch-hidden-resume","file":"src/watch-time.js","from":"if (document.hidden || (!isWatchPage() && !isShortsPage())) return;","to":"if (!isWatchPage() && !isShortsPage()) return;","why":"coming back counts while still hidden"},
   {"id":"watch-readystate","file":"src/watch-time.js","from":"video.readyState >= CAN_PLAY","to":"video.readyState >= 0","why":"a buffering video counts on return"},
@@ -108,5 +108,7 @@
   {"id":"dearrow-casual-setting","file":"src/dearrow/titles.js","from":"if (configRead('dearrowCasualMode') && casualKeepsOriginal(video)) return null;","to":"if (casualKeepsOriginal(video)) return null;","why":"casual votes keep YouTube's title with Casual Mode off"},
   {"id":"dearrow-casual-title","file":"src/dearrow/titles.js","from":"(!vote.title || (typeof vote.title === 'string' && vote.title.trim().toLowerCase() === original))","to":"true","why":"a casual vote for an earlier title keeps the title the video has now"},
   {"id":"ui-chapters-setting","file":"src/ui.js","from":"if (!configRead('sbCommunityChapters') || !window.sponsorblock ||","to":"if (!window.sponsorblock ||","why":"community chapters are used with Use Community Chapters off"},
-  {"id":"ui-chapters-previous","file":"src/ui.js","from":"target = now - current > 3 ? current : previous;","to":"target = current;","why":"Previous Chapter at a chapter's start stays in it instead of going back one"}
+  {"id":"ui-chapters-previous","file":"src/ui.js","from":"target = now - current > 3 ? current : previous;","to":"target = current;","why":"Previous Chapter at a chapter's start stays in it instead of going back one"},
+  {"id":"queue-late-chosen","file":"src/video-queue.js","from":"if (choseAnother(next)) { putBack(next); return; }","to":"","why":"a late command replaces a video the viewer chose that is still loading"},
+  {"id":"replayed-own-style","file":"src/most-replayed.js","from":"|${uri.length}|${own}`","to":"|${uri.length}`","why":"a bar positioned with no change of size stays relative"}
 ]
