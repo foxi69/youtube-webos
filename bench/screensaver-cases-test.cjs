@@ -28,7 +28,8 @@ const { t, run } = createReporter();
 
 /**
  * The bundle on the browse page, the player mounted. `bridge: false` leaves
- * PalmServiceBridge out, as on a firmware without it.
+ * PalmServiceBridge out, as on a firmware without it. `clock`: the page's
+ * Date.now is clock.now, set by the test (held, it does not move on its own).
  */
 function boot(opts = {}) {
   const { win, doc, errors, evaluate } = bootPage({
@@ -64,6 +65,10 @@ function boot(opts = {}) {
   const keys = [];
   doc.addEventListener('keydown', (e) => { if (e.__ytafSynthetic) keys.push(e.keyCode); }, true);
 
+  if (opts.clock) {
+    opts.clock.now = win.Date.now();
+    win.Date.now = () => opts.clock.now;
+  }
   evaluate();
 
   const env = {
@@ -255,7 +260,8 @@ run(async () => {
     // unflagged, as keycode 170 (measured on webOS 25: 1-24 ms later). Here
     // the echo has no isTrusted, as on Chrome 38, so only the mod's own
     // record of what it sent can tell it from a press.
-    const env = boot({ config: { shortcut_key_yellow: 'config_menu' } });
+    // The clock held: however late the timers run, the key comes inside the echo window.
+    const env = boot({ config: { shortcut_key_yellow: 'config_menu' }, clock: {} });
     const echoes = [];
     env.doc.addEventListener('keydown', (e) => {
       if (!e.__ytafSynthetic) return;
@@ -291,7 +297,8 @@ run(async () => {
   {
     // A Chrome with isTrusted marks the remote's press trusted: one that
     // comes inside the echo's window still runs its binding.
-    const env = boot({ config: { shortcut_key_yellow: 'config_menu' } });
+    // The clock held: however late the timers run, the key comes inside the echo window.
+    const env = boot({ config: { shortcut_key_yellow: 'config_menu' }, clock: {} });
     let pressed = false;
     env.doc.addEventListener('keydown', (e) => {
       if (!e.__ytafSynthetic || pressed) return;

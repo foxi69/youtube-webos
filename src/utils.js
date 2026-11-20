@@ -122,6 +122,18 @@ export const isWatchPage = () => _isWatchPage;
 export const isShortsPage = () => _isShortsPage;
 export const isSearchPage = () => _isSearchPage;
 
+/**
+ * The chapters' start times in seconds, from the bar renderer's data
+ * (chapters[].start); empty when it has none.
+ */
+export function rendererChapterStarts() {
+  const host = document.querySelector('ytlr-multi-markers-player-bar-renderer');
+  const props = host && host.__instance && host.__instance.props;
+  const own = props && props.data && Array.isArray(props.data.chapters) ? props.data.chapters : [];
+  // A number only: Number(null) is 0, a chapter at the start that is not there.
+  return own.map((chapter) => chapter && chapter.start).filter((s) => typeof s === 'number' && isFinite(s));
+}
+
 // Cached <video> lookup. Several shortcut handlers re-query
 // document.querySelector('video') per keypress; cache it for the lifetime of
 // a watch/shorts session and invalidate when the page state changes.
@@ -286,8 +298,12 @@ export function sendKey(keyDef, target = document.body) {
   Object.defineProperties(keyUpEvt,   { keyCode: codeDesc, which: codeDesc, charCode: charDesc });
 
   const color = COLOR_CODE_MAP.get(keyDef.code) || null;
-  lastSentColor = color;
-  lastSentAt = Date.now();
+  // A key that is no colour (UP from another keep-alive) leaves the record:
+  // the echo of a colour sent just before still comes.
+  if (color) {
+    lastSentColor = color;
+    lastSentAt = Date.now();
+  }
   target.dispatchEvent(keyDownEvt);
   if (color) lastSentAt = Date.now();
   target.dispatchEvent(keyUpEvt);

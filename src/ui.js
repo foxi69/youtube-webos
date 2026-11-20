@@ -8,7 +8,7 @@ import { initLogoStyle } from './logo-style.js';
 import { initMathLetters } from './math-letters.js';
 import { initPlaybackSpeed, stepSpeed, resetSpeed } from './playback-speed.js';
 import sponsorBlockUI from './Sponsorblock-UI.js';
-import { sendKey, REMOTE_KEYS, COLOR_CODE_MAP, isGuestMode, invalidateGuestModeCache, isWatchPage, isShortsPage, isSearchPage, SELECTORS, getVideo, SYNTHETIC_KEY_FLAG, isSyntheticKeyEcho, isAutoplayOn, isLiveStream } from './utils.js';
+import { sendKey, REMOTE_KEYS, COLOR_CODE_MAP, isGuestMode, invalidateGuestModeCache, isWatchPage, isShortsPage, isSearchPage, SELECTORS, getVideo, SYNTHETIC_KEY_FLAG, isSyntheticKeyEcho, isAutoplayOn, isLiveStream, rendererChapterStarts } from './utils.js';
 import { initTrackingBlock, destroyTrackingBlock } from './adblock.js';
 import logoOrangeUrl from './icons/logo-orange.png';
 import logoBlueUrl from './icons/logo-blue.png';
@@ -1460,11 +1460,7 @@ window.addEventListener('ytaf-page-update', cancelDelayedPlaybackActions);
  * video, read on the TV), which put the skip minutes off.
  */
 function chapterStarts(chapterEls, duration) {
-  const host = document.querySelector('ytlr-multi-markers-player-bar-renderer');
-  const props = host && host.__instance && host.__instance.props;
-  const own = props && props.data && Array.isArray(props.data.chapters) ? props.data.chapters : [];
-  // A number only: Number(null) is 0, a chapter at the start that is not there.
-  const starts = own.map((chapter) => chapter && chapter.start).filter((s) => typeof s === 'number' && isFinite(s));
+  const starts = rendererChapterStarts();
   if (starts.length) return starts;
   const widths = [];
   let total = 0;

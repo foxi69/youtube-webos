@@ -65,15 +65,23 @@ function collectRules() {
   return res;
 }
 
-function isZero(v) {
-  return v === '0' || v === '0px' || v === '0rem';
+// CSS whitespace only: U+00A0 and the like can be part of a name.
+function cssTrim(text) {
+  return text.replace(/^[ \t\n\f\r]+|[ \t\n\f\r]+$/g, '');
 }
 
+// Any zero length, as declared (0, 0px, 0em, 0.0vh...).
+function isZero(v) {
+  return /^[+-]?(?:0+(?:\.0*)?|\.0+)(?:[a-z]+|%)?$/i.test(cssTrim(String(v || '')));
+}
+
+// A closing class as a whole class name (.frHKed, not .frHKed-extra), outside
+// quoted values.
+const CLOSE_CLASS_RES = CLOSE_CLASSES.map((name) => new RegExp('\\.' + name + '(?![\\w\\-\\\\\\u0080-\\uffff])'));
+const QUOTED_RE = /"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'/g;
 function namesCloseClass(sel) {
-  for (let j = 0; j < CLOSE_CLASSES.length; j++) {
-    if (sel.indexOf('.' + CLOSE_CLASSES[j]) !== -1) return true;
-  }
-  return false;
+  const bare = sel.replace(QUOTED_RE, '""');
+  return CLOSE_CLASS_RES.some((re) => re.test(bare));
 }
 
 // Only what the rule collapses is undone: the element keeps every other value
@@ -89,7 +97,8 @@ function collapsedOverrides(s) {
 }
 
 // A selector list split on its top-level commas (not those inside :is(),
-// [attr] or a quoted value, whose brackets do not count either).
+// [attr] or a quoted value, whose brackets do not count either, nor an
+// escaped one, which is part of a name).
 function splitSelectorList(text) {
   const parts = [];
   let depth = 0;
@@ -97,19 +106,19 @@ function splitSelectorList(text) {
   let quote = '';
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
-    if (quote) {
-      if (ch === '\\') i++;
-      else if (ch === quote) quote = '';
+    if (ch === '\\') i++;
+    else if (quote) {
+      if (ch === quote) quote = '';
     }
     else if (ch === '"' || ch === "'") quote = ch;
     else if (ch === '(' || ch === '[') depth++;
     else if (ch === ')' || ch === ']') depth--;
     else if (ch === ',' && depth === 0) {
-      parts.push(text.slice(start, i).trim());
+      parts.push(cssTrim(text.slice(start, i)));
       start = i + 1;
     }
   }
-  parts.push(text.slice(start).trim());
+  parts.push(cssTrim(text.slice(start)));
   return parts.filter(Boolean);
 }
 

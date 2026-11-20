@@ -112,6 +112,31 @@ run(async () => {
       text);
   }
 
+  // ---- Selectors read as CSS reads them ----
+  {
+    // A class that only starts like a closing class is another class; an
+    // escaped comma and a trailing U+00A0 are part of a name; any zero length
+    // counts. jsdom reads `\,` back as a bare comma, where Chrome keeps the
+    // escape: that rule comes as Chrome gives it, from an adopted sheet.
+    const h = boot('.frHKed-extra, .frHKed .row { height: 0em; }\n.frHKed .tail\u00a0 { max-height: 0.0vh; }', {
+      before(win) {
+        Object.defineProperty(win.document, 'adoptedStyleSheets', {
+          configurable: true,
+          value: [{ cssRules: [{ selectorText: '.zylon-a, .frHKed .esc\\,x', style: { height: '0px' } }] }]
+        });
+      }
+    });
+    const text = h.fixText();
+    t(n('selectors: a longer class name is not a closing class'), text.indexOf('.frHKed-extra') === -1, text);
+    t(n('selectors: 0em is a zero height'),
+      text.indexOf('.frHKed .row { height: auto !important; visibility: hidden !important; }') !== -1, text);
+    t(n('selectors: an escaped comma stays in its selector'),
+      text.indexOf('.frHKed .esc\\,x { height: auto !important; visibility: hidden !important; }') !== -1 &&
+        text.indexOf('zylon-a') === -1, text);
+    t(n('selectors: U+00A0 at the end of a name stays, and 0.0vh is a zero max-height'),
+      text.indexOf('.frHKed .tail\u00a0 { max-height: none !important; visibility: hidden !important; }') !== -1, JSON.stringify(text));
+  }
+
   // ---- A minified list: rules with the same body merged into one ----
   {
     const h = boot(`.zylon-hidden, ${OVERLAY_SEL}, :is(.a, .b).frHKed .x { height: 0px; width: 0px; }

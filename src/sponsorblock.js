@@ -4,7 +4,7 @@ import { showNotification } from './notifications.js';
 import sponsorBlockUI from './Sponsorblock-UI.js';
 import sponsorBlockLabels, { isFullVideoSegment } from './sponsorblock-labels.js';
 import { isLegacyWebOS } from './webos-utils.js';
-import { getVideo } from './utils.js';
+import { getVideo, rendererChapterStarts } from './utils.js';
 import { fetchJsonWithTimeout } from './fetch-timeout.js';
 import './sponsorblock.css';
 
@@ -124,13 +124,12 @@ const HAS_ABORT_CONTROLLER = typeof AbortController !== 'undefined';
  * Where [start, end] sits on a chaptered bar (see _chapterLayout), as
  * { left, width } percentages of the bar: one range per chapter it touches.
  */
-function barRanges(layout, start, end, duration) {
+function barRanges(layout, start, end) {
     const ranges = [];
-    const { pieces, content, total } = layout;
+    const { pieces, total } = layout;
     for (let i = 0; i < pieces.length; i++) {
         const p = pieces[i];
-        const from = (p.from / content) * duration;
-        const to = ((p.from + p.width) / content) * duration;
+        const { from, to } = p;
         const a = Math.max(start, from);
         const b = Math.min(end, to);
         if (a >= b) continue;
@@ -142,18 +141,13 @@ function barRanges(layout, start, end, duration) {
 }
 
 /** Where the time `t` sits on a chaptered bar, as a percentage of the bar. */
-function barPercentAt(layout, t, duration) {
-    const { pieces, content, total } = layout;
-    for (let i = 0; i < pieces.length; i++) {
-        const p = pieces[i];
-        const to = ((p.from + p.width) / content) * duration;
-        if (t < to || i === pieces.length - 1) {
-            const from = (p.from / content) * duration;
-            const x = p.x + Math.min(1, Math.max(0, (t - from) / (to - from))) * p.width;
-            return (x / total) * 100;
-        }
-    }
-    return (t / duration) * 100;
+function barPercentAt(layout, t) {
+    const { pieces, total } = layout;
+    let i = 0;
+    while (i < pieces.length - 1 && t >= pieces[i].to) i++;
+    const p = pieces[i];
+    const x = p.x + Math.min(1, Math.max(0, (t - p.from) / (p.to - p.from))) * p.width;
+    return (x / total) * 100;
 }
 
 class SponsorBlockHandler {
@@ -228,6 +222,7 @@ class SponsorBlockHandler {
         this.highlightPending = false;
         this._barObserverStarted = false;
         this._attrObserver = null;
+        this._chapterObserver = null;
         this._lastSyncSig = null;
 
         this._observedRoot = null;
@@ -330,40 +325,86 @@ class SponsorBlockHandler {
     }
 
     /**
-     * A cheap signature of the chapter pieces (no layout read): their inline
-     * style (width, margins) and class (the gaps of YouTube's CSS); a change
-     * redraws the marks.
+     * A cheap signature of the chapter pieces (no layout read): their width,
+     * inline margins and class (the gaps of YouTube's CSS), and how many
+     * start times the renderer has; a change redraws the marks. Only these
+     * of the inline style, so a style written on every frame does not.
      */
     _chapterSig() {
         const els = this._chapterElements();
-        let sig = '';
-        for (let i = 0; i < els.length; i++) sig += els[i].className + ':' + els[i].style.cssText + ',';
+        let sig = rendererChapterStarts().length + '|';
+        for (let i = 0; i < els.length; i++) {
+            const st = els[i].style;
+            sig += els[i].className + ':' + st.width + ':' + st.marginLeft + ':' + st.marginRight + ',';
+        }
         return sig;
     }
 
     /**
      * The chapter pieces as laid out: each one's x and width in the bar, and
-     * where its time starts, in pixels of chapter content. Null with fewer
-     * than two (no gaps to allow for).
+     * the times it spans. The times are the renderer's chapter start times;
+     * without them, the pieces' widths share out the duration. A long video
+     * whose bar draws only some of its chapters (fewer pieces than start
+     * times) has no layout: which piece is which chapter is not known, and
+     * the marks go on a plain line. Null with fewer than two pieces too (no
+     * gaps to allow for).
      */
-    _chapterLayout() {
+    _chapterLayout(duration) {
         const els = this._chapterElements();
+        if (els.length < 2) return null;
+        const starts = rendererChapterStarts();
+        if (starts.length && starts.length !== els.length) return null;
         const pieces = [];
         let content = 0;
         let total = 0;
         for (let i = 0; i < els.length; i++) {
             const el = els[i];
             const width = el.offsetWidth || parseFloat(el.style.width) || 0;
-            if (!(width > 0)) continue;
             const cs = window.getComputedStyle(el);
             const ml = parseFloat(cs.marginLeft) || 0;
             const mr = parseFloat(cs.marginRight) || 0;
-            pieces.push({ x: total + ml, width, from: content });
+            pieces.push({ x: total + ml, width, from: content, to: content + width });
             content += width;
             total += ml + width + mr;
         }
-        if (pieces.length < 2 || !content || !total) return null;
-        return { pieces, content, total };
+        if (!content || !total) return null;
+        for (let i = 0; i < pieces.length; i++) {
+            const p = pieces[i];
+            if (starts.length) {
+                p.from = starts[i];
+                p.to = i + 1 < starts.length ? starts[i + 1] : duration;
+            } else {
+                p.from = (p.from / content) * duration;
+                p.to = (p.to / content) * duration;
+            }
+        }
+        // A chapter with no width or no time adds nothing to place a mark in.
+        const shown = pieces.filter((p) => p.width > 0 && p.to > p.from);
+        return shown.length ? { pieces: shown, total } : null;
+    }
+
+    /**
+     * Attribute changes on the chapter pieces themselves, not their subtree
+     * (where the playhead writes): a gap or width changed with no other sync
+     * coming (no skip segment left to keep the time listener on) redraws the
+     * marks.
+     */
+    _watchChapters() {
+        if (typeof MutationObserver === 'undefined') return;
+        if (!this._chapterObserver) {
+            this._chapterObserver = new MutationObserver(() => {
+                if (this.isDestroyed || this._chapterSig() === this._drawnChapterSig) return;
+                this.requestAF(() => {
+                    if (!this.isDestroyed && this._chapterSig() !== this._drawnChapterSig) this.drawOverlay();
+                });
+            });
+            this.observers.add(this._chapterObserver);
+        }
+        this._chapterObserver.disconnect();
+        const els = this._chapterElements();
+        for (let i = 0; i < els.length; i++) {
+            this._chapterObserver.observe(els[i], { attributes: true, attributeFilter: ['class', 'style'] });
+        }
     }
 
     _syncOverlayPosition(ytPB) {
@@ -1369,6 +1410,7 @@ class SponsorBlockHandler {
         let colorSig = '';
         for (const k in segmentTypes) colorSig += config[`${k}Color`] || '';
         this._drawnChapterSig = this._chapterSig();
+        this._watchChapters();
         const overlayHash = `${duration}_${this.activeCategories.size}_${this.segments.length}_${config.sbMode_highlight}_${!!config.enableMutedSegments}_${colorSig}_${this._drawnChapterSig}`;
         if (overlayHash === this.lastOverlayHash && this.overlay && this.overlay.isConnected) {
             return;
@@ -1381,7 +1423,7 @@ class SponsorBlockHandler {
         // A chaptered bar has gaps between its chapters: the marks follow the
         // chapters (one mark per chapter for a segment across a gap), not a
         // plain time-to-percent line that drifts by the gaps.
-        const layout = this._chapterLayout();
+        const layout = this._chapterLayout(duration);
 
         const len = this.segments.length;
         for (let i = 0; i < len; i++) {
@@ -1397,7 +1439,7 @@ class SponsorBlockHandler {
             const color = config[colorKey] || segmentTypes[segment.category]?.color || '#00d400';
 
             if (isHighlight) {
-                const left = layout ? barPercentAt(layout, start, duration) : (start / duration) * 100;
+                const left = layout ? barPercentAt(layout, start) : (start / duration) * 100;
                 const div = document.createElement('div');
                 div.className = 'previewbar highlight';
                 div.style.cssText = `background-color: ${color}; position: absolute; height: 100%; top: 0; left: ${left}%; z-index: 2001;`;
@@ -1405,7 +1447,7 @@ class SponsorBlockHandler {
                 continue;
             }
             const opacity = segmentTypes[segment.category]?.opacity || '0.7';
-            const ranges = layout ? barRanges(layout, start, end, duration) :
+            const ranges = layout ? barRanges(layout, start, end) :
                 [{ left: (start / duration) * 100, width: ((end - start) / duration) * 100 }];
             for (let r = 0; r < ranges.length; r++) {
                 const div = document.createElement('div');
