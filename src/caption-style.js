@@ -35,8 +35,10 @@ const MIN_CHECK_GAP_MS = 5000;
 let lastCheck = 0;
 // Records not there at the first look (localStorage emptied). One that shows
 // up before the settings come back from their copy is YouTube's default: it is
-// not copied, and the restored copy is written over it.
+// not copied, and the restored copy is written over it (toWriteBack: until
+// localStorage takes it, before anything is copied from the record).
 const missingAtStart = new Set();
+const toWriteBack = {};
 let firstLook = true;
 
 /** The record's data as a string, or null when the record is not one of YouTube's. */
@@ -62,6 +64,11 @@ export function keepCaptionStyle() {
     try {
       const raw = storage.getItem(key);
       if (firstLook && !raw) missingAtStart.add(key);
+      if (typeof toWriteBack[key] === 'string') {
+        storage.setItem(key, JSON.stringify({ data: toWriteBack[key], expiration: now + ONE_YEAR_MS, creation: now }));
+        delete toWriteBack[key];
+        continue;
+      }
       if (raw) {
         const record = readRecord(raw);
         if (!record) continue;
@@ -120,12 +127,7 @@ if (typeof window !== 'undefined') {
   configAddChangeListener(BACKUP_KEY, (evt) => {
     const copy = evt.detail.newValue;
     if (configRestorePending() && copy && typeof copy === 'object') {
-      for (const key of missingAtStart) {
-        if (typeof copy[key] !== 'string') continue;
-        const now = Date.now();
-        try { window.localStorage.setItem(key, JSON.stringify({ data: copy[key], expiration: now + ONE_YEAR_MS, creation: now })); }
-        catch { /* storage refused: the next look */ }
-      }
+      for (const key of missingAtStart) if (typeof copy[key] === 'string') toWriteBack[key] = copy[key];
     }
     keepCaptionStyle();
   });

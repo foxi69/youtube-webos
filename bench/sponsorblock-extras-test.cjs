@@ -66,7 +66,8 @@ async function boot(cfg, segments, opts = {}) {
     url: `https://www.youtube.com/tv#/watch?v=${VIDEO_ID}`,
     ignoreNavigation: true,
     consoleErrors: false,
-    config: Object.assign({
+    // opts.copy: localStorage empty, the settings come from this copy in IndexedDB.
+    config: opts.copy ? undefined : Object.assign({
       enableAdBlock: false, enableSponsorBlock: true, enableReturnYouTubeDislike: false,
       enableDeArrow: false, thumbnailQuality: 'off', enableAutoLogin: false,
       checkForUpdates: false, showWhatsNew: false, sbPeriodicRefresh: false
@@ -109,6 +110,7 @@ async function boot(cfg, segments, opts = {}) {
     opts.clock.now = win.Date.now();
     win.Date.now = () => opts.clock.now;
   }
+  if (opts.copy) win.indexedDB = fakeIndexedDB(opts.copy, [], opts.idb || {});
   evaluate();
   // The handler starts a moment after the page (about 0.8 s): wait for its
   // request, then for the answer to be applied.
@@ -119,6 +121,7 @@ async function boot(cfg, segments, opts = {}) {
 }
 
 
+const { fakeIndexedDB, savedCopy } = require('./fake-indexeddb.cjs');
 const stored = (win) => JSON.parse(win.localStorage.getItem('ytaf-configuration') || '{}');
 const BLUE = 406;
 const press = async (win, code) => {
@@ -209,6 +212,27 @@ run(async () => {
       Math.abs(stored(env.win).sbTimeSaved - 100) < 1e-9 && stored(env.win).sbSkipCount === 4,
       JSON.stringify([stored(env.win).sbTimeSaved, stored(env.win).sbSkipCount]));
     t(n('report off: nothing is sent'), env.reported.length === 0, env.reported.join());
+  }
+  {
+    // localStorage emptied: a skip before the copy of the settings is read
+    // adds to the copy's totals, and its undo after the read takes it off them.
+    const clock = {};
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const copy = savedCopy([['ytaf-configuration', JSON.stringify({ sbTimeSaved: 100, sbSkipCount: 4, foxThemeApplied: true })]]);
+    const env = await boot({}, [seg('sponsor', 30, 60)], { clock, copy, idb: { gate } });
+    await env.playTo(30.2);
+    t(n('stats before the read: precondition: the segment was skipped'), env.state.time === 60, String(env.state.time));
+    release();
+    await wait(400);
+    t(n('stats before the read: the skip is added to the restored totals'),
+      Math.abs(stored(env.win).sbTimeSaved - (100 + 60 - 30.2)) < 1e-9 && stored(env.win).sbSkipCount === 5,
+      JSON.stringify([stored(env.win).sbTimeSaved, stored(env.win).sbSkipCount]));
+    await press(env.win, BLUE);
+    await wait(300);
+    t(n('stats before the read: its undo after the read leaves the restored totals'),
+      Math.abs(stored(env.win).sbTimeSaved - 100) < 1e-9 && stored(env.win).sbSkipCount === 4,
+      JSON.stringify([stored(env.win).sbTimeSaved, stored(env.win).sbSkipCount]));
   }
   {
     const env = await boot({ sbReportSkips: true }, [seg('sponsor', 30, 60)]);

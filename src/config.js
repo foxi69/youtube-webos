@@ -708,6 +708,17 @@ let backupMissed = false;
 // copy's take their place.
 const changedBeforeRestore = new Set();
 const APP_RECORDS = new Set(['foxThemeApplied', 'captionStyleBackup', 'sbTimeSaved', 'sbSkipCount']);
+// Of those, the values made in the shared settings (no account loaded, or a
+// device setting): only these go into the shared record. One made in an
+// account's settings goes into that account's record.
+const sharedChangedBeforeRestore = {};
+// SponsorBlock's counters: what a skip (or its undo) before the read added,
+// added to the copy's totals.
+const COUNTERS = new Set(['sbTimeSaved', 'sbSkipCount']);
+const countedBeforeRestore = {};
+// No switch of account before the copy was read (or its read failed): the
+// changes made before it stay with the one account they were made in.
+let restoreSettled = backupChecked;
 function copyToBackup(written) {
   if (!written.length) return;
   if (!backupChecked) { backupMissed = true; return; }
@@ -766,7 +777,12 @@ export function configWrite(key, value) {
   if (oldValue === value) return;
 
   DEBUG && console.info('Changing key', key, 'from', oldValue, 'to', value);
-  if (!backupChecked && !APP_RECORDS.has(key)) changedBeforeRestore.add(key);
+  if (!backupChecked && COUNTERS.has(key)) {
+    countedBeforeRestore[key] = (countedBeforeRestore[key] || 0) + (Number(value) || 0) - (Number(oldValue) || 0);
+  } else if (!backupChecked && !APP_RECORDS.has(key)) {
+    changedBeforeRestore.add(key);
+    if (!activeProfile || DEVICE_KEYS.has(key)) sharedChangedBeforeRestore[key] = value;
+  }
   localConfig[key] = value;
   scheduleWrite();
   notifyChange(key, value, oldValue);
@@ -858,7 +874,7 @@ export function configGetProfileStatus() {
 }
 
 function checkAccountChange() {
-  if (!localConfig.perAccountSettings) return;
+  if (!localConfig.perAccountSettings || !restoreSettled) return;
   const profile = readAccountProfile();
   // No readable identity (e.g. mid sign-out): keep what is loaded.
   if (profile === null) return;
@@ -921,8 +937,18 @@ function restoreFromBackup() {
     const shared = records[CONFIG_KEY];
     if (!shared) return false;
     // A setting changed before the read keeps its new value, in the record
-    // written back and in use.
-    for (const key of changedBeforeRestore) shared[key] = localConfig[key];
+    // written back and in use: one changed in the shared settings in the
+    // shared record, one changed in an account's in that account's (below).
+    for (const key of Object.keys(sharedChangedBeforeRestore)) shared[key] = sharedChangedBeforeRestore[key];
+    // What skips before the read saved, on top of the copy's totals.
+    for (const key of Object.keys(countedBeforeRestore)) {
+      shared[key] = Math.max(0, (Number(shared[key]) || 0) + countedBeforeRestore[key]);
+    }
+    // The account loaded before the read (no switch waits for it), and the
+    // values of its settings changed meanwhile, before the shared ones replace them.
+    const ownerBefore = activeProfile;
+    const ownValues = {};
+    for (const key of changedBeforeRestore) if (!DEVICE_KEYS.has(key)) ownValues[key] = localConfig[key];
     const sharedText = JSON.stringify(shared);
     restoredRecords = records;
     // What the app wrote meanwhile (foxThemeApplied, say) was the defaults'
@@ -966,28 +992,29 @@ function restoreFromBackup() {
     activeProfile = null;
     if (localConfig.perAccountSettings) {
       const profile = readAccountProfile();
-      if (profile !== null) {
-        // The account's own settings changed before the read keep their
-        // change too: its record, from localStorage or the copy, takes them
-        // before the account loads it.
-        const key = storesProfile(profile) ? profileStorageKey(profile) : null;
-        const record = key && ((!writtenBeforeRead.has(key) && loadStored(key)) || records[key]);
-        const changed = Array.from(changedBeforeRestore).filter((k) => !DEVICE_KEYS.has(k));
-        if (record && changed.length) {
-          for (const k of changed) record[k] = localConfig[k];
-          records[key] = record;
-          try {
-            window.localStorage.setItem(key, JSON.stringify(record));
-          } catch {
-            // Refused (quota): applied from memory, over the older record still in localStorage.
-            unwrittenRecords[key] = record;
-          }
+      // The account's own settings changed before the read keep their change
+      // too: its record, from localStorage or the copy, takes them before the
+      // account loads it. The account they were made in: the one loaded
+      // before the read, else (made in the shared settings) the one in use.
+      const owner = ownerBefore || profile;
+      const key = owner && storesProfile(owner) ? profileStorageKey(owner) : null;
+      const record = key && ((!writtenBeforeRead.has(key) && loadStored(key)) || records[key]);
+      const changed = Object.keys(ownValues);
+      if (record && changed.length) {
+        for (const k of changed) record[k] = ownValues[k];
+        records[key] = record;
+        try {
+          window.localStorage.setItem(key, JSON.stringify(record));
+        } catch {
+          // Refused (quota): applied from memory, over the older record still in localStorage.
+          unwrittenRecords[key] = record;
         }
-        switchProfile(profile);
       }
+      if (profile !== null) switchProfile(profile);
     }
     return true;
   }).then((restored) => {
+    restoreSettled = true;
     if (!sharedRestorePending) {
       try { window.localStorage.removeItem(RECOVERING_KEY); } catch { /* no storage */ }
     }
@@ -998,9 +1025,13 @@ function restoreFromBackup() {
     // Copied only if something was written meanwhile: with nothing changed
     // there is nothing to keep.
     if (backupMissed) scheduleWrite();
+    // A switch of account that waited for the read.
+    checkAccountChange();
   }, () => {
     // The copy could not be read: it is left as it is, nothing is copied over
     // it this run, and the next start reads it again (RECOVERING_KEY stays).
+    restoreSettled = true;
+    checkAccountChange();
   });
 }
 /**

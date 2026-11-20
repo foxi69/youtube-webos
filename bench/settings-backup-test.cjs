@@ -10,80 +10,7 @@ const { createReporter, bootPage, trustedKey, wait, until, UA } = require('./har
 
 const KEY = 'ytaf-configuration';
 
-/**
- * A small IndexedDB: one database whose records are kept in `data` across
- * page loads, with its version and object stores on data.version and
- * data.stores. As the real one: a database opened at a higher version gets
- * onupgradeneeded before onsuccess, and a transaction on a store that was
- * never created throws NotFoundError, so the app must create its store.
- * opts.gate: a promise the cursor waits for before its first record;
- * opts.failAfter: the cursor fails after that many records; opts.openFails:
- * the database does not open (onerror).
- */
-function fakeIndexedDB(data, log, opts = {}) {
-  const later = (fn) => setTimeout(fn, 1);
-  if (!data.stores) data.stores = new Set();
-  const notFound = (name) => Object.assign(new Error(`No objectStore named ${name}`), { name: 'NotFoundError' });
-  const transaction = (name) => {
-    if (!data.stores.has(name)) throw notFound(name);
-    const tx = { oncomplete: null, onerror: null, onabort: null };
-    const done = () => later(() => tx.oncomplete && tx.oncomplete());
-    tx.objectStore = (storeName) => {
-      if (storeName !== name) throw notFound(storeName);
-      return {
-        put(value, key) { data.set(key, value); log.push('put ' + key); done(); },
-        delete(key) { data.delete(key); done(); },
-        openCursor() {
-          const keys = Array.from(data.keys()).sort();
-          let i = 0;
-          const req = { result: null, onsuccess: null, onerror: null };
-          const step = () => later(() => {
-            if (opts.failAfter !== undefined && i >= opts.failAfter) {
-              req.error = new Error('read failed');
-              if (req.onerror) req.onerror();
-              return;
-            }
-            const key = keys[i++];
-            req.result = key === undefined ? null : { key, value: data.get(key), continue: step };
-            if (req.onsuccess) req.onsuccess();
-          });
-          if (opts.gate) opts.gate.then(step);
-          else step();
-          return req;
-        }
-      };
-    };
-    return tx;
-  };
-  const db = { transaction, createObjectStore(name) { data.stores.add(name); } };
-  return {
-    open(name, version = 1) {
-      const req = { result: undefined, onsuccess: null, onerror: null, onupgradeneeded: null };
-      later(() => {
-        if (opts.openFails) {
-          req.error = new Error('open failed');
-          if (req.onerror) req.onerror();
-          return;
-        }
-        req.result = db;
-        if (version > (data.version || 0)) {
-          data.version = version;
-          if (req.onupgradeneeded) req.onupgradeneeded();
-        }
-        if (req.onsuccess) req.onsuccess();
-      });
-      return req;
-    }
-  };
-}
-
-/** A copy that an earlier run of the app left: the database with its store, and these records. */
-function savedCopy(entries) {
-  const data = new Map(entries);
-  data.version = 1;
-  data.stores = new Set(['kv']);
-  return data;
-}
+const { fakeIndexedDB, savedCopy } = require('./fake-indexeddb.cjs');
 
 function boot({ config, storage, data, log, noIdb, idb = {}, setup }) {
   const page = bootPage({
@@ -340,6 +267,53 @@ run(async () => {
     await until(() => log.some((l) => l === 'put ' + PROFILE_KEY));
     t('...and its copy keeps them', JSON.parse(backup.get(PROFILE_KEY)).minVideoLength === '20', backup.get(PROFILE_KEY));
     t('...with the switch still on', stored(page.win).perAccountSettings === true, JSON.stringify(stored(page.win)));
+  }
+
+  // ---- A switch of account while the copy is still being read ----
+  {
+    // Separate settings switched on and a setting changed in account abc,
+    // then the TV moves to account xyz, all before the read: abc keeps its
+    // change, xyz and the shared record do not take it.
+    const PROFILE_B = KEY + '::' + hashString('accountId=xyz');
+    const backup = savedCopy([
+      [KEY, JSON.stringify({ perAccountSettings: true, foxThemeApplied: true, removeUpscaledFormats: true })],
+      [PROFILE_KEY, JSON.stringify({ minVideoLength: '20', removeUpscaledFormats: true })],
+      [PROFILE_B, JSON.stringify({ minVideoLength: '5', removeUpscaledFormats: true })]
+    ]);
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const page = boot({ data: backup, log: [], storage: IDENTITY, idb: { gate } });
+    await wait(300);
+    trustedKey(page.win, 404, page.win.document.body, 'keydown');
+    trustedKey(page.win, 404, page.win.document.body, 'keyup');
+    await until(() => page.win.document.querySelector('.ytaf-ui-container label'));
+    const input = (text) => {
+      const label = Array.prototype.slice.call(page.win.document.querySelectorAll('label'))
+        .find((l) => l.textContent.trim() === text);
+      return label && label.querySelector('input');
+    };
+    input('Separate Settings for Each Account').click();
+    await wait(50);
+    const upscaled = input('Skip AI-Upscaled Qualities');
+    t('precondition (switch during the read): Skip AI-Upscaled Qualities is on', !!upscaled && upscaled.checked === true);
+    upscaled.click();
+    await until(() => !!stored(page.win, PROFILE_KEY) && stored(page.win, PROFILE_KEY).removeUpscaledFormats === false);
+    page.win.localStorage.setItem('yt.leanback.default::last-identity-used', JSON.stringify({ data: { accountId: 'xyz' } }));
+    page.win.dispatchEvent(new page.win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: true } }));
+    page.win.dispatchEvent(new page.win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: false } }));
+    await wait(300);
+    release();
+    let switched = false;
+    for (let i = 0; i < 60 && !switched; i++) {
+      switched = await panelValue(page.win, 'Hide Videos Shorter Than') === '5 min';
+      if (!switched) await wait(50);
+    }
+    t('switch during the read: once read, the account now in use is loaded', switched);
+    t('...the account the change was made in keeps it', stored(page.win, PROFILE_KEY).removeUpscaledFormats === false &&
+      stored(page.win, PROFILE_KEY).minVideoLength === '20', JSON.stringify(stored(page.win, PROFILE_KEY)));
+    t('...the other account does not take it', stored(page.win, PROFILE_B).removeUpscaledFormats === true,
+      JSON.stringify(stored(page.win, PROFILE_B)));
+    t('...nor the shared record', stored(page.win).removeUpscaledFormats === true, JSON.stringify(stored(page.win)));
   }
 
   // ---- The account in use gets its own restored settings ----
@@ -669,6 +643,44 @@ run(async () => {
     const rec = JSON.parse(page.win.localStorage.getItem(CAPTION) || 'null');
     t('...once read, the style of the copy is written over the default of YouTube', !!rec && rec.data === STYLE, JSON.stringify(rec));
     t('...and stays the style kept in the settings', stored(page.win).captionStyleBackup[CAPTION] === STYLE,
+      JSON.stringify(stored(page.win).captionStyleBackup));
+  }
+
+  // ---- The caption style is written back once localStorage takes it ----
+  {
+    const CAPTION = 'yt-player-caption-display-settings';
+    const STYLE = JSON.stringify({ color: '#ffff00' });
+    const DEFAULT = JSON.stringify({ color: '#ffffff' });
+    const backup = savedCopy([[KEY, JSON.stringify({ captionStyleBackup: { [CAPTION]: STYLE }, foxThemeApplied: true })]]);
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    let refuse = false;
+    const page = boot({
+      data: backup, log: [], idb: { gate },
+      setup: (w) => {
+        const setItem = w.Storage.prototype.setItem;
+        w.Storage.prototype.setItem = function (k, v) {
+          if (refuse && k === CAPTION) throw new Error('QuotaExceededError');
+          return setItem.call(this, k, v);
+        };
+      }
+    });
+    await wait(100);
+    const now = Date.now();
+    page.win.localStorage.setItem(CAPTION, JSON.stringify({ data: DEFAULT, expiration: now + 1000, creation: now }));
+    refuse = true;
+    release();
+    await wait(400);
+    t('precondition: the caption record refused, YouTube’s default is still there',
+      JSON.parse(page.win.localStorage.getItem(CAPTION)).data === DEFAULT);
+    refuse = false;
+    Object.defineProperty(page.win.document, 'hidden', { value: true, configurable: true });
+    page.win.document.dispatchEvent(new page.win.Event('visibilitychange'));
+    Object.defineProperty(page.win.document, 'hidden', { value: false, configurable: true });
+    await wait(100);
+    const rec = JSON.parse(page.win.localStorage.getItem(CAPTION) || 'null');
+    t('a caption write-back refused at the restore is made at the next look', !!rec && rec.data === STYLE, JSON.stringify(rec));
+    t('...and the default is not copied as the style', stored(page.win).captionStyleBackup[CAPTION] === STYLE,
       JSON.stringify(stored(page.win).captionStyleBackup));
   }
 
