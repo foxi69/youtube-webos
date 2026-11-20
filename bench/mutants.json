@@ -4,7 +4,7 @@
   {"id":"queue-unplayable","file":"src/video-queue.js","from":"if (!opening || (status !== 'ERROR' && status !== 'UNPLAYABLE')) return;","to":"if (!opening || status !== 'ERROR') return;","why":"an UNPLAYABLE queued video is not reported"},
   {"id":"queue-opening-id","file":"src/video-queue.js","from":"if (detail.state === 1 && opening && detail.videoId === opening.videoId) {","to":"if (detail.state === 1 && opening) {","why":"any video playing counts as the queued one opening"},
   {"id":"queue-end-watch","file":"src/video-queue.js","from":"if (endHandled || !queue.length || !window.location.hash.startsWith('#/watch')) return;","to":"if (endHandled || !queue.length) return;","why":"the queue plays on at an end off the watch page"},
-  {"id":"queue-from","file":"src/video-queue.js","from":"shown !== dispatching.from","to":"true","why":"the video that was on, playing again, counts as the viewer's choice"},
+  {"id":"queue-from","file":"src/video-queue.js","from":"shown !== attempt.from","to":"true","why":"the video that was on, playing again, counts as the viewer's choice"},
   {"id":"watch-hidden-start","file":"src/watch-time.js","from":"if ((isWatchPage() || isShortsPage()) && !document.hidden) start(video);","to":"if (isWatchPage() || isShortsPage()) start(video);","why":"watch time counts while the app is hidden"},
   {"id":"watch-hidden-resume","file":"src/watch-time.js","from":"if (document.hidden || (!isWatchPage() && !isShortsPage())) return;","to":"if (!isWatchPage() && !isShortsPage()) return;","why":"coming back counts while still hidden"},
   {"id":"watch-readystate","file":"src/watch-time.js","from":"video.readyState >= CAN_PLAY","to":"video.readyState >= 0","why":"a buffering video counts on return"},
@@ -93,5 +93,7 @@
   {"id":"speed-toggle-live","file":"src/playback-speed.js","from":"if (isLive()) {","to":"if (false) {","why":"Toggle Speed changes the speed on a live stream"},
   {"id":"hooks-delegated","file":"src/app_api/index.ts","from":"if (delegated) throw e;","to":"","why":"a command YouTube's resolver already got is run again when it throws"},
   {"id":"hooks-fallback","file":"src/app_api/index.ts","from":"console.warn('[app_api] command hook failed for', key, e);","to":"throw e;","why":"a hook of ours that throws breaks the command"},
-  {"id":"ui-remember-speed-row","file":"src/ui.js","from":"setState(elRememberSpeed, configRead('enablePlaybackSpeed') !== false)","to":"setState(elRememberSpeed, true)","why":"Remember Playback Speed stays active with Playback Speed Control off"}
+  {"id":"ui-remember-speed-row","file":"src/ui.js","from":"setState(elRememberSpeed, configRead('enablePlaybackSpeed') !== false)","to":"setState(elRememberSpeed, true)","why":"Remember Playback Speed stays active with Playback Speed Control off"},
+  {"id":"queue-late-chosen","file":"src/video-queue.js","from":"if (choseAnother(next)) { putBack(next); return; }","to":"","why":"a late command replaces a video the viewer chose that is still loading"},
+  {"id":"replayed-own-style","file":"src/most-replayed.js","from":"|${uri.length}|${own}`","to":"|${uri.length}`","why":"a bar positioned with no change of size stays relative"}
 ]

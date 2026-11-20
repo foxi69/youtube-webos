@@ -310,6 +310,34 @@ run(async () => {
     env.win.close();
   }
 
+  // The same host positioned by the page with no change of size, by its
+  // inline style and by a class: the rule is written again without the
+  // position it gave the static bar.
+  for (const how of ['inline style', 'class']) {
+    const env = boot({ answers: { [A]: heatmap(VALUES_A) } });
+    const host = env.doc.querySelector(HOST);
+    env.box(host, 100, 900, 1720, 80);
+    env.box(host.querySelector('[idomkey="progress-bar"]'), 160, 950, 1600, 6);
+    await wait(TICK * 2);
+    t(n(`positioned by ${how}, same size: while static it is made relative (precondition)`),
+      env.rule().includes('position:relative!important;'), env.rule());
+    if (how === 'class') {
+      const pageStyle = env.doc.createElement('style');
+      pageStyle.textContent = '.page-positioned{position:absolute;display:block}';
+      env.doc.head.appendChild(pageStyle);
+      host.classList.add('page-positioned');
+    } else {
+      host.style.position = 'absolute';
+      host.style.display = 'block';
+    }
+    await wait(TICK * 2);
+    t(n(`positioned by ${how}, same size: it is no longer made relative`),
+      env.rule().includes(`${HOST}::after{`) && env.rule().includes('left:60px;top:19px;width:1600px;') &&
+      !env.rule().includes(`${HOST}{`), env.rule().slice(0, 160));
+    t(n(`positioned by ${how}, same size: no page errors`), env.errors.length === 0, env.errors.join(' | '));
+    env.win.close();
+  }
+
   // ---- The setting off from the start ----
   {
     const env = boot({ on: false, answers: { [A]: heatmap(VALUES_A) } });
