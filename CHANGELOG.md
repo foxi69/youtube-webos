@@ -9,6 +9,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## Fixes
 
 + Most Replayed graph: a progress bar that YouTube positions after the graph was first drawn keeps its own position. The bar's position was read once per bar, so a redraw after it had been positioned still made it relative, which moves a positioned bar; it is read again at each redraw now. Found with a mutation test.
++ Queue: a video the viewer opens while the queued one is on its way is no longer replaced by it. The queue held its command back only once the chosen video was playing; one still loading when the command went out lost to the queued video. The watch page's address is checked when the command is sent now, and the queued video plays at the next end instead.
++ Most Replayed graph: a progress bar that YouTube positions with no change of its size keeps its own position too. The graph's rule was written again only when the bar's place or size changed; a change of the bar's class or of its inline position rewrites it now.
 + Watch Later and the other playlist pages no longer play a preview nobody sees. YouTube sends a preview for each row of a playlist page too, but the TV app does not put the player on the row there: it played full screen behind the page while the row's time counted down, heard with Video Previews set to With sound. The rows' preview is dropped, so focusing a row plays nothing; OK opens the video as before, and Home, search and Subscriptions keep their previews. Seen on a webOS 25 TV in 0.10.0; NicholasBly/youtube-webos#227 reports previews that are "just playing audio".
 
 ## [0.10.0] - 2026/11/19

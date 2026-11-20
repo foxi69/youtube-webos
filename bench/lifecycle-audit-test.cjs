@@ -292,6 +292,56 @@ run(async () => {
       t('...and the queued video plays at its end', env.dispatched.join() === 'aaaaaaaaaaa', env.dispatched.join());
     }
     {
+      // Another video chosen during the lookup and still loading when the
+      // resolver is found: it has not reported PLAYING, the address names it.
+      const env = queueEnv();
+      env.ctx.addToQueue('aaaaaaaaaaa', 'A');
+      env.state(1, 'current0001');
+      env.state(0, 'current0001');
+      t('queue: the end starts one lookup (precondition)', env.lookups.length === 1, `lookups ${env.lookups.length}`);
+      env.ctx.window.location.hash = '#/watch?v=chosen00001';
+      env.state(3, 'chosen00001');
+      env.lookups[0].resolve(env.registry);
+      await flush();
+      t('queue: a chosen video still loading when the resolver is found is not replaced', env.dispatched.length === 0, env.dispatched.join());
+      env.ctx.playNextInQueue();
+      t('...and the queued one is back in the queue, not "on its way": Next looks it up again',
+        env.lookups.length === 2 && !env.notes.some((note) => note.startsWith('On its way')), `lookups ${env.lookups.length} | ${env.notes.join(' / ')}`);
+      env.ctx.window.location.hash = '#/watch?v=aaaaaaaaaaa';
+      env.lookups[1].resolve(env.registry);
+      await flush();
+      t('...and plays then', env.dispatched.join() === 'aaaaaaaaaaa', env.dispatched.join());
+    }
+    {
+      // The same, and the chosen video plays to its end: the queued one follows.
+      const env = queueEnv();
+      env.ctx.addToQueue('aaaaaaaaaaa', 'A');
+      env.state(1, 'current0001');
+      env.state(0, 'current0001');
+      env.ctx.window.location.hash = '#/watch?v=chosen00001';
+      env.lookups[0].resolve(env.registry);
+      await flush();
+      env.state(1, 'chosen00001');
+      env.state(0, 'chosen00001');
+      t('queue: put back at a late resolver, the queued video is looked up at the chosen one\'s end',
+        env.dispatched.length === 0 && env.lookups.length === 2, `${env.dispatched.join()} | lookups ${env.lookups.length}`);
+      env.lookups[1].resolve(env.registry);
+      await flush();
+      t('...and plays', env.dispatched.join() === 'aaaaaaaaaaa', env.dispatched.join());
+    }
+    {
+      // Home between the two videos (YouTube steps back after an end): no
+      // video chosen, the late command goes.
+      const env = queueEnv();
+      env.ctx.addToQueue('aaaaaaaaaaa', 'A');
+      env.state(1, 'current0001');
+      env.state(0, 'current0001');
+      env.ctx.window.location.hash = '#/';
+      env.lookups[0].resolve(env.registry);
+      await flush();
+      t('queue: off the watch page when the resolver is found, the queued video plays', env.dispatched.join() === 'aaaaaaaaaaa', env.dispatched.join());
+    }
+    {
       // Queue Next pressed while the current video plays: during the lookup it
       // reports PLAYING again (after buffering), with its id and with none.
       const env = queueEnv();
