@@ -172,6 +172,20 @@ run(async () => {
     await press(env.win, 56);
     t(n('whitelist action: pressed again, it comes off'), JSON.stringify(stored(env.win).sbWhitelistChannels) === '[]');
   }
+  {
+    // The player still reports the video before: the action waits for this one.
+    const opts = { videoId: 'zzzzzzzzzzz', author: 'Old Channel' };
+    const env = await boot({ shortcut_key_8: 'sb_whitelist_channel' }, [seg('sponsor', 30, 60)], opts);
+    await press(env.win, 56);
+    t(n('whitelist action, the video before reported: its channel is not added'),
+      JSON.stringify(stored(env.win).sbWhitelistChannels || []) === '[]' && /not known yet/.test(env.toasts()),
+      `${JSON.stringify(stored(env.win).sbWhitelistChannels)} ${env.toasts()}`);
+    opts.videoId = VIDEO_ID;
+    opts.author = 'New Channel';
+    await press(env.win, 56);
+    t(n('whitelist action: once this video is reported, its channel is added'),
+      JSON.stringify(stored(env.win).sbWhitelistChannels) === '["New Channel"]', JSON.stringify(stored(env.win).sbWhitelistChannels));
+  }
 
   // ---- Undo with Blue, the time saved ----
   // The page's clock stands still unless moved: the 8 s window cannot run out on a slow machine.

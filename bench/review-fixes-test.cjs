@@ -133,9 +133,11 @@ run(async () => {
     win.document.body.appendChild(player.el);
     const attached = await until(() => player.listeners.length === 1, 3000);
     // The handler's first step, the shared state event, fails.
-    win.CustomEvent = function () { throw new Error('boom'); };
+    let built = 0;
+    win.CustomEvent = function () { built++; throw new Error('boom'); };
     let threw = null;
     try { player.emit(1); } catch (e) { threw = e; }
+    t('...precondition: the handler reached the failing event', built > 0, `built=${built}`);
     t('a state handler that throws does not throw into the player\'s event dispatch', attached && threw === null,
       threw ? String(threw) : `listeners=${player.listeners.length}`);
     win.close();

@@ -5,7 +5,7 @@ import sponsorBlockUI from './Sponsorblock-UI.js';
 import sponsorBlockLabels, { isFullVideoSegment } from './sponsorblock-labels.js';
 import { isLegacyWebOS } from './webos-utils.js';
 import { getVideo } from './utils.js';
-import { currentChannelName, isChannelWhitelisted } from './sponsorblock-extras.js';
+import { currentChannelName, isChannelWhitelisted, videoIdFromHash } from './sponsorblock-extras.js';
 import { fetchJsonWithTimeout } from './fetch-timeout.js';
 import './sponsorblock.css';
 
@@ -2163,20 +2163,6 @@ if (typeof window !== 'undefined') {
 
     window.sponsorblock = null;
     let initTimeout = null;
-
-    const videoIdFromHash = () => {
-        try {
-            const hash = window.location.hash;
-            if (!hash.startsWith('#')) return null;
-            const parts = hash.split('?');
-            if (parts.length < 2) return null;
-            if (typeof URLSearchParams !== 'undefined') return new URLSearchParams(parts[1]).get('v');
-            const match = parts[1].match(/(?:[?&]|^)v=([^&]+)/);
-            return match ? match[1] : null;
-        } catch {
-            return null;
-        }
-    };
 
     const initSB = () => {
         // A hash change within the same video keeps the handler: its segments

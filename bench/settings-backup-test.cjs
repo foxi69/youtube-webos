@@ -306,6 +306,42 @@ run(async () => {
       `${input && input.checked} / ${await panelValue(page.win, 'Hide Videos Shorter Than')}`);
   }
 
+  // ---- Separate Settings for Each Account switched on while the copy is still being read ----
+  {
+    const backup = savedCopy([
+      [KEY, JSON.stringify({ perAccountSettings: true, foxThemeApplied: true, minVideoLength: '1' })],
+      [PROFILE_KEY, JSON.stringify({ minVideoLength: '20' })]
+    ]);
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const log = [];
+    const page = boot({ data: backup, log, storage: IDENTITY, idb: { gate } });
+    await wait(300);
+    trustedKey(page.win, 404, page.win.document.body, 'keydown');
+    trustedKey(page.win, 404, page.win.document.body, 'keyup');
+    await until(() => page.win.document.querySelector('.ytaf-ui-container label'));
+    const label = Array.prototype.slice.call(page.win.document.querySelectorAll('label'))
+      .find((l) => l.textContent.trim() === 'Separate Settings for Each Account');
+    const input = label && label.querySelector('input');
+    t('precondition (per-account during the read): the switch is off, from the defaults', !!input && input.checked === false);
+    if (input) input.click();
+    // The account's record, written from the defaults before the copy is read.
+    const wroteEarly = await until(() => !!stored(page.win, PROFILE_KEY));
+    t('...precondition: the account\'s record was written before the read',
+      wroteEarly && stored(page.win, PROFILE_KEY).minVideoLength === '0', JSON.stringify(stored(page.win, PROFILE_KEY)));
+    release();
+    let restored = false;
+    for (let i = 0; i < 60 && !restored; i++) {
+      restored = await panelValue(page.win, 'Hide Videos Shorter Than') === '20 min';
+      if (!restored) await wait(50);
+    }
+    t('per-account during the read: the account gets its settings from the copy, not the defaults written meanwhile',
+      restored && stored(page.win, PROFILE_KEY).minVideoLength === '20', JSON.stringify(stored(page.win, PROFILE_KEY)));
+    await until(() => log.some((l) => l === 'put ' + PROFILE_KEY));
+    t('...and its copy keeps them', JSON.parse(backup.get(PROFILE_KEY)).minVideoLength === '20', backup.get(PROFILE_KEY));
+    t('...with the switch still on', stored(page.win).perAccountSettings === true, JSON.stringify(stored(page.win)));
+  }
+
   // ---- The account in use gets its own restored settings ----
   {
     const backup = savedCopy([

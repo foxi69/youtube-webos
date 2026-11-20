@@ -24,6 +24,21 @@ export function currentChannelName(videoID) {
     }
 }
 
+/** The video ID in the watch page's address (#/watch?v=ID), or null. */
+export function videoIdFromHash() {
+    try {
+        const hash = window.location.hash;
+        if (!hash.startsWith('#')) return null;
+        const parts = hash.split('?');
+        if (parts.length < 2) return null;
+        if (typeof URLSearchParams !== 'undefined') return new URLSearchParams(parts[1]).get('v');
+        const match = parts[1].match(/(?:[?&]|^)v=([^&]+)/);
+        return match ? match[1] : null;
+    } catch {
+        return null;
+    }
+}
+
 /** Whether `name` is on Never Skip on These Channels (compared without case). */
 export function isChannelWhitelisted(name) {
     if (!name) return false;
@@ -38,9 +53,11 @@ export function isChannelWhitelisted(name) {
  * channel of the video playing goes on the list, or off it.
  */
 export function toggleChannelWhitelist() {
-    const name = currentChannelName();
+    // The video being watched: while the player still reports the one before
+    // (the next one loading), its channel is not taken for this one's.
+    const name = currentChannelName(videoIdFromHash());
     if (!name) {
-        showNotification('No channel to add');
+        showNotification(currentChannelName() ? 'The channel is not known yet: try again in a moment' : 'No channel to add');
         return;
     }
     const list = Array.isArray(configRead('sbWhitelistChannels')) ? configRead('sbWhitelistChannels') : [];

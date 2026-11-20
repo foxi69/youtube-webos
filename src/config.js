@@ -660,6 +660,7 @@ function writeNow() {
         const own = JSON.stringify(values);
         try {
           window.localStorage[key] = own;
+          if (!backupChecked) writtenBeforeRead.add(key);
           delete unwrittenRecords[key];
           written.push([key, own]);
         } catch {
@@ -695,6 +696,10 @@ let backupChecked = !!sharedConfigStored && !recovering;
 // stays until a write stores the shared record, or the next start would take
 // the record left there (the failed run's defaults) for the real one.
 let sharedRestorePending = false;
+// The accounts' records this run wrote before the copy was read (Separate
+// Settings for Each Account switched on meanwhile): written from the defaults,
+// so they are not newer than their copies, which take their place.
+const writtenBeforeRead = new Set();
 // A write made before the copy was read: copied once it has been.
 let backupMissed = false;
 // The settings changed before the copy was read (in the panel, say): the
@@ -924,7 +929,7 @@ function restoreFromBackup() {
     // ones are written back.
     for (const [key, text] of entries) {
       try {
-        if (key !== CONFIG_KEY && window.localStorage.getItem(key) !== null) {
+        if (key !== CONFIG_KEY && !writtenBeforeRead.has(key) && window.localStorage.getItem(key) !== null) {
           delete records[key];
           continue;
         }
@@ -932,6 +937,8 @@ function restoreFromBackup() {
       } catch {
         // Applied from memory below.
         if (key === CONFIG_KEY) sharedRestorePending = true;
+        // Over the record this run wrote from the defaults: the copy's, from memory.
+        else if (writtenBeforeRead.has(key) && records[key]) unwrittenRecords[key] = records[key];
       }
     }
     console.info('[Config] Settings restored from the backup copy:', entries.length, 'record(s)');
@@ -959,7 +966,7 @@ function restoreFromBackup() {
         // change too: its record, from localStorage or the copy, takes them
         // before the account loads it.
         const key = storesProfile(profile) ? profileStorageKey(profile) : null;
-        const record = key && (loadStored(key) || records[key]);
+        const record = key && ((!writtenBeforeRead.has(key) && loadStored(key)) || records[key]);
         const changed = Array.from(changedBeforeRestore).filter((k) => !DEVICE_KEYS.has(k));
         if (record && changed.length) {
           for (const k of changed) record[k] = localConfig[k];
