@@ -241,6 +241,20 @@ try {
 // perf_mon.js (and anything else that needs "was this a real remote press?").
 export const SYNTHETIC_KEY_FLAG = '__ytafSynthetic';
 
+// YouTube TV sends a colour key this module dispatches back a moment later,
+// unflagged, as the colour's other keycode (Yellow 405 -> 170; measured on
+// webOS 25: 1-24 ms later). On Chrome 38 that echo cannot be told from a press
+// by isTrusted, so the colour and time of the last one sent are kept.
+const ECHO_WINDOW_MS = 100;
+let lastSentColor = null;
+let lastSentAt = 0;
+
+/** Whether `evt` is YouTube's echo of a colour key this module just sent. */
+export function isSyntheticKeyEcho(evt) {
+  if (!lastSentColor || evt[SYNTHETIC_KEY_FLAG]) return false;
+  return Date.now() - lastSentAt < ECHO_WINDOW_MS && COLOR_CODE_MAP.get(evt.keyCode || evt.charCode) === lastSentColor;
+}
+
 export function sendKey(keyDef, target = document.body) {
   if (!keyDef?.code) { 
       if (process.env.NODE_ENV !== 'production') console.warn('[Utils] Invalid key definition');
@@ -270,8 +284,13 @@ export function sendKey(keyDef, target = document.body) {
   Object.defineProperties(keyDownEvt, { keyCode: codeDesc, which: codeDesc, charCode: charDesc });
   Object.defineProperties(keyUpEvt,   { keyCode: codeDesc, which: codeDesc, charCode: charDesc });
 
+  const color = COLOR_CODE_MAP.get(keyDef.code) || null;
+  lastSentColor = color;
+  lastSentAt = Date.now();
   target.dispatchEvent(keyDownEvt);
+  if (color) lastSentAt = Date.now();
   target.dispatchEvent(keyUpEvt);
+  if (color) lastSentAt = Date.now();
 }
 
 export async function waitForChildAdd(parent, predicate, observeAttributes, abortSignal, timeoutMs = 30000) {

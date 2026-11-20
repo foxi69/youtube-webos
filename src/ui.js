@@ -8,7 +8,7 @@ import { initLogoStyle } from './logo-style.js';
 import { initMathLetters } from './math-letters.js';
 import { initPlaybackSpeed, stepSpeed, resetSpeed } from './playback-speed.js';
 import sponsorBlockUI from './Sponsorblock-UI.js';
-import { sendKey, REMOTE_KEYS, COLOR_CODE_MAP, isGuestMode, invalidateGuestModeCache, isWatchPage, isShortsPage, isSearchPage, SELECTORS, getVideo, SYNTHETIC_KEY_FLAG, isAutoplayOn, isLiveStream } from './utils.js';
+import { sendKey, REMOTE_KEYS, COLOR_CODE_MAP, isGuestMode, invalidateGuestModeCache, isWatchPage, isShortsPage, isSearchPage, SELECTORS, getVideo, SYNTHETIC_KEY_FLAG, isSyntheticKeyEcho, isAutoplayOn, isLiveStream } from './utils.js';
 import { initTrackingBlock, destroyTrackingBlock } from './adblock.js';
 import logoOrangeUrl from './icons/logo-orange.png';
 import logoBlueUrl from './icons/logo-blue.png';
@@ -1812,7 +1812,7 @@ let lastViewerKeyAt = 0;
 let commentsOpenedFor = null;
 let endTimer = null;
 window.addEventListener('keydown', (evt) => {
-    if (!evt[SYNTHETIC_KEY_FLAG]) lastViewerKeyAt = Date.now();
+    if (!evt[SYNTHETIC_KEY_FLAG] && !isSyntheticKeyEcho(evt)) lastViewerKeyAt = Date.now();
 }, true);
 window.addEventListener('yt-player-state-change', ({ detail }) => {
     if (!detail) return;
@@ -2219,7 +2219,7 @@ function isTextBox(el) {
   return el.tagName === 'INPUT' && el.type !== 'checkbox' && el.type !== 'color';
 }
 
-const isSyntheticKey = (evt) => !!evt[SYNTHETIC_KEY_FLAG] || evt.isTrusted === false;
+const isSyntheticKey = (evt) => !!evt[SYNTHETIC_KEY_FLAG] || evt.isTrusted === false || isSyntheticKeyEcho(evt);
 
 // The key that closed the settings panel (Back, Escape, an Enter, the menu
 // key) is swallowed until it is released: a held Back keeps repeating, and

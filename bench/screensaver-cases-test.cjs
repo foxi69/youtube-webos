@@ -13,7 +13,7 @@
  * bundle sends back (ack: false holds the screensaver off). The 30 s Shorts
  * keep-alive runs every 0.3 s here.
  */
-const { createReporter, flavorFromArgs, readBundle, bootPage, wait } = require('./harness.cjs');
+const { createReporter, flavorFromArgs, readBundle, bootPage, trustedKey, wait, until } = require('./harness.cjs');
 
 // `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
 // with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
@@ -34,11 +34,11 @@ function boot(opts = {}) {
   const { win, doc, errors, evaluate } = bootPage({
     code,
     inner: '\n    <div id="ytlr-player__player-container"><div id="ytlr-player__player-container-player"></div></div>\n    ',
-    config: {
+    config: Object.assign({
       enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
       enableDeArrow: false, thumbnailQuality: 'off', enableAutoLogin: false,
       checkForUpdates: false, showWhatsNew: false
-    },
+    }, opts.config),
     fetch: 'pending',
     evaluate: false
   });
@@ -246,6 +246,44 @@ run(async () => {
     await wait(700);
     t(n('watch page: the keep-alive stops'), env.keys.length === 0, env.keys.join(','));
     t(n('keep-alive: no page errors'), env.errors.length === 0, env.errors.join(' | '));
+    env.win.close();
+  }
+
+  // ---- YouTube's echo of the keep-alive's Yellow is no press ----
+  {
+    // YouTube TV sends each Yellow the mod dispatches back a moment later,
+    // unflagged, as keycode 170 (measured on webOS 25: 1-24 ms later). Here
+    // the echo is trusted, as on a Chrome without isTrusted (Chrome 38), so
+    // only the mod's own record of what it sent can tell it from a press.
+    const env = boot({ config: { shortcut_key_yellow: 'config_menu' } });
+    const echoes = [];
+    env.doc.addEventListener('keydown', (e) => {
+      if (!e.__ytafSynthetic) return;
+      setTimeout(() => {
+        echoes.push(e.keyCode);
+        trustedKey(env.win, YELLOW_ALT, env.doc.body, 'keydown');
+        trustedKey(env.win, YELLOW_ALT, env.doc.body, 'keyup');
+      }, 5);
+    }, true);
+    const panelOpen = () => {
+      const c = env.doc.querySelector('.ytaf-ui-container');
+      return !!c && env.win.getComputedStyle(c).display !== 'none';
+    };
+    await wait(50);
+    env.addVideo();
+    await env.page('SHORTS');
+    const echoed = await until(() => echoes.length >= 2, 3000);
+    await wait(50);
+    t(n('echo: precondition: both keep-alive keys were echoed'), echoed && echoes[0] === YELLOW && echoes[1] === YELLOW_ALT,
+      echoes.join(','));
+    t(n('echo: the echoed Yellow does not run the Yellow binding'), !panelOpen());
+    // Away from the keep-alive (paused: it sends nothing), a real press does.
+    env.state.playerState = 2;
+    await wait(400);
+    trustedKey(env.win, YELLOW, env.doc.body, 'keydown');
+    trustedKey(env.win, YELLOW, env.doc.body, 'keyup');
+    t(n('echo: control: a real Yellow press runs it'), await until(panelOpen, 1000));
+    t(n('echo: no page errors'), env.errors.length === 0, env.errors.join(' | '));
     env.win.close();
   }
 });
