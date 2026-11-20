@@ -8,11 +8,13 @@
  * mutant no test notices is a gap in the tests. The file is put back after
  * each mutant, also when the run is stopped.
  *
- *   node bench/mutation-sweep.cjs [mutants.json] [--only id,id] [--jobs n]
+ *   node bench/mutation-sweep.cjs [mutants.json] [--only id,id] [--jobs n] [--timeout seconds]
  *
  * mutants.json (bench/mutants.json by default): [{ id, file, from, to, why }],
  * `from` found exactly once in `file`. A mutant with `equivalent` (why no
- * test can tell it from the original) is listed and not run. Prints one line
+ * test can tell it from the original) is listed and not run. A test still
+ * running after --timeout (600 s by default) is stopped and counts as failed:
+ * a mutant that makes a test hang is noticed. Prints one line
  * per mutant and a summary; exits 1 when a mutant survived, 2 when the run
  * itself broke (a build or a test that could not run to its end).
  */
@@ -29,6 +31,12 @@ const jobsArg = flag('--jobs');
 const jobs = jobsArg === null ? Math.max(2, require('os').cpus().length - 2) : Number(jobsArg);
 if (!Number.isInteger(jobs) || jobs < 1) {
   console.error(`--jobs takes a whole number from 1 up, not "${jobsArg}"`);
+  process.exit(2);
+}
+const timeoutArg = flag('--timeout');
+const deadlineMs = (timeoutArg === null ? 600 : Number(timeoutArg)) * 1000;
+if (!(deadlineMs >= 1000)) {
+  console.error(`--timeout takes a number of seconds from 1 up, not "${timeoutArg}"`);
   process.exit(2);
 }
 const listFile = path.resolve(args[0] || path.join(__dirname, 'mutants.json'));
@@ -76,19 +84,25 @@ const FAIL_LINE = /^FAIL|^\s*\w*Error\b/;
 
 // Runs the tests `jobs` at a time, but those in `skip` (mutation-sweep-run.cjs):
 // the first failure, or null, once the others it stopped have exited; a test
-// process that cannot be started rejects, so the source is put back.
+// process that cannot be started rejects, so the source is put back. A test
+// past the deadline is stopped and is the failure. `active` is the run in
+// progress, for a signal to cancel.
+let active = null;
 function runTests(skip = []) {
-  return runAll(tests.filter((t) => !skip.includes(t.name)), jobs,
-    (t) => spawn(process.execPath, [path.join('bench', t.name + '.cjs'), ...t.argv], { cwd: ROOT }), FAIL_LINE);
+  active = runAll(tests.filter((t) => !skip.includes(t.name)), jobs,
+    (t) => spawn(process.execPath, [path.join('bench', t.name + '.cjs'), ...t.argv], { cwd: ROOT }), FAIL_LINE, deadlineMs);
+  return active;
 }
 
 // A failure under load is run again alone: the FAIL line it gives then, or
 // null when it passes (a test that failed only side by side with others). A
 // run that did not end by itself (not started, or stopped by spawnSync, e.g.
-// past its output limit) throws: no result, and the source is put back.
+// past its output limit) throws: no result, and the source is put back. One
+// past the deadline alone too is a failure that holds.
 function confirm(t) {
   const r = spawnSync(process.execPath, [path.join('bench', t.name + '.cjs'), ...t.argv],
-    { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: deadlineMs, killSignal: 'SIGKILL' });
+  if (r.error && r.error.code === 'ETIMEDOUT') return `did not finish in ${deadlineMs / 1000} s`;
   // Not started, stopped by spawnSync, or ended by a signal (Ctrl-C, the OOM
   // killer): no result, never a kill.
   if (r.error || r.signal) {
@@ -103,11 +117,19 @@ let distFromMutant = false;
 let original = null;
 let originalFile = null;
 const restore = () => { if (originalFile !== null) { fs.writeFileSync(originalFile, original); originalFile = null; } };
+// A signal to the sweep alone does not reach the tests it started: they are
+// stopped and waited for before it exits. A second signal exits at once.
+let stopping = false;
 for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
   process.on(sig, () => {
     restore();
+    if (stopping) process.exit(130);
+    stopping = true;
     console.error('Stopped: dist/ may hold a mutant\'s build; build it again before using it.');
-    process.exit(130);
+    const exit = () => process.exit(130);
+    if (!active) exit();
+    active.cancel();
+    active.then(exit, exit);
   });
 }
 
@@ -175,6 +197,8 @@ if (changed.status !== 0 || changed.stdout.trim()) {
   process.exit(survived.length ? 1 : 0);
 })().catch((e) => {
   restore();
+  // Stopped by a signal: its handler has told it and exits.
+  if (stopping) return;
   console.error(e.message);
   // A run that broke after a mutant's build: dist/ is built again from the
   // sources, or the viewer is told it is not.

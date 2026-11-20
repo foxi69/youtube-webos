@@ -10,9 +10,18 @@
  * cannot be started (an 'error', or `start` throwing) rejects instead, also
  * when a failure came first: a run that broke is no result, and the caller
  * puts the mutant's file back. Settles exactly once.
+ *
+ * With `deadlineMs`, a child still running after that long is stopped
+ * (SIGKILL: a loop that never yields cannot refuse it) and is that run's
+ * failure, "did not finish in N s". `timers` ({ set, clear }) is the clock, the
+ * test's own in bench/mutation-sweep-test.cjs.
+ *
+ * The promise has cancel(): no more items start, the running children are
+ * told to stop, and it rejects ("stopped") once they have exited.
  */
-function runAll(queue, jobs, start, failLine) {
-  return new Promise((resolve, reject) => {
+function runAll(queue, jobs, start, failLine, deadlineMs = 0, timers = { set: setTimeout, clear: clearTimeout }) {
+  let cancel;
+  const all = new Promise((resolve, reject) => {
     const running = new Set();
     let outcome = null;
     let settled = false;
@@ -50,6 +59,8 @@ function runAll(queue, jobs, start, failLine) {
       if (child.stdout) child.stdout.on('data', (d) => { out += d; });
       if (child.stderr) child.stderr.on('data', (d) => { out += d; });
       running.add(child);
+      let timedOut = false;
+      const timer = deadlineMs ? timers.set(() => { timedOut = true; child.kill('SIGKILL'); }, deadlineMs) : null;
       child.on('error', (e) => {
         // A child that never started (no pid) is gone now. One that runs (its
         // kill() failed, say) is still counted until its 'close'.
@@ -58,14 +69,19 @@ function runAll(queue, jobs, start, failLine) {
       });
       child.on('close', (code) => {
         if (!running.delete(child)) return;
+        if (timer !== null) timers.clear(timer);
         if (code !== 0 && !outcome) {
-          const line = out.split('\n').find((l) => failLine.test(l)) || 'exit ' + code;
+          const line = timedOut ? `did not finish in ${deadlineMs / 1000} s`
+            : out.split('\n').find((l) => failLine.test(l)) || 'exit ' + code;
           finish({ t, test: t.name, line: line.trim().slice(0, 140) });
         } else next();
       });
     };
+    cancel = () => finish(null, new Error('stopped'));
     for (let i = 0; i < jobs; i++) next();
   });
+  all.cancel = cancel;
+  return all;
 }
 
 module.exports = { runAll };

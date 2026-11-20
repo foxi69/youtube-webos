@@ -3,7 +3,8 @@
  * driven with stand-in child processes whose errors and exits the test
  * decides: it settles once, only after every child has exited, with the
  * first failure or null; and a process that cannot start rejects, also after
- * a failure and when two cannot start.
+ * a failure and when two cannot start; a child past the deadline is stopped
+ * and is the failure; cancel() stops the run and rejects.
  *
  * Usage: node bench/mutation-sweep-test.cjs
  */
@@ -28,7 +29,7 @@ function harness() {
     c.stderr = new EventEmitter();
     c.pid = ++pid;
     c.killed = false;
-    c.kill = () => { c.killed = true; };
+    c.kill = (signal) => { c.killed = true; c.signal = signal; };
     c.exit = (code, text = '') => { if (text) c.stdout.emit('data', text); c.emit('close', code); };
     c.fail = (message) => { c.pid = undefined; c.emit('error', new Error(message)); c.emit('close', -2); };
     c.failRunning = (message) => c.emit('error', new Error(message));
@@ -36,6 +37,15 @@ function harness() {
     return c;
   };
   return { children, start };
+}
+// The run's clock: timers are held, and fired by the test.
+function clock() {
+  const timers = [];
+  return {
+    timers,
+    set: (fn, ms) => { const timer = { fn, ms, cleared: false }; timers.push(timer); return timer; },
+    clear: (timer) => { timer.cleared = true; }
+  };
 }
 const items = (...names) => names.map((name) => ({ name }));
 // The promise's state now: 'pending', or what it settled with.
@@ -135,5 +145,88 @@ run(async () => {
     await tick();
     t('...and it rejects with that error once the child has closed', s.now !== 'pending' && /b could not be run: kill EPERM/.test(s.now.error),
       JSON.stringify(s.now));
+  }
+  {
+    // The deadline: a child that never ends by itself is stopped, and is the failure.
+    const h = harness();
+    const c = clock();
+    const s = watch(runAll(items('a', 'b', 'c'), 2, h.start, FAIL_LINE, 5000, c));
+    t('a deadline: one timer of that length for each running child', c.timers.length === 2 && c.timers[0].ms === 5000 && c.timers[1].ms === 5000,
+      JSON.stringify(c.timers));
+    t('...and nothing is stopped before it', !h.children.a.killed && !h.children.b.killed);
+    c.timers[0].fn();
+    await tick();
+    t('past the deadline: that child gets SIGKILL, the other runs on', h.children.a.signal === 'SIGKILL' && !h.children.b.killed,
+      String(h.children.a.signal));
+    t('...and the run waits for it to exit', s.now === 'pending', JSON.stringify(s.now));
+    h.children.a.exit(null, 'FAIL printed before it hung\n');
+    await tick();
+    t('...it exited: the other is told to stop, the queued one never starts', h.children.b.killed && !h.children.c);
+    h.children.b.exit(null);
+    await tick();
+    t('...and the failure is the deadline, not a line it printed', s.now !== 'pending' && !!s.now.value && s.now.value.test === 'a' &&
+      s.now.value.line === 'did not finish in 5 s', JSON.stringify(s.now));
+    t('...with both timers cleared', c.timers.every((timer) => timer.cleared), JSON.stringify(c.timers.map((timer) => timer.cleared)));
+  }
+  {
+    // A child that ends in time: its timer is cleared, and the next one gets its own.
+    const h = harness();
+    const c = clock();
+    const s = watch(runAll(items('a', 'b'), 1, h.start, FAIL_LINE, 5000, c));
+    h.children.a.exit(0);
+    t('ended in time: its timer is cleared, the next child has a new one', c.timers.length === 2 && c.timers[0].cleared && !c.timers[1].cleared,
+      JSON.stringify(c.timers.map((timer) => timer.cleared)));
+    h.children.b.exit(0);
+    await tick();
+    t('...and null once both passed', s.now !== 'pending' && s.now.value === null && c.timers[1].cleared, JSON.stringify(s.now));
+  }
+  {
+    // No deadline given: no timer.
+    const h = harness();
+    const c = clock();
+    const s = watch(runAll(items('a'), 1, h.start, FAIL_LINE, 0, c));
+    t('no deadline: no timer is set', !!h.children.a && c.timers.length === 0, String(c.timers.length));
+    h.children.a.exit(0);
+    await tick();
+    t('...and it ends as before', s.now !== 'pending' && s.now.value === null, JSON.stringify(s.now));
+  }
+  {
+    // cancel(): the running children are stopped and waited for, nothing more starts.
+    const h = harness();
+    const all = runAll(items('a', 'b', 'c'), 2, h.start, FAIL_LINE);
+    const s = watch(all);
+    t('before cancel(): two run, none stopped', !!h.children.a && !!h.children.b && !h.children.a.killed && !h.children.b.killed);
+    all.cancel();
+    await tick();
+    t('cancel(): the running children are told to stop', h.children.a.killed && h.children.b.killed);
+    t('...and it waits for them to exit', s.now === 'pending', JSON.stringify(s.now));
+    h.children.a.exit(null);
+    await tick();
+    t('...still pending while one runs, the queued one not started', s.now === 'pending' && !h.children.c, JSON.stringify(s.now));
+    h.children.b.exit(1, 'FAIL late\n');
+    await tick();
+    t('...then it rejects as stopped, not with the late failure', s.now !== 'pending' && s.now.error === 'stopped', JSON.stringify(s.now));
+  }
+  {
+    // cancel() after a failure, while the others are still exiting: stopped wins.
+    const h = harness();
+    const all = runAll(items('a', 'b'), 2, h.start, FAIL_LINE);
+    const s = watch(all);
+    h.children.a.exit(1, 'FAIL x\n');
+    all.cancel();
+    h.children.b.exit(null);
+    await tick();
+    t('cancel() after a failure: it rejects as stopped', s.now !== 'pending' && s.now.error === 'stopped', JSON.stringify(s.now));
+  }
+  {
+    // cancel() after the run ended: nothing changes.
+    const h = harness();
+    const all = runAll(items('a'), 1, h.start, FAIL_LINE);
+    const s = watch(all);
+    h.children.a.exit(0);
+    await tick();
+    all.cancel();
+    await tick();
+    t('cancel() after the end: the result stays', s.now !== 'pending' && s.now.value === null, JSON.stringify(s.now));
   }
 });
