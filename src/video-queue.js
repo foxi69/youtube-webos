@@ -52,6 +52,22 @@ function watchedId() {
   return m ? m[1] : null;
 }
 
+/**
+ * Another video on the watch page than the attempt's own and the one that was
+ * on when it began: the viewer chose it.
+ */
+function choseAnother(attempt) {
+  const shown = watchedId();
+  return !!shown && shown !== attempt.videoId && shown !== attempt.from;
+}
+
+/** The attempt's video goes back to the front, and plays at the next end. */
+function putBack(attempt) {
+  queue.unshift(attempt);
+  if (opening === attempt) opening = null;
+  dispatching = null;
+}
+
 /** Plays the next queued video; false when the queue is empty. */
 function playNext() {
   // A video whose command still waits is not lost to a second call (an end
@@ -74,6 +90,8 @@ function playNext() {
       (registry) => {
         // The viewer started another video meanwhile (see the state listener).
         if (dispatching !== next) return;
+        // Or chose one that is still loading and has not reported PLAYING.
+        if (choseAnother(next)) { putBack(next); return; }
         dispatching = null;
         registry.dispatchCommand({ watchEndpoint: { videoId: next.videoId } });
       },
@@ -131,13 +149,7 @@ window.addEventListener('yt-player-state-change', ({ detail }) => {
   // id: the video that was on when the attempt began may report PLAYING again
   // (after buffering, or still playing when Queue Next was pressed), and an
   // event may name no video.
-  const shown = watchedId();
-  if (detail.state === 1 && dispatching && shown && shown !== dispatching.videoId &&
-      shown !== dispatching.from) {
-    queue.unshift(dispatching);
-    if (opening === dispatching) opening = null;
-    dispatching = null;
-  }
+  if (detail.state === 1 && dispatching && choseAnother(dispatching)) putBack(dispatching);
   if (detail.state === 1 && opening && detail.videoId === opening.videoId) {
     opening = null;
     clearTimeout(refusalTimer);

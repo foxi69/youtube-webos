@@ -136,7 +136,14 @@ function draw() {
     width: Math.round(tr.width)
   };
   const height = Math.max(16, Math.round(window.innerHeight * HEIGHT_VH));
-  const sig = `${host.selector}|${geo.left}|${geo.top}|${geo.width}|${height}|${uri.length}`;
+  // The bar's class and its inline position and display too: the page can
+  // position the same bar with no change of size, and the rule from the older
+  // reading would keep it relative.
+  // ponytail: a position given by a stylesheet or an ancestor's class with no
+  // change here is not seen; reading the computed style needs the rule taken
+  // out, a style recalculation four times a second.
+  const own = `${host.el.className}|${host.el.style.position}|${host.el.style.display}`;
+  const sig = `${host.selector}|${geo.left}|${geo.top}|${geo.width}|${height}|${uri.length}|${own}`;
   // The same host element too: a new one of the same size may be positioned already.
   if (sig === lastSig && css && host.el === styledHost) return;
   lastSig = sig;
