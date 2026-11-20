@@ -120,6 +120,42 @@ const FETCH_ACTION_TYPES = encodeURIComponent(JSON.stringify(['skip', 'mute', 'f
 
 const HAS_ABORT_CONTROLLER = typeof AbortController !== 'undefined';
 
+/**
+ * Where [start, end] sits on a chaptered bar (see _chapterLayout), as
+ * { left, width } percentages of the bar: one range per chapter it touches.
+ */
+function barRanges(layout, start, end, duration) {
+    const ranges = [];
+    const { pieces, content, total } = layout;
+    for (let i = 0; i < pieces.length; i++) {
+        const p = pieces[i];
+        const from = (p.from / content) * duration;
+        const to = ((p.from + p.width) / content) * duration;
+        const a = Math.max(start, from);
+        const b = Math.min(end, to);
+        if (a >= b) continue;
+        const left = p.x + ((a - from) / (to - from)) * p.width;
+        const right = p.x + ((b - from) / (to - from)) * p.width;
+        ranges.push({ left: (left / total) * 100, width: ((right - left) / total) * 100 });
+    }
+    return ranges;
+}
+
+/** Where the time `t` sits on a chaptered bar, as a percentage of the bar. */
+function barPercentAt(layout, t, duration) {
+    const { pieces, content, total } = layout;
+    for (let i = 0; i < pieces.length; i++) {
+        const p = pieces[i];
+        const to = ((p.from + p.width) / content) * duration;
+        if (t < to || i === pieces.length - 1) {
+            const from = (p.from / content) * duration;
+            const x = p.x + Math.min(1, Math.max(0, (t - from) / (to - from))) * p.width;
+            return (x / total) * 100;
+        }
+    }
+    return (t / duration) * 100;
+}
+
 class SponsorBlockHandler {
     constructor(videoID) {
         this.videoID = videoID;
@@ -271,10 +307,71 @@ class SponsorBlockHandler {
         };
     }
 
+    /**
+     * The element holding the bar's chapter pieces: on a chaptered video
+     * YouTube draws one child per chapter (idomkey chapter-N), with a margin
+     * between them, beside the tracked segment element.
+     */
+    _chapterTrack() {
+        const bar = this.progressBar;
+        if (!bar) return null;
+        return bar.querySelector('[idomkey="chapter-0"]') ? bar : bar.parentNode;
+    }
+
+    _chapterElements() {
+        const track = this._chapterTrack();
+        const out = [];
+        if (!track || !track.children) return out;
+        for (let i = 0; i < track.children.length; i++) {
+            const el = track.children[i];
+            if (/^chapter-\d+$/.test(el.getAttribute('idomkey') || '')) out.push(el);
+        }
+        return out;
+    }
+
+    /** A cheap signature of the chapter pieces (no layout read): a change redraws the marks. */
+    _chapterSig() {
+        const els = this._chapterElements();
+        let sig = '';
+        for (let i = 0; i < els.length; i++) sig += els[i].style.width + ',';
+        return sig;
+    }
+
+    /**
+     * The chapter pieces as laid out: each one's x and width in the bar, and
+     * where its time starts, in pixels of chapter content. Null with fewer
+     * than two (no gaps to allow for).
+     */
+    _chapterLayout() {
+        const els = this._chapterElements();
+        const pieces = [];
+        let content = 0;
+        let total = 0;
+        for (let i = 0; i < els.length; i++) {
+            const el = els[i];
+            const width = el.offsetWidth || parseFloat(el.style.width) || 0;
+            if (!(width > 0)) continue;
+            const cs = window.getComputedStyle(el);
+            const ml = parseFloat(cs.marginLeft) || 0;
+            const mr = parseFloat(cs.marginRight) || 0;
+            pieces.push({ x: total + ml, width, from: content });
+            content += width;
+            total += ml + width + mr;
+        }
+        if (pieces.length < 2 || !content || !total) return null;
+        return { pieces, content, total };
+    }
+
     _syncOverlayPosition(ytPB) {
         if (!this.overlay || !ytPB) return;
         const parent = ytPB.parentNode;
         if (!parent) return;
+
+        // Chapter pieces drawn (or resized) after the marks: drawn again over them.
+        if (this._chapterSig() !== this._drawnChapterSig) {
+            this.drawOverlay();
+            return;
+        }
 
         // Use the inner slider element for precise height/position.
         // Fall back to ytPB itself only if progressBar is the same node or unset.
@@ -1267,7 +1364,8 @@ class SponsorBlockHandler {
         // mid-video invalidates the hash and forces a redraw (§5b fix).
         let colorSig = '';
         for (const k in segmentTypes) colorSig += config[`${k}Color`] || '';
-        const overlayHash = `${duration}_${this.activeCategories.size}_${this.segments.length}_${config.sbMode_highlight}_${!!config.enableMutedSegments}_${colorSig}`;
+        this._drawnChapterSig = this._chapterSig();
+        const overlayHash = `${duration}_${this.activeCategories.size}_${this.segments.length}_${config.sbMode_highlight}_${!!config.enableMutedSegments}_${colorSig}_${this._drawnChapterSig}`;
         if (overlayHash === this.lastOverlayHash && this.overlay && this.overlay.isConnected) {
             return;
         }
@@ -1276,6 +1374,10 @@ class SponsorBlockHandler {
         if (this.overlay) this.overlay.remove();
 
         const fragment = document.createDocumentFragment();
+        // A chaptered bar has gaps between its chapters: the marks follow the
+        // chapters (one mark per chapter for a segment across a gap), not a
+        // plain time-to-percent line that drifts by the gaps.
+        const layout = this._chapterLayout();
 
         const len = this.segments.length;
         for (let i = 0; i < len; i++) {
@@ -1286,32 +1388,27 @@ class SponsorBlockHandler {
             // Destructuring avoidance for speed, plus batch styling execution
             const start = segment.segment[0];
             const end = segment.segment[1];
-           const div = document.createElement('div');
 
             const colorKey = isHighlight ? 'poi_highlightColor' : `${segment.category}Color`;
             const color = config[colorKey] || segmentTypes[segment.category]?.color || '#00d400';
 
-            div.style.backgroundColor = color;
-            div.style.position = 'absolute';
-            div.style.height = '100%';
-            div.style.top = '0';
-
-            const left = (start / duration) * 100;
-            const zIndex = isHighlight ? '2001' : '2000';
-
-            div.className = isHighlight ? 'previewbar highlight' : 'previewbar';
-            div.style.left = `${left}%`;
-            div.style.zIndex = isHighlight ? '2001' : '2000';
-
             if (isHighlight) {
-                div.style.cssText = `background-color: ${color}; position: absolute; height: 100%; top: 0; left: ${left}%; z-index: ${zIndex};`;
-            } else {
-               const width = ((end - start) / duration) * 100;
-                const opacity = segmentTypes[segment.category]?.opacity || '0.7';
-                div.style.cssText = `background-color: ${color}; position: absolute; height: 100%; top: 0; left: ${left}%; width: ${width}%; opacity: ${opacity}; z-index: ${zIndex};`;
+                const left = layout ? barPercentAt(layout, start, duration) : (start / duration) * 100;
+                const div = document.createElement('div');
+                div.className = 'previewbar highlight';
+                div.style.cssText = `background-color: ${color}; position: absolute; height: 100%; top: 0; left: ${left}%; z-index: 2001;`;
+                fragment.appendChild(div);
+                continue;
             }
-
-            fragment.appendChild(div);
+            const opacity = segmentTypes[segment.category]?.opacity || '0.7';
+            const ranges = layout ? barRanges(layout, start, end, duration) :
+                [{ left: (start / duration) * 100, width: ((end - start) / duration) * 100 }];
+            for (let r = 0; r < ranges.length; r++) {
+                const div = document.createElement('div');
+                div.className = 'previewbar';
+                div.style.cssText = `background-color: ${color}; position: absolute; height: 100%; top: 0; left: ${ranges[r].left}%; width: ${ranges[r].width}%; opacity: ${opacity}; z-index: 2000;`;
+                fragment.appendChild(div);
+            }
         }
 
         // Everything was filtered out (e.g. the only entry was a full-video

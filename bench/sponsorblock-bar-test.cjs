@@ -458,6 +458,56 @@ run(async () => {
     t(n('a bar the observer cannot see: the poll still finds it'), !!env.overlay() && env.marks().length === 1);
   }
 
+  // ---- A chaptered bar: the marks follow the chapters, not a plain line ----
+  {
+    // As on the TV (webOS 25): one piece per chapter with a margin after it,
+    // beside the tracked segment element. Two 100 px chapters, a 10 px gap:
+    // 210 px of bar, chapter 1 from 110 px. 600 s: 0-300 s, then 300-600 s.
+    const piece = (i, mr) => `<div idomkey="chapter-${i}" style="width: 100px; margin-right: ${mr}px"></div>`;
+    const BAR_CHAPTERS = '<div class="bar-host"><ytlr-progress-bar><ytlr-multi-markers-player-bar-renderer>' +
+      `<div idomkey="progress-bar">${piece(0, 10)}${piece(1, 0)}<div idomkey="segment"></div></div>` +
+      '</ytlr-multi-markers-player-bar-renderer></ytlr-progress-bar></div>';
+    const env = await boot({ sbMode_highlight: 'manual_skip' },
+      [seg('sponsor', 150, 450), seg('selfpromo', 60, 120), seg('poi_highlight', 300, 300, 'poi')], { bar: BAR_CHAPTERS });
+    const pct = (px) => (px / 210) * 100;
+    const at = (m) => `${parseFloat(m.style.left).toFixed(2)}/${parseFloat(m.style.width || '0').toFixed(2)}`;
+    const marks = env.marks();
+    const plain = marks.filter((m) => !m.classList.contains('highlight'));
+    const sponsor = plain.filter((m) => m.style.backgroundColor === rgb('#00d400'));
+    t(n('chapters: a segment across the gap is one mark per chapter, each in its chapter'),
+      sponsor.length === 2 && near(parseFloat(sponsor[0].style.left), pct(50)) && near(parseFloat(sponsor[0].style.width), pct(50)) &&
+        near(parseFloat(sponsor[1].style.left), pct(110)) && near(parseFloat(sponsor[1].style.width), pct(50)),
+      marks.map(at).join(' '));
+    const other = plain.filter((m) => m.style.backgroundColor !== rgb('#00d400'));
+    t(n('chapters: a segment inside the first chapter keeps to its pixels'),
+      other.length === 1 && near(parseFloat(other[0].style.left), pct(20)) && near(parseFloat(other[0].style.width), pct(20)),
+      marks.map(at).join(' '));
+    const hl = marks.filter((m) => m.classList.contains('highlight'));
+    t(n('chapters: a highlight at a chapter\'s start sits at that chapter, past the gap'),
+      hl.length === 1 && near(parseFloat(hl[0].style.left), pct(110)), marks.map(at).join(' '));
+    t(n('chapters: no page errors'), env.errors.length === 0, env.errors.join(' | '));
+  }
+  {
+    // The chapter pieces drawn after the marks: drawn again over them.
+    const env = await boot({}, [seg('sponsor', 150, 450)], {
+      bar: '<div class="bar-host"><ytlr-progress-bar><ytlr-multi-markers-player-bar-renderer>' +
+        '<div idomkey="progress-bar"><div idomkey="segment"></div></div></ytlr-multi-markers-player-bar-renderer></ytlr-progress-bar></div>'
+    });
+    const at = (m) => `${parseFloat(m.style.left).toFixed(2)}/${parseFloat(m.style.width).toFixed(2)}`;
+    t(n('late chapters: precondition: without chapters, the plain line'),
+      env.marks().length === 1 && near(parseFloat(env.marks()[0].style.left), 25) && near(parseFloat(env.marks()[0].style.width), 50),
+      env.marks().map(at).join(' '));
+    const track = env.doc.querySelector('ytlr-multi-markers-player-bar-renderer [idomkey="progress-bar"]');
+    track.insertAdjacentHTML('afterbegin',
+      '<div idomkey="chapter-0" style="width: 100px; margin-right: 10px"></div><div idomkey="chapter-1" style="width: 100px"></div>');
+    await wait(600);
+    await env.playTo(10);   // the overlay's own sync, at most every 500 ms
+    const marks = env.marks();
+    t(n('late chapters: the marks are drawn again by the chapters'),
+      marks.length === 2 && near(parseFloat(marks[0].style.left), (50 / 210) * 100) && near(parseFloat(marks[1].style.left), (110 / 210) * 100),
+      marks.map(at).join(' '));
+  }
+
   // ---- Replay: the player chrome torn down at the end, rebuilt later ----
   {
     const env = await boot({}, [seg('sponsor', 30, 60)], { fastPoll: true });
