@@ -738,6 +738,11 @@ export function configFlush() {
   flushPendingWrite();
 }
 
+/** True until the copy in IndexedDB was read at a start with no settings (its values may still come back). */
+export function configRestorePending() {
+  return !backupChecked;
+}
+
 function configExists(key) { return configOptions.has(key); }
 
 export function configGetDesc(key) {

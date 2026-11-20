@@ -204,6 +204,10 @@ run(async () => {
     await env.playTo(31);
     t(n('undo: ...and the segment plays'), env.state.time === 31, String(env.state.time));
     t(n('undo: "Skip undone" is shown'), env.toasts().indexOf('Skip undone') !== -1, env.toasts());
+    await wait(300);
+    t(n('stats: the undone skip is taken off again, the earlier ones stay'),
+      Math.abs(stored(env.win).sbTimeSaved - 100) < 1e-9 && stored(env.win).sbSkipCount === 4,
+      JSON.stringify([stored(env.win).sbTimeSaved, stored(env.win).sbSkipCount]));
     t(n('report off: nothing is sent'), env.reported.length === 0, env.reported.join());
   }
   {
@@ -222,6 +226,10 @@ run(async () => {
     await env.playTo(300);
     await press(env.win, BLUE);
     t(n('undo: not after the viewer went somewhere else'), env.state.time === 300, String(env.state.time));
+    await wait(300);
+    t(n('stats: a Blue that undoes nothing leaves the skip counted'),
+      Math.abs(stored(env.win).sbTimeSaved - (60 - 30.2)) < 1e-9 && stored(env.win).sbSkipCount === 1,
+      JSON.stringify([stored(env.win).sbTimeSaved, stored(env.win).sbSkipCount]));
   }
   {
     // More than 8 s later, where playback would be by then: no undo.

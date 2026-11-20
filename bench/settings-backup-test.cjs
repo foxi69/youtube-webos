@@ -643,6 +643,35 @@ run(async () => {
       stored(next.win).uiTheme === 'fox' && stored(next.win).foxThemeApplied === true, JSON.stringify(stored(next.win)));
   }
 
+  // ---- The caption style that comes back with the copy wins over YouTube's default ----
+  // localStorage emptied: YouTube writes its default caption record while the
+  // copy is still being read, and the app goes to the background meanwhile.
+  {
+    const CAPTION = 'yt-player-caption-display-settings';
+    const STYLE = JSON.stringify({ color: '#ffff00' });
+    const DEFAULT = JSON.stringify({ color: '#ffffff' });
+    const backup = savedCopy([[KEY, JSON.stringify({ captionStyleBackup: { [CAPTION]: STYLE }, foxThemeApplied: true })]]);
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const page = boot({ data: backup, log: [], idb: { gate } });
+    await wait(100);
+    const now = Date.now();
+    page.win.localStorage.setItem(CAPTION, JSON.stringify({ data: DEFAULT, expiration: now + 1000, creation: now }));
+    Object.defineProperty(page.win.document, 'hidden', { value: true, configurable: true });
+    page.win.document.dispatchEvent(new page.win.Event('visibilitychange'));
+    Object.defineProperty(page.win.document, 'hidden', { value: false, configurable: true });
+    await wait(300);
+    const early = stored(page.win) && stored(page.win).captionStyleBackup;
+    t('a caption record YouTube wrote before the copy was read is not copied as the style',
+      !early || early[CAPTION] !== DEFAULT, JSON.stringify(early));
+    release();
+    await wait(400);
+    const rec = JSON.parse(page.win.localStorage.getItem(CAPTION) || 'null');
+    t('...once read, the style of the copy is written over the default of YouTube', !!rec && rec.data === STYLE, JSON.stringify(rec));
+    t('...and stays the style kept in the settings', stored(page.win).captionStyleBackup[CAPTION] === STYLE,
+      JSON.stringify(stored(page.win).captionStyleBackup));
+  }
+
   // ---- A database that does not open, then the next start ----
   {
     const backup = savedCopy([[KEY, JSON.stringify({ minVideoLength: '5', foxThemeApplied: true })]]);

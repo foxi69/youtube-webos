@@ -819,6 +819,11 @@ class SponsorBlockHandler {
         // Our own seek: the highlight's guard (autoJumpToHighlight) leaves it.
         this.ownSkipTarget = last.from;
         video.currentTime = last.from;
+        // Its time was not saved after all: taken off the statistics again.
+        try {
+            configWrite('sbTimeSaved', Math.max(0, (Number(configRead('sbTimeSaved')) || 0) - (last.to - last.from)));
+            configWrite('sbSkipCount', Math.max(0, (Number(configRead('sbSkipCount')) || 0) - 1));
+        } catch { /* statistics are best effort */ }
         this.requestAF(() => showNotification('Skip undone'));
         return true;
     }

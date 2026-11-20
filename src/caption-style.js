@@ -10,6 +10,8 @@
  *   default. Here the record's expiration is moved a year on, before
  *   YouTube reads it, and its data is copied to the settings
  *   (captionStyleBackup); a record that is gone is written back from the copy.
+ *   After localStorage was emptied, the copy that comes back with the settings
+ *   (config-backup.js) is written over the default YouTube put there meanwhile.
  *   Looked at when the app starts, when the page changes (at most every 5 s,
  *   so a style changed in YouTube's settings is copied once they are left) and
  *   when the app goes to the background. No setting. From TizenTube
@@ -21,7 +23,7 @@
  *   the picture, or text burnt into the video. A class on <html>, read by a
  *   static rule, so a caption window YouTube draws again keeps it.
  */
-import { configRead, configWrite, configAddChangeListener, configFlush } from './config.js';
+import { configRead, configWrite, configAddChangeListener, configFlush, configRestorePending } from './config.js';
 
 const CAPTION_KEYS = ['yt-player-caption-display-settings'];
 const BACKUP_KEY = 'captionStyleBackup';
@@ -31,6 +33,11 @@ const RENEW_BEFORE_MS = 30 * 24 * 60 * 60 * 1000;
 const MIN_CHECK_GAP_MS = 5000;
 
 let lastCheck = 0;
+// Records not there at the first look (localStorage emptied). One that shows
+// up before the settings come back from their copy is YouTube's default: it is
+// not copied, and the restored copy is written over it.
+const missingAtStart = new Set();
+let firstLook = true;
 
 /** The record's data as a string, or null when the record is not one of YouTube's. */
 function readRecord(raw) {
@@ -50,12 +57,15 @@ export function keepCaptionStyle() {
   const backups = Object.assign({}, stored && typeof stored === 'object' ? stored : {});
   let changed = false;
   const now = Date.now();
+  const pending = configRestorePending();
   for (const key of CAPTION_KEYS) {
     try {
       const raw = storage.getItem(key);
+      if (firstLook && !raw) missingAtStart.add(key);
       if (raw) {
         const record = readRecord(raw);
         if (!record) continue;
+        if (pending && missingAtStart.has(key)) continue;
         if (backups[key] !== record.data) { backups[key] = record.data; changed = true; }
         if (!(Number(record.expiration) - now > RENEW_BEFORE_MS)) {
           storage.setItem(key, JSON.stringify({ data: record.data, expiration: now + ONE_YEAR_MS, creation: Number(record.creation) || now }));
@@ -66,6 +76,7 @@ export function keepCaptionStyle() {
       }
     } catch { /* storage refused: the next look */ }
   }
+  firstLook = false;
   if (changed) configWrite(BACKUP_KEY, backups);
 }
 
@@ -104,8 +115,20 @@ if (typeof window !== 'undefined') {
     keepCaptionStyle();
     configFlush();
   });
-  // A copy that came back with the settings (config-backup.js) after the look above.
-  configAddChangeListener(BACKUP_KEY, () => keepCaptionStyle());
+  // A copy that came back with the settings (config-backup.js) after the look
+  // above: written over a record YouTube put there since (its default).
+  configAddChangeListener(BACKUP_KEY, (evt) => {
+    const copy = evt.detail.newValue;
+    if (configRestorePending() && copy && typeof copy === 'object') {
+      for (const key of missingAtStart) {
+        if (typeof copy[key] !== 'string') continue;
+        const now = Date.now();
+        try { window.localStorage.setItem(key, JSON.stringify({ data: copy[key], expiration: now + ONE_YEAR_MS, creation: now })); }
+        catch { /* storage refused: the next look */ }
+      }
+    }
+    keepCaptionStyle();
+  });
   applySubtitlePosition();
   configAddChangeListener('subtitlePosition', applySubtitlePosition);
 }
