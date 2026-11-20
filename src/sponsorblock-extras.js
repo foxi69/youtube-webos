@@ -7,12 +7,18 @@ import { configRead, configWrite } from './config.js';
 import { showNotification } from './notifications.js';
 import { SELECTORS } from './utils.js';
 
-/** The channel name of the video in the player, or '' while it is not known. */
-export function currentChannelName() {
+/**
+ * The channel name of the video in the player, or '' while it is not known.
+ * With `videoID`: also '' while the player still reports another video (the
+ * one before, as the next loads). Data without a video ID is taken as it is.
+ */
+export function currentChannelName(videoID) {
     try {
         const player = document.getElementById(SELECTORS.PLAYER_ID) || document.querySelector('.html5-video-player');
         const data = player && typeof player.getVideoData === 'function' ? player.getVideoData() : null;
-        return data && typeof data.author === 'string' ? data.author.trim() : '';
+        if (!data || typeof data.author !== 'string') return '';
+        if (videoID && typeof data.video_id === 'string' && data.video_id && data.video_id !== videoID) return '';
+        return data.author.trim();
     } catch {
         return '';
     }

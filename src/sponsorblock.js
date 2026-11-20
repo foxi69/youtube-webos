@@ -711,13 +711,13 @@ class SponsorBlockHandler {
     /**
      * Whether nothing is to be skipped for Never Skip on These Channels: the
      * video's channel is on the list, or, with a list, its channel is not known
-     * yet. Then the segments are built again once it is (a try a second, ten
+     * yet (the player still reporting the video before counts as not known). Then the segments are built again once it is (a try a second, ten
      * at most); a channel still unknown after that counts as not listed.
      */
     channelWhitelisted() {
         const list = configRead('sbWhitelistChannels');
         if (!Array.isArray(list) || !list.length) return false;
-        const name = currentChannelName();
+        const name = currentChannelName(this.videoID);
         if (name) return isChannelWhitelisted(name);
         if ((this.channelRetries || 0) >= CHANNEL_RETRIES) return false;
         if (!this.channelRetryTimer && !this.isDestroyed) {
@@ -725,7 +725,7 @@ class SponsorBlockHandler {
                 this.channelRetryTimer = null;
                 if (this.isDestroyed) return;
                 this.channelRetries = (this.channelRetries || 0) + 1;
-                if (currentChannelName() || this.channelRetries >= CHANNEL_RETRIES) {
+                if (currentChannelName(this.videoID) || this.channelRetries >= CHANNEL_RETRIES) {
                     this.rebuildSkipSegments();
                     // An Auto Skip to Start that waited for the channel.
                     this._jumpIfPending();
@@ -1813,7 +1813,7 @@ class SponsorBlockHandler {
         // Never Skip on These Channels: no jump by itself there either (Blue
         // still jumps). A channel not known yet: the jump waits for it.
         if (this.channelWhitelisted()) {
-            if (!currentChannelName()) this.highlightPending = true;
+            if (!currentChannelName(this.videoID)) this.highlightPending = true;
             return;
         }
         if (!this.jumpToNextHighlight()) return;

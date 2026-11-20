@@ -481,6 +481,68 @@ run(async () => {
     t('...and the mark is gone', second.win.localStorage.getItem('ytaf-settings-recovering') === null);
   }
 
+  // ---- A failed read, then a start whose localStorage refuses the restored shared record, then the next ----
+  {
+    const backup = savedCopy([[KEY, JSON.stringify({ minVideoLength: '5', foxThemeApplied: true })]]);
+    const snapshot = (win) => {
+      const out = {};
+      for (let i = 0; i < win.localStorage.length; i++) {
+        const k = win.localStorage.key(i);
+        out[k] = win.localStorage.getItem(k);
+      }
+      return out;
+    };
+    const first = boot({ data: backup, log: [], idb: { failAfter: 0 } });
+    await wait(700);
+    const left = snapshot(first.win);
+    t('precondition (refused restore): the failed run left its defaults and the mark',
+      left['ytaf-settings-recovering'] === '1' && !!left[KEY] && JSON.parse(left[KEY]).minVideoLength === '0', JSON.stringify(left));
+    // The shared record refused, by setItem (the restore) and by assignment (a later write).
+    const refuseShared = { on: true, refused: 0 };
+    const second = boot({
+      data: backup, log: [], storage: left,
+      setup: (w) => {
+        const real = w.localStorage;
+        const refuse = (key) => {
+          if (refuseShared.on && key === KEY) { refuseShared.refused++; throw new Error('QuotaExceededError'); }
+        };
+        const proxy = new Proxy(real, {
+          get(target, prop) {
+            if (prop === 'setItem') return (key, value) => { refuse(key); target.setItem(key, value); };
+            const value = Reflect.get(target, prop);
+            return typeof value === 'function' ? value.bind(target) : value;
+          },
+          set(target, prop, value) { refuse(prop); target.setItem(prop, String(value)); return true; }
+        });
+        Object.defineProperty(w, 'localStorage', { configurable: true, get: () => proxy });
+      }
+    });
+    await wait(1800);
+    t('...precondition: the restored shared record was refused', refuseShared.refused > 0 && JSON.parse(second.win.localStorage.getItem(KEY)).minVideoLength === '0',
+      `${refuseShared.refused} ${second.win.localStorage.getItem(KEY)}`);
+    t('...precondition: the copy was read, its settings in use from memory',
+      await panelValue(second.win, 'Hide Videos Shorter Than') === '5 min', await panelValue(second.win, 'Hide Videos Shorter Than'));
+    const left2 = snapshot(second.win);
+    t('refused restore: the mark stays', left2['ytaf-settings-recovering'] === '1', JSON.stringify(Object.keys(left2)));
+    const third = boot({ data: backup, log: [], storage: left2 });
+    await wait(1800);
+    t('...the next start does not copy the defaults left in localStorage over the copy',
+      JSON.parse(backup.get(KEY)).minVideoLength === '5', backup.get(KEY));
+    t('...it reads the copy again and stores its settings, and the mark is gone',
+      !!stored(third.win) && stored(third.win).minVideoLength === '5' && third.win.localStorage.getItem('ytaf-settings-recovering') === null,
+      `${JSON.stringify(stored(third.win))} ${third.win.localStorage.getItem('ytaf-settings-recovering')}`);
+    // In the refusing run, a write that does store the shared record ends the recovery.
+    refuseShared.on = false;
+    const label = Array.prototype.slice.call(second.win.document.querySelectorAll('label'))
+      .find((l) => l.textContent.trim() === 'Skip AI-Upscaled Qualities');
+    const input = label && label.querySelector('input');
+    t('...precondition: the switch is there to change', !!input);
+    if (input) input.click();
+    const cleared = await until(() => second.win.localStorage.getItem('ytaf-settings-recovering') === null);
+    t('refused restore: a later write that stores the shared record removes the mark',
+      cleared && JSON.parse(second.win.localStorage.getItem(KEY)).minVideoLength === '5', second.win.localStorage.getItem(KEY));
+  }
+
   // ---- A failed read, then a start that changes a setting before the copy is read again ----
   {
     const backup = savedCopy([[KEY, JSON.stringify({ minVideoLength: '5', removeUpscaledFormats: true, foxThemeApplied: true })]]);

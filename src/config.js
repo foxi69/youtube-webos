@@ -691,6 +691,10 @@ const RECOVERING_KEY = 'ytaf-settings-recovering';
 let recovering = false;
 try { recovering = window.localStorage.getItem(RECOVERING_KEY) === '1'; } catch { /* no storage */ }
 let backupChecked = !!sharedConfigStored && !recovering;
+// The copy was read, but localStorage refused its shared record: the mark
+// stays until a write stores the shared record, or the next start would take
+// the record left there (the failed run's defaults) for the real one.
+let sharedRestorePending = false;
 // A write made before the copy was read: copied once it has been.
 let backupMissed = false;
 // The settings changed before the copy was read (in the panel, say): the
@@ -702,6 +706,10 @@ const APP_RECORDS = new Set(['foxThemeApplied', 'captionStyleBackup', 'sbTimeSav
 function copyToBackup(written) {
   if (!written.length) return;
   if (!backupChecked) { backupMissed = true; return; }
+  if (sharedRestorePending && written.some(([key]) => key === CONFIG_KEY)) {
+    sharedRestorePending = false;
+    try { window.localStorage.removeItem(RECOVERING_KEY); } catch { /* no storage */ }
+  }
   backupWrite(written).catch(() => { /* best effort */ });
 }
 
@@ -921,7 +929,10 @@ function restoreFromBackup() {
           continue;
         }
         window.localStorage.setItem(key, key === CONFIG_KEY ? sharedText : text);
-      } catch { /* applied from memory below */ }
+      } catch {
+        // Applied from memory below.
+        if (key === CONFIG_KEY) sharedRestorePending = true;
+      }
     }
     console.info('[Config] Settings restored from the backup copy:', entries.length, 'record(s)');
     // The account's profile is loaded below, once the shared values are in:
@@ -965,7 +976,9 @@ function restoreFromBackup() {
     }
     return true;
   }).then((restored) => {
-    try { window.localStorage.removeItem(RECOVERING_KEY); } catch { /* no storage */ }
+    if (!sharedRestorePending) {
+      try { window.localStorage.removeItem(RECOVERING_KEY); } catch { /* no storage */ }
+    }
     backupChecked = true;
     // No copy, while localStorage has settings (a run after a failed read
     // whose copy turned out empty): those are copied.

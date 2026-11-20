@@ -89,7 +89,11 @@ async function boot(cfg, segments, opts = {}) {
     return Promise.resolve({ ok: status === 200, status, json: () => Promise.resolve(body) });
   };
   const player = win.document.getElementById('ytlr-player__player-container-player');
-  player.getVideoData = () => ({ video_id: VIDEO_ID, author: 'author' in opts ? opts.author : 'Some Channel' });
+  // opts.videoId: the video the player reports (the one before, say), undefined for none.
+  player.getVideoData = () => ({
+    video_id: 'videoId' in opts ? opts.videoId : VIDEO_ID,
+    author: 'author' in opts ? opts.author : 'Some Channel'
+  });
   const video = win.document.querySelector('video');
   const v = fakeVideo(win, video, 'duration' in opts ? opts.duration : 600);
   if (opts.startAt) v.state.time = opts.startAt;
@@ -314,6 +318,41 @@ run(async () => {
     await env.playTo(30.5);
     t(n('whitelist, channel known and not listed: skipped'), env.state.time === 60, String(env.state.time));
   }
+  // ---- The player still reports the video before ----
+  {
+    // The one before is on the list, this one is not: its segment is skipped once the player reports it.
+    const opts = { videoId: 'zzzzzzzzzzz', author: 'Old Channel' };
+    const env = await boot({ sbWhitelistChannels: ['Old Channel'] }, [seg('sponsor', 30, 60)], opts);
+    await env.playTo(30.2);
+    t(n('whitelist, the video before reported: its listed channel is not taken for this one'),
+      env.state.time === 30.2 && env.state.seeks.length === 0, String(env.state.time));
+    opts.videoId = VIDEO_ID;
+    opts.author = 'New Channel';
+    await wait(1300);
+    await env.playTo(30.5);
+    t(n('whitelist, the video before reported: once this one is, its segment is skipped'), env.state.time === 60, String(env.state.time));
+  }
+  {
+    // The one before is not on the list, this one is: nothing is skipped, also once the player reports it.
+    const opts = { videoId: 'zzzzzzzzzzz', author: 'Old Channel' };
+    const env = await boot({ sbWhitelistChannels: ['New Channel'] }, [seg('sponsor', 30, 60)], opts);
+    await env.playTo(30.2);
+    t(n('whitelist, the video before reported: its unlisted channel does not make this one skip'),
+      env.state.time === 30.2 && env.state.seeks.length === 0, String(env.state.time));
+    opts.videoId = VIDEO_ID;
+    opts.author = 'New Channel';
+    await wait(1300);
+    await env.playTo(30.5);
+    t(n('whitelist, the video before reported: once this one is, still not skipped'),
+      env.state.time === 30.5 && env.state.seeks.length === 0, String(env.state.time));
+  }
+  {
+    // Data with no video ID: its channel name is taken as it is (known, not listed: skipped at once).
+    const env = await boot({ sbWhitelistChannels: ['Other Channel'] }, [seg('sponsor', 30, 60)], { videoId: undefined });
+    await env.playTo(30.2);
+    t(n('whitelist, no video ID in the data: its channel counts as known'), env.state.time === 60, String(env.state.time));
+  }
+
   // ---- Undo, the highlight's guard and a new <video> ----
   {
     // Auto Skip to Start jumped to the highlight at 90; a skip from 93 is
@@ -322,11 +361,16 @@ run(async () => {
     const env = await boot({ sbMode_highlight: 'auto_skip' }, [seg('poi_highlight', 90, 90, 'poi'), seg('sponsor', 93, 120)], { clock });
     await wait(100);
     t(n('undo and highlight: jumped to the highlight first'), env.state.seeks[0] === 90, env.state.seeks.join());
+    // The guard's own 4 s timer is held: only the undo can end the guard, not a slow machine.
+    const guard = env.sb()._highlightGuard;
+    t(n('undo and highlight: precondition: the highlight guard is on'), !!guard && !!guard.timer);
+    if (guard) env.win.clearTimeout(guard.timer);
     await env.playTo(93.2);
     t(n('undo and highlight: the segment was skipped'), env.state.time === 120, String(env.state.time));
     await press(env.win, BLUE);
     await wait(100);
     t(n('undo and highlight: the undo is not taken back to the highlight'), Math.abs(env.state.time - 93.2) < 0.01, env.state.seeks.join());
+    t(n('undo and highlight: ...with the guard still on after the undo seek'), !!guard && env.sb()._highlightGuard === guard);
   }
   {
     const clock = {};
