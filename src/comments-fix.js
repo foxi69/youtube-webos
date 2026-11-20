@@ -88,14 +88,21 @@ function collapsedOverrides(s) {
   return out;
 }
 
-// A selector list split on its top-level commas (not those inside :is() or [attr]).
+// A selector list split on its top-level commas (not those inside :is(),
+// [attr] or a quoted value, whose brackets do not count either).
 function splitSelectorList(text) {
   const parts = [];
   let depth = 0;
   let start = 0;
+  let quote = '';
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
-    if (ch === '(' || ch === '[') depth++;
+    if (quote) {
+      if (ch === '\\') i++;
+      else if (ch === quote) quote = '';
+    }
+    else if (ch === '"' || ch === "'") quote = ch;
+    else if (ch === '(' || ch === '[') depth++;
     else if (ch === ')' || ch === ']') depth--;
     else if (ch === ',' && depth === 0) {
       parts.push(text.slice(start, i).trim());

@@ -115,7 +115,7 @@ run(async () => {
   // ---- A minified list: rules with the same body merged into one ----
   {
     const h = boot(`.zylon-hidden, ${OVERLAY_SEL}, :is(.a, .b).frHKed .x { height: 0px; width: 0px; }
-      .frHKed .list, .zylon-other { display: none; }`, {
+      .zylon-q[data-label="]"], .frHKed .list, .zylon-other[data-label="("], .frHKed .more { display: none; }`, {
       before(win) {
         // YouTube's own inline width on the panel's box.
         win.document.querySelector('.AmQJbe').style.width = '640px';
@@ -128,14 +128,15 @@ run(async () => {
     t(n('merged list: only its closing-class selectors are overridden'),
       text === `${OVERLAY_SEL} { height: auto !important; width: auto !important; visibility: hidden !important; }\n` +
         ':is(.a, .b).frHKed .x { height: auto !important; width: auto !important; visibility: hidden !important; }\n' +
-        '.frHKed .list { display: block !important; visibility: hidden !important; }',
+        '.frHKed .list { display: block !important; visibility: hidden !important; }\n' +
+        '.frHKed .more { display: block !important; visibility: hidden !important; }',
       text);
     t(n('merged list: an unrelated class in it keeps its own rule'),
       h.win.getComputedStyle(h.doc.querySelector('.zylon-hidden')).height === '0px' &&
         h.win.getComputedStyle(h.doc.querySelector('.zylon-hidden')).visibility !== 'hidden',
       h.win.getComputedStyle(h.doc.querySelector('.zylon-hidden')).height);
     t(n('merged list: reported per selector'),
-      h.infos.length === 1 && h.infos[0].endsWith(`applied to: ${OVERLAY_SEL} , :is(.a, .b).frHKed .x , .frHKed .list`), h.infos.join(' | '));
+      h.infos.length === 1 && h.infos[0].endsWith(`applied to: ${OVERLAY_SEL} , :is(.a, .b).frHKed .x , .frHKed .list , .frHKed .more`), h.infos.join(' | '));
   }
   {
     // Only height collapses: the panel keeps YouTube's inline width.

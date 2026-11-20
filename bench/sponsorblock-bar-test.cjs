@@ -506,6 +506,22 @@ run(async () => {
     t(n('late chapters: the marks are drawn again by the chapters'),
       marks.length === 2 && near(parseFloat(marks[0].style.left), (50 / 210) * 100) && near(parseFloat(marks[1].style.left), (110 / 210) * 100),
       marks.map(at).join(' '));
+    // The gap grows, the widths stay: drawn again with the new gap.
+    const first = track.querySelector('[idomkey="chapter-0"]');
+    first.style.marginRight = '20px';
+    await wait(600);
+    await env.playTo(20);
+    t(n('late chapters: a wider inline gap moves the marks'),
+      env.marks().length === 2 && near(parseFloat(env.marks()[1].style.left), (120 / 220) * 100), env.marks().map(at).join(' '));
+    // A class whose CSS sets the gap, as YouTube's own.
+    const style = env.doc.createElement('style');
+    style.textContent = '.wide-gap { margin-right: 30px !important; }';
+    env.doc.head.appendChild(style);
+    first.className = 'wide-gap';
+    await wait(600);
+    await env.playTo(30);
+    t(n('late chapters: a gap changed by a class moves the marks'),
+      env.marks().length === 2 && near(parseFloat(env.marks()[1].style.left), (130 / 230) * 100), env.marks().map(at).join(' '));
   }
 
   // ---- Replay: the player chrome torn down at the end, rebuilt later ----

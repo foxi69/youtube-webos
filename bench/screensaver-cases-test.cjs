@@ -253,16 +253,16 @@ run(async () => {
   {
     // YouTube TV sends each Yellow the mod dispatches back a moment later,
     // unflagged, as keycode 170 (measured on webOS 25: 1-24 ms later). Here
-    // the echo is trusted, as on a Chrome without isTrusted (Chrome 38), so
-    // only the mod's own record of what it sent can tell it from a press.
+    // the echo has no isTrusted, as on Chrome 38, so only the mod's own
+    // record of what it sent can tell it from a press.
     const env = boot({ config: { shortcut_key_yellow: 'config_menu' } });
     const echoes = [];
     env.doc.addEventListener('keydown', (e) => {
       if (!e.__ytafSynthetic) return;
       setTimeout(() => {
         echoes.push(e.keyCode);
-        trustedKey(env.win, YELLOW_ALT, env.doc.body, 'keydown');
-        trustedKey(env.win, YELLOW_ALT, env.doc.body, 'keyup');
+        trustedKey(env.win, YELLOW_ALT, env.doc.body, 'keydown', { isTrusted: undefined });
+        trustedKey(env.win, YELLOW_ALT, env.doc.body, 'keyup', { isTrusted: undefined });
       }, 5);
     }, true);
     const panelOpen = () => {
@@ -284,6 +284,31 @@ run(async () => {
     trustedKey(env.win, YELLOW, env.doc.body, 'keyup');
     t(n('echo: control: a real Yellow press runs it'), await until(panelOpen, 1000));
     t(n('echo: no page errors'), env.errors.length === 0, env.errors.join(' | '));
+    env.win.close();
+  }
+
+  // ---- A real Yellow just after the keep-alive's is a press ----
+  {
+    // A Chrome with isTrusted marks the remote's press trusted: one that
+    // comes inside the echo's window still runs its binding.
+    const env = boot({ config: { shortcut_key_yellow: 'config_menu' } });
+    let pressed = false;
+    env.doc.addEventListener('keydown', (e) => {
+      if (!e.__ytafSynthetic || pressed) return;
+      pressed = e.keyCode;
+      setTimeout(() => {
+        trustedKey(env.win, YELLOW, env.doc.body, 'keydown');
+        trustedKey(env.win, YELLOW, env.doc.body, 'keyup');
+      }, 5);
+    }, true);
+    await wait(50);
+    env.addVideo();
+    await env.page('SHORTS');
+    t(n('echo window: precondition: the keep-alive sent Yellow'), await until(() => pressed === YELLOW, 3000), String(pressed));
+    t(n('echo window: a trusted Yellow inside it runs the Yellow binding'), await until(() => {
+      const c = env.doc.querySelector('.ytaf-ui-container');
+      return !!c && env.win.getComputedStyle(c).display !== 'none';
+    }, 1000));
     env.win.close();
   }
 });

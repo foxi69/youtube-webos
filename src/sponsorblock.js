@@ -329,11 +329,15 @@ class SponsorBlockHandler {
         return out;
     }
 
-    /** A cheap signature of the chapter pieces (no layout read): a change redraws the marks. */
+    /**
+     * A cheap signature of the chapter pieces (no layout read): their inline
+     * style (width, margins) and class (the gaps of YouTube's CSS); a change
+     * redraws the marks.
+     */
     _chapterSig() {
         const els = this._chapterElements();
         let sig = '';
-        for (let i = 0; i < els.length; i++) sig += els[i].style.width + ',';
+        for (let i = 0; i < els.length; i++) sig += els[i].className + ':' + els[i].style.cssText + ',';
         return sig;
     }
 

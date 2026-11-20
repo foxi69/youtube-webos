@@ -55,5 +55,8 @@
   {"id":"repeat-paused","file":"src/repeat-video.js","from":"if (repeatId === null || currentVideoId() !== repeatId || video !== getVideo() || video.paused) return;","to":"if (repeatId === null || currentVideoId() !== repeatId || video !== getVideo()) return;","why":"a paused seek to the end restarts"},
   {"id":"repeat-hash-other","file":"src/repeat-video.js","from":"if (repeatId !== null && videoIdOf(hash) !== repeatId) repeatId = null;","to":"","why":"repeat stays on for another video"},
   {"id":"queue-late-chosen","file":"src/video-queue.js","from":"if (choseAnother(next)) { putBack(next); return; }","to":"","why":"a late command replaces a video the viewer chose that is still loading"},
-  {"id":"replayed-own-style","file":"src/most-replayed.js","from":"|${uri.length}|${own}`","to":"|${uri.length}`","why":"a bar positioned with no change of size stays relative"}
+  {"id":"replayed-own-style","file":"src/most-replayed.js","from":"|${uri.length}|${own}`","to":"|${uri.length}`","why":"a bar positioned with no change of size stays relative"},
+  {"id":"echo-trusted-press","file":"src/utils.js","from":" || evt.isTrusted === true) return false;","to":") return false;","why":"a trusted Yellow inside the keep-alive's echo window is dropped"},
+  {"id":"selector-split-quote","file":"src/comments-fix.js","from":"else if (ch === '\"' || ch === \"'\") quote = ch;","to":"else if (false) quote = ch;","why":"a bracket in a quoted attribute value joins two selectors of a merged list"},
+  {"id":"sb-chapter-sig-class","file":"src/sponsorblock.js","from":"sig += els[i].className + ':' + els[i].style.cssText + ',';","to":"sig += els[i].style.cssText + ',';","why":"a chapter gap changed by a class leaves the marks at the old gap"}
 ]

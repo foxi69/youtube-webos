@@ -243,15 +243,16 @@ export const SYNTHETIC_KEY_FLAG = '__ytafSynthetic';
 
 // YouTube TV sends a colour key this module dispatches back a moment later,
 // unflagged, as the colour's other keycode (Yellow 405 -> 170; measured on
-// webOS 25: 1-24 ms later). On Chrome 38 that echo cannot be told from a press
-// by isTrusted, so the colour and time of the last one sent are kept.
+// webOS 25: 1-24 ms later). A Chrome with isTrusted marks that echo untrusted
+// and a press trusted; Chrome 38 has no isTrusted, so there the colour and time
+// of the last one sent tell the echo from a press.
 const ECHO_WINDOW_MS = 100;
 let lastSentColor = null;
 let lastSentAt = 0;
 
 /** Whether `evt` is YouTube's echo of a colour key this module just sent. */
 export function isSyntheticKeyEcho(evt) {
-  if (!lastSentColor || evt[SYNTHETIC_KEY_FLAG]) return false;
+  if (!lastSentColor || evt[SYNTHETIC_KEY_FLAG] || evt.isTrusted === true) return false;
   return Date.now() - lastSentAt < ECHO_WINDOW_MS && COLOR_CODE_MAP.get(evt.keyCode || evt.charCode) === lastSentColor;
 }
 
