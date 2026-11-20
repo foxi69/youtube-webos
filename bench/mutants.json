@@ -93,5 +93,20 @@
   {"id":"speed-toggle-live","file":"src/playback-speed.js","from":"if (isLive()) {","to":"if (false) {","why":"Toggle Speed changes the speed on a live stream"},
   {"id":"hooks-delegated","file":"src/app_api/index.ts","from":"if (delegated) throw e;","to":"","why":"a command YouTube's resolver already got is run again when it throws"},
   {"id":"hooks-fallback","file":"src/app_api/index.ts","from":"console.warn('[app_api] command hook failed for', key, e);","to":"throw e;","why":"a hook of ours that throws breaks the command"},
-  {"id":"ui-remember-speed-row","file":"src/ui.js","from":"setState(elRememberSpeed, configRead('enablePlaybackSpeed') !== false)","to":"setState(elRememberSpeed, true)","why":"Remember Playback Speed stays active with Playback Speed Control off"}
+  {"id":"ui-remember-speed-row","file":"src/ui.js","from":"setState(elRememberSpeed, configRead('enablePlaybackSpeed') !== false)","to":"setState(elRememberSpeed, true)","why":"Remember Playback Speed stays active with Playback Speed Control off"},
+  {"id":"sb-button-click","file":"src/sponsorblock-skip-button.js","from":"try { onSkip(); } catch (e) { console.warn('[SponsorBlock] Skip button failed:', e); }","to":"","why":"a click on the Skip button does not skip"},
+  {"id":"sb-chapters-fetch","file":"src/sponsorblock.js","from":"JSON.stringify(['skip', 'mute', 'full', 'chapter'])","to":"JSON.stringify(['skip', 'mute', 'full'])","why":"community chapters are never fetched"},
+  {"id":"sb-chapters-drawn","file":"src/sponsorblock.js","from":"!isFullVideoSegment(s) && s.category !== 'chapter' &&","to":"!isFullVideoSegment(s) &&","why":"community chapters are drawn on the seek bar as segments"},
+  {"id":"subs-delay-sign","file":"src/config.js","from":"return (match[1] === 'm' ? -1 : 1) * Number(match[2]);","to":"return Number(match[2]);","why":"Earlier moves the subtitles later"},
+  {"id":"subs-delay-clamp","file":"src/caption-style.js","from":"event.tStartMs = Math.max(0, event.tStartMs + delayMs);","to":"event.tStartMs = event.tStartMs + delayMs;","why":"an earlier delay gives the first subtitles a start before 0"},
+  {"id":"audio-stream-off","file":"src/audio-only.js","from":"const stream = on && !!configRead('audioOnlyStream');","to":"const stream = !!configRead('audioOnlyStream');","why":"Audio-Only Mode turned off keeps streaming the sound alone"},
+  {"id":"audio-reload","file":"src/audio-only.js","from":"reloadCurrentVideo();","to":"","why":"the video playing keeps its picture stream until the next one"},
+  {"id":"audio-page-end","file":"src/audio-only.js","from":"    streaming = false;","to":"","why":"leaving the watch page leaves the next video audio-only"},
+  {"id":"queue-row-empty","file":"src/long-press-menu.js","from":"if (!videos.length) return null;","to":"","why":"a Queue row with Clear queue alone shows with nothing queued"},
+  {"id":"queue-row-hide-recommended","file":"src/adblock.js","from":"if (!kept.length && results && results.pivot && !queueShelf()) {","to":"if (!kept.length && results && results.pivot) {","why":"Hide Recommended Videos takes away the rows the Queue row goes in"},
+  {"id":"queue-played-leaves","file":"src/video-queue.js","from":"if (index !== -1) queue.splice(index, 1);","to":"","why":"a queued video opened from the row plays again at the next end"},
+  {"id":"dearrow-casual-setting","file":"src/dearrow/titles.js","from":"if (configRead('dearrowCasualMode') && casualKeepsOriginal(video)) return null;","to":"if (casualKeepsOriginal(video)) return null;","why":"casual votes keep YouTube's title with Casual Mode off"},
+  {"id":"dearrow-casual-title","file":"src/dearrow/titles.js","from":"(!vote.title || (typeof vote.title === 'string' && vote.title.trim().toLowerCase() === original))","to":"true","why":"a casual vote for an earlier title keeps the title the video has now"},
+  {"id":"ui-chapters-setting","file":"src/ui.js","from":"if (!configRead('sbCommunityChapters') || !window.sponsorblock ||","to":"if (!window.sponsorblock ||","why":"community chapters are used with Use Community Chapters off"},
+  {"id":"ui-chapters-previous","file":"src/ui.js","from":"target = now - current > 3 ? current : previous;","to":"target = current;","why":"Previous Chapter at a chapter's start stays in it instead of going back one"}
 ]

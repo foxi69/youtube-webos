@@ -79,7 +79,10 @@ run(async () => {
     t(n('...and the video does not jump as it opens'), env.state.time === 0 && env.state.seeks.length === 0,
       env.state.seeks.join(','));
     await env.playTo(0.2);
-    t(n('...the blue key is offered for it'), env.toasts() === 'Sponsored: Press Blue to skip', env.toasts());
+    const offer = env.win.document.querySelector('.ytaf-sb-skip-button');
+    t(n('...the Skip button offers it, with the blue key'), !!offer &&
+      offer.querySelector('.ytaf-sb-skip-label').textContent === 'Skip Sponsored' &&
+      offer.querySelector('.ytaf-sb-skip-key').textContent === 'Blue', offer ? offer.textContent : 'no button');
     const handled = env.sb().handleBlueButton();
     await wait(40);
     t(n('...which skips it to its end'), handled === true && env.state.seeks.join() === '20', env.state.seeks.join(','));
