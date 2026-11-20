@@ -1,0 +1,59 @@
+baseline: 75 tests pass; 56 mutants, 10 at a time
+killed queue-dup (21s) by feed-features-test: PASS no jsdomError (feed filters)
+SURVIVED queue-refused-hash (92s): a refusal is reported for a video not on screen
+SURVIVED queue-unplayable (92s): an UNPLAYABLE queued video is not reported
+SURVIVED queue-opening-id (90s): any video playing counts as the queued one opening
+killed queue-end-watch (21s) by feed-features-test: PASS no jsdomError (feed filters)
+SURVIVED queue-from (89s): the video that was on, playing again, counts as the viewer's choice
+SURVIVED watch-hidden-start (90s): watch time counts while the app is hidden
+SURVIVED watch-hidden-resume (90s): coming back counts while still hidden
+killed watch-readystate (19s) by watch-time-test: FAIL back from the background while it buffers: not counted
+killed watch-format-hours (19s) by watch-time-test: FAIL past an hour: "1h 06m"
+killed countdown-paused (21s) by preview-countdown-test: FAIL a timeupdate while paused leaves it
+killed countdown-tile-id (21s) by preview-countdown-test: FAIL ...and the newly focused tile, whose video is not the one playing, is untouched
+SURVIVED countdown-live (89s): a live preview gets a countdown
+killed countdown-hours (21s) by preview-countdown-test: FAIL ...under an hour left of it keeps the hours: 0:59:59, not 59:59
+killed countdown-time-re (21s) by preview-countdown-test: FAIL a live badge stays
+SURVIVED remaining-rate (88s): the time left ignores the playback speed
+SURVIVED remaining-controls (89s): it writes with the controls hidden
+SURVIVED remaining-hidden (89s): it polls in the background
+killed remaining-live (17s) by panel-test: PASS no jsdomError in this flow
+killed mute-unmuted (21s) by preview-autoopen-test: FAIL mute on: playing mutes the preview (precondition)
+SURVIVED mute-shorts (89s): Shorts count as previews and are muted
+killed replayed-live (37s) by most-replayed-bundle-test: FAIL modern: a live stream: nothing drawn, nothing asked
+killed replayed-static (35s) by most-replayed-bundle-test: FAIL modern: ...the bar made a positioned block, as it is static and inline
+SURVIVED replayed-host (88s): the host is restyled on every pass
+killed history-vis (22s) by preview-history-test: FAIL on Home with autoplay=1 only: goes out
+killed history-playback-page (30s) by preview-history-test: FAIL on the watch page with autoplay=1 and vis=5: goes out
+killed history-keep-ms (22s) by preview-history-test: FAIL 81 s after it (expired): never goes out
+killed history-keep-max (22s) by preview-history-test: FAIL four previews: the oldest one's start ping is no longer kept, the next one's is
+killed sb-chain-start (43s) by sponsorblock-skip-test: FAIL modern: ...the chain is skipped once the metadata is in
+SURVIVED sb-search (88s): the segment search is off by one at a boundary
+SURVIVED sb-final-seek (89s): adjacent segments are not joined
+SURVIVED sb-auto-mode (88s): every segment is auto-skipped
+SURVIVED sb-categories (88s): segments are drawn with no category on
+killed speed-1x (21s) by speed-preview-test: FAIL preview playing on Home: no reload
+SURVIVED speed-capped-once (90s): the next-video cap is applied again
+killed speed-supported (57s) by speed-cases-test: FAIL a speed it cannot play is ignored
+SURVIVED speed-now (91s): a position of 0 is taken as known
+killed config-guest (14s) by per-account-test: FAIL guest: a change is not stored
+SURVIVED config-same-profile (90s): the same account switches its settings again
+SURVIVED config-guest-state (89s): the guest's settings state is wrong
+SURVIVED filters-duration (89s): a text that is not a duration is read as one
+killed filters-mix-lockup (20s) by feed-features-test: PASS no jsdomError (feed filters)
+killed filters-mix-browse (20s) by feed-features-test: PASS no jsdomError (feed filters)
+killed filters-units (20s) by feed-features-test: PASS no jsdomError (feed filters)
+killed menu-tile-style (20s) by feed-features-test: PASS no jsdomError (feed filters)
+SURVIVED menu-lockup-type (89s): a mix or playlist lockup gets our entries
+SURVIVED menu-marker (89s): our entries are added twice
+SURVIVED menu-channel (89s): Block channel without a channel
+killed login-bypass-window (15s) by upstream-fixes-test: FAIL after the start-up window the selector is left alone
+killed login-command-window (46s) by whos-watching-test: FAIL modern: the selector opened again by the viewer is shown
+killed keys-repeat (88s) by shortcut-actions-test: FAIL modern: a held bound key's repeat is taken but runs nothing
+SURVIVED keys-search-digits (88s): digits are taken on the search page
+killed keys-scope (54s) by speed-cases-test: PASS no jsdomError (keys)
+killed keys-textbox (88s) by shortcut-actions-test: FAIL modern: a number typed into a text box stays a number
+killed repeat-paused (88s) by shortcut-actions-test: FAIL modern: ...paused, a seek near the end stays where it was put (seek event)
+killed repeat-hash-other (89s) by shortcut-actions-test: FAIL modern: ...another video ends it, even one that never played (back on the first: off)
+
+31 of 56 killed; survived: queue-refused-hash, queue-unplayable, queue-opening-id, queue-from, watch-hidden-start, watch-hidden-resume, countdown-live, remaining-rate, remaining-controls, remaining-hidden, mute-shorts, replayed-host, sb-search, sb-final-seek, sb-auto-mode, sb-categories, speed-capped-once, speed-now, config-same-profile, config-guest-state, filters-duration, menu-lockup-type, menu-marker, menu-channel, keys-search-digits
