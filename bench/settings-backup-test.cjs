@@ -588,6 +588,85 @@ run(async () => {
       JSON.parse(backup.get(KEY)).minVideoLength === '5' && JSON.parse(backup.get(KEY)).removeUpscaledFormats === false, backup.get(KEY));
   }
 
+  // ---- A change made before a read that failed, then the next start ----
+  {
+    const backup = savedCopy([[KEY, JSON.stringify({ minVideoLength: '5', removeUpscaledFormats: true, foxThemeApplied: true })]]);
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const first = boot({ data: backup, log: [], idb: { gate, failAfter: 0 } });
+    await wait(300);
+    trustedKey(first.win, 404, first.win.document.body, 'keydown');
+    trustedKey(first.win, 404, first.win.document.body, 'keyup');
+    await until(() => first.win.document.querySelector('.ytaf-ui-container label'));
+    const label = Array.prototype.slice.call(first.win.document.querySelectorAll('label'))
+      .find((l) => l.textContent.trim() === 'Skip AI-Upscaled Qualities');
+    const input = label && label.querySelector('input');
+    t('precondition (change, failed read): the switch is on, from the defaults', !!input && input.checked === true);
+    if (input) input.click();
+    const written = await until(() => stored(first.win).removeUpscaledFormats === false);
+    release();
+    await wait(300);
+    const left = {};
+    for (let i = 0; i < first.win.localStorage.length; i++) {
+      const k = first.win.localStorage.key(i);
+      left[k] = first.win.localStorage.getItem(k);
+    }
+    t('...precondition: the change was stored, and the read failed (the mark stays)',
+      written && left['ytaf-settings-recovering'] === '1' && JSON.parse(left[KEY]).removeUpscaledFormats === false, JSON.stringify(left));
+    const log = [];
+    const page = boot({ data: backup, log, storage: left });
+    const restored = await until(() => stored(page.win).minVideoLength === '5');
+    t('change, failed read: the next start restores the copy, with the change the failed run stored kept',
+      restored && stored(page.win).removeUpscaledFormats === false, JSON.stringify(stored(page.win)));
+    trustedKey(page.win, 404, page.win.document.body, 'keydown');
+    trustedKey(page.win, 404, page.win.document.body, 'keyup');
+    await until(() => page.win.document.querySelector('.ytaf-ui-container label'));
+    const inUse = Array.prototype.slice.call(page.win.document.querySelectorAll('label'))
+      .find((l) => l.textContent.trim() === 'Skip AI-Upscaled Qualities');
+    t('...it is the one in use', !!inUse && inUse.querySelector('input').checked === false);
+    const copied = await until(() => JSON.parse(backup.get(KEY)).removeUpscaledFormats === false);
+    t('...the copy gets it, with its other settings', copied && JSON.parse(backup.get(KEY)).minVideoLength === '5', backup.get(KEY));
+    t('...and once read, nothing of it is left to replay',
+      page.win.localStorage.getItem('ytaf-settings-changed') === null && page.win.localStorage.getItem('ytaf-settings-recovering') === null);
+  }
+
+  // ---- An account with no record anywhere, given a change before the copy was read ----
+  {
+    // The copy has only the shared settings: the account abc, turned on in
+    // the read, has nothing to go by but the restored shared values.
+    const backup = savedCopy([[KEY, JSON.stringify({ minVideoLength: '1', removeUpscaledFormats: true, foxThemeApplied: true })]]);
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const log = [];
+    const page = boot({ data: backup, log, storage: IDENTITY, idb: { gate } });
+    await wait(300);
+    trustedKey(page.win, 404, page.win.document.body, 'keydown');
+    trustedKey(page.win, 404, page.win.document.body, 'keyup');
+    await until(() => page.win.document.querySelector('.ytaf-ui-container label'));
+    const input = (text) => {
+      const label = Array.prototype.slice.call(page.win.document.querySelectorAll('label'))
+        .find((l) => l.textContent.trim() === text);
+      return label && label.querySelector('input');
+    };
+    const separate = input('Separate Settings for Each Account');
+    const upscaled = input('Skip AI-Upscaled Qualities');
+    t('precondition (no account record): separate settings off, Skip AI-Upscaled Qualities on',
+      !!separate && separate.checked === false && !!upscaled && upscaled.checked === true);
+    separate.click();
+    upscaled.click();
+    // Read before the debounced write: the account's record is not stored yet.
+    release();
+    const restored = await until(() => !!stored(page.win, PROFILE_KEY) && stored(page.win, PROFILE_KEY).minVideoLength === '1');
+    t('no account record: the account starts from the restored shared settings',
+      restored, JSON.stringify(stored(page.win, PROFILE_KEY)));
+    t('...with the change made in it before the read', stored(page.win, PROFILE_KEY).removeUpscaledFormats === false &&
+      upscaled.checked === false, `${JSON.stringify(stored(page.win, PROFILE_KEY))} ${upscaled.checked}`);
+    t('...which the shared record does not take', stored(page.win).removeUpscaledFormats === true &&
+      stored(page.win).perAccountSettings === true, JSON.stringify(stored(page.win)));
+    const copied = await until(() => backup.has(PROFILE_KEY) && JSON.parse(backup.get(PROFILE_KEY)).removeUpscaledFormats === false);
+    t('...and the account\'s copy has it', copied, backup.get(PROFILE_KEY));
+  }
+
   // ---- The app's own records written before the copy was read take the copy's ----
   {
     // A copy from before the Fox theme: the flag is the copy's (false), not
@@ -647,12 +726,13 @@ run(async () => {
     let release;
     const gate = new Promise((r) => { release = r; });
     let refuse = false;
+    let refused = 0;
     const page = boot({
       data: backup, log: [], idb: { gate },
       setup: (w) => {
         const setItem = w.Storage.prototype.setItem;
         w.Storage.prototype.setItem = function (k, v) {
-          if (refuse && k === CAPTION) throw new Error('QuotaExceededError');
+          if (refuse && k === CAPTION) { refused++; throw new Error('QuotaExceededError'); }
           return setItem.call(this, k, v);
         };
       }
@@ -662,9 +742,11 @@ run(async () => {
     page.win.localStorage.setItem(CAPTION, JSON.stringify({ data: DEFAULT, expiration: now + 1000, creation: now }));
     refuse = true;
     release();
-    await wait(400);
-    t('precondition: the caption record refused, YouTube’s default is still there',
-      JSON.parse(page.win.localStorage.getItem(CAPTION)).data === DEFAULT);
+    // The restore's write-back is seen refused before writes are let through:
+    // a write-back that came only after that would pass with no retry at all.
+    const sawRefused = await until(() => refused > 0);
+    t('precondition: the caption write-back at the restore was refused, YouTube’s default is still there',
+      sawRefused && JSON.parse(page.win.localStorage.getItem(CAPTION)).data === DEFAULT, String(refused));
     refuse = false;
     Object.defineProperty(page.win.document, 'hidden', { value: true, configurable: true });
     page.win.document.dispatchEvent(new page.win.Event('visibilitychange'));
