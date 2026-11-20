@@ -2,7 +2,8 @@
  * Tile previews never open full screen by themselves: every preview command's
  * autotransitionDelayMs becomes -1 and its forceSeamlessAutotransition false,
  * with no setting and every other use of the JSON.parse hook off
- * (adblock.js, stopPreviewAutoOpen). And Video Previews, Without sound, mutes again when
+ * (adblock.js, stopPreviewAutoOpen). A playlist page's rows (Watch Later) get no
+ * preview at all, as the TV plays it unseen behind the page there. And Video Previews, Without sound, mutes again when
  * YouTube unmutes the video on a volume change (mute-previews.js).
  *
  * The field values are a webOS 25 TV's (2026-11-14): the preview starts 3 s
@@ -127,6 +128,39 @@ async function responses() {
   t('continuation: the delay is -1 and the seamless flag false', c.length === 1 &&
     c[0].autotransitionDelayMs === -1 && c[0].forceSeamlessAutotransition === false, JSON.stringify(c[0]));
 
+  // A playlist page (Watch Later, as a webOS 25 TV gets it): its rows lose the
+  // preview, as the TV plays it unseen behind the page there. A focus command
+  // with more in it keeps the rest.
+  const row = (id) => Object.assign(tile(id, 39000, true, 0).tileRenderer, { onSelectCommand: { watchEndpoint: { videoId: id } } });
+  const mixed = row('wwwwwwwwww3');
+  mixed.onFocusCommand.logFocusCommand = { kept: true };
+  const list = { playlistVideoListRenderer: { playlistId: 'WL',
+    contents: [{ tileRenderer: row('wwwwwwwwww1') }, { tileRenderer: row('wwwwwwwwww2') }, { tileRenderer: mixed }] } };
+  const twoColumn = { twoColumnRenderer: { leftColumn: { entityMetadataRenderer: {} }, rightColumn: list } };
+  const wlRaw = { responseContext: { _pad: pad },
+    contents: { tvBrowseRenderer: { content: { tvSurfaceContentRenderer: { content: twoColumn } } } } };
+  t('precondition: the playlist rows carry three preview commands', commands(wlRaw).length === 3);
+  const wl = P(wlRaw);
+  const rows = wl.contents.tvBrowseRenderer.content.tvSurfaceContentRenderer.content.twoColumnRenderer.rightColumn.playlistVideoListRenderer.contents;
+  t('playlist page: no preview command is left', commands(wl).length === 0, JSON.stringify(commands(wl)).slice(0, 120));
+  t('...the rows whose focus command was only the preview have none', !('onFocusCommand' in rows[0].tileRenderer) && !('onFocusCommand' in rows[1].tileRenderer));
+  t('...a focus command with more in it keeps the rest', JSON.stringify(rows[2].tileRenderer.onFocusCommand) === '{"logFocusCommand":{"kept":true}}',
+    JSON.stringify(rows[2].tileRenderer.onFocusCommand));
+  t('...and each row still opens its video', rows.every((r, i) => r.tileRenderer.onSelectCommand.watchEndpoint.videoId === ['wwwwwwwwww1', 'wwwwwwwwww2', 'wwwwwwwwww3'][i]));
+  const wlMore = P({ responseContext: { _pad: pad }, continuationContents: { playlistVideoListContinuation: {
+    contents: [{ tileRenderer: row('wwwwwwwwww4') }] } } });
+  t('playlist continuation: its rows lose the preview too', commands(wlMore).length === 0 &&
+    !('onFocusCommand' in wlMore.continuationContents.playlistVideoListContinuation.contents[0].tileRenderer));
+  // A preview command without autotransitionDelayMs: the page is walked all the same.
+  const bare = row('wwwwwwwwww5');
+  delete bare.onFocusCommand.startInlinePlaybackCommand.autotransitionDelayMs;
+  const bareRaw = { responseContext: { _pad: pad }, continuationContents: { playlistVideoListContinuation: {
+    contents: [{ tileRenderer: bare }] } } };
+  t('precondition: that row has a preview command and no autotransitionDelayMs',
+    commands(bareRaw).length === 1 && !JSON.stringify(bareRaw).includes('autotransitionDelayMs'));
+  t('playlist: a preview command without autotransitionDelayMs is dropped too',
+    commands(P(bareRaw)).length === 0, JSON.stringify(commands(P(bareRaw))).slice(0, 120));
+
   // No seamless flag in the command: none is added.
   const noFlag = commands(P(browse([tile('nnnnnnnnnn1', 39000, undefined, 0)])));
   t('no seamless flag: the delay is -1 and no flag is added', noFlag.length === 1 &&
@@ -159,7 +193,8 @@ async function responses() {
 }
 
 async function mute() {
-  const run = async (mute) => {
+  // `page`: the page the preview opens as, the watch page or the Shorts page.
+  const run = async (mute, page = 'WEB_PAGE_TYPE_WATCH') => {
     const { win, errors } = boot(Object.assign({}, ALL_OFF, { videoPreviews: mute ? 'muted' : 'sound' }));
     const video = win.document.createElement('video');
     win.document.body.appendChild(video);
@@ -170,21 +205,34 @@ async function mute() {
     video.muted = false;
     fire('volumechange');
     const afterVolume = video.muted;
-    // The preview opened: on the watch page the mute is undone and stays undone.
-    win.document.body.className = 'WEB_PAGE_TYPE_WATCH';
+    // The volume changes the mute toggles queued run here, while the page is
+    // still Home: after this only the page change can undo the mute.
+    for (let i = 0; i < 3; i++) await tick(win, 0);
+    const beforePage = video.muted;
+    // The preview opened: on its page the mute is undone and stays undone.
+    win.document.body.className = page;
     for (let i = 0; i < 20 && video.muted; i++) await tick(win, 5);
-    const onWatch = video.muted;
+    const onPage = video.muted;
     video.muted = false;
     fire('volumechange');
-    return { afterPlaying, afterVolume, onWatch, watchAfterVolume: video.muted, errors };
+    return { afterPlaying, afterVolume, beforePage, onPage, pageAfterVolume: video.muted, errors };
   };
 
   const on = await run(true);
   t('mute on: playing mutes the preview (precondition)', on.afterPlaying === true);
   t('mute on: a volume change that unmutes the preview mutes it again', on.afterVolume === true);
-  t('mute on: on the watch page the mute is undone', on.onWatch === false);
-  t('mute on: a volume change on the watch page leaves the sound on', on.watchAfterVolume === false);
+  t('mute on: ...and it is still muted once the queued volume changes ran (precondition)', on.beforePage === true);
+  t('mute on: on the watch page the mute is undone', on.onPage === false);
+  t('mute on: a volume change on the watch page leaves the sound on', on.pageAfterVolume === false);
   t('mute on: no page errors', on.errors.length === 0, on.errors.join(' | '));
+
+  // A Short is no preview: on the Shorts page it plays with its sound.
+  const shorts = await run(true, 'WEB_PAGE_TYPE_SHORTS');
+  t('mute on, Shorts: the preview is muted first, also once the queued volume changes ran (precondition)',
+    shorts.afterPlaying === true && shorts.afterVolume === true && shorts.beforePage === true);
+  t('mute on, Shorts: on the Shorts page the mute is undone', shorts.onPage === false);
+  t('mute on, Shorts: a volume change on the Shorts page leaves the sound on', shorts.pageAfterVolume === false);
+  t('mute on, Shorts: no page errors', shorts.errors.length === 0, shorts.errors.join(' | '));
 
   const offRun = await run(false);
   t('control, With sound: playing leaves the sound on', offRun.afterPlaying === false);

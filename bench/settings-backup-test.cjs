@@ -6,7 +6,7 @@
  *
  * Usage: node bench/settings-backup-test.cjs [dist/webOSUserScripts/userScript.js] [legacy|modern]
  */
-const { createReporter, bootPage, trustedKey, wait, UA } = require('./harness.cjs');
+const { createReporter, bootPage, trustedKey, wait, until, UA } = require('./harness.cjs');
 
 const KEY = 'ytaf-configuration';
 
@@ -208,6 +208,104 @@ run(async () => {
       JSON.parse(backup.get(KEY)).minVideoLength === '5', JSON.stringify(stored(page.win)));
   }
 
+  // ---- A setting changed in the panel before the copy was read keeps its change ----
+  {
+    const backup = savedCopy([[KEY, JSON.stringify({ minVideoLength: '5', removeUpscaledFormats: true, foxThemeApplied: true })]]);
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const page = boot({ data: backup, log: [], idb: { gate } });
+    await wait(300);
+    trustedKey(page.win, 404, page.win.document.body, 'keydown');
+    trustedKey(page.win, 404, page.win.document.body, 'keyup');
+    await wait(300);
+    const label = Array.prototype.slice.call(page.win.document.querySelectorAll('label'))
+      .find((l) => l.textContent.trim() === 'Skip AI-Upscaled Qualities');
+    const input = label && label.querySelector('input');
+    t('precondition: the switch is on, from the defaults, while the copy is not read yet',
+      !!input && input.checked === true && !!stored(page.win) && stored(page.win).minVideoLength === '0',
+      JSON.stringify(stored(page.win)));
+    if (input) input.click();
+    await wait(300);
+    release();
+    await wait(400);
+    const after = stored(page.win);
+    t('a change made before the copy was read stays, in localStorage and in use',
+      !!after && after.removeUpscaledFormats === false && !!input && input.checked === false, JSON.stringify(after));
+    t('...and the other settings still come back from the copy', !!after && after.minVideoLength === '5', JSON.stringify(after));
+    t('...and the copy gets the change too', JSON.parse(backup.get(KEY)).removeUpscaledFormats === false &&
+      JSON.parse(backup.get(KEY)).minVideoLength === '5', backup.get(KEY));
+  }
+
+  // ---- The same with Separate Settings for Each Account: the account's restored profile keeps the change too ----
+  {
+    const backup = savedCopy([
+      [KEY, JSON.stringify({ perAccountSettings: true, foxThemeApplied: true, minVideoLength: '1' })],
+      [PROFILE_KEY, JSON.stringify({ minVideoLength: '20', removeUpscaledFormats: true })]
+    ]);
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const page = boot({ data: backup, log: [], storage: IDENTITY, idb: { gate } });
+    await wait(300);
+    trustedKey(page.win, 404, page.win.document.body, 'keydown');
+    trustedKey(page.win, 404, page.win.document.body, 'keyup');
+    await wait(300);
+    const label = Array.prototype.slice.call(page.win.document.querySelectorAll('label'))
+      .find((l) => l.textContent.trim() === 'Skip AI-Upscaled Qualities');
+    const input = label && label.querySelector('input');
+    t('precondition (accounts): the switch is on while the copy is not read yet', !!input && input.checked === true);
+    if (input) input.click();
+    await wait(300);
+    release();
+    await wait(700);
+    const profile = stored(page.win, PROFILE_KEY);
+    t('accounts: the change stays in use once the account has loaded its restored profile',
+      !!input && input.checked === false && await panelValue(page.win, 'Hide Videos Shorter Than') === '20 min',
+      `${input && input.checked} / ${await panelValue(page.win, 'Hide Videos Shorter Than')}`);
+    t('...and is in the account\'s record, with its other settings', !!profile && profile.removeUpscaledFormats === false &&
+      profile.minVideoLength === '20', JSON.stringify(profile));
+    t('...and in its copy', JSON.parse(backup.get(PROFILE_KEY)).removeUpscaledFormats === false, backup.get(PROFILE_KEY));
+  }
+
+  // ---- ...and when the account's record survived in localStorage, but localStorage refuses the changed one ----
+  {
+    const backup = savedCopy([
+      [KEY, JSON.stringify({ perAccountSettings: true, foxThemeApplied: true, minVideoLength: '1' })],
+      [PROFILE_KEY, JSON.stringify({ minVideoLength: '20', removeUpscaledFormats: true })]
+    ]);
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const oldLocal = JSON.stringify({ minVideoLength: '10', removeUpscaledFormats: true });
+    let refused = 0;
+    const page = boot({
+      data: backup, log: [], idb: { gate },
+      storage: Object.assign({ [PROFILE_KEY]: oldLocal }, IDENTITY),
+      setup: (w) => {
+        const set = w.Storage.prototype.setItem;
+        w.Storage.prototype.setItem = function (key, value) {
+          if (key === PROFILE_KEY) { refused++; throw new Error('QuotaExceededError'); }
+          return set.call(this, key, value);
+        };
+      }
+    });
+    await wait(300);
+    trustedKey(page.win, 404, page.win.document.body, 'keydown');
+    trustedKey(page.win, 404, page.win.document.body, 'keyup');
+    await wait(300);
+    const label = Array.prototype.slice.call(page.win.document.querySelectorAll('label'))
+      .find((l) => l.textContent.trim() === 'Skip AI-Upscaled Qualities');
+    const input = label && label.querySelector('input');
+    t('precondition (refused write): the switch is on while the copy is not read yet', !!input && input.checked === true);
+    if (input) input.click();
+    await wait(300);
+    release();
+    await wait(700);
+    // setItem is what the restore writes the changed record with.
+    t('...precondition: the changed record was refused', refused > 0, String(refused));
+    t('refused write: the change stays in use over the old local record, which gives the account its other settings',
+      !!input && input.checked === false && await panelValue(page.win, 'Hide Videos Shorter Than') === '10 min',
+      `${input && input.checked} / ${await panelValue(page.win, 'Hide Videos Shorter Than')}`);
+  }
+
   // ---- The account in use gets its own restored settings ----
   {
     const backup = savedCopy([
@@ -277,6 +375,62 @@ run(async () => {
       backup.get(OTHER_KEY));
   }
 
+  // ---- The shared record refused: an account's change is still written, and kept across a switch away and back ----
+  {
+    const OTHER_KEY = KEY + '::' + hashString('accountId=def');
+    const refuseShared = { on: false, refused: 0 };
+    const page = boot({
+      data: new Map(), log: [],
+      storage: Object.assign({
+        [KEY]: JSON.stringify({ perAccountSettings: true, foxThemeApplied: true }),
+        [PROFILE_KEY]: JSON.stringify({ removeUpscaledFormats: true }),
+        [OTHER_KEY]: JSON.stringify({ removeUpscaledFormats: true })
+      }, IDENTITY),
+      // The app writes the records by assignment (localStorage[key] = text):
+      // a stand-in that refuses the shared record, by assignment or setItem.
+      setup: (w) => {
+        const real = w.localStorage;
+        const refuse = (key) => {
+          if (refuseShared.on && key === KEY) { refuseShared.refused++; throw new Error('QuotaExceededError'); }
+        };
+        const proxy = new Proxy(real, {
+          get(target, prop) {
+            if (prop === 'setItem') return (key, value) => { refuse(key); target.setItem(key, value); };
+            const value = Reflect.get(target, prop);
+            return typeof value === 'function' ? value.bind(target) : value;
+          },
+          set(target, prop, value) { refuse(prop); target.setItem(prop, String(value)); return true; }
+        });
+        Object.defineProperty(w, 'localStorage', { configurable: true, get: () => proxy });
+      }
+    });
+    await wait(400);
+    const switchTo = async (accountId) => {
+      page.win.localStorage.setItem('yt.leanback.default::last-identity-used', JSON.stringify({ data: { accountId } }));
+      page.win.dispatchEvent(new page.win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: true } }));
+      page.win.dispatchEvent(new page.win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: false } }));
+      await wait(300);
+    };
+    const box = () => {
+      const label = Array.prototype.slice.call(page.win.document.querySelectorAll('label'))
+        .find((l) => l.textContent.trim() === 'Skip AI-Upscaled Qualities');
+      return label && label.querySelector('input');
+    };
+    await panelValue(page.win, 'Hide Videos Shorter Than');
+    t('precondition (shared refused): the account starts with the switch on', !!box() && box().checked === true);
+    refuseShared.on = true;
+    if (box()) box().click();
+    await wait(400);
+    t('...precondition: the shared record was refused', refuseShared.refused > 0, String(refuseShared.refused));
+    t('shared refused: the account\'s change is still written to its record',
+      !!stored(page.win, PROFILE_KEY) && stored(page.win, PROFILE_KEY).removeUpscaledFormats === false,
+      JSON.stringify(stored(page.win, PROFILE_KEY)));
+    await switchTo('def');
+    t('...precondition: the other account has its own setting (on)', !!box() && box().checked === true);
+    await switchTo('abc');
+    t('...and switched away and back, the account has its change', !!box() && box().checked === false);
+  }
+
   // ---- An account record still in localStorage is newer than its copy ----
   {
     const backup = savedCopy([
@@ -325,6 +479,70 @@ run(async () => {
       JSON.stringify(stored(second.win)));
     t('...the copy is not replaced by the defaults of the failed run', JSON.parse(backup.get(KEY)).minVideoLength === '5', backup.get(KEY));
     t('...and the mark is gone', second.win.localStorage.getItem('ytaf-settings-recovering') === null);
+  }
+
+  // ---- A failed read, then a start that changes a setting before the copy is read again ----
+  {
+    const backup = savedCopy([[KEY, JSON.stringify({ minVideoLength: '5', removeUpscaledFormats: true, foxThemeApplied: true })]]);
+    const before = backup.get(KEY);
+    const first = boot({ data: backup, log: [], idb: { failAfter: 0 } });
+    await wait(700);
+    const left = {};
+    for (let i = 0; i < first.win.localStorage.length; i++) {
+      const k = first.win.localStorage.key(i);
+      left[k] = first.win.localStorage.getItem(k);
+    }
+    t('precondition (recovering): the failed run left its defaults and the mark',
+      left['ytaf-settings-recovering'] === '1' && !!left[KEY] && JSON.parse(left[KEY]).minVideoLength === '0',
+      JSON.stringify(left));
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const log = [];
+    const page = boot({ data: backup, log, storage: left, idb: { gate } });
+    await wait(300);
+    trustedKey(page.win, 404, page.win.document.body, 'keydown');
+    trustedKey(page.win, 404, page.win.document.body, 'keyup');
+    await until(() => page.win.document.querySelector('.ytaf-ui-container label'));
+    const label = Array.prototype.slice.call(page.win.document.querySelectorAll('label'))
+      .find((l) => l.textContent.trim() === 'Skip AI-Upscaled Qualities');
+    const input = label && label.querySelector('input');
+    t('precondition (recovering): the switch is on, from the defaults, while the copy is not read yet',
+      !!input && input.checked === true, String(input && input.checked));
+    if (input) input.click();
+    // Written to localStorage: a copy of that write would be made in the same
+    // turn (the database is open by now), so it is checked at once.
+    const written = await until(() => stored(page.win).removeUpscaledFormats === false);
+    t('...precondition: the change was written to localStorage', written, JSON.stringify(stored(page.win)));
+    t('recovering: a write before the copy was read again is not copied over it', backup.get(KEY) === before && log.length === 0,
+      `${backup.get(KEY)} ${log.join()}`);
+    release();
+    await until(() => stored(page.win).minVideoLength === '5');
+    t('...once read, its settings come back, with the change kept',
+      stored(page.win).minVideoLength === '5' && stored(page.win).removeUpscaledFormats === false, JSON.stringify(stored(page.win)));
+    await until(() => log.length > 0);
+    t('...and the copy gets the change then, with its other settings',
+      JSON.parse(backup.get(KEY)).minVideoLength === '5' && JSON.parse(backup.get(KEY)).removeUpscaledFormats === false, backup.get(KEY));
+  }
+
+  // ---- The app's own records written before the copy was read take the copy's ----
+  {
+    // A copy from before the Fox theme: the flag is the copy's (false), not
+    // the true the app writes at start, so the next start moves its theme once.
+    const backup = savedCopy([[KEY, JSON.stringify({ minVideoLength: '5', uiTheme: 'blue-force-field', foxThemeApplied: false })]]);
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const page = boot({ data: backup, log: [], idb: { gate } });
+    const wrote = await until(() => !!stored(page.win) && stored(page.win).foxThemeApplied === true);
+    t('precondition: the app writes its flag before the copy is read', wrote, JSON.stringify(stored(page.win)));
+    release();
+    await until(() => stored(page.win).minVideoLength === '5');
+    t('the copy\'s flag takes the place of the one the app wrote',
+      stored(page.win).minVideoLength === '5' && stored(page.win).uiTheme === 'blue-force-field' && stored(page.win).foxThemeApplied === false,
+      JSON.stringify(stored(page.win)));
+    const next = boot({ data: backup, log: [], storage: { [KEY]: page.win.localStorage.getItem(KEY) } });
+    await until(() => stored(next.win).foxThemeApplied === true);
+    t('...so the next start moves the restored theme to Fox once',
+      stored(next.win).uiTheme === 'fox' && stored(next.win).foxThemeApplied === true, JSON.stringify(stored(next.win)));
   }
 
   // ---- A database that does not open, then the next start ----

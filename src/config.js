@@ -635,6 +635,12 @@ if (sharedConfig.perAccountSettings) {
 // Debounce localStorage writes — rapid input (e.g. color picker drag) was
 // stringifying the entire ~50-key config object on every event.
 let pendingWriteTimer = null;
+// An account record localStorage refused to take (quota), by its key: the
+// account's settings as they are now, which win over the older record still
+// there when the account is loaded again (after a restore that changed it, or
+// a switch to another account and back).
+const unwrittenRecords = {};
+
 function writeNow() {
   pendingWriteTimer = null;
   const written = [];
@@ -642,12 +648,23 @@ function writeNow() {
     if (activeProfile) {
       for (const key of DEVICE_KEYS) sharedConfig[key] = localConfig[key];
       const shared = JSON.stringify(sharedConfig);
-      window.localStorage[CONFIG_KEY] = shared;
-      written.push([CONFIG_KEY, shared]);
+      // Each record on its own: a shared record refused (quota) does not keep
+      // the account's from being written, or kept in memory.
+      try {
+        window.localStorage[CONFIG_KEY] = shared;
+        written.push([CONFIG_KEY, shared]);
+      } catch { /* the account's record is still written below */ }
       if (storesProfile(activeProfile)) {
-        const own = JSON.stringify(pickAccountValues(localConfig));
-        window.localStorage[profileStorageKey(activeProfile)] = own;
-        written.push([profileStorageKey(activeProfile), own]);
+        const key = profileStorageKey(activeProfile);
+        const values = pickAccountValues(localConfig);
+        const own = JSON.stringify(values);
+        try {
+          window.localStorage[key] = own;
+          delete unwrittenRecords[key];
+          written.push([key, own]);
+        } catch {
+          unwrittenRecords[key] = values;
+        }
       }
     } else {
       Object.assign(sharedConfig, localConfig);
@@ -676,6 +693,12 @@ try { recovering = window.localStorage.getItem(RECOVERING_KEY) === '1'; } catch 
 let backupChecked = !!sharedConfigStored && !recovering;
 // A write made before the copy was read: copied once it has been.
 let backupMissed = false;
+// The settings changed before the copy was read (in the panel, say): the
+// restore leaves them as they are now. The app's own records are not among
+// them: what it wrote meanwhile was the defaults' (foxThemeApplied), and the
+// copy's take their place.
+const changedBeforeRestore = new Set();
+const APP_RECORDS = new Set(['foxThemeApplied', 'captionStyleBackup', 'sbTimeSaved', 'sbSkipCount']);
 function copyToBackup(written) {
   if (!written.length) return;
   if (!backupChecked) { backupMissed = true; return; }
@@ -725,6 +748,7 @@ export function configWrite(key, value) {
   if (oldValue === value) return;
 
   DEBUG && console.info('Changing key', key, 'from', oldValue, 'to', value);
+  if (!backupChecked && !APP_RECORDS.has(key)) changedBeforeRestore.add(key);
   localConfig[key] = value;
   scheduleWrite();
   notifyChange(key, value, oldValue);
@@ -780,7 +804,8 @@ function switchProfile(profile) {
   if (storesProfile(profile)) {
     // Restored from the backup copy: its record, also when localStorage
     // refused to take it back (quota), so the account is not seeded afresh.
-    incoming = loadStored(profileStorageKey(profile)) || (restoredRecords && restoredRecords[profileStorageKey(profile)]) || null;
+    const key = profileStorageKey(profile);
+    incoming = unwrittenRecords[key] || loadStored(key) || (restoredRecords && restoredRecords[key]) || null;
   }
   if (!incoming) {
     // An account seen for the first time (and every guest session) starts
@@ -877,6 +902,10 @@ function restoreFromBackup() {
     }
     const shared = records[CONFIG_KEY];
     if (!shared) return false;
+    // A setting changed before the read keeps its new value, in the record
+    // written back and in use.
+    for (const key of changedBeforeRestore) shared[key] = localConfig[key];
+    const sharedText = JSON.stringify(shared);
     restoredRecords = records;
     // What the app wrote meanwhile (foxThemeApplied, say) was the defaults'
     // and is replaced. One record at a time: one too big for the quota does
@@ -891,7 +920,7 @@ function restoreFromBackup() {
           delete records[key];
           continue;
         }
-        window.localStorage.setItem(key, text);
+        window.localStorage.setItem(key, key === CONFIG_KEY ? sharedText : text);
       } catch { /* applied from memory below */ }
     }
     console.info('[Config] Settings restored from the backup copy:', entries.length, 'record(s)');
@@ -914,7 +943,25 @@ function restoreFromBackup() {
     activeProfile = null;
     if (localConfig.perAccountSettings) {
       const profile = readAccountProfile();
-      if (profile !== null) switchProfile(profile);
+      if (profile !== null) {
+        // The account's own settings changed before the read keep their
+        // change too: its record, from localStorage or the copy, takes them
+        // before the account loads it.
+        const key = storesProfile(profile) ? profileStorageKey(profile) : null;
+        const record = key && (loadStored(key) || records[key]);
+        const changed = Array.from(changedBeforeRestore).filter((k) => !DEVICE_KEYS.has(k));
+        if (record && changed.length) {
+          for (const k of changed) record[k] = localConfig[k];
+          records[key] = record;
+          try {
+            window.localStorage.setItem(key, JSON.stringify(record));
+          } catch {
+            // Refused (quota): applied from memory, over the older record still in localStorage.
+            unwrittenRecords[key] = record;
+          }
+        }
+        switchProfile(profile);
+      }
     }
     return true;
   }).then((restored) => {

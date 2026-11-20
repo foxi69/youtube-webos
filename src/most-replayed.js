@@ -95,25 +95,24 @@ export function buildCss(selector, graphUri, geo, height, hostStyle) {
 }
 
 let lastSig = '';
-// The host's own position and display, read once per host element.
+// The host element the rule was last written for.
 let styledHost = null;
-let hostStyle = null;
 
 /**
  * The host's position and display as the page has them. Read with this
  * module's rule taken out, which would otherwise answer for itself (a host it
  * made relative reads as positioned, and the next rule would leave it out).
+ * Read again at each redraw: the page can position the same host meanwhile,
+ * and a rule written from an older reading would make it relative and move it.
  */
 function ownHostStyle(el) {
-  if (el !== styledHost) {
-    const active = !!(css && styleEl && styleEl.isConnected);
-    if (active) styleEl.textContent = '';
-    const cs = window.getComputedStyle(el);
-    hostStyle = { position: cs.position, display: cs.display };
-    if (active) styleEl.textContent = css;
-    styledHost = el;
-  }
-  return hostStyle;
+  const active = !!(css && styleEl && styleEl.isConnected);
+  if (active) styleEl.textContent = '';
+  const cs = window.getComputedStyle(el);
+  const style = { position: cs.position, display: cs.display };
+  if (active) styleEl.textContent = css;
+  styledHost = el;
+  return style;
 }
 
 function draw() {
@@ -179,7 +178,6 @@ function sync() {
     uri = '';
     lastSig = '';
     styledHost = null;
-    hostStyle = null;
     write('');
   }
 }

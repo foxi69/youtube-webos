@@ -5,7 +5,7 @@
  *
  * Usage: node bench/caption-style-test.cjs [dist/webOSUserScripts/userScript.js] [legacy|modern]
  */
-const { createReporter, bootPage, wait, UA } = require('./harness.cjs');
+const { createReporter, bootPage, trustedKey, wait, until, UA } = require('./harness.cjs');
 
 const KEY = 'yt-player-caption-display-settings';
 const DAY = 24 * 60 * 60 * 1000;
@@ -86,6 +86,27 @@ run(async () => {
     await wait(50);
     t('Subtitle Position Default: no class, no stylesheet',
       !win.document.documentElement.className.includes('ytaf-subs') && !win.document.getElementById('ytaf-subtitle-position'));
+  }
+  // ---- Subtitle Position changed in the panel ----
+  {
+    const { win, errors } = boot({ subtitlePosition: 'high' });
+    const classes = () => [...win.document.documentElement.classList].filter((c) => c.startsWith('ytaf-subs')).join(' ');
+    trustedKey(win, 404);
+    await until(() => win.document.querySelector('.ytaf-ui-container'));
+    const panel = win.document.querySelector('.ytaf-ui-container');
+    for (let i = 0; i < 20; i++) panel.ensurePage(i);
+    const row = [...panel.querySelectorAll('.shortcut-control-row')]
+      .find((r) => (r.querySelector('.shortcut-label') || {}).textContent.trim() === 'Subtitle Position');
+    t('the panel has the Subtitle Position row, on Highest', !!row && row.querySelector('.current-value').textContent === 'Highest' &&
+      classes() === 'ytaf-subs-high', row ? row.querySelector('.current-value').textContent + ' ' + classes() : 'no row');
+    if (!row) return;
+    row.click();
+    t('set back to Default: the lift is gone', row.querySelector('.current-value').textContent === 'Default' && classes() === '',
+      row.querySelector('.current-value').textContent + ' [' + classes() + ']');
+    row.click();
+    t('...and on to Higher: its lift alone', row.querySelector('.current-value').textContent === 'Higher' && classes() === 'ytaf-subs-raised',
+      row.querySelector('.current-value').textContent + ' [' + classes() + ']');
+    t('...with no page error', errors.length === 0, errors[0]);
   }
   // ---- A style changed just before the app goes to the background ----
   {
