@@ -72,7 +72,8 @@ async function boot(cfg, segments, opts = {}) {
       enableDeArrow: false, thumbnailQuality: 'off', enableAutoLogin: false,
       checkForUpdates: false, showWhatsNew: false, sbPeriodicRefresh: false
     }, cfg),
-    evaluate: false
+    evaluate: false,
+    storage: opts.storage
   });
   const asked = [];
   const reported = [];
@@ -121,7 +122,7 @@ async function boot(cfg, segments, opts = {}) {
 }
 
 
-const { fakeIndexedDB, savedCopy } = require('./fake-indexeddb.cjs');
+const { fakeIndexedDB, savedCopy, hashString } = require('./fake-indexeddb.cjs');
 const stored = (win) => JSON.parse(win.localStorage.getItem('ytaf-configuration') || '{}');
 const BLUE = 406;
 const press = async (win, code) => {
@@ -233,6 +234,30 @@ run(async () => {
     t(n('stats before the read: its undo after the read leaves the restored totals'),
       Math.abs(stored(env.win).sbTimeSaved - 100) < 1e-9 && stored(env.win).sbSkipCount === 4,
       JSON.stringify([stored(env.win).sbTimeSaved, stored(env.win).sbSkipCount]));
+  }
+  {
+    // The same with Separate Settings for Each Account: the counters are the
+    // account's, and the skip before the read adds to the account's totals.
+    const clock = {};
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const PROFILE = 'ytaf-configuration::' + hashString('accountId=abc');
+    const copy = savedCopy([
+      ['ytaf-configuration', JSON.stringify({ perAccountSettings: true, foxThemeApplied: true })],
+      [PROFILE, JSON.stringify({ sbTimeSaved: 100, sbSkipCount: 4 })]
+    ]);
+    const storage = { 'yt.leanback.default::last-identity-used': JSON.stringify({ data: { accountId: 'abc' } }) };
+    const env = await boot({}, [seg('sponsor', 30, 60)], { clock, copy, storage, idb: { gate } });
+    await env.playTo(30.2);
+    release();
+    await wait(400);
+    const own = () => JSON.parse(env.win.localStorage.getItem(PROFILE) || '{}');
+    t(n('stats before the read, per account: the skip is added to the account’s totals'),
+      Math.abs(own().sbTimeSaved - (100 + 60 - 30.2)) < 1e-9 && own().sbSkipCount === 5, JSON.stringify(own()));
+    await press(env.win, BLUE);
+    await wait(300);
+    t(n('stats before the read, per account: its undo leaves the account’s totals'),
+      Math.abs(own().sbTimeSaved - 100) < 1e-9 && own().sbSkipCount === 4, JSON.stringify(own()));
   }
   {
     const env = await boot({ sbReportSkips: true }, [seg('sponsor', 30, 60)]);
@@ -417,6 +442,23 @@ run(async () => {
     await wait(100);
     t(n('undo and highlight: the undo is not taken back to the highlight'), Math.abs(env.state.time - 93.2) < 0.01, env.state.seeks.join());
     t(n('undo and highlight: ...with the guard still on after the undo seek'), !!guard && env.sb()._highlightGuard === guard);
+  }
+  {
+    // The highlight's guard holds, then the channel goes on Never Skip on
+    // These Channels: a seek before the highlight is not taken back to it.
+    const clock = {};
+    const env = await boot({ sbMode_highlight: 'auto_skip', shortcut_key_8: 'sb_whitelist_channel' },
+      [seg('poi_highlight', 90, 90, 'poi')], { clock });
+    await wait(100);
+    const guard = env.sb()._highlightGuard;
+    t(n('highlight guard, channel listed: precondition: jumped, guard on'), env.state.seeks[0] === 90 && !!guard, env.state.seeks.join());
+    if (guard) env.win.clearTimeout(guard.timer);
+    await press(env.win, 56);
+    t(n('highlight guard, channel listed: precondition: listed'),
+      JSON.stringify(stored(env.win).sbWhitelistChannels) === '["Some Channel"]', JSON.stringify(stored(env.win).sbWhitelistChannels));
+    env.video.currentTime = 85;
+    await wait(100);
+    t(n('highlight guard, channel listed: a seek before the highlight stays'), env.state.time === 85, env.state.seeks.join());
   }
   {
     const clock = {};

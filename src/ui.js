@@ -1,5 +1,5 @@
 import { aiVideoModes, subtitlesAtStartModes, logoStyles, timeRemainingModes, thumbnailQualityModes, videoCodecModes, uiThemes, clockModes, startPageModes, minVideoLengthModes, seekStepModes, maxVideoAgeModes, searchUploadDateModes, dearrowTitleFormats, dearrowThumbnailFallbacks, forceQualityModes, subtitlePositionModes, sbMinSegmentLengthModes, searchDurationModes, searchTypeModes, searchFeatureModes } from './config.js';
-import { configAddChangeListener, configRead, configWrite, configGetDesc, segmentTypes, configGetDefault, shortcutActions, sbModes, sbModesHighlight, videoPreviewModes, videoQualityDisplayModes, configGetProfileStatus } from './config.js';
+import { configAddChangeListener, configRead, configWrite, configGetDesc, segmentTypes, configGetDefault, shortcutActions, sbModes, sbModesHighlight, videoPreviewModes, videoQualityDisplayModes, configGetProfileStatus, configResetCounters } from './config.js';
 import './ui.css';
 import './auto-login.js';
 import './return-dislike.js';
@@ -489,7 +489,7 @@ function createSbStatsLine() {
   };
   const reset = createElement('button', {
     class: 'ytaf-list-btn', text: 'Reset', tabIndex: 0,
-    events: { click: () => { configWrite('sbTimeSaved', 0); configWrite('sbSkipCount', 0); } }
+    events: { click: () => configResetCounters() }
   });
   configAddChangeListener('sbTimeSaved', update);
   configAddChangeListener('sbSkipCount', update);

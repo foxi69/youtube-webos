@@ -1,5 +1,6 @@
 /**
- * A stand-in IndexedDB for the tests of the settings copy (src/config-backup.js).
+ * A stand-in IndexedDB for the tests of the settings copy (src/config-backup.js),
+ * and config.js's name for an account's settings record.
  */
 /**
  * A small IndexedDB: one database whose records are kept in `data` across
@@ -76,4 +77,15 @@ function savedCopy(entries) {
   return data;
 }
 
-module.exports = { fakeIndexedDB, savedCopy };
+// config.js's profile name for an identity record of { accountId: 'abc' }: its hashString of "accountId=abc".
+function hashString(str) {
+  let h1 = 0x811c9dc5, h2 = 0x01000193 ^ 0x5bd1e995;
+  for (let i = 0; i < str.length; i++) {
+    const c = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 0x01000193);
+    h2 = Math.imul(h2 ^ c, 0x01000193) ^ (h2 >>> 15);
+  }
+  return ('0000000' + (h1 >>> 0).toString(16)).slice(-8) + ('0000000' + (h2 >>> 0).toString(16)).slice(-8);
+}
+
+module.exports = { fakeIndexedDB, savedCopy, hashString };

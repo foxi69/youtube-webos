@@ -1828,7 +1828,8 @@ class SponsorBlockHandler {
         this.ownSkipTarget = null;
         this._endHighlightGuard();
         const onSeeked = () => {
-            if (Date.now() > until || this.video !== video || this.isDestroyed) {
+            // Ended too by the channel put on Never Skip on These Channels meanwhile.
+            if (Date.now() > until || this.video !== video || this.isDestroyed || this.channelWhitelisted()) {
                 this._endHighlightGuard();
             } else if (this.ownSkipTarget !== null && Math.abs(video.currentTime - this.ownSkipTarget) < 0.5) {
                 // A skip of SponsorBlock's own. Kept, not used up: the skip
