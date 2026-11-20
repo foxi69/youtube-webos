@@ -43,6 +43,16 @@ run(async () => {
     t(n('min length: a 20 s one still is'), env.state.time === 120, String(env.state.time));
     t(n('min length: no page error'), env.errors.length === 0, env.errors[0]);
   }
+  {
+    const env = await boot({ sbMinSegmentLength: '5', enableMutedSegments: true },
+      [seg('sponsor', 30, 33, 'mute'), seg('selfpromo', 100, 120, 'mute')]);
+    await env.playTo(30.2);
+    t(n('min length: a 3 s muted segment is not muted'), env.state.muted === false && env.state.seeks.length === 0,
+      `${env.state.muted} ${env.state.seeks.join()}`);
+    await env.playTo(100.2);
+    t(n('min length: a 20 s one still is'), env.state.muted === true && env.state.time === 100.2,
+      `${env.state.muted} ${env.state.time}`);
+  }
 
   // ---- Never Skip on These Channels ----
   {
@@ -70,11 +80,13 @@ run(async () => {
   // The page's clock stands still unless moved: the 8 s window cannot run out on a slow machine.
   {
     const clock = {};
-    const env = await boot({}, [seg('sponsor', 30, 60)], { clock });
+    // Earlier runs saved 100 s in 4 skips: this one's is added to them.
+    const env = await boot({ sbTimeSaved: 100, sbSkipCount: 4 }, [seg('sponsor', 30, 60)], { clock });
     await env.playTo(30.2);
     t(n('undo: the segment was skipped'), env.state.time === 60);
     await wait(300);
-    t(n('stats: the time saved is counted'), Math.round(stored(env.win).sbTimeSaved) === 30 && stored(env.win).sbSkipCount === 1,
+    t(n('stats: the time saved is added to the total so far'),
+      stored(env.win).sbTimeSaved === 100 + (60 - 30.2) && stored(env.win).sbSkipCount === 5,
       JSON.stringify([stored(env.win).sbTimeSaved, stored(env.win).sbSkipCount]));
     await press(env.win, BLUE);
     t(n('undo: Blue just after goes back to where the skip started'), Math.abs(env.state.time - 30.2) < 0.01, String(env.state.time));

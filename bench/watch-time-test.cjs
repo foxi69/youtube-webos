@@ -124,6 +124,29 @@ run(async () => {
   offset += MIN;
   t('...and counted again once it plays', / · 1h 13m watched$/.test(refresh()), JSON.stringify(clockText()));
 
+  // In the background, a 'playing' does not count; back in front, playing on does.
+  hidden = true;
+  doc.dispatchEvent(new win.Event('visibilitychange'));
+  fire(video, 'playing');
+  offset += 3 * MIN;
+  hidden = false;
+  doc.dispatchEvent(new win.Event('visibilitychange'));
+  offset += MIN;
+  t("a 'playing' in the background does not count", / · 1h 14m watched$/.test(refresh()), JSON.stringify(clockText()));
+
+  // Nor the player page showing again while in the background.
+  hidden = true;
+  doc.dispatchEvent(new win.Event('visibilitychange'));
+  doc.body.className = 'WEB_PAGE_TYPE_BROWSE';
+  await sleep(50);
+  doc.body.className = 'WEB_PAGE_TYPE_WATCH';
+  await sleep(50);
+  offset += 3 * MIN;
+  hidden = false;
+  doc.dispatchEvent(new win.Event('visibilitychange'));
+  offset += MIN;
+  t('the player page showing again in the background does not count', / · 1h 15m watched$/.test(refresh()), JSON.stringify(clockText()));
+
   toggle('Show Watch Time With the Clock');
   t('switched off: the time alone', !/watched/.test(clockText()) && clockText().length > 0, JSON.stringify(clockText()));
 

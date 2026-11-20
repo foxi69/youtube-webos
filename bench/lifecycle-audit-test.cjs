@@ -260,7 +260,8 @@ run(async () => {
         showNotification: (note) => { env.notes.push(note); },
         ResolveCommandRegistry: { getInstance: () => new Promise((resolve, reject) => { env.lookups.push({ resolve, reject }); }) } };
       vm.runInNewContext(source('video-queue.js') +
-        '\nthis.addToQueue = addToQueue; this.clearQueue = clearQueue; this.playNextInQueue = playNextInQueue;', env.ctx);
+        '\nthis.addToQueue = addToQueue; this.clearQueue = clearQueue; this.playNextInQueue = playNextInQueue;' +
+        ' this.noteQueuePlayability = noteQueuePlayability;', env.ctx);
       env.registry = { dispatchCommand: (command) => { env.dispatched.push(command.watchEndpoint.videoId); } };
       env.state = (s, videoId) => win.dispatchEvent(Object.assign(new Event('yt-player-state-change'), { detail: { state: s, videoId } }));
       return env;
@@ -347,6 +348,68 @@ run(async () => {
       await flush();
       t('queue: a video cleared during its lookup is neither sent late nor put back',
         env.dispatched.length === 0 && env.lookups.length === 1, `${env.dispatched.join()} | lookups ${env.lookups.length}`);
+    }
+    // A refusal of the queued video on its way: A is sent at the current
+    // video's end, then YouTube answers with `status`; the settle timer is the
+    // test's. `before` runs between the send and the answer, `after` before
+    // the timer fires. The clock is the test's: it stands 1 ms short of the
+    // settle time first, then at it. Returns what was told and sent then, and
+    // just before.
+    const refusal = async (status, { before = () => {}, after = () => {} } = {}) => {
+      const env = queueEnv();
+      let now = 0;
+      const timers = new Map();
+      let nextId = 0;
+      env.ctx.setTimeout = (fn, ms = 0) => { timers.set(++nextId, { fn, at: now + ms }); return nextId; };
+      env.ctx.clearTimeout = (id) => { timers.delete(id); };
+      const advanceTo = (to) => {
+        now = to;
+        for (const [id, timer] of [...timers].sort((a, b) => a[1].at - b[1].at)) {
+          if (timer.at <= now && timers.has(id)) { timers.delete(id); timer.fn(); }
+        }
+      };
+      env.ctx.addToQueue('aaaaaaaaaaa', 'A');
+      env.ctx.addToQueue('bbbbbbbbbbb', 'B');
+      env.state(1, 'current0001');
+      env.state(0, 'current0001');
+      env.lookups[0].resolve(env.registry);
+      await flush();
+      env.ctx.window.location.hash = '#/watch?v=aaaaaaaaaaa';
+      before(env);
+      env.ctx.noteQueuePlayability(status);
+      after(env);
+      advanceTo(1999);
+      const early = { refused: env.notes.includes('Could not play: A'), lookups: env.lookups.length };
+      advanceTo(2000);
+      if (env.lookups[1]) env.lookups[1].resolve(env.registry);
+      await flush();
+      return { early, refused: env.notes.includes('Could not play: A'), sent: env.dispatched.join() };
+    };
+    {
+      for (const status of ['ERROR', 'UNPLAYABLE']) {
+        const r = await refusal(status);
+        t(`queue: a queued video refused with ${status}: still waited for at 1999 ms (not reported, nothing next)`,
+          !r.early.refused && r.early.lookups === 1, JSON.stringify(r.early));
+        t(`queue: ...${status} at 2000 ms: reported, and the next one plays`,
+          r.refused && r.sent === 'aaaaaaaaaaa,bbbbbbbbbbb', JSON.stringify(r));
+      }
+      const r = await refusal('LOGIN_REQUIRED');
+      t('...not one the viewer can answer (LOGIN_REQUIRED)', !r.refused && r.sent === 'aaaaaaaaaaa', JSON.stringify(r));
+    }
+    {
+      // The viewer left for another video while the answers settled.
+      const r = await refusal('ERROR', { after: (env) => { env.ctx.window.location.hash = '#/watch?v=other000001'; } });
+      t('queue: a refusal settling with another video on screen is not reported and moves nothing',
+        !r.refused && r.sent === 'aaaaaaaaaaa', JSON.stringify(r));
+    }
+    {
+      // The video that was on reports PLAYING once more before the refusal:
+      // the queued one is still on its way. Control: the queued one playing.
+      let r = await refusal('ERROR', { before: (env) => env.state(1, 'current0001') });
+      t('queue: the previous video playing again does not count as the queued one opening',
+        r.refused && r.sent === 'aaaaaaaaaaa,bbbbbbbbbbb', JSON.stringify(r));
+      r = await refusal('ERROR', { before: (env) => env.state(1, 'aaaaaaaaaaa') });
+      t('...the queued one playing does: a refusal after it moves nothing', !r.refused && r.sent === 'aaaaaaaaaaa', JSON.stringify(r));
     }
   }
   {

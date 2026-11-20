@@ -6,13 +6,14 @@
  *
  * Usage: node bench/speed-remember-test.cjs <bundle> [legacy|modern]
  */
-const { createReporter, bootPage, trustedKey, wait } = require('./harness.cjs');
+const { createReporter, bootPage, trustedKey, wait, until } = require('./harness.cjs');
 
 const { t, run } = createReporter();
 
 function boot(config, opts = {}) {
-  // opts.live: whether the video playing is live; read on each call, so a test can change it.
+  // opts.live, opts.id: whether the video playing is live, and its id; read on each call, so a test can change them.
   if (opts.live === undefined) opts.live = false;
+  if (opts.id === undefined) opts.id = 'aaaaaaaaaaa';
   const page = bootPage({
     bodyClass: 'WEB_PAGE_TYPE_WATCH',
     url: 'https://www.youtube.com/tv#/watch?v=aaaaaaaaaaa',
@@ -42,7 +43,7 @@ function boot(config, opts = {}) {
       win.URL.revokeObjectURL = () => {};
       const el = win.document.createElement('div');
       el.id = 'ytlr-player__player-container-player';
-      el.getVideoData = () => ({ video_id: 'aaaaaaaaaaa', isLive: opts.live });
+      el.getVideoData = () => ({ video_id: opts.id, isLive: opts.live });
       el.getCurrentTime = () => 12;
       el.getPlayerState = () => 1;
       el.getPlaybackQuality = () => 'hd1080';
@@ -92,6 +93,35 @@ run(async () => {
     const { win } = boot({ rememberPlaybackSpeed: true, savedPlaybackSpeed: 1.5, enablePlaybackSpeed: false });
     t('on, with Playback Speed Control off: 1x', win.ytafSpeed.getSpeed() === 1, win.ytafSpeed.getSpeed());
   }
+  // ---- The panel: Remember Playback Speed follows Playback Speed Control ----
+  {
+    const { win, errors } = boot({ rememberPlaybackSpeed: true, savedPlaybackSpeed: 1.5, enablePlaybackSpeed: false });
+    const box = (start) => {
+      const label = [...win.document.querySelectorAll('.ytaf-ui-container label')]
+        .find((l) => l.textContent.trim().startsWith(start));
+      return label && label.querySelector('input[type=checkbox]');
+    };
+    trustedKey(win, 404);
+    await until(() => box('Remember Playback Speed'));
+    const remember = box('Remember Playback Speed');
+    const control = box('Playback Speed Control');
+    t('the panel has Playback Speed Control and Remember Playback Speed', !!remember && !!control);
+    if (!remember || !control) return;
+    t('Playback Speed Control off: Remember Playback Speed is greyed out',
+      remember.disabled === true && remember.closest('label').style.opacity === '0.5',
+      remember.disabled + ' ' + remember.closest('label').style.opacity);
+    control.checked = true;
+    control.dispatchEvent(new win.Event('change', { bubbles: true }));
+    t('...turned on in the panel: Remember Playback Speed is usable',
+      remember.disabled === false && remember.closest('label').style.opacity === '1',
+      remember.disabled + ' ' + remember.closest('label').style.opacity);
+    // The start ran with it off: the stored speed was not set then, so it is
+    // not taken up now either.
+    t('...the video still plays at 1x, not the speed stored for the start', win.ytafSpeed.getSpeed() === 1, win.ytafSpeed.getSpeed());
+    win.ytafSpeed.setSpeed(2, { immediate: true });
+    t('...while a speed set now applies', win.ytafSpeed.getSpeed() === 2, win.ytafSpeed.getSpeed());
+    t('...with no page error', errors.length === 0, errors[0]);
+  }
   {
     const { win } = boot({ rememberPlaybackSpeed: true, savedPlaybackSpeed: 7 });
     t('on: a stored speed the app does not offer is not used', win.ytafSpeed.getSpeed() === 1, win.ytafSpeed.getSpeed());
@@ -128,8 +158,9 @@ run(async () => {
     t('...and it still plays at 1x', win.ytafSpeed.getSpeed() === 1);
     t('...with the notice that there is no speed on a live stream',
       (win.document.querySelector('.ytaf-notification-container') || {}).textContent.indexOf('live stream') !== -1);
-    // The next video is not live: it plays at the speed kept.
+    // The next video, another one and not live: it plays at the speed kept.
     opts.live = false;
+    opts.id = 'bbbbbbbbbbb';
     t('...and the next video that is not live plays at it', win.ytafSpeed.getSpeed() === 1.5, win.ytafSpeed.getSpeed());
   }
 });

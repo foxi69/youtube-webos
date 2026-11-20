@@ -19,6 +19,9 @@ const RYD = 'Return YouTube Dislike';
 
 function boot(shared, identity, extraStorage = {}) {
   let NS;
+  // With `holdRechecks.on`, the account rechecks the selector schedules after
+  // a choice (at 1500 and 5000 ms, config.js) are held here for the test to run.
+  const holdRechecks = { on: false, held: [] };
   const { win, errors, frames } = bootPage({
     raf: 'manual',
     consoleErrors: false,
@@ -28,6 +31,14 @@ function boot(shared, identity, extraStorage = {}) {
     // this fetch is taken away with jsdom's, and the bundle's polyfill runs.
     setup: (w) => {
       w.fetch = () => Promise.reject(new Error('offline'));
+      const realSetTimeout = w.setTimeout;
+      w.setTimeout = function (fn, ms, ...rest) {
+        if (holdRechecks.on && (ms === 1500 || ms === 5000)) {
+          holdRechecks.held.push({ fn, ms });
+          return 0;
+        }
+        return realSetTimeout.call(this, fn, ms, ...rest);
+      };
       NS = w.JSON.stringify;
       // A string is stored as it is (a broken set); null stores nothing (a first start).
       if (shared !== null) w.localStorage.setItem(CONFIG_KEY, typeof shared === 'string' ? shared : NS(Object.assign({
@@ -39,7 +50,7 @@ function boot(shared, identity, extraStorage = {}) {
     }
   });
   const pump = () => { for (let i = 0; i < 10; i++) frames.pump(); };
-  return { win, NS, errors, pump };
+  return { win, NS, errors, pump, holdRechecks };
 }
 
 function checkbox(win, text) {
@@ -170,18 +181,55 @@ run(async () => {
   {
     // What an earlier build stored for the guest goes; the session starts from
     // the shared settings and what it changes is not kept.
-    const { win, errors } = boot({ perAccountSettings: true, enableReturnYouTubeDislike: true },
-      { identityType: 'UNAUTHENTICATED_IDENTITY_TYPE_GUEST' },
-      { [CONFIG_KEY + '::guest']: { enableReturnYouTubeDislike: false } });
+    const GUEST = { identityType: 'UNAUTHENTICATED_IDENTITY_TYPE_GUEST' };
+    const { win, errors, pump, holdRechecks } = boot({ perAccountSettings: true, enableReturnYouTubeDislike: true },
+      GUEST, { [CONFIG_KEY + '::guest']: { enableReturnYouTubeDislike: false } });
     await wait(300);
     t('guest: an old guest profile is removed', win.localStorage.getItem(CONFIG_KEY + '::guest') === null);
     key(win, GREEN);
+    pump();
+    const status = win.document.querySelector('.ytaf-profile-status');
+    const statusText = () => (status ? status.textContent : '');
+    t('guest: panel says the guest\'s changes are not kept',
+      statusText() === 'Guest: starts from the shared settings each time, changes are not kept', statusText());
     const ryd = checkbox(win, 'Return YouTube Dislike');
     t('guest: starts from the shared settings', !!ryd && ryd.checked === true);
     toggle(win, ryd);
     await wait(300);
     t('guest: a change is not stored', profileKeys(win).length === 0 && read(win, CONFIG_KEY).enableReturnYouTubeDislike === true,
       profileKeys(win).join() + ' shared=' + read(win, CONFIG_KEY).enableReturnYouTubeDislike);
+
+    // The guest chosen again on the selector: the same session goes on, with
+    // its change, and no profile change is told.
+    // The selector's rechecks of the account chosen (1500 and 5000 ms) are
+    // held and run by the test, so they are part of what is counted.
+    const runRechecks = () => {
+      const held = holdRechecks.held.splice(0);
+      for (const h of held) h.fn();
+      return held.map((h) => h.ms).sort((a, b) => a - b).join();
+    };
+    let profileChanges = 0;
+    win.addEventListener('ytaf-profile-change', () => { profileChanges++; });
+    holdRechecks.on = true;
+    await chooseAccount(win, GUEST);
+    t('guest chosen again: at once, the session keeps its change and no profile change is told',
+      ryd.checked === false && profileChanges === 0, 'checked=' + ryd.checked + ' profile changes=' + profileChanges);
+    const guestRechecks = runRechecks();
+    t('guest chosen again: the session keeps its change, also after the selector\'s two rechecks',
+      guestRechecks === '1500,5000' && ryd.checked === false && profileChanges === 0,
+      'rechecks=' + guestRechecks + ' checked=' + ryd.checked + ' profile changes=' + profileChanges);
+    // Then an account: the switch does happen, from the shared settings.
+    await chooseAccount(win, ACCOUNT_A);
+    // At once, as the selector is left: before any recheck has run.
+    t('...an account chosen next: its settings are applied live at once, with one profile change',
+      ryd.checked === true && profileChanges === 1 && statusText() === 'Using this account\'s own settings',
+      'checked=' + ryd.checked + ' profile changes=' + profileChanges + ' ' + statusText());
+    const accountRechecks = runRechecks();
+    holdRechecks.on = false;
+    t('...and still one profile change once its two rechecks ran',
+      accountRechecks === '1500,5000' && ryd.checked === true && profileChanges === 1 &&
+      statusText() === 'Using this account\'s own settings',
+    'rechecks=' + accountRechecks + ' checked=' + ryd.checked + ' profile changes=' + profileChanges + ' ' + statusText());
     t('guest: no errors', errors.length === 0, errors.join(' | '));
   }
 
