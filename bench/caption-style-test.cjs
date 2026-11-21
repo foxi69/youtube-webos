@@ -79,7 +79,10 @@ run(async () => {
     t('Subtitle Position Highest puts its class on <html>', win.document.documentElement.classList.contains('ytaf-subs-high') &&
       !!win.document.getElementById('ytaf-subtitle-position'));
     const css = win.document.getElementById('ytaf-subtitle-position').textContent;
-    t('...and its rule lifts the caption area', /html\.ytaf-subs-high \.ytp-caption-window-container \{ transform: translateY\(-16vh\)/.test(css), css);
+    t('...and its rule lifts each caption window', /html\.ytaf-subs-high \.ytp-caption-window-container \.caption-window \{ transform: translateY\(-16vh\)/.test(css), css);
+    // On the TV the caption area is static and 0 px high: a transform on it makes
+    // it the windows' containing block, and they went above the top of the screen.
+    t('...and leaves the caption area itself alone', !/\.ytp-caption-window-container \{/.test(css), css);
   }
   {
     const { win } = boot({ subtitlePosition: 'default' });
