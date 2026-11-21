@@ -1,0 +1,59 @@
+baseline: 96 tests pass; 55 mutants, 10 at a time
+SURVIVED backup-checked-recovering (183s): after a failed read, the defaults stored meanwhile are copied over the copy before it is read again
+killed backup-start-recovering (73s) by settings-backup-test: FAIL the next start reads the copy again and takes its settings
+killed backup-missed (73s) by settings-backup-test: FAIL ...and the copy gets the change too
+SURVIVED backup-app-records (188s): the app's own records written at start (foxThemeApplied) keep the defaults' over the copy's
+killed backup-changed-kept (72s) by settings-backup-test: FAIL a change made before the copy was read stays, in localStorage and in use
+killed backup-account-newer (73s) by settings-backup-test: FAIL a record still in localStorage is kept, not replaced by its copy
+SURVIVED backup-restoring-guard (186s): the restored perAccountSettings makes the account active with the shared values, written over its own
+killed backup-unwritten-first (68s) by settings-backup-test: FAIL refused write: the change stays in use over the old local record, which gives the account its other settings
+killed backup-db-error (71s) by settings-backup-test: FAIL a database that does not open is no empty copy: the mark stays
+killed quality-short-side (24s) by video-formats-test: FAIL up to 1080p: the formats above it go, audio stays
+killed quality-cap-edge (24s) by video-formats-test: FAIL up to 1080p: the formats above it go, audio stays
+killed quality-keep-some (25s) by video-formats-test: FAIL upscaled: a video with only upscaled formats keeps them
+killed quality-upscaled-pair (24s) by video-formats-test: FAIL upscaled: the sr=1 pair is found beside another tag
+SURVIVED quality-flag-cap (186s): with Up to set and no other filter on, player responses are not filtered
+killed quality-off-change (33s) by upstream-fixes-test: FAIL Force Max Quality off and on again within 2 s writes its quality record again
+killed quality-speed-cap (93s) by speed-cases-test: FAIL back at 1x a reload, with the quality range back to Auto
+SURVIVED sb-min-length-mute (186s): a muted segment shorter than the minimum is still muted
+killed sb-whitelist-listed (105s) by sponsorblock-extras-test: FAIL modern: whitelist: nothing is skipped on a listed channel (no case) [failed only under load: upstream-fixes-test]
+killed sb-whitelist-wait (87s) by sponsorblock-extras-test: FAIL modern: whitelist, channel unknown: the highlight jump waits
+killed sb-whitelist-case (86s) by sponsorblock-extras-test: FAIL modern: whitelist: nothing is skipped on a listed channel (no case)
+killed sb-highlight-pending (87s) by sponsorblock-extras-test: FAIL modern: whitelist, channel known and not listed: the jump comes then
+killed sb-undo-window (87s) by sponsorblock-extras-test: FAIL modern: undo: not after its 8 s
+killed sb-undo-seeked (91s) by sponsorblock-extras-test: FAIL modern: undo: not after the viewer went somewhere else
+killed sb-undo-plays (91s) by sponsorblock-extras-test: FAIL modern: undo: Blue just after goes back to where the skip started
+SURVIVED sb-stats-add (187s): the time saved holds only the last skip
+killed sb-report-off (86s) by sponsorblock-extras-test: FAIL modern: report off: nothing is sent
+killed sb-button-click (86s) by sponsorblock-extras-test: FAIL modern: skip button: a click (the Magic Remote pointer) skips the segment
+SURVIVED sb-chapters-fetch (186s): community chapters are never fetched
+SURVIVED sb-chapters-drawn (186s): community chapters are drawn on the seek bar as segments
+killed search-none (35s) by search-filter-test: FAIL Any Time: no filter
+killed search-varint (34s) by search-filter-test: FAIL all four together: one params (week, videos, over 20 min, HDR, a two-byte field number)
+killed search-durations (34s) by search-filter-test: FAIL all four together: one params (week, videos, over 20 min, HDR, a two-byte field number)
+killed caption-renew (25s) by caption-style-test: FAIL a record running out is moved a year on
+killed caption-restore (24s) by caption-style-test: FAIL a record that is gone is written back from the copy
+killed caption-flush (24s) by caption-style-test: FAIL going to the background: the new style is copied and written at once
+SURVIVED subs-position-back (185s): a Subtitle Position set back to Default keeps the old lift
+killed subs-delay-sign (25s) by caption-style-test: FAIL 0.5 s Earlier: 500 ms earlier, never before 0
+killed subs-delay-clamp (24s) by caption-style-test: FAIL 0.5 s Earlier: 500 ms earlier, never before 0
+SURVIVED speed-restore-enabled (183s): the remembered speed is set with Playback Speed Control off
+killed speed-remember-off (27s) by speed-remember-test: FAIL off: the next start plays at 1x
+killed speed-toggle-last (26s) by speed-remember-test: FAIL 1x is stored too, the toggle speed stays
+killed speed-toggle-live (25s) by speed-remember-test: FAIL toggle on a live stream: the speed kept for the next video stays
+killed audio-stream-off (25s) by audio-only-test: FAIL off: the picture comes back, and the video is loaded again with it
+killed audio-reload (25s) by audio-only-test: FAIL on: the video is loaded again where it is
+killed audio-page-end (25s) by audio-only-test: FAIL leaving the watch page ends it
+killed queue-row-empty (20s) by feed-features-test: FAIL harness: TypeError: Cannot read properties of undefined (reading 'contentId')
+killed queue-row-hide-recommended (23s) by queue-shelf-test: FAIL harness: TypeError: Cannot read properties of undefined (reading 'sectionListRenderer')
+killed queue-played-leaves (23s) by queue-shelf-test: FAIL a queued video that plays leaves the queue
+killed dearrow-casual-setting (71s) by dearrow-cases-test: FAIL casual off: the crowdsourced title, casual votes or not
+killed dearrow-casual-title (72s) by dearrow-cases-test: FAIL casual: a vote for an earlier title does not count
+killed hooks-delegated (84s) by lifecycle-audit-test: FAIL resolver: a throw after the hook handed on is passed on, and nothing runs again
+killed hooks-fallback (84s) by lifecycle-audit-test: FAIL harness: Error: hook failed
+SURVIVED ui-remember-speed-row (183s): Remember Playback Speed stays active with Playback Speed Control off
+killed ui-chapters-setting (85s) by sponsorblock-extras-test: FAIL modern: chapters off: no chapters found
+killed ui-chapters-previous (85s) by sponsorblock-extras-test: FAIL modern: chapters: Previous Chapter just after a start goes to the stop before it
+
+44 of 55 killed; survived: backup-checked-recovering, backup-app-records, backup-restoring-guard, quality-flag-cap, sb-min-length-mute, sb-stats-add, sb-chapters-fetch, sb-chapters-drawn, subs-position-back, speed-restore-enabled, ui-remember-speed-row
+exit 1

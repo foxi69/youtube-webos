@@ -27,12 +27,33 @@ import {
 } from './constants.js';
 import { videos, currentGeneration } from './state.js';
 import { loadThumb, thumbsEpoch } from './thumbs.js';
-import { isTrusted, resolveTitle, crowdsourcedTitle } from './titles.js';
+import { isTrusted, resolveTitle, crowdsourcedTitle, uploadedTitleMatters } from './titles.js';
 
 const DEBUG = false;
 // A lookup that failed (offline, the server down) is asked again when a
 // response shows the video after this long.
 const RETRY_AFTER_MS = 60000;
+// YouTube's own oEmbed answer has a video's title as its uploader wrote it,
+// not the one YouTube translated into the viewer's language. Same origin as
+// the TV app, so no third party sees it.
+const OEMBED_URL = 'https://www.youtube.com/oembed?format=json&url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3D';
+const OEMBED_TIMEOUT_MS = 8000;
+
+/**
+ * Untranslated Titles: the title as uploaded, kept on the video as
+ * `untranslated` even when this tile already shows it (a later tile of the
+ * video may be translated); asked for once per video. A failed or empty answer
+ * leaves the title as YouTube shows it. From YouTube Anti Translate (zpix1).
+ */
+async function fetchUntranslated(videoId, video) {
+  if (video.untranslatedAsked) return;
+  video.untranslatedAsked = true;
+  try {
+    const res = await fetchJsonWithTimeout(OEMBED_URL + encodeURIComponent(videoId), OEMBED_TIMEOUT_MS);
+    const title = res && res.data && typeof res.data.title === 'string' ? res.data.title.trim() : '';
+    if (title) video.untranslated = title;
+  } catch { /* the title as YouTube shows it */ }
+}
 
 // The videos waiting: the ones with a tile on screen first (`onScreen`, in
 // screen order), then the rest in response order (`queue`), on at most
@@ -314,6 +335,10 @@ async function lookup(videoId, prefetch) {
       if (videos.get(videoId) !== video) return;
       if (answer) settlePrefix(video.prefix, answer);
       else video.retryAt = Date.now() + RETRY_AFTER_MS;
+    }
+    if (configRead('dearrowUntranslatedTitles') && uploadedTitleMatters(video)) {
+      await fetchUntranslated(videoId, video);
+      if (videos.get(videoId) !== video) return;
     }
     // Formatting the original title can still apply without an answer.
     await resolve(videoId, video);

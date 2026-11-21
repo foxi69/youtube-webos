@@ -66,7 +66,7 @@
     </td>
     <td valign="top">
       <h3>📋 A video queue</h3>
-      "Add to queue" in the long-press menu of any video (More Options in the Long-Press Menu): the queued videos play one after another.
+      "Add to queue" in the long-press menu of any video (More Options in the Long-Press Menu): the queued videos play one after another, and a Queue row under the player shows them.
     </td>
     <td valign="top">
       <h3>🔔 Updates on the TV</h3>
@@ -217,7 +217,9 @@ and search alone.
 | Auto-Translate Subtitles (pick a language) | Off |
 | Subtitles When a Video Starts (YouTube's Choice, Off, Translated: only the Auto-Translate Subtitles language) | YouTube's Choice |
 | Subtitle Position (Default, Higher, Highest) | Default |
+| Subtitle Delay (0.25 to 2 s earlier or later) | Off |
 | Prefer Original Audio over Dubbed | Off |
+| Audio-Only Mode Streams Audio Only | Off |
 | Show Remaining Time / End Time (Remaining, End Time, Both) | Off |
 | Show Most Replayed Graph Above the Seek Bar | Off |
 | Hide Endcards | Off |
@@ -293,6 +295,7 @@ Return YouTube Dislike sends the id of every video you open to returnyoutubedisl
 | Show an icon when a video is entirely an advertisement | Off |
 | Show time with skips removed | Off |
 | Ignore Segments Shorter Than (1, 2, 3, 5, 10 s) | Off |
+| Use Community Chapters When a Video Has None | On |
 | Count My Skips on SponsorBlock | Off |
 | Never Skip on These Channels | Empty |
 
@@ -340,6 +343,8 @@ The actions each key can take are listed under [Remote control](#-remote-control
 | DeArrow | Off |
 | Show the DeArrow Logo on Crowdsourced Titles/Thumbnails | On |
 | Crowdsourced Titles | On |
+| Casual Mode: Keep Titles Voted Fine | Off |
+| Untranslated Titles | Off |
 | Title Formatting (Disabled, Title Case; on the webOS 22+ package also Sentence case, lower case, First letter uppercase, Capitalize Words) | Title Case on an English TV, else Disabled |
 | Remove Emojis and Fancy Text | On |
 | Crowdsourced Thumbnails | On |

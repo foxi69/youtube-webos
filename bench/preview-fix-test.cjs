@@ -296,8 +296,10 @@ run(async () => {
       t('webOS 6: the stack is looked up at the middle of the video (340, 330)',
         call.x === 340 && call.y === 330, JSON.stringify(call));
       t('webOS 6: ...with pointer-events: none elements counted during the lookup', call.all === true);
+      // preview-fix.js's own rule for the lookup, not the app's other styles
+      // (the SponsorBlock Skip button takes the pointer too).
       t('webOS 6: ...and that stylesheet gone again afterwards', !Array.prototype.some.call(
-        env.doc.querySelectorAll('style'), (s) => s.textContent.indexOf('pointer-events:auto') !== -1));
+        env.doc.querySelectorAll('style'), (s) => s.textContent.indexOf('*{pointer-events:auto!important}') !== -1));
       // Over the video, page order: the browse page; on the tile, its
       // background image, the image, the shadow and the half-black tint.
       t('webOS 6: what paints over the video is cleared: the page, the tile\'s image, shadow, tint, picture',

@@ -35,6 +35,11 @@ export function addToQueue(videoId, title) {
   showNotification(`Added to queue (${queue.length}): ${title}`);
 }
 
+/** The queued videos, next first: [{ videoId, title }] (a copy). */
+export function queuedVideos() {
+  return queue.map((item) => ({ videoId: item.videoId, title: item.title }));
+}
+
 export function clearQueue() {
   queue.length = 0;
   // A video whose command still waits goes too: it is neither sent late nor
@@ -153,6 +158,12 @@ window.addEventListener('yt-player-state-change', ({ detail }) => {
   if (detail.state === 1 && opening && detail.videoId === opening.videoId) {
     opening = null;
     clearTimeout(refusalTimer);
+  }
+  // A queued video the viewer opened from the Queue row (or anywhere): it has
+  // had its turn, and is not played again at the next end.
+  if (detail.state === 1 && detail.videoId) {
+    const index = queue.findIndex((item) => item.videoId === detail.videoId);
+    if (index !== -1) queue.splice(index, 1);
   }
   if (detail.state !== 0) {
     endHandled = false;

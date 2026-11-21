@@ -1,0 +1,46 @@
+/* The Skip button of a Manual Skip segment (sponsorblock-skip-button.js):
+   bottom right, above the player's controls, as YouTube's own ad Skip button.
+   right and bottom are set from the player's place (place() in the module);
+   these are the full-screen player's until then. */
+.ytaf-sb-skip-button {
+  position: fixed;
+  right: 4vh;
+  bottom: 22vh;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  padding: 1.3vh 2.2vh;
+  border-radius: 0.8vh;
+  background: rgba(0, 0, 0, 0.75);
+  border: 0.15vh solid rgba(255, 255, 255, 0.55);
+  color: #fff;
+  font-size: 2.2vh;
+  font-weight: 500;
+  line-height: 1.2;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.ytaf-sb-skip-button:hover {
+  background: rgba(0, 0, 0, 0.9);
+  border-color: #fff;
+}
+
+.ytaf-sb-skip-label::after {
+  content: ' \25B6\25B6';
+}
+
+.ytaf-sb-skip-key {
+  margin-left: 1.3vh;
+  padding: 0.2vh 0.9vh;
+  border-radius: 0.5vh;
+  font-size: 1.6vh;
+  font-weight: 700;
+  background: #555;
+  color: #fff;
+}
+
+.ytaf-sb-skip-key-blue { background: #1565c0; }
+.ytaf-sb-skip-key-red { background: #c62828; }
+.ytaf-sb-skip-key-green { background: #2e7d32; }
+.ytaf-sb-skip-key-yellow { background: #f9a825; color: #000; }
