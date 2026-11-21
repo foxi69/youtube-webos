@@ -1,4 +1,4 @@
-import { configGetAll, configAddChangeListener } from './config';
+import { configGetAll, configAddChangeListener, forceQualityLines } from './config';
 import { isShortsPage, isSearchPage } from './utils';
 import { getWebOSVersion } from './webos-utils';
 import { FetchRegistry } from './hooks/fetch';
@@ -91,6 +91,8 @@ const CONFIG_KEYS = {
   BLOCKED_CHANNELS: 'blockedChannels',
   BLOCKED_KEYWORDS: 'blockedKeywords',
   ORIGINAL_AUDIO: 'forceOriginalAudio',
+  UPSCALED: 'removeUpscaledFormats',
+  FORCE_QUALITY: 'forceQuality',
   LONG_PRESS: 'extendLongPressMenu',
   DEARROW: 'enableDeArrow',
   HIDDEN_SIDEBAR: 'hiddenSidebarEntries',
@@ -271,6 +273,9 @@ const cfgFlags = {
   blockedChannels: null,
   blockedKeywords: null,
   forceOriginalAudio: false,
+  // Skip AI-Upscaled Qualities, Max Video Quality (filterVideoFormats).
+  dropUpscaled: false,
+  maxVideoLines: 0,
   // The per-tile rewrites of the items that stay (decorateItem).
   decorateItems: false,
   extendLongPress: false,
@@ -344,6 +349,9 @@ function recomputeFilterFlags() {
   // its own default track.
   cfgFlags.disableAutoCaptions = cfgSnapshot[CONFIG_KEYS.AUTO_CAPTIONS] === 'off';
   cfgFlags.forceOriginalAudio = !!cfgSnapshot[CONFIG_KEYS.ORIGINAL_AUDIO];
+  cfgFlags.dropUpscaled = !!cfgSnapshot[CONFIG_KEYS.UPSCALED];
+  // Force Max Quality's Up to: the formats above it go (Off and Max: none).
+  cfgFlags.maxVideoLines = forceQualityLines(cfgSnapshot[CONFIG_KEYS.FORCE_QUALITY]);
   // The feed filters are Ad Blocking's, like the other item filters.
   cfgFlags.hideWatched = adBlock && !!cfgSnapshot[CONFIG_KEYS.HIDE_WATCHED];
   cfgFlags.minLengthSeconds = adBlock ? (Number(cfgSnapshot[CONFIG_KEYS.MIN_LENGTH]) || 0) * 60 : 0;
@@ -381,6 +389,8 @@ function recomputeFilterFlags() {
     cfgFlags.removeYouThere ||
     cfgFlags.disableAutoCaptions ||
     cfgFlags.forceOriginalAudio ||
+    cfgFlags.dropUpscaled ||
+    cfgFlags.maxVideoLines > 0 ||
     cfgFlags.decorateItems ||
     cfgFlags.deArrow
   );
@@ -391,6 +401,7 @@ function recomputeFilterFlags() {
   cfgFlagsEmojiOnly.badgeMask = 0;
   cfgFlagsEmojiOnly.minLengthSeconds = 0;
   cfgFlagsEmojiOnly.maxAgeDays = 0;
+  cfgFlagsEmojiOnly.maxVideoLines = 0;
   cfgFlagsEmojiOnly.blockedChannels = null;
   cfgFlagsEmojiOnly.blockedKeywords = null;
   cfgFlagsEmojiOnly.enableLegacyEmojiFix = cfgFlags.enableLegacyEmojiFix;
@@ -962,6 +973,10 @@ function applySchemaFilters(data, responseType, config) {
       if (config.forceOriginalAudio) {
         keepOriginalAudio(data);
         keepOriginalAudio(data.playerResponse);
+      }
+      if (config.dropUpscaled || config.maxVideoLines > 0) {
+        filterVideoFormats(data, config.dropUpscaled, config.maxVideoLines);
+        filterVideoFormats(data.playerResponse, config.dropUpscaled, config.maxVideoLines);
       }
       if (config.hideRecommended && responseType === 'NEXT') hideRecommendedVideos(data, schema);
       // The videos beside and under the player go through the item filters
@@ -1770,6 +1785,79 @@ function keepOriginalAudio(holder) {
   }
   if (DEBUG && w !== formats.length) debugLog(`Original audio: dropped ${formats.length - w} dubbed format(s)`);
   formats.length = w;
+}
+
+/**
+ * Whether a format is one of YouTube's AI-upscaled ("Super resolution")
+ * renditions: its xtags, a base64url protobuf of key/value pairs, hold the
+ * pair sr=1 (field 1 "sr", field 2 "1"). VacuumTube compares the whole string
+ * (CgcKAnNyEgEx); the pair is looked for instead, so other tags beside it do
+ * not hide it.
+ */
+const SUPER_RESOLUTION_PAIR = '\n\x02sr\x12\x011';
+function isUpscaledFormat(format) {
+  return typeof format.xtags === 'string' && decodeBase64Url(format.xtags).indexOf(SUPER_RESOLUTION_PAIR) !== -1;
+}
+
+/** A video format's height in lines (the short side, so a vertical 1080x1920 is 1080p), or 0. */
+function formatLines(format) {
+  const w = Number(format.width) || 0;
+  const h = Number(format.height) || 0;
+  if (w > 0 && h > 0) return Math.min(w, h);
+  const match = /(\d{3,4})p/.exec(format.qualityLabel || '');
+  return match ? Number(match[1]) : 0;
+}
+
+const isVideoFormat = (format) => !!format && typeof format.mimeType === 'string' && format.mimeType.indexOf('video/') === 0;
+
+/**
+ * Skip AI-Upscaled Qualities and Max Video Quality, on a player response's
+ * adaptiveFormats: the video formats YouTube upscaled with AI, and those above
+ * the chosen number of lines, are dropped, so neither the adaptive stream nor
+ * Force Max Quality (which asks for the best level left) can pick them. Audio
+ * formats are left alone. A video with nothing the TV can play left after a
+ * step keeps its formats for that step: a picture the setting did not want
+ * beats no picture.
+ */
+function filterVideoFormats(holder, dropUpscaled, maxLines) {
+  const formats = holder && holder.streamingData && holder.streamingData.adaptiveFormats;
+  if (!Array.isArray(formats)) return;
+  if (dropUpscaled) dropFormats(formats, isUpscaledFormat);
+  if (maxLines > 0) dropFormats(formats, (format) => formatLines(format) > maxLines);
+}
+
+/**
+ * Whether the TV can play a format, by MSE's own probe (as the player asks it,
+ * so narrowed by Force Video Codec too). No probe to ask: assumed yes; a probe
+ * that throws: no, so the formats are kept.
+ */
+function canPlayFormat(format) {
+  const ms = typeof window !== 'undefined' ? window.MediaSource : null;
+  if (!ms || typeof ms.isTypeSupported !== 'function') return true;
+  try { return !!ms.isTypeSupported(format.mimeType); }
+  catch { return false; }
+}
+
+// A step drops its formats only when one the TV can play is left: an AV1
+// format kept on a TV without AV1 is no picture either.
+function dropFormats(formats, shouldDrop) {
+  let kept = 0;
+  let dropped = 0;
+  for (let i = 0; i < formats.length; i++) {
+    const format = formats[i];
+    if (!isVideoFormat(format)) continue;
+    if (shouldDrop(format)) dropped++;
+    else if (canPlayFormat(format)) kept++;
+  }
+  if (!dropped || !kept) return;
+  let w = 0;
+  for (let i = 0; i < formats.length; i++) {
+    const format = formats[i];
+    if (isVideoFormat(format) && shouldDrop(format)) continue;
+    formats[w++] = format;
+  }
+  formats.length = w;
+  if (DEBUG) debugLog(`Video formats: dropped ${dropped}`);
 }
 
 // Tile previews never open full screen by themselves. Each preview's command

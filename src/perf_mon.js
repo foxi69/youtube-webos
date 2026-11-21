@@ -1795,7 +1795,7 @@ export {};
     videoPreviews: 'default',
     enableLegacyEmojiFix: true,
     hideGuestSignInPrompts: false,
-    forceHighResVideo: false,
+    forceQuality: 'off',
     disableNotifications: false
   };
 
@@ -2298,7 +2298,8 @@ export {};
     },
 
     {
-      key: 'forceHighResVideo',
+      key: 'forceQuality',
+      enabledWhen: function (v) { return !!v && v !== 'off'; },
       label: 'Force Max Quality',
       lamp: 'QUALT',
       module: 'video-quality.js',

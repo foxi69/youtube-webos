@@ -1,12 +1,13 @@
-import { aiVideoModes, subtitlesAtStartModes, logoStyles, timeRemainingModes, thumbnailQualityModes, videoCodecModes, uiThemes, clockModes, startPageModes, minVideoLengthModes, seekStepModes, maxVideoAgeModes, searchUploadDateModes, dearrowTitleFormats, dearrowThumbnailFallbacks } from './config.js';
-import { configAddChangeListener, configRead, configWrite, configGetDesc, segmentTypes, configGetDefault, shortcutActions, sbModes, sbModesHighlight, videoPreviewModes, videoQualityDisplayModes, configGetProfileStatus } from './config.js';
+import { aiVideoModes, subtitlesAtStartModes, logoStyles, timeRemainingModes, thumbnailQualityModes, videoCodecModes, uiThemes, clockModes, startPageModes, minVideoLengthModes, seekStepModes, maxVideoAgeModes, searchUploadDateModes, dearrowTitleFormats, dearrowThumbnailFallbacks, forceQualityModes, subtitlePositionModes, sbMinSegmentLengthModes, searchDurationModes, searchTypeModes, searchFeatureModes } from './config.js';
+import { configAddChangeListener, configRead, configWrite, configGetDesc, segmentTypes, configGetDefault, shortcutActions, sbModes, sbModesHighlight, videoPreviewModes, videoQualityDisplayModes, configGetProfileStatus, configResetCounters } from './config.js';
 import './ui.css';
 import './auto-login.js';
 import './return-dislike.js';
 import { initVideoQuality } from './video-quality.js';
 import { initLogoStyle } from './logo-style.js';
 import { initMathLetters } from './math-letters.js';
-import { initPlaybackSpeed, stepSpeed, resetSpeed } from './playback-speed.js';
+import { initPlaybackSpeed, stepSpeed, resetSpeed, toggleSpeed } from './playback-speed.js';
+import { toggleChannelWhitelist, formatTimeSaved, titleTrayChannel } from './sponsorblock-extras.js';
 import sponsorBlockUI from './Sponsorblock-UI.js';
 import { sendKey, REMOTE_KEYS, COLOR_CODE_MAP, isGuestMode, invalidateGuestModeCache, isWatchPage, isShortsPage, isSearchPage, SELECTORS, getVideo, SYNTHETIC_KEY_FLAG, isAutoplayOn, isLiveStream } from './utils.js';
 import { initTrackingBlock, destroyTrackingBlock } from './adblock.js';
@@ -186,6 +187,8 @@ const ACTION_SCOPES = {
     speed_up: 'VIDEO',
     speed_down: 'VIDEO',
     speed_reset: 'VIDEO',
+    speed_toggle: 'VIDEO',
+    sb_whitelist_channel: 'VIDEO',
     // From any page: the queue is filled on Home, and can be started there.
     queue_next: 'GLOBAL',
     queue_clear: 'GLOBAL',
@@ -473,6 +476,27 @@ function alignControlLabel(control, text) {
   return control;
 }
 
+/**
+ * The time SponsorBlock saved, under its settings: "Time saved: 1 h 23 min
+ * (456 skips)", kept up to date while the panel is open, with a button that
+ * sets it back to nothing.
+ */
+function createSbStatsLine() {
+  const text = createElement('span', {});
+  const update = () => {
+    const count = Number(configRead('sbSkipCount')) || 0;
+    text.textContent = `Time saved: ${formatTimeSaved(configRead('sbTimeSaved'))} (${count} ${count === 1 ? 'skip' : 'skips'})`;
+  };
+  const reset = createElement('button', {
+    class: 'ytaf-list-btn', text: 'Reset', tabIndex: 0,
+    events: { click: () => configResetCounters() }
+  });
+  configAddChangeListener('sbTimeSaved', update);
+  configAddChangeListener('sbSkipCount', update);
+  update();
+  return createElement('div', { class: 'ytaf-sb-stats', style: { padding: '8px 4px 4px 4.3vh' } }, text, reset);
+}
+
 const createLogoControl = () => createAlignedCycleControl('logoStyle', logoStyles);
 const createVideoCodecControl = () => createAlignedCycleControl('forceVideoCodec', videoCodecModes);
 
@@ -584,9 +608,7 @@ function currentVideoChannel() {
     const data = player && typeof player.getVideoData === 'function' ? player.getVideoData() : null;
     if (data && typeof data.author === 'string') author = data.author.trim();
   } catch { /* the tray below */ }
-  if (author) return author;
-  const line = document.querySelector('ytlr-video-title-tray ytlr-video-metadata-line yt-formatted-string');
-  return line ? line.textContent.trim() : '';
+  return author || titleTrayChannel();
 }
 
 /**
@@ -1077,16 +1099,27 @@ function createOptionsPanel() {
     updateFeedSection();
   };
 
+  // Remember Playback Speed acts only with Playback Speed Control on.
+  const elRememberSpeed = createConfigCheckbox('rememberPlaybackSpeed');
+  const updateRememberSpeedRow = () => setState(elRememberSpeed, configRead('enablePlaybackSpeed') !== false);
+  configAddChangeListener('enablePlaybackSpeed', updateRememberSpeedRow);
+  updateRememberSpeedRow();
   // --- Page 2: Player ---
   makePage(1).appendChild(createSection('Video Player',
-  [createConfigCheckbox('forceHighResVideo'),
+  [createAlignedCycleControl('forceQuality', forceQualityModes),
+  createElement('div', { text: 'Up to: the best quality the video has up to that size; a change applies from the next video', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
+  createConfigCheckbox('removeUpscaledFormats'),
+  createElement('div', { text: 'YouTube\'s "Super resolution" levels are upscaled from a smaller video by AI; the real ones play instead', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   createAlignedCycleControl('showVideoQuality', videoQualityDisplayModes),
   createElement('div', { text: 'At Start: a notice with the quality for a few seconds when a video starts. Under Title: a tag after the channel, views and date line', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   createConfigCheckbox('enablePlaybackSpeed'),
+  elRememberSpeed,
   createVideoCodecControl(),
   createAlignedCycleControl('subtitleTranslateLang', subtitleTranslateLanguages),
   createAlignedCycleControl('subtitlesAtStart', subtitlesAtStartModes),
   createElement('div', { text: 'Off: no subtitles until you turn them on. Translated: only the Auto-Translate Subtitles language above', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
+  createAlignedCycleControl('subtitlePosition', subtitlePositionModes),
+  createElement('div', { text: 'Lifts the subtitles, for a TV or soundbar that covers the bottom of the picture. Their font, size and colours are in YouTube\'s own settings, and are kept now', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   createConfigCheckbox('forceOriginalAudio'),
   createAlignedCycleControl('timeRemainingMode', timeRemainingModes),
   createConfigCheckbox('showMostReplayed'),
@@ -1113,7 +1146,7 @@ function createOptionsPanel() {
   const updateAutoLoginRow = () => setState(elAutoSelectAccount, !!configRead('enableAutoLogin'));
   configAddChangeListener('enableAutoLogin', updateAutoLoginRow);
   updateAutoLoginRow();
-  const interfaceGroup = [createAlignedCycleControl('uiTheme', uiThemes), createConfigCheckbox('enableAutoLogin'), elAutoSelectAccount, createPerAccountControl(), createAlignedCycleControl('thumbnailQuality', thumbnailQualityModes), createLogoControl(), createAlignedCycleControl('clockMode', clockModes), elClockDuringPlayback, elShowWatchTime, createConfigCheckbox('enableOledCareMode'), createConfigCheckbox('disableNotifications'), createConfigCheckbox('keyboardSearch'), createAlignedCycleControl('searchUploadDate', searchUploadDateModes), createConfigCheckbox('pointerSettingsButton'), createConfigCheckbox('disableAnimations'), createConfigCheckbox('keepAppOpenWhenPaused')];
+  const interfaceGroup = [createAlignedCycleControl('uiTheme', uiThemes), createConfigCheckbox('enableAutoLogin'), elAutoSelectAccount, createPerAccountControl(), createAlignedCycleControl('thumbnailQuality', thumbnailQualityModes), createLogoControl(), createAlignedCycleControl('clockMode', clockModes), elClockDuringPlayback, elShowWatchTime, createConfigCheckbox('enableOledCareMode'), createConfigCheckbox('disableNotifications'), createConfigCheckbox('keyboardSearch'), createAlignedCycleControl('searchUploadDate', searchUploadDateModes), createAlignedCycleControl('searchDuration', searchDurationModes), createAlignedCycleControl('searchType', searchTypeModes), createAlignedCycleControl('searchFeature', searchFeatureModes), createConfigCheckbox('pointerSettingsButton'), createConfigCheckbox('disableAnimations'), createConfigCheckbox('keepAppOpenWhenPaused')];
   // The cast block only exists on webOS 25 (see userScript.js).
   if (isWebOS25()) interfaceGroup.push(createConfigCheckbox('blockWebosCast'));
   // --- Page 3: Interface ---
@@ -1143,7 +1176,16 @@ function createOptionsPanel() {
       createConfigCheckbox('sbPeriodicRefresh'),
   	createConfigCheckbox('skipSegmentsOnce'),
       createConfigCheckbox('sbFullVideoLabel'),
-      createConfigCheckbox('sbShowTimeWithSkips')
+      createConfigCheckbox('sbShowTimeWithSkips'),
+      createAlignedCycleControl('sbMinSegmentLength', sbMinSegmentLengthModes),
+      createConfigCheckbox('sbReportSkips'),
+      createElement('div', { text: 'Tells sponsor.ajay.app which segments were skipped (their ids only), for the counts SponsorBlock shows their submitters', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
+      createElement('div', { class: 'ytaf-sb-whitelist-title', text: configGetDesc('sbWhitelistChannels'), style: { padding: '8px 4px 4px 4.3vh' } }),
+      createListEditor('sbWhitelistChannels', {
+        placeholder: 'Channel name, then OK',
+        emptyText: 'None. A key set to "SponsorBlock: Never Skip on This Channel" adds the channel playing.'
+      }),
+      createSbStatsLine()
     );
     pageSponsor.appendChild(elmBlock);
     pageSponsor.appendChild(createElement('div', {}, createElement('small', { text: 'Sponsor segments skipping - https://sponsor.ajay.app' })));
@@ -2160,6 +2202,14 @@ function handleShortcutAction(action) {
 
     case 'speed_reset':
         resetSpeed();
+        break;
+
+    case 'speed_toggle':
+        toggleSpeed();
+        break;
+
+    case 'sb_whitelist_channel':
+        toggleChannelWhitelist();
         break;
     case 'toggle_subs':
         // Resolved here rather than above the switch: only this one action

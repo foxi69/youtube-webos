@@ -126,6 +126,23 @@ run(async () => {
     win.close();
   }
 
+  // ---- An error in the state handler stays out of YouTube's player ----
+  {
+    const win = await boot({}, { html: '<body class="WEB_PAGE_TYPE_WATCH"></body>', url: 'https://www.youtube.com/tv#/watch?v=' + VIDEO, speed: 20 });
+    const player = makePlayer(win, -1);
+    win.document.body.appendChild(player.el);
+    const attached = await until(() => player.listeners.length === 1, 3000);
+    // The handler's first step, the shared state event, fails.
+    let built = 0;
+    win.CustomEvent = function () { built++; throw new Error('boom'); };
+    let threw = null;
+    try { player.emit(1); } catch (e) { threw = e; }
+    t('...precondition: the handler reached the failing event', built > 0, `built=${built}`);
+    t('a state handler that throws does not throw into the player\'s event dispatch', attached && threw === null,
+      threw ? String(threw) : `listeners=${player.listeners.length}`);
+    win.close();
+  }
+
   // ---- A tile preview on Home, then the video opened ----
   {
     const win = await boot({ subtitleTranslateLang: 'hu', subtitlesAtStart: 'translated', showVideoQuality: 'start' },
@@ -222,7 +239,7 @@ run(async () => {
   // A video that starts at its best level gets no range (it would reload),
   // and after a seek the stream fell to 1080p by itself (seen on webOS 25).
   for (const variant of ['falls', 'byHand', 'throws', 'throwsAfter', 'alwaysThrows']) {
-    const win = await boot({ forceHighResVideo: true },
+    const win = await boot({ forceQuality: 'max' },
       { html: '<body class="WEB_PAGE_TYPE_WATCH"></body>', url: 'https://www.youtube.com/tv#/watch?v=' + VIDEO, speed: 20 });
     const player = makePlayer(win, -1);
     let quality = 'hd1440';

@@ -491,6 +491,16 @@ function scheduleQualityToast(actualState) {
   }, QUALITY_TOAST_DELAY_MS);
 }
 
+// Registered on YouTube's own player: an error of ours must not reach its
+// event dispatch, where it would stop the player's other listeners.
+function onPlayerStateChange(state) {
+  try {
+    handleStateChange(state);
+  } catch (e) {
+    console.warn('[VideoQuality] State change handler failed:', e);
+  }
+}
+
 function handleStateChange(state) {
   if (isDestroyed || !player) return;
 
@@ -612,7 +622,7 @@ export function destroyVideoQuality() {
 
   if (player) {
     try {
-      player.removeEventListener?.('onStateChange', handleStateChange);
+      player.removeEventListener?.('onStateChange', onPlayerStateChange);
     } catch { /* ignore */ }
   }
   
@@ -635,7 +645,7 @@ export function initVideoQuality() {
   isDestroyed = false;
   _isWatchPageCached = true;
   
-  _shouldForce = configRead('forceHighResVideo');
+  _shouldForce = configRead('forceQuality') !== 'off';
   
   setLocalStorageQuality();
   
@@ -653,7 +663,7 @@ export function initVideoQuality() {
       
       try {
         if (player.addEventListener) {
-            player.addEventListener('onStateChange', handleStateChange);
+            player.addEventListener('onStateChange', onPlayerStateChange);
             listenerAttached = true;
             DEBUG && console.log('[VideoQuality] Native listener attached');
         }
@@ -741,8 +751,11 @@ function setupListeners() {
     // Registered once for the session, not per attach: the option is also
     // switched off from the home screen, where the module is detached, and the
     // 4320p record it wrote must go then too.
-    configAddChangeListener('forceHighResVideo', (evt) => {
-      _shouldForce = !!evt.detail.newValue;
+    configAddChangeListener('forceQuality', (evt) => {
+      const wasForcing = _shouldForce;
+      _shouldForce = evt.detail.newValue !== 'off';
+      // From Max to Up to (or back) it keeps forcing: nothing to set up again.
+      if (_shouldForce === wasForcing) return;
       if (_shouldForce) {
         clearSpeedQualityPick();
         cachedQualitySettings = null;

@@ -349,6 +349,12 @@ run(async () => {
     t(n('...a category switched off plays, and is not taken off'), /\(9:00\)/.test(env.labelsCss()), env.labelsCss());
   }
   {
+    // Ignore Segments Shorter Than 5 s: the 3 s one plays, only the 20 s one comes off.
+    const env = await boot({ sbShowTimeWithSkips: true, sbMinSegmentLength: '5' }, [seg('sponsor', 30, 33), seg('selfpromo', 100, 120)]);
+    t(n('the time with skips removed leaves in a segment too short to skip'), /\(9:40\)/.test(env.labelsCss()), env.labelsCss());
+    t(n('...and that segment keeps its mark on the bar'), env.marks().length === 2, String(env.marks().length));
+  }
+  {
     const env = await boot({ sbFullVideoLabel: true }, [seg('sponsor', 0, 0, 'full')]);
     t(n('only a full-video label: no overlay on the bar'), env.overlay() === null &&
       env.doc.querySelector('.bar-host').children.length === 1);

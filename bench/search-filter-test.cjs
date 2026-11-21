@@ -14,14 +14,14 @@ const { t, done } = createReporter();
 // newer), in a Chrome 87 environment with a webOS 23 user agent, instead of
 // the legacy one in a Chrome 38 one. Only page script errors are collected,
 // and the environment is left without Element#remove.
-function boot(searchUploadDate, enableAdBlock = true) {
+function boot(searchUploadDate, enableAdBlock = true, more = {}) {
   const { win, errors } = bootPage({
     bodyClass: 'WEB_PAGE_TYPE_SEARCH',
-    config: {
+    config: Object.assign({
       enableAdBlock, enableLegacyEmojiFix: false, enableSponsorBlock: false,
       enableReturnYouTubeDislike: false, thumbnailQuality: 'off', enableAutoLogin: false,
       searchUploadDate
-    },
+    }, more),
     consoleErrors: false,
     restoreRemove: false
   });
@@ -63,6 +63,29 @@ const context = { client: { clientName: 'TVHTML5', clientVersion: '7.20250101.00
 {
   const { send } = boot('any');
   t('Any Time: no filter', !('params' in send({ context, query: 'nasa' })));
+}
+
+// ---- Duration, Type and Only ----
+// The expected params are built in Python from the field numbers, apart from the bundle.
+{
+  const { send } = boot('any', true, { searchDuration: 'short' });
+  t('Duration Under 4 min', send({ context, query: 'nasa' }).params === 'EgIYAQ==', send({ context, query: 'nasa' }).params);
+}
+{
+  const { send } = boot('any', true, { searchType: 'channel' });
+  t('Type Channels', send({ context, query: 'nasa' }).params === 'EgIQAg==', send({ context, query: 'nasa' }).params);
+}
+{
+  const { send } = boot('any', true, { searchFeature: '4k' });
+  t('Only 4K', send({ context, query: 'nasa' }).params === 'EgJwAQ==', send({ context, query: 'nasa' }).params);
+}
+{
+  const { send } = boot('week', true, { searchType: 'video', searchDuration: 'long', searchFeature: 'hdr' });
+  const sent = send({ context, query: 'nasa' });
+  t('all four together: one params (week, videos, over 20 min, HDR, a two-byte field number)',
+    sent.params === 'EgkIAxABGALIAQE=', sent.params);
+  const own = send({ context, query: 'nasa', params: 'EgZzZWFyY2g=' });
+  t('...a request with params of its own is still left alone', own.params === 'EgZzZWFyY2g=');
 }
 
 done();

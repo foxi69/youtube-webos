@@ -7,6 +7,8 @@ import './perf_mon.js';
 // otherwise sent as "[object Object]".
 import './polyfills.js';
 import 'whatwg-fetch';
+// Early: YouTube's caption style record is renewed before the player reads it.
+import './caption-style.js';
 // Before adblock.js, see the module.
 import './preview-history.js';
 import './playback-speed.js';

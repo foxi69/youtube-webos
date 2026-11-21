@@ -5,7 +5,7 @@ import { legacyAudioCodecs } from './speed/legacy-decoder.js';
 import { watchPosition } from './speed/position-watch.js';
 import { readCaptions, keepCaptions, readQualityRecord, QUALITY_KEY } from './speed/player-state.js';
 import { showNotification } from './notifications.js';
-import { configRead, configAddChangeListener } from './config.js';
+import { configRead, configWrite, configAddChangeListener } from './config.js';
 import { SELECTORS, SYNTHETIC_KEY_FLAG } from './utils.js';
 
 export const SPEED_BUTTON_TYPE = 'TRANSPORT_CONTROLS_BUTTON_TYPE_SPEED_BUTTON';
@@ -230,7 +230,8 @@ const KEY_TIMES = 16;
  * (Date.now() times). Without it only the time window tells our records.
  */
 export function createSpeedController({
-  win, getPlayer, notify, configRead, codecs, userKeyAt = () => 0, keyPressedBetween = () => true
+  win, getPlayer, notify, configRead, codecs, userKeyAt = () => 0, keyPressedBetween = () => true,
+  onSpeed = () => {}
 }) {
   let currentSpeed = 1;
   let activeSink = null;
@@ -471,7 +472,7 @@ export function createSpeedController({
       setRange(player, cap);
     } else if (fromSpeed > CAP_ABOVE) {
       // A pick in YouTube's menu wins over Force Max Quality.
-      const quality = viewerPick() || (configRead('forceHighResVideo') ? 'highres' : 'auto');
+      const quality = viewerPick() || (configRead('forceQuality') !== 'off' ? 'highres' : 'auto');
       setRange(player, quality);
     }
     if (!videoId) return;
@@ -614,7 +615,32 @@ export function createSpeedController({
     const previousSpeed = currentSpeed;
     currentSpeed = speed;
     notify(`Playback speed ${speed}×`);
+    // The viewer's choice (a key, YouTube's menu): remembered (initPlaybackSpeed).
+    try { onSpeed(speed); } catch { /* the speed still applies */ }
     scheduleReload(pending ? pending.fromSpeed : previousSpeed, immediate);
+  }
+
+  /**
+   * Remember Playback Speed: the speed of the last run, set as the app starts,
+   * before any video plays, so the first one opens at it with no reload, as
+   * the next video after a speed change does. Nothing is shown; a live stream
+   * or a preview still plays at 1x (getSpeed).
+   */
+  function restoreSpeed(speed) {
+    if (speed === 1 || currentSpeed !== 1 || !isSupportedSpeed(speed) || !enabled() || !isSupported()) return false;
+    currentSpeed = speed;
+    return true;
+  }
+
+  // Toggle Speed (1x / Last): from 1x to `other`, from any other speed to 1x.
+  // Not on a live stream, which plays at 1x whatever is set: the speed set
+  // stays for the next video that is not live.
+  function toggle(other) {
+    if (isLive()) {
+      refuseLive();
+      return;
+    }
+    setSpeed(currentSpeed === 1 ? other : 1);
   }
 
   function cycle() {
@@ -714,6 +740,8 @@ export function createSpeedController({
     cycle,
     step,
     reset,
+    restoreSpeed,
+    toggle,
     stop,
     onRateRequest,
     onError,
@@ -747,7 +775,7 @@ export function clearSpeedQualityPick() {
   if (speedInstance) speedInstance.controller.clearQualityPick();
 }
 
-export function installSpeedFeature(win, { notify, configRead: cfgRead, getPlayer }) {
+export function installSpeedFeature(win, { notify, configRead: cfgRead, getPlayer, onSpeed }) {
   if (typeof win.AudioContext === 'undefined' || typeof win.MediaSource === 'undefined') {
     return null;
   }
@@ -772,7 +800,7 @@ export function installSpeedFeature(win, { notify, configRead: cfgRead, getPlaye
   };
   win.addEventListener('keydown', onKey, true);
   const ctrl = createSpeedController({
-    win, getPlayer, notify, configRead: cfgRead, codecs, userKeyAt: () => lastUserKeyAt,
+    win, getPlayer, notify, configRead: cfgRead, codecs, userKeyAt: () => lastUserKeyAt, onSpeed,
     // A span that reaches into the dropped presses may have had one: a record
     // there counts as the viewer's, not as ours for want of a known key.
     keyPressedBetween: (from, to) => droppedKeyAt > from || keyTimes.some((at) => at > from && at <= to)
@@ -844,12 +872,14 @@ export function initPlaybackSpeed() {
   speedInstance = installSpeedFeature(window, {
     notify: showNotification,
     configRead,
+    onSpeed: rememberSpeed,
     getPlayer: () =>
       document.getElementById(SELECTORS.PLAYER_ID) ||
       document.querySelector('.html5-video-player')
   });
   window.ytafSpeed = speedInstance ? speedInstance.controller : null;
   if (speedInstance) {
+    if (configRead('rememberPlaybackSpeed')) speedInstance.controller.restoreSpeed(Number(configRead('savedPlaybackSpeed')));
     configAddChangeListener('enablePlaybackSpeed', ({ detail }) => {
       if (!detail.newValue) speedInstance.controller.stop();
     });
@@ -872,6 +902,23 @@ export function initPlaybackSpeed() {
     });
   }
   return speedInstance;
+}
+
+/**
+ * Each speed the viewer sets is kept: savedPlaybackSpeed for Remember Playback
+ * Speed, and the last one other than 1x for Toggle Speed (1x / Last).
+ */
+function rememberSpeed(speed) {
+  configWrite('savedPlaybackSpeed', speed);
+  if (speed !== 1) configWrite('toggleSpeed', speed);
+}
+
+// The speed Toggle Speed goes to before any other was set.
+const DEFAULT_TOGGLE_SPEED = 1.5;
+
+export function toggleSpeed() {
+  const other = Number(configRead('toggleSpeed'));
+  initPlaybackSpeed()?.controller?.toggle(isSupportedSpeed(other) && other !== 1 ? other : DEFAULT_TOGGLE_SPEED);
 }
 
 export function stepSpeed(direction) {
