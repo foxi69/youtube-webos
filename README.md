@@ -238,8 +238,8 @@ is decoded the older way, which works with **AAC audio only**: off 1× the video
 without one stays at 1×. Not on webOS 3.
 
 **Force Max Quality** plays the best quality the video has, or with *Up to* the best up to that size: the bigger
-ones are left out, so YouTube's own adaptive stream stays under it too (a vertical video counts by its short
-side); a change applies from the next video. It is no hard limit: a video with nothing that small (Up to 480p on
+ones are left out, so YouTube's own adaptive stream stays under it too (a landscape video counts by its 16:9 height,
+a vertical one by its short side); a change applies at once, to the video playing too. It is no hard limit: a video with nothing that small (Up to 480p on
 a video of 720p and 1080p) keeps all its qualities, rather than play no picture. **Skip AI-Upscaled Qualities** leaves out YouTube's "Super
 resolution" qualities, upscaled from a smaller video by AI. The subtitle style picked in YouTube's own settings is
 kept: YouTube gives it an expiry date, and lost it whenever its storage was emptied.

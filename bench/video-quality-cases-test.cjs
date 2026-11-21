@@ -83,7 +83,7 @@ function boot(cfg, { player = true, events = true, record, ua, quality = 'hd720'
     getAvailableQualityLevels: () => s.levels,
     getPlaybackQuality: () => s.quality,
     getUserPlaybackQualityPreference: () => 'auto',
-    setPlaybackQualityRange(a) { log.calls.push('range:' + a); if (a === 'highres') s.quality = s.levels[0]; },
+    setPlaybackQualityRange(a) { log.calls.push('range:' + a); if (a === 'highres') s.quality = s.levels[0]; else if (s.levels.indexOf(a) !== -1) s.quality = a; },
     setPlaybackQuality: calls('quality'),
     pauseVideo() { log.calls.push('pause'); },
     playVideo() { log.calls.push('play'); },
@@ -195,6 +195,32 @@ run(async () => {
     t('switched off: the 4320p record is dropped', stored() === null, JSON.stringify(stored()));
     toggle('Force Max Quality', true);
     t('switched on again: written again at once', stored()?.data?.quality === 4320, JSON.stringify(stored()));
+  }
+  {
+    // Changed in the panel while a video plays: the video playing gets the
+    // new level at once, once the row stops (Off steps through Max on the way
+    // to an Up to). Its formats were read with the option off, so it lists
+    // them all: Up to picks the best level up to its size.
+    const { win, log, emit, toggle } = boot({ forceQuality: 'off' });
+    await wait(50);
+    emit(1);
+    t('changed mid-video: precondition: off, nothing set', !log.calls.some((c) => c.startsWith('range')), log.calls.join());
+    toggle('Force Max Quality', true);
+    t('changed mid-video: not at each step of the row', !log.calls.some((c) => c.startsWith('range')), log.calls.join());
+    await wait(800);
+    t('changed mid-video: Max, the video playing goes to its best at once', log.calls.some((c) => c === 'range:highres'), log.calls.join());
+    log.calls.length = 0;
+    const row = Array.from(win.document.querySelectorAll('.ytaf-ui-container .shortcut-control-row'))
+      .find((r) => r.querySelector('.shortcut-label')?.textContent.trim() === 'Force Max Quality');
+    for (let i = 0; i < 12 && row.querySelector('.current-value').textContent !== 'Up to 1080p'; i++) {
+      row.focus();
+      trustedKey(win, 39, row);
+    }
+    t('changed mid-video: precondition: Up to 1080p chosen', row.querySelector('.current-value').textContent === 'Up to 1080p',
+      row.querySelector('.current-value').textContent);
+    await wait(800);
+    t('changed mid-video: Up to 1080p, the video playing goes to 1080p at once', log.calls.indexOf('range:hd1080') !== -1 &&
+      !log.calls.some((c) => c === 'range:highres' || c === 'range:hd2160'), log.calls.join());
   }
   {
     // A pick of the viewer's in YouTube's menu is not ours to drop.

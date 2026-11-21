@@ -1799,13 +1799,15 @@ function isUpscaledFormat(format) {
   return typeof format.xtags === 'string' && decodeBase64Url(format.xtags).indexOf(SUPER_RESOLUTION_PAIR) !== -1;
 }
 
-/** A video format's height in lines (the short side, so a vertical 1080x1920 is 1080p), or 0. */
+/**
+ * A video format's size in lines, as YouTube labels it, or 0: a landscape one
+ * by its 16:9 height (a 21:9 2560x1072 is 1440p, a 4:3 1440x1080 is 1080p),
+ * a vertical one by its short side (1080x1920 and 1080x2400 are 1080p).
+ */
 function formatLines(format) {
   const w = Number(format.width) || 0;
   const h = Number(format.height) || 0;
-  // The 16:9 height of its size, as YouTube labels it: a 21:9 2560x1072 is
-  // 1440p, not 1072 lines; the short side keeps 4:3 and vertical ones right.
-  if (w > 0 && h > 0) return Math.max(Math.min(w, h), Math.round((Math.max(w, h) * 9) / 16));
+  if (w > 0 && h > 0) return h > w ? w : Math.max(h, Math.round((w * 9) / 16));
   const match = /(\d{3,4})p/.exec(format.qualityLabel || '');
   return match ? Number(match[1]) : 0;
 }

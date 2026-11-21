@@ -1,4 +1,4 @@
-import { configRead, configAddChangeListener } from './config.js';
+import { configRead, configAddChangeListener, forceQualityLines } from './config.js';
 import { showNotification } from './notifications.js';
 import { isWebOS25 } from './webos-utils.js';
 import { sendKey, REMOTE_KEYS, SELECTORS, isWatchPage, getVideo } from './utils.js';
@@ -155,12 +155,28 @@ function levelsListed() {
   }
 }
 
-// Max means the best level this video offers (the list is best first), not
-// any named level: a 1440p video playing in 720p still needs the upgrade.
+// The level to force: 'highres' for Max; with Up to the best level the video
+// lists up to that size, else its smallest (no hard limit, as with the
+// formats). A video read before Up to was set lists them all; one read with
+// it lists only those, so its best is that level.
+function targetLevel() {
+  const lines = forceQualityLines(configRead('forceQuality'));
+  if (!lines) return 'highres';
+  const levels = (player.getAvailableQualityLevels?.() || []).filter((q) => q !== 'auto');
+  for (let i = 0; i < levels.length; i++) {
+    if (QUALITY_HEIGHTS[levels[i]] && QUALITY_HEIGHTS[levels[i]] <= lines) return levels[i];
+  }
+  return levels[levels.length - 1] || 'highres';
+}
+
+// At the level forced already. Max means the best level this video offers
+// (the list is best first), not any named level: a 1440p video playing in
+// 720p still needs the upgrade.
 function isQualityAlreadyMax() {
   if (!player) return false;
   try {
-    const best = (player.getAvailableQualityLevels?.() || []).find((q) => q !== 'auto');
+    const target = targetLevel();
+    const best = target === 'highres' ? (player.getAvailableQualityLevels?.() || []).find((q) => q !== 'auto') : target;
     return !!best && player.getPlaybackQuality?.() === best;
   } catch {
     return false;
@@ -320,9 +336,10 @@ function setQualityOnPlayer() {
     const previousQuality = player.getPlaybackQuality?.();
     DEBUG && console.log('[VideoQuality] Upgrading quality from:', previousQuality);
 
-    player.setPlaybackQualityRange('highres', 'highres');
+    const level = targetLevel();
+    player.setPlaybackQualityRange(level, level);
     rangeSet = true;
-    player.setPlaybackQuality?.('highres');
+    player.setPlaybackQuality?.(level);
     restorePositionAfterReload();
     
     const afterQuality = player.getPlaybackQuality?.();
@@ -747,6 +764,23 @@ function handleNavigation(event) {
   }
 }
 
+// A change of Force Max Quality in the panel, applied to the video playing
+// (setupListeners) this long after the row last moved.
+const APPLY_NOW_MS = 600;
+let applyNowTimer = null;
+function applyToPlayingVideo() {
+  applyNowTimer = null;
+  if (!player || isDestroyed || !isForceEnabled() || !isWatchPage() || videoBeingProcessed || !levelsListed()) return;
+  try {
+    const videoId = player.getVideoData?.()?.video_id;
+    if (!videoId) return;
+    const result = isQualityAlreadyMax() ? { success: true } : setQualityOnPlayer();
+    if (result.success) qualitySetForVideo.add(videoId);
+  } catch (e) {
+    DEBUG && console.warn('[VideoQuality] Could not apply the new level:', e);
+  }
+}
+
 function setupListeners() {
     // Registered once for the session, not per attach: the option is also
     // switched off from the home screen, where the module is detached, and the
@@ -754,16 +788,22 @@ function setupListeners() {
     configAddChangeListener('forceQuality', (evt) => {
       const wasForcing = _shouldForce;
       _shouldForce = evt.detail.newValue !== 'off';
-      // From Max to Up to (or back) it keeps forcing: nothing to set up again.
-      if (_shouldForce === wasForcing) return;
-      if (_shouldForce) {
+      if (!_shouldForce) {
+        clearTimeout(applyNowTimer);
+        if (wasForcing) clearLocalStorageQuality();
+        return;
+      }
+      if (!wasForcing) {
         clearSpeedQualityPick();
         cachedQualitySettings = null;
         setLocalStorageQuality();
-        qualitySetForVideo.clear();
-      } else {
-        clearLocalStorageQuality();
       }
+      // A new level to force (on, or from Max to Up to and between them):
+      // the video playing now gets it at once, once the row stops moving
+      // (Off steps through Max on the way to an Up to).
+      qualitySetForVideo.clear();
+      clearTimeout(applyNowTimer);
+      applyNowTimer = setTimeout(applyToPlayingVideo, APPLY_NOW_MS);
     });
 
     // The picture's size changed (a <video> 'resize', caught on its way down).

@@ -123,9 +123,9 @@ run(async () => {
   // ---- A wide or vertical size counts by its 16:9 height, as YouTube labels it ----
   {
     const wide = boot({ forceQuality: 'up1080', removeUpscaledFormats: false })
-      .parse(player([video(400, 2560, 1072), video(399, 1920, 800), video(398, 1080, 1920), video(397, 640, 480), audio]));
-    t('Up to 1080p: a 21:9 2560x1072 (1440p) goes; 1920x800, a vertical 1080x1920 and 640x480 stay',
-      itags(wide) === '399,398,397,251', itags(wide));
+      .parse(player([video(400, 2560, 1072), video(399, 1920, 800), video(398, 1080, 1920), video(396, 1080, 2400), video(397, 640, 480), audio]));
+    t('Up to 1080p: a 21:9 2560x1072 (1440p) goes; 1920x800, vertical 1080x1920 and 1080x2400 (20:9, a phone size) and 640x480 stay',
+      itags(wide) === '399,398,396,397,251', itags(wide));
   }
 
   // ---- Up to as the only filter on ----
