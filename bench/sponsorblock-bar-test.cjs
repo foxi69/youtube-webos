@@ -544,6 +544,14 @@ run(async () => {
       marks.length === 2 && near(parseFloat(marks[0].style.left), pct(75)) && near(parseFloat(marks[0].style.width), pct(25)) &&
         near(parseFloat(marks[1].style.left), pct(110)) && near(parseFloat(marks[1].style.width), pct(62.5)),
       marks.map(at).join(' '));
+    // The same number of chapters, other start times: drawn again by the new times.
+    env.doc.querySelector('ytlr-multi-markers-player-bar-renderer').__instance =
+      { props: { data: { chapters: [{ start: 0 }, { start: 300 }] } } };
+    await wait(600);
+    await env.playTo(15);
+    t(n('start times: new times with the same count move the marks'),
+      env.marks().length === 2 && near(parseFloat(env.marks()[0].style.left), pct(50)) && near(parseFloat(env.marks()[0].style.width), pct(50)),
+      env.marks().map(at).join(' '));
     // Fewer pieces than chapters (a long video): which piece is which is not known.
     env.doc.querySelector('ytlr-multi-markers-player-bar-renderer').__instance =
       { props: { data: { chapters: [{ start: 0 }, { start: 200 }, { start: 400 }] } } };
@@ -568,6 +576,30 @@ run(async () => {
     await wait(300);
     t(n('seek bar only: a wider gap moves the marks with no playback'),
       env.marks().length === 2 && near(parseFloat(env.marks()[1].style.left), (120 / 220) * 100), env.marks().map(at).join(' '));
+  }
+  {
+    // Pieces sized by percent: a resize changes their measured width and no
+    // attribute, so only the resize itself can redraw the marks.
+    const host = '<div class="bar-host"><ytlr-progress-bar><ytlr-multi-markers-player-bar-renderer>' +
+      '<div idomkey="progress-bar"><div idomkey="chapter-0" style="width: calc(50% - 5px); margin-right: 10px"></div>' +
+      '<div idomkey="chapter-1" style="width: calc(50% - 5px)"></div><div idomkey="segment"></div></div>' +
+      '</ytlr-multi-markers-player-bar-renderer></ytlr-progress-bar></div>';
+    const at = (m) => `${parseFloat(m.style.left).toFixed(2)}/${parseFloat(m.style.width).toFixed(2)}`;
+    const env = await boot({}, [seg('sponsor', 150, 450)], { bar: host });
+    const pieces = env.doc.querySelectorAll('[idomkey^="chapter-"]');
+    const measure = (px) => {
+      for (const p of pieces) Object.defineProperty(p, 'offsetWidth', { configurable: true, get: () => px });
+    };
+    measure(100);
+    env.win.dispatchEvent(new env.win.Event('resize'));
+    await wait(30);
+    t(n('resize: precondition: placed by the measured width'),
+      env.marks().length === 2 && near(parseFloat(env.marks()[1].style.left), (110 / 210) * 100), env.marks().map(at).join(' '));
+    measure(200);
+    env.win.dispatchEvent(new env.win.Event('resize'));
+    await wait(30);
+    t(n('resize: a wider bar moves the marks'),
+      env.marks().length === 2 && near(parseFloat(env.marks()[1].style.left), (210 / 410) * 100), env.marks().map(at).join(' '));
   }
 
   // ---- Replay: the player chrome torn down at the end, rebuilt later ----

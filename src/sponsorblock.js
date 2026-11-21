@@ -326,13 +326,13 @@ class SponsorBlockHandler {
 
     /**
      * A cheap signature of the chapter pieces (no layout read): their width,
-     * inline margins and class (the gaps of YouTube's CSS), and how many
-     * start times the renderer has; a change redraws the marks. Only these
-     * of the inline style, so a style written on every frame does not.
+     * inline margins and class (the gaps of YouTube's CSS), and the start
+     * times the renderer has; a change redraws the marks. Only these of the
+     * inline style, so a style written on every frame does not.
      */
     _chapterSig() {
         const els = this._chapterElements();
-        let sig = rendererChapterStarts().length + '|';
+        let sig = rendererChapterStarts().join(',') + '|';
         for (let i = 0; i < els.length; i++) {
             const st = els[i].style;
             sig += els[i].className + ':' + st.width + ':' + st.marginLeft + ':' + st.marginRight + ',';
@@ -1022,6 +1022,12 @@ class SponsorBlockHandler {
         this.boundResize = () => {
             this._lastSyncTime = 0;
             if (this.overlay && this.progressBar && !this.isDestroyed) {
+                // Marks on a chaptered bar are placed by its measured width,
+                // which the chapter signature does not track.
+                if (this._chapterElements().length > 1) {
+                    this.lastOverlayHash = null;
+                    this.drawOverlay();
+                }
                 const { container, asSibling } = this._getProgressBarAnchor();
                 if (asSibling && container) this._syncOverlayPosition(container);
             }
