@@ -160,8 +160,9 @@ window.addEventListener('yt-player-state-change', ({ detail }) => {
     clearTimeout(refusalTimer);
   }
   // A queued video the viewer opened from the Queue row (or anywhere): it has
-  // had its turn, and is not played again at the next end.
-  if (detail.state === 1 && detail.videoId) {
+  // had its turn, and is not played again at the next end. On the watch page
+  // only: its preview playing behind the home screen is no turn.
+  if (detail.state === 1 && detail.videoId && watchedId() === detail.videoId) {
     const index = queue.findIndex((item) => item.videoId === detail.videoId);
     if (index !== -1) queue.splice(index, 1);
   }

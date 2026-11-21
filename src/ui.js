@@ -1254,7 +1254,7 @@ function createOptionsPanel() {
     // Title Case alone (dearrow/formatter-legacy.js).
     const elDeArrowBadge = createConfigCheckbox('dearrowShowBadge');
     const deArrowTitleRows = [createConfigCheckbox('dearrowCrowdTitles'), createConfigCheckbox('dearrowCasualMode'),
-      createElement('div', { text: 'Keeps YouTube\'s own title where DeArrow\'s casual voters found it fine (funny, clever, descriptive...), instead of a crowdsourced one', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
+      createElement('div', { text: 'Keeps YouTube\'s own title where DeArrow\'s casual voters found it fine (funny, clever, descriptive...), instead of a crowdsourced one. Where YouTube shows titles translated, it needs Untranslated Titles on: the votes are for the title as uploaded', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
       createConfigCheckbox('dearrowUntranslatedTitles'),
       createElement('div', { text: 'YouTube\'s titles as their uploader wrote them, where YouTube shows them translated into your language. One request to YouTube per video shown; with Crowdsourced Titles off, only this', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } })];
     if (titleFormattingSupported) {

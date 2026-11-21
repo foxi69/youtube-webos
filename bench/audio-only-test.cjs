@@ -77,6 +77,25 @@ run(async () => {
     t('no page error', env.errors.length === 0, env.errors[0]);
   }
   {
+    // Subtitles on: the reload drops them (as the TV player's does), and they come back.
+    const env = boot({ audioOnlyStream: true });
+    await wait(100);
+    const player = env.win.document.getElementById('ytlr-player__player-container-player');
+    const EN = { languageCode: 'en', languageName: 'English', vssId: '.en' };
+    let track = EN;
+    const set = [];
+    player.getOption = (m, k) => (k === 'track' ? track : []);
+    player.setOption = (m, k, v) => { set.push(v); track = v; };
+    player.loadModule = () => {};
+    const load = player.loadVideoById;
+    player.loadVideoById = (id, at) => { load(id, at); track = {}; };
+    await env.press();
+    t('subtitles: precondition: loaded again', env.loads.length === 1, env.loads.join());
+    await wait(1300);
+    t('subtitles: the track in use before the reload is put back', set.length >= 1 && set[set.length - 1].languageCode === 'en',
+      JSON.stringify(set));
+  }
+  {
     const env = boot({ audioOnlyStream: false });
     await wait(100);
     await env.press();
@@ -99,7 +118,12 @@ run(async () => {
     t('back at 1x: responses are audio-only again', audioOnly(env.parse(response())));
     speed = 2;
     t('a speed change while on: the load it makes gets the whole video', untouched(env.parse(response())));
+    // A rate the app's speed does not know of (YouTube's own menu, Playback
+    // Speed Control off): the video's rate counts too.
     speed = 1;
+    env.win.document.querySelector('video').playbackRate = 1.5;
+    t('the video at 1.5x by YouTube\'s own menu: the whole video', untouched(env.parse(response())));
+    env.win.document.querySelector('video').playbackRate = 1;
     await env.press();
     t('off at 1x: the video is loaded again with its picture',
       !env.on() && env.loads.join() === 'aaaaaaaaaaa@42.5' && untouched(env.parse(response())), env.loads.join());
@@ -133,11 +157,16 @@ run(async () => {
       t(`paused (${label}): precondition: loaded again`, env.loads.length === 1, env.loads.join());
       if (later) later(env.win, player);
       await wait(200);
+      // Still loading (no PLAYING yet): the pause waits, as on a slow TV.
+      const early = pauses;
+      env.win.dispatchEvent(new env.win.CustomEvent('yt-player-state-change', { detail: { state: 1, videoId: 'aaaaaaaaaaa' } }));
+      await wait(50);
       t(`paused (${label}): the player's play is its own again`, player.playVideo === ownPlay);
-      return { pauses, plays };
+      return { pauses, plays, early };
     };
     const kept = await paused('no action');
-    t('paused: with no later action the pause is put back', kept.pauses === 1, String(kept.pauses));
+    t('paused: not before the reloaded video plays', kept.early === 0, String(kept.early));
+    t('paused: with no later action the pause is put back once it plays', kept.pauses === 1, String(kept.pauses));
     const resumed = await paused('Play key', (win) => trustedKey(win, 415));
     t('paused: Play pressed before it is put back wins', resumed.pauses === 0, String(resumed.pauses));
     const pointer = await paused('play asked of the player', (win, player) => player.playVideo());
@@ -154,5 +183,16 @@ run(async () => {
       trustedKey(win, 56, win.document.body, 'keyup');
     }, { shortcut_key_8: 'play_pause' });
     t('paused: the Play/Pause shortcut wins', shortcut.pauses === 0, String(shortcut.pauses));
+    // No PLAYING ever comes: the fallback puts the pause back anyway.
+    const env = boot({ audioOnlyStream: true });
+    await wait(100);
+    const player = env.win.document.getElementById('ytlr-player__player-container-player');
+    let pauses = 0;
+    player.getPlayerState = () => 2;
+    player.pauseVideo = () => { pauses++; };
+    player.playVideo = () => {};
+    await env.press();
+    await wait(3200);
+    t('paused: with no PLAYING at all, the pause is put back after a while', pauses === 1, String(pauses));
   }
 });

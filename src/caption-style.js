@@ -127,7 +127,11 @@ export function shiftCaptions(track, delayMs) {
   let moved = 0;
   for (const event of track.events) {
     if (!event || typeof event !== 'object' || typeof event.tStartMs !== 'number') continue;
-    event.tStartMs = Math.max(0, event.tStartMs + delayMs);
+    const start = event.tStartMs + delayMs;
+    // Moved before 0: it starts at 0, and its end moves as much as the
+    // others' (the part before 0 is cut off; one over by then is 0 long).
+    if (start < 0 && typeof event.dDurationMs === 'number') event.dDurationMs = Math.max(0, event.dDurationMs + start);
+    event.tStartMs = Math.max(0, start);
     moved++;
   }
   return moved;

@@ -141,6 +141,11 @@ run(async () => {
     const back = earlier.parse(track());
     t('0.5 s Earlier: 500 ms earlier, never before 0', back.events[0].tStartMs === 500 && back.events[1].tStartMs === 0,
       JSON.stringify(back.events));
+    // An event cut at 0 ends where it would have: 0.3-1.3 s, moved 0.5 s earlier, is 0-0.8 s; one over before 0 is 0 long.
+    const cut = earlier.parse({ wireMagic: 'pb3', events: [{ tStartMs: 300, dDurationMs: 1000 }, { tStartMs: 100, dDurationMs: 200 }] });
+    t('0.5 s Earlier: a line cut at 0 keeps its end, one already over is 0 long',
+      cut.events[0].tStartMs === 0 && cut.events[0].dDurationMs === 800 && cut.events[1].tStartMs === 0 && cut.events[1].dDurationMs === 0,
+      JSON.stringify(cut.events));
     const reordered = later.parse({ events: [{ tStartMs: 1000, dDurationMs: 2000 }], wireMagic: 'pb3' });
     t('a track with wireMagic after its events is moved too', reordered.events[0].tStartMs === 1500, JSON.stringify(reordered.events));
     const other = later.parse({ responseContext: {}, events: [{ tStartMs: 1000 }] });

@@ -347,8 +347,10 @@ function safeRunAction(custom) {
  * rows of a watch-next response while the queue has videos (adblock.js). OK on
  * a video plays it now, and it leaves the queue (video-queue.js). From TizenTube.
  */
-export function queueShelf() {
-  const videos = queuedVideos();
+// exceptId: the video the watch page opens (still queued while its response
+// is read, before it plays): not offered again on its own row.
+export function queueShelf(exceptId) {
+  const videos = queuedVideos().filter((video) => video.videoId !== exceptId);
   if (!videos.length) return null;
   const items = [{
     tileRenderer: {

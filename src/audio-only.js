@@ -18,6 +18,7 @@
 import { configRead } from './config.js';
 import { showNotification } from './notifications.js';
 import { SELECTORS } from './utils.js';
+import { readCaptions, keepCaptions } from './speed/player-state.js';
 
 const CLASS = 'ytaf-audio-only';
 // The music video type of YouTube's own audio-only playback on TVs.
@@ -26,6 +27,13 @@ const AUDIO_ONLY_TYPE = 'MUSIC_VIDEO_TYPE_ATV';
 // Asked for: the mode is on with Audio-Only Mode Streams Audio Only.
 let streaming = false;
 
+// The viewer's last key press: subtitles they change after a reload are theirs (keepCaptions).
+let keyAt = 0;
+if (typeof window !== 'undefined') {
+  window.addEventListener('keydown', (evt) => { if (evt.isTrusted !== false) keyAt = Date.now(); }, true);
+}
+let stopKeepingCaptions = null;
+
 // The TV player plays the sound alone at 1x only: at any other speed it stalls
 // silently (measured on webOS 25). A speed change loads the video again, so
 // the response of that load decides: above or below 1x the whole video with
@@ -33,7 +41,11 @@ let streaming = false;
 function atNormalSpeed() {
   try {
     const speed = typeof window !== 'undefined' && window.ytafSpeed;
-    return !speed || typeof speed.getSpeed !== 'function' || speed.getSpeed() === 1;
+    if (speed && typeof speed.getSpeed === 'function' && speed.getSpeed() !== 1) return false;
+    // A rate set elsewhere (YouTube's own speed menu, with Playback Speed
+    // Control off, gives the app's speed as 1x): the video's own rate.
+    const video = document.querySelector('video');
+    return !video || !(video.playbackRate > 0) || video.playbackRate === 1;
   } catch {
     return true;
   }
@@ -83,7 +95,10 @@ export function cancelPendingPause() {
 }
 
 /** A video paused before its reload is paused again, unless the viewer acts first. */
-function pauseAfterLoad(player) {
+// How long a reloaded video may take to play before its pause is put back anyway.
+const PAUSE_FALLBACK_MS = 3000;
+
+function pauseAfterLoad(player, videoId) {
   const onKey = (evt) => {
     if (PLAYBACK_KEYS.indexOf(evt.keyCode) !== -1) cancelPause();
   };
@@ -97,17 +112,26 @@ function pauseAfterLoad(player) {
       return play.apply(this, args);
     };
   }
-  const timer = setTimeout(() => {
+  const pauseNow = () => {
     cancelPause();
     try { player.pauseVideo(); } catch { /* gone */ }
-  }, 100);
+  };
+  // Put back once the reloaded video plays: a pause asked while it still
+  // loads is lost on a slow TV, and it then plays. Its first PLAYING, or the
+  // fallback when none comes.
+  const onState = ({ detail }) => {
+    if (detail && detail.state === 1 && (!detail.videoId || detail.videoId === videoId)) pauseNow();
+  };
+  const timer = setTimeout(pauseNow, PAUSE_FALLBACK_MS);
   cancelPause = () => {
     clearTimeout(timer);
+    window.removeEventListener('yt-player-state-change', onState);
     window.removeEventListener('keydown', onKey, true);
     if (ownPlay) player.playVideo = play;
     else delete player.playVideo;
     cancelPause = null;
   };
+  window.addEventListener('yt-player-state-change', onState);
   window.addEventListener('keydown', onKey, true);
 }
 
@@ -123,8 +147,12 @@ function reloadCurrentVideo() {
     // A pause still waiting from the reload before: the video counts as paused.
     const paused = !!cancelPause || (typeof player.getPlayerState === 'function' && player.getPlayerState() === 2);
     if (cancelPause) cancelPause();
+    // The TV player's reload drops the subtitles: put back as the speed reload does.
+    const captions = readCaptions(player);
+    if (stopKeepingCaptions) stopKeepingCaptions();
     player.loadVideoById(videoId, at);
-    if (paused && typeof player.pauseVideo === 'function') pauseAfterLoad(player);
+    stopKeepingCaptions = captions ? keepCaptions(window, player, captions, () => keyAt, { videoId, keyAt }) : null;
+    if (paused && typeof player.pauseVideo === 'function') pauseAfterLoad(player, videoId);
     return true;
   } catch (e) {
     console.warn('[AudioOnly] Reloading the video failed:', e);

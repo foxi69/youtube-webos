@@ -75,7 +75,19 @@ run(async () => {
       JSON.stringify(menu && menu.contentId));
     t('...Clear queue has none', !row[0].onLongPressCommand);
 
-    // The first queued video plays (from its tile): it leaves the queue.
+    // The watch page of a queued video, read before it plays: it is not on its own row.
+    const opened = Object.assign(watchNext(), { currentVideoEndpoint: { watchEndpoint: { videoId: 'aaaaaaaaaaa' } } });
+    const ownRow = rows(env.parse(opened))[0];
+    t('the video the page opens is left off the row', title(ownRow) === 'Queue (1)' &&
+      tiles(ownRow).slice(1).map((x) => x.contentId).join() === 'bbbbbbbbbbb', tiles(ownRow).map((x) => x.contentId).join());
+    // The first queued video's preview plays behind Home: no turn, it stays.
+    env.win.location.hash = '#/';
+    env.state(1, 'aaaaaaaaaaa');
+    await wait(20);
+    t('a queued video\'s preview on Home leaves it in the queue', rows(env.parse(watchNext())).map(title).join() === 'Queue (2),Up next',
+      rows(env.parse(watchNext())).map(title).join());
+    // It plays on the watch page (from its tile): it leaves the queue.
+    env.win.location.hash = '#/watch?v=aaaaaaaaaaa';
     env.state(1, 'aaaaaaaaaaa');
     await wait(20);
     t('a queued video that plays leaves the queue', rows(env.parse(watchNext())).map(title).join() === 'Queue (1),Up next');

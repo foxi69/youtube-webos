@@ -805,7 +805,9 @@ function addQueueShelf(data) {
     data.contents.singleColumnWatchNextResults.pivot.sectionListRenderer &&
     data.contents.singleColumnWatchNextResults.pivot.sectionListRenderer.contents;
   if (!Array.isArray(rows)) return;
-  const shelf = queueShelf();
+  const current = data.currentVideoEndpoint && data.currentVideoEndpoint.watchEndpoint &&
+    data.currentVideoEndpoint.watchEndpoint.videoId;
+  const shelf = queueShelf(typeof current === 'string' ? current : undefined);
   if (shelf) rows.unshift(shelf);
 }
 
