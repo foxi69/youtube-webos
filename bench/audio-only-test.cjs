@@ -96,9 +96,10 @@ run(async () => {
   }
   {
     // A paused video stays paused through the reload, unless the viewer plays it first.
-    const paused = async (label, later) => {
-      const env = boot({ audioOnlyStream: true });
+    const paused = async (label, later, cfg = {}) => {
+      const env = boot(Object.assign({ audioOnlyStream: true }, cfg));
       await wait(100);
+      env.win.document.querySelector('video').play = () => Promise.resolve();
       const player = env.win.document.getElementById('ytlr-player__player-container-player');
       let pauses = 0;
       let plays = 0;
@@ -125,5 +126,12 @@ run(async () => {
       win.document.body.dispatchEvent(new win.MouseEvent('mousedown', { bubbles: true }));
     });
     t('paused: a pointer press on something else leaves the pause to be put back', unrelated.pauses === 1, String(unrelated.pauses));
+    const otherOk = await paused('OK on another control', (win) => trustedKey(win, 13));
+    t('paused: OK on something else leaves the pause to be put back', otherOk.pauses === 1, String(otherOk.pauses));
+    const shortcut = await paused('Play/Pause shortcut', (win) => {
+      trustedKey(win, 56);
+      trustedKey(win, 56, win.document.body, 'keyup');
+    }, { shortcut_key_8: 'play_pause' });
+    t('paused: the Play/Pause shortcut wins', shortcut.pauses === 0, String(shortcut.pauses));
   }
 });

@@ -56,10 +56,16 @@ function getPlayer() {
   return document.getElementById(SELECTORS.PLAYER_ID) || document.querySelector('.html5-video-player');
 }
 
-// The keys that play or pause: OK, Play, Pause.
-const PLAYBACK_KEYS = [13, 415, 19];
+// The keys that always mean play or pause: Play, Pause. OK depends on what has
+// the focus: on the Play control it reaches the player's playVideo below.
+const PLAYBACK_KEYS = [415, 19];
 // Ends the pause a reload still has to put back, or null when none is waiting.
 let cancelPause = null;
+
+/** The viewer chose play or pause: a pause still waiting from a reload is dropped. */
+export function cancelPendingPause() {
+  if (cancelPause) cancelPause();
+}
 
 /** A video paused before its reload is paused again, unless the viewer acts first. */
 function pauseAfterLoad(player) {

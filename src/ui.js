@@ -8,7 +8,7 @@ import { initLogoStyle } from './logo-style.js';
 import { initMathLetters } from './math-letters.js';
 import { initPlaybackSpeed, stepSpeed, resetSpeed, toggleSpeed } from './playback-speed.js';
 import { toggleChannelWhitelist, formatTimeSaved, titleTrayChannel } from './sponsorblock-extras.js';
-import { toggleAudioOnly } from './audio-only.js';
+import { toggleAudioOnly, cancelPendingPause } from './audio-only.js';
 import sponsorBlockUI from './Sponsorblock-UI.js';
 import { sendKey, REMOTE_KEYS, COLOR_CODE_MAP, isGuestMode, invalidateGuestModeCache, isWatchPage, isShortsPage, isSearchPage, SELECTORS, getVideo, SYNTHETIC_KEY_FLAG, isAutoplayOn, isLiveStream } from './utils.js';
 import { initTrackingBlock, destroyTrackingBlock } from './adblock.js';
@@ -2024,6 +2024,7 @@ function refreshPageLogic() {
 }
 
 function playPauseLogic(video) {
+    cancelPendingPause();
     const notify = (msg) => {
         if (activePlayPauseNotification) {
             activePlayPauseNotification.update(msg);
