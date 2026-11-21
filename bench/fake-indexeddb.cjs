@@ -22,22 +22,24 @@ function fakeIndexedDB(data, log, opts = {}) {
     const tx = { oncomplete: null, onerror: null, onabort: null };
     // As the real one: a transaction's writes land together, once, or not at all.
     const staged = [];
-    const stage = (change) => {
-      staged.push(change);
+    const stage = (apply, note) => {
+      staged.push({ apply, note });
       if (staged.length > 1) return;
       later(() => {
-        if (opts.abortWrites) {
-          if (tx.onabort) tx.onabort();
-          return;
+        const aborted = !!opts.abortWrites;
+        // Logged once done: a test that waits for the log finds the data there.
+        for (const write of staged) {
+          if (!aborted) write.apply();
+          if (write.note) log.push(aborted ? 'aborted ' + write.note : write.note);
         }
-        for (const write of staged) write();
-        if (tx.oncomplete) tx.oncomplete();
+        const finished = aborted ? tx.onabort : tx.oncomplete;
+        if (finished) finished();
       });
     };
     tx.objectStore = (storeName) => {
       if (storeName !== name) throw notFound(storeName);
       return {
-        put(value, key) { log.push('put ' + key); stage(() => data.set(key, value)); },
+        put(value, key) { stage(() => data.set(key, value), 'put ' + key); },
         delete(key) { stage(() => data.delete(key)); },
         openCursor() {
           const keys = Array.from(data.keys()).sort();

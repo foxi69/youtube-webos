@@ -819,7 +819,7 @@ run(async () => {
     });
     await wait(1800);
     t('precondition (aborted write): both records were in it',
-      writes.includes('put ' + KEY) && writes.includes('put ' + PROFILE_KEY), writes.join());
+      writes.includes('aborted put ' + KEY) && writes.includes('aborted put ' + PROFILE_KEY), writes.join());
     t('an aborted write leaves both records of the copy as they were',
       backup.get(KEY) === before[0] && backup.get(PROFILE_KEY) === before[1], `${backup.get(KEY)} ${backup.get(PROFILE_KEY)}`);
   }
