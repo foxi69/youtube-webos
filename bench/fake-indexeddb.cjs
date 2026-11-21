@@ -13,7 +13,10 @@
  * the database does not open (onerror): true for every open, a number for
  * that many first opens; opts.abortWrites: a write transaction
  * aborts (onabort) with none of its records changed; opts.txIds: an array
- * each write's [note, transaction number] is pushed to.
+ * each write's [note, transaction number] is pushed to; opts.opened: set
+ * to the number of opens asked for so far; opts.blockFirst: the first open
+ * is blocked (onblocked), then gets through 20 ms later, and opts.closed
+ * counts the closes of that late connection.
  */
 function fakeIndexedDB(data, log, opts = {}) {
   const later = (fn) => setTimeout(fn, 1);
@@ -72,10 +75,20 @@ function fakeIndexedDB(data, log, opts = {}) {
   let opens = 0;
   return {
     open(name, version = 1) {
-      const req = { result: undefined, onsuccess: null, onerror: null, onupgradeneeded: null };
+      const req = { result: undefined, onsuccess: null, onerror: null, onupgradeneeded: null, onblocked: null };
       const fails = opts.openFails === true || (typeof opts.openFails === 'number' && opens < opts.openFails);
+      const blocked = !!opts.blockFirst && opens === 0;
       opens++;
+      opts.opened = opens;
       later(() => {
+        if (blocked) {
+          if (req.onblocked) req.onblocked();
+          setTimeout(() => {
+            req.result = Object.assign({}, db, { close() { opts.closed = (opts.closed || 0) + 1; } });
+            if (req.onsuccess) req.onsuccess();
+          }, 20);
+          return;
+        }
         if (fails) {
           req.error = new Error('open failed');
           if (req.onerror) req.onerror();

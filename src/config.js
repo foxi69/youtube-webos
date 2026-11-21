@@ -658,6 +658,9 @@ function writeNow() {
         const key = profileStorageKey(activeProfile);
         const values = pickAccountValues(localConfig);
         const own = JSON.stringify(values);
+        // The restored copy of this account is older now: a switch back to it
+        // with localStorage emptied meanwhile must not bring the old values.
+        if (restoredRecords) restoredRecords[key] = values;
         try {
           window.localStorage[key] = own;
           if (!backupChecked) noteWrittenBeforeRead(key);
@@ -842,7 +845,11 @@ export function configFlush() {
   flushPendingWrite();
 }
 
-/** True until the copy in IndexedDB was read at a start with no settings (its values may still come back). */
+/**
+ * True until the copy in IndexedDB was looked at: at a start with no settings,
+ * or a recovering one (its values may still come back); after a read that
+ * failed or timed out, for the rest of the run.
+ */
 export function configRestorePending() {
   return !backupChecked;
 }
@@ -926,18 +933,19 @@ function notifyChange(key, newValue, oldValue) {
   }
 }
 
+// The records restoreFromBackup took from the copy, kept for the session: a
+// profile localStorage refused to take back (quota) is loaded from here, for
+// the account in use and for one switched to later. Without it that account
+// was seeded afresh, and the smaller record, written, replaced its copy. An
+// account's own write since replaces its entry (writeNow).
+let restoredRecords = null;
+
 /**
  * Loads `profile`'s settings (null: the shared ones) in place of the current
  * account's, telling every listener of a value that changed - the same as if
  * each had been changed in the panel. The outgoing account's pending write is
  * flushed to its own profile first.
  */
-// The records restoreFromBackup took from the copy, kept for the session: a
-// profile localStorage refused to take back (quota) is loaded from here, for
-// the account in use and for one switched to later. Without it that account
-// was seeded afresh, and the smaller record, written, replaced its copy.
-let restoredRecords = null;
-
 function switchProfile(profile) {
   if (profile === activeProfile) return;
   flushPendingWrite();
@@ -1062,8 +1070,9 @@ function restoreFromBackup() {
     // not keep the others out.
     // An account's record still in localStorage is newer than its copy (a
     // copy can lag: a write that failed, a change before the copy was read)
-    // and stays; only the shared record, gone at the start, and the missing
-    // ones are written back.
+    // and stays. Written back: the shared record (gone at the start, or the
+    // defaults a run whose read failed left), the missing ones, and those
+    // written from the defaults before the read (writtenBeforeRead).
     for (const [key, text] of entries) {
       try {
         if (key !== CONFIG_KEY && !writtenBeforeRead.has(key) && window.localStorage.getItem(key) !== null) {
@@ -1105,6 +1114,10 @@ function restoreFromBackup() {
       // one in use.
       const owners = Object.keys(beforeRestore.own).filter(Boolean);
       if (beforeRestore.own['']) owners.unshift('');
+      // Two owners can be one account (changes made with per-account off,
+      // then on in it): the second starts from the first's merge, which a
+      // refused write keeps out of localStorage.
+      const merged = {};
       for (const owner of owners) {
         const changes = beforeRestore.own[owner];
         const account = owner || profile;
@@ -1114,7 +1127,7 @@ function restoreFromBackup() {
         // No record of the account to go by (none in the copy, and the one in
         // localStorage, if any, written from the defaults this run): one from
         // the restored shared settings, as the account would start from.
-        let record = (!writtenBeforeRead.has(key) && loadStored(key)) || records[key];
+        let record = merged[key] || (!writtenBeforeRead.has(key) && loadStored(key)) || records[key];
         const seeded = !record;
         if (seeded) record = pickAccountValues(Object.assign({}, defaultConfig, sharedConfig));
         for (const k of changed) record[k] = changes.values[k];
@@ -1122,6 +1135,7 @@ function restoreFromBackup() {
         // the seed was just taken from.
         if (!(seeded && owner === '')) applyCounted(record, changes.counted);
         records[key] = record;
+        merged[key] = record;
         const text = JSON.stringify(record);
         ownerRecordsToCopy = ownerRecordsToCopy.filter(([k]) => k !== key).concat([[key, text]]);
         try {

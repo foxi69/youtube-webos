@@ -1180,7 +1180,6 @@ function createOptionsPanel() {
       createAlignedCycleControl('sbMinSegmentLength', sbMinSegmentLengthModes),
       createConfigCheckbox('sbReportSkips'),
       createElement('div', { text: 'Tells sponsor.ajay.app which segments were skipped (their ids only), for the counts SponsorBlock shows their submitters', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
-      createElement('div', { class: 'ytaf-sb-whitelist-title', text: configGetDesc('sbWhitelistChannels'), style: { padding: '8px 4px 4px 4.3vh' } }),
       createListEditor('sbWhitelistChannels', {
         placeholder: 'Channel name, then OK',
         emptyText: 'None. A key set to "SponsorBlock: Never Skip on This Channel" adds the channel playing.'

@@ -56,7 +56,7 @@ run(async () => {
 
   // ---- The settings stored are copied a little after the start ----
   const first = boot({ config: { minVideoLength: '5', blockedChannels: ['Some Channel'], foxThemeApplied: true }, data, log });
-  await wait(1800);
+  await until(() => data.has(KEY), 5000);
   const copy = data.has(KEY) ? JSON.parse(data.get(KEY)) : null;
   t('the stored settings are copied', !!copy && copy.minVideoLength === '5' && copy.blockedChannels[0] === 'Some Channel',
     JSON.stringify(copy));
@@ -102,7 +102,7 @@ run(async () => {
   // ---- No copy: the defaults stay, and a write after it is copied ----
   const empty = new Map();
   const fresh = boot({ data: empty, log: [] });
-  await wait(600);
+  await until(() => empty.has(KEY), 5000);
   const freshCopy = empty.has(KEY) ? JSON.parse(empty.get(KEY)) : null;
   t('a fresh install has its first write copied once the copy was looked for',
     !!freshCopy && freshCopy.foxThemeApplied === true, JSON.stringify(freshCopy));
@@ -259,6 +259,71 @@ run(async () => {
     t('...with the switch still on', stored(page.win).perAccountSettings === true, JSON.stringify(stored(page.win)));
   }
 
+  // ---- Two owners of one account before the read, its write refused ----
+  {
+    // Before the read: a change with per-account off (no account loaded),
+    // then per-account on and a change in the account. Its record survived
+    // in localStorage and every write of it is refused (quota): the restore
+    // merges both changes into it, the second over the first.
+    const backup = savedCopy([
+      [KEY, JSON.stringify({ perAccountSettings: true, foxThemeApplied: true })],
+      [PROFILE_KEY, JSON.stringify({ minVideoLength: '20', removeUpscaledFormats: true })]
+    ]);
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const refusing = { refused: 0 };
+    const page = boot({
+      data: backup, log: [], idb: { gate },
+      storage: Object.assign({ [PROFILE_KEY]: JSON.stringify({ minVideoLength: '10', removeUpscaledFormats: true }) }, IDENTITY),
+      setup: (w) => {
+        const real = w.localStorage;
+        const refuse = (key) => { if (key === PROFILE_KEY) { refusing.refused++; throw new Error('QuotaExceededError'); } };
+        const proxy = new Proxy(real, {
+          get(target, prop) {
+            if (prop === 'setItem') return (key, value) => { refuse(key); target.setItem(key, value); };
+            const value = Reflect.get(target, prop);
+            return typeof value === 'function' ? value.bind(target) : value;
+          },
+          set(target, prop, value) { refuse(prop); target.setItem(prop, String(value)); return true; }
+        });
+        Object.defineProperty(w, 'localStorage', { configurable: true, get: () => proxy });
+      }
+    });
+    await wait(300);
+    trustedKey(page.win, 404, page.win.document.body, 'keydown');
+    trustedKey(page.win, 404, page.win.document.body, 'keyup');
+    await until(() => page.win.document.querySelector('.ytaf-ui-container label'));
+    const input = (text) => {
+      const label = Array.prototype.slice.call(page.win.document.querySelectorAll('label'))
+        .find((l) => l.textContent.trim() === text);
+      return label && label.querySelector('input');
+    };
+    const perAccount = input('Separate Settings for Each Account');
+    t('precondition (two owners): per-account off before the read', !!perAccount && perAccount.checked === false);
+    // The first owner: no account loaded.
+    input('Skip AI-Upscaled Qualities').click();
+    await wait(50);
+    perAccount.click();
+    await wait(100);
+    // The second owner: the account, its Hide Videos Shorter Than one step on.
+    const row = Array.prototype.slice.call(page.win.document.querySelectorAll('.shortcut-control-row'))
+      .find((r) => r.querySelector('.shortcut-label').textContent.trim() === 'Hide Videos Shorter Than');
+    const before = row.querySelector('.current-value').textContent;
+    row.focus();
+    trustedKey(page.win, 39, row);
+    const after = row.querySelector('.current-value').textContent;
+    t('precondition (two owners): the account\'s change made', after !== before, before + ' -> ' + after);
+    await wait(300);
+    release();
+    await wait(800);
+    t('...precondition: the account\'s record was refused', refusing.refused > 0, String(refusing.refused));
+    const upscaled = input('Skip AI-Upscaled Qualities');
+    t('two owners: the change made with no account loaded is kept', !!upscaled && upscaled.checked === false,
+      String(upscaled && upscaled.checked));
+    t('...and the account\'s own change too', await panelValue(page.win, 'Hide Videos Shorter Than') === after,
+      await panelValue(page.win, 'Hide Videos Shorter Than'));
+  }
+
   // ---- A switch of account while the copy is still being read ----
   {
     // Separate settings switched on and a setting changed in account abc,
@@ -306,6 +371,46 @@ run(async () => {
     t('...nor the shared record', stored(page.win).removeUpscaledFormats === true, JSON.stringify(stored(page.win)));
     const copied = await until(() => JSON.parse(backup.get(PROFILE_KEY)).removeUpscaledFormats === false, 2000);
     t('...and its copy gets the change, though another account is in use', copied, backup.get(PROFILE_KEY));
+  }
+
+  // ---- A change after the restore, then a switch back with localStorage emptied ----
+  {
+    // The copy read at the start is older than a change made since: switched
+    // away and back with the account's record gone from localStorage (YouTube
+    // empties it at a sign-out), the account has its change, not the copy's.
+    const PROFILE_B = KEY + '::' + hashString('accountId=xyz');
+    const backup = savedCopy([
+      [KEY, JSON.stringify({ perAccountSettings: true, foxThemeApplied: true })],
+      [PROFILE_KEY, JSON.stringify({ removeUpscaledFormats: true })],
+      [PROFILE_B, JSON.stringify({ removeUpscaledFormats: true })]
+    ]);
+    const page = boot({ data: backup, log: [], storage: IDENTITY });
+    await until(() => !!stored(page.win, PROFILE_KEY), 3000);
+    trustedKey(page.win, 404, page.win.document.body, 'keydown');
+    trustedKey(page.win, 404, page.win.document.body, 'keyup');
+    await until(() => page.win.document.querySelector('.ytaf-ui-container label'));
+    const input = (text) => {
+      const label = Array.prototype.slice.call(page.win.document.querySelectorAll('label'))
+        .find((l) => l.textContent.trim() === text);
+      return label && label.querySelector('input');
+    };
+    const upscaled = input('Skip AI-Upscaled Qualities');
+    t('precondition (stale copy): restored, Skip AI-Upscaled Qualities is on', !!upscaled && upscaled.checked === true);
+    upscaled.click();
+    await until(() => stored(page.win, PROFILE_KEY).removeUpscaledFormats === false);
+    const identity = (id) => {
+      page.win.localStorage.setItem('yt.leanback.default::last-identity-used', JSON.stringify({ data: { accountId: id } }));
+      page.win.dispatchEvent(new page.win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: true } }));
+      page.win.dispatchEvent(new page.win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: false } }));
+    };
+    identity('xyz');
+    await wait(100);
+    page.win.localStorage.removeItem(PROFILE_KEY);
+    identity('abc');
+    await wait(100);
+    const now = input('Skip AI-Upscaled Qualities');
+    t('stale copy: back in the account, its change since the restore, not the copy\'s value', !!now && now.checked === false,
+      String(now && now.checked));
   }
 
   // ---- The account in use gets its own restored settings ----
@@ -874,9 +979,13 @@ run(async () => {
   {
     const data = new Map();
     const log = [];
-    const page = boot({ config: { minVideoLength: '5', foxThemeApplied: true }, data, log, idb: { openFails: 1 } });
-    await wait(1800);
-    t('open failing once: precondition: the copy at the start did not get through', !data.has(KEY), JSON.stringify(Array.from(data.keys())));
+    const idb = { openFails: 1 };
+    const page = boot({ config: { minVideoLength: '5', foxThemeApplied: true }, data, log, idb });
+    // The copy at the start asked for the database, and that open failed.
+    const tried = await until(() => idb.opened >= 1, 3000);
+    await wait(50);
+    t('open failing once: precondition: the copy at the start tried and did not get through', tried && !data.has(KEY),
+      `${idb.opened} ${JSON.stringify(Array.from(data.keys()))}`);
     trustedKey(page.win, 404, page.win.document.body, 'keydown');
     trustedKey(page.win, 404, page.win.document.body, 'keyup');
     await wait(300);
@@ -886,7 +995,26 @@ run(async () => {
     await wait(400);
     const copy = data.has(KEY) ? JSON.parse(data.get(KEY)) : null;
     t('open failing once: a later change opens it again and is copied',
-      !!box && !!copy && copy.removeUpscaledFormats === false && copy.minVideoLength === '5', JSON.stringify(copy));
+      !!box && idb.opened >= 2 && !!copy && copy.removeUpscaledFormats === false && copy.minVideoLength === '5', `${idb.opened} ${JSON.stringify(copy)}`);
+  }
+
+  // ---- A blocked open that gets through later ----
+  {
+    // Given up when blocked, the next write opens again; the blocked one,
+    // getting through after all, is closed, not left open beside it.
+    const data = new Map();
+    const idb = { blockFirst: true };
+    const page = boot({ config: { minVideoLength: '5', foxThemeApplied: true }, data, log: [], idb });
+    const late = await until(() => idb.opened >= 1 && idb.closed === 1, 3000);
+    t('blocked open: the connection that got through late is closed', late, `${idb.opened} ${idb.closed}`);
+    trustedKey(page.win, 404, page.win.document.body, 'keydown');
+    trustedKey(page.win, 404, page.win.document.body, 'keyup');
+    await until(() => page.win.document.querySelector('.ytaf-ui-container label'));
+    const box = Array.prototype.slice.call(page.win.document.querySelectorAll('label'))
+      .find((l) => l.textContent.trim() === 'Skip AI-Upscaled Qualities');
+    if (box) box.querySelector('input').click();
+    const copied = await until(() => data.has(KEY) && JSON.parse(data.get(KEY)).removeUpscaledFormats === false, 3000);
+    t('...and a later write opens again and is copied', copied && idb.opened >= 2, `${idb.opened} ${data.get(KEY)}`);
   }
 
   // ---- A read of the copy with no answer: the restore gives up, a switch of account works ----
@@ -901,13 +1029,30 @@ run(async () => {
       [PROFILE_B]: JSON.stringify({ minVideoLength: '5' })
     });
     const backup = savedCopy([[KEY, JSON.stringify({ perAccountSettings: true, foxThemeApplied: true })]]);
-    const page = boot({ data: backup, log: [], storage, idb: { gate: new Promise(() => {}) } });
+    // The read's 10 s timeout is held and fired by hand: no real 10 s wait,
+    // and the switch is seen waiting until it fires.
+    let timeout = null;
+    const page = boot({
+      data: backup, log: [], storage, idb: { gate: new Promise(() => {}) },
+      setup: (w) => {
+        const realTimeout = w.setTimeout.bind(w);
+        w.setTimeout = (fn, ms, ...args) => {
+          if (typeof fn === 'function' && String(fn).indexOf('backup read timed out') !== -1) { timeout = fn; return -11; }
+          return realTimeout(fn, ms, ...args);
+        };
+      }
+    });
     t('no answer: precondition: the account at the start has its settings', await panelValue(page.win, 'Hide Videos Shorter Than') === '20 min',
       await panelValue(page.win, 'Hide Videos Shorter Than'));
-    await wait(10500);
+    await until(() => !!timeout, 3000);
+    t('no answer: precondition: the read has its timeout set', !!timeout);
     page.win.localStorage.setItem('yt.leanback.default::last-identity-used', JSON.stringify({ data: { accountId: 'xyz' } }));
     page.win.dispatchEvent(new page.win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: true } }));
     page.win.dispatchEvent(new page.win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: false } }));
+    await wait(300);
+    t('no answer: before the timeout, the switch waits for the read', await panelValue(page.win, 'Hide Videos Shorter Than') === '20 min',
+      await panelValue(page.win, 'Hide Videos Shorter Than'));
+    if (timeout) timeout();
     let switched = false;
     for (let i = 0; i < 40 && !switched; i++) {
       switched = await panelValue(page.win, 'Hide Videos Shorter Than') === '5 min';

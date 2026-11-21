@@ -305,6 +305,9 @@ run(async () => {
     t(n('the list is not shown with the panel closed'), !env.popupShown());
     await env.openPanel();
     t(n('the SponsorBlock tab on a watch page shows the list'), env.popupShown());
+    const titles = Array.prototype.filter.call(env.doc.querySelectorAll('.ytaf-ui-container div'),
+      (el) => el.childElementCount === 0 && el.textContent.trim() === 'Never Skip on These Channels');
+    t(n('the SponsorBlock tab names Never Skip on These Channels once'), titles.length === 1, String(titles.length));
     const r = env.rows();
     t(n('one row per segment, in time order, no full-video label, no mute segment while muting is off'),
       r.map((x) => x.name).join() === 'Sponsor,Intermission/Intro,Highlight,Unpaid/Self Promotion', JSON.stringify(r));

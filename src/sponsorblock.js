@@ -666,7 +666,8 @@ class SponsorBlockHandler {
         if (this.tempWhitelistIndex !== -1 &&
             chain.segments.some(seg => seg.originalIndex === this.tempWhitelistIndex)) return false;
         // A segment of an undone skip anywhere the jump would cross, nested
-        // inside the chain's segments (a refresh) too, plays.
+        // inside the chain's segments (a refresh) too, plays. Where the jump
+        // starts is also what the statistics count it from (noteSkip).
         const chainStart = video.currentTime;
         if (this.skipSegments.some(seg => seg.start < chain.endTime && seg.end > chainStart && this.isUndone(seg))) return false;
         // With "Skip Segments Once", a chain already skipped (the viewer went
@@ -679,7 +680,6 @@ class SponsorBlockHandler {
         // Booked like the other skips, so the highlight's seek guard
         // (autoJumpToHighlight) does not take it for YouTube's resume seek.
         this.ownSkipTarget = chain.endTime;
-        const chainFrom = video.currentTime;
         video.currentTime = chain.endTime;
         this.lastSkipTime = chain.endTime;
         this.hasPerformedChainSkip = true;
@@ -696,7 +696,7 @@ class SponsorBlockHandler {
                 if (covered.indexOf(seg.originalIndex) === -1) covered.push(seg.originalIndex);
             }
         }
-        this.noteSkip(chainFrom, chain.endTime, covered);
+        this.noteSkip(chainStart, chain.endTime, covered);
 
         this.requestAF(() => {
             const categories = chain.chainDescription.split(' → ')
@@ -717,8 +717,9 @@ class SponsorBlockHandler {
     /**
      * Whether nothing is to be skipped for Never Skip on These Channels: the
      * video's channel is on the list, or, with a list, its channel is not known
-     * yet (the player still reporting the video before counts as not known). Then the segments are built again once it is (a try a second, ten
-     * at most); a channel still unknown after that counts as not listed.
+     * yet (the player still reporting the video before counts as not known).
+     * Then the segments are built again once it is (a try a second, ten at
+     * most); a channel still unknown after that counts as not listed.
      */
     channelWhitelisted() {
         const list = configRead('sbWhitelistChannels');

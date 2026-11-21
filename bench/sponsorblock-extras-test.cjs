@@ -7,7 +7,7 @@
  *
  * The harness is sponsorblock-skip-test's, with the player's channel name.
  */
-const { createReporter, flavorFromArgs, readBundle, bootPage, trustedKey, wait } = require('./harness.cjs');
+const { createReporter, flavorFromArgs, readBundle, bootPage, trustedKey, wait, until } = require('./harness.cjs');
 
 // `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
 // with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
@@ -280,8 +280,19 @@ run(async () => {
     const env = await boot({}, [seg('sponsor', 30, 60)], opts);
     await env.playTo(30.2);
     t(n('refused shared record: precondition: the segment was skipped'), env.state.time === 60, String(env.state.time));
+    // Refused before the read too: the restore's own refusal is one more.
+    const refusedBefore = opts.refused || 0;
     release();
-    await wait(400);
+    // The restore over: its journal has the account's counts taken out (they
+    // are in the account's copy) and keeps the shared ones. Before it, the
+    // journal from the skip would pass the check below with no restore at all.
+    const journal = () => { try { return JSON.parse(env.win.localStorage.getItem('ytaf-settings-changed')); } catch { return null; } };
+    const settled = await until(() => {
+      const j = journal();
+      return !!j && !!j.own && !!j.own[''] && Object.keys(j.own[''].counted || {}).length === 0;
+    }, 3000);
+    t(n('refused shared record: precondition: the restore ran'), settled && opts.refused > refusedBefore,
+      JSON.stringify(journal()) + ' ' + refusedBefore + '->' + opts.refused);
     t(n('refused shared record: precondition: localStorage refused it'), opts.refused > 0, String(opts.refused));
     const left = {};
     for (let i = 0; i < env.win.localStorage.length; i++) {

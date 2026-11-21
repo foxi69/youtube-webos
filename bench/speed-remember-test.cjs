@@ -105,6 +105,18 @@ run(async () => {
       win.ytafSpeed.getSpeed());
     await pick('abc');
     t('per account: back to the first account, its remembered speed again', win.ytafSpeed.getSpeed() === 2, win.ytafSpeed.getSpeed());
+    // The account changes while a video plays (the watch page stays): the
+    // video keeps its speed; the account's own comes with the next pick.
+    let changes = 0;
+    win.addEventListener('ytaf-profile-change', () => { changes++; });
+    win.document.body.className = 'WEB_PAGE_TYPE_WATCH';
+    win.localStorage.setItem('yt.leanback.default::last-identity-used', identity('xyz'));
+    win.dispatchEvent(new win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: true } }));
+    win.dispatchEvent(new win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: false } }));
+    await wait(200);
+    t('per account: precondition: the account in use changed', changes > 0, String(changes));
+    t('per account: a change of account while a video plays leaves its speed alone', win.ytafSpeed.getSpeed() === 2,
+      win.ytafSpeed.getSpeed());
   }
 
   // ---- Remember Playback Speed ----
