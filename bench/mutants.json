@@ -65,5 +65,6 @@
   {"id":"cf-css-trim","file":"src/comments-fix.js","from":"return text.replace(/^[ \\t\\n\\f\\r]+|[ \\t\\n\\f\\r]+$/g, '');","to":"return text.trim();","why":"a U+00A0 at the end of a class name is cut off"},
   {"id":"sb-chapter-starts","file":"src/sponsorblock.js","from":"        const starts = rendererChapterStarts();\n        if (starts.length && starts.length !== els.length) return null;","to":"        const starts = [];","why":"the marks follow the pieces' widths, not the chapters' start times"},
   {"id":"sb-chapter-count-mismatch","file":"src/sponsorblock.js","from":"        if (starts.length && starts.length !== els.length) return null;","to":"","why":"a bar with only some of its chapters gets marks placed by the wrong chapters"},
-  {"id":"sb-chapter-observer","file":"src/sponsorblock.js","from":"        this._watchChapters();","to":"","why":"a gap that changes with no skip segment left keeps the marks at the old gap"}
+  {"id":"sb-chapter-observer","file":"src/sponsorblock.js","from":"        this._watchChapters();","to":"","why":"a gap that changes with no skip segment left keeps the marks at the old gap"},
+  {"id":"sb-chapter-replaced","file":"src/sponsorblock.js","from":"if (records.some((r) => r.type === 'childList')) this._watchChapters();","to":"","why":"chapter pieces replaced by equal ones are not watched, and their later gap leaves the marks stale"}
 ]

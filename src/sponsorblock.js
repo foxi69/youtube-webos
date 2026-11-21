@@ -392,8 +392,11 @@ class SponsorBlockHandler {
     _watchChapters() {
         if (typeof MutationObserver === 'undefined') return;
         if (!this._chapterObserver) {
-            this._chapterObserver = new MutationObserver(() => {
-                if (this.isDestroyed || this._chapterSig() === this._drawnChapterSig) return;
+            this._chapterObserver = new MutationObserver((records) => {
+                if (this.isDestroyed) return;
+                // Pieces replaced, even by ones with the same signature: the new ones are watched.
+                if (records.some((r) => r.type === 'childList')) this._watchChapters();
+                if (this._chapterSig() === this._drawnChapterSig) return;
                 this.requestAF(() => {
                     if (!this.isDestroyed && this._chapterSig() !== this._drawnChapterSig) this.drawOverlay();
                 });
@@ -405,6 +408,8 @@ class SponsorBlockHandler {
         for (let i = 0; i < els.length; i++) {
             this._chapterObserver.observe(els[i], { attributes: true, attributeFilter: ['class', 'style'] });
         }
+        const track = this._chapterTrack();
+        if (track) this._chapterObserver.observe(track, { childList: true });
     }
 
     _syncOverlayPosition(ytPB) {

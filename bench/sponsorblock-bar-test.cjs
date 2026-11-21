@@ -576,6 +576,15 @@ run(async () => {
     await wait(300);
     t(n('seek bar only: a wider gap moves the marks with no playback'),
       env.marks().length === 2 && near(parseFloat(env.marks()[1].style.left), (120 / 220) * 100), env.marks().map(at).join(' '));
+    // YouTube replaces the pieces with equal ones: their later gap counts too.
+    const old = env.doc.querySelector('[idomkey="chapter-0"]');
+    const fresh = old.cloneNode(true);
+    old.parentNode.replaceChild(fresh, old);
+    await wait(100);
+    fresh.style.marginRight = '30px';
+    await wait(300);
+    t(n('seek bar only: a replaced piece is watched, its new gap moves the marks'),
+      env.marks().length === 2 && near(parseFloat(env.marks()[1].style.left), (130 / 230) * 100), env.marks().map(at).join(' '));
   }
   {
     // Pieces sized by percent: a resize changes their measured width and no

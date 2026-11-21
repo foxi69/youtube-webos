@@ -122,7 +122,10 @@ run(async () => {
       before(win) {
         Object.defineProperty(win.document, 'adoptedStyleSheets', {
           configurable: true,
-          value: [{ cssRules: [{ selectorText: '.zylon-a, .frHKed .esc\\,x', style: { height: '0px' } }] }]
+          value: [{ cssRules: [
+            { selectorText: '.zylon-a, .frHKed .esc\\,x', style: { height: '0px' } },
+            { selectorText: '.other\\.frHKed, .pair\\\\.frHKed', style: { height: '0px' } }
+          ] }]
         });
       }
     });
@@ -133,6 +136,9 @@ run(async () => {
     t(n('selectors: an escaped comma stays in its selector'),
       text.indexOf('.frHKed .esc\\,x { height: auto !important; visibility: hidden !important; }') !== -1 &&
         text.indexOf('zylon-a') === -1, text);
+    t(n('selectors: an escaped dot is part of another class name'), text.indexOf('.other\\.frHKed') === -1, text);
+    t(n('selectors: a dot after an escaped backslash starts a closing class'),
+      text.indexOf('.pair\\\\.frHKed { height: auto !important;') !== -1, text);
     t(n('selectors: U+00A0 at the end of a name stays, and 0.0vh is a zero max-height'),
       text.indexOf('.frHKed .tail\u00a0 { max-height: none !important; visibility: hidden !important; }') !== -1, JSON.stringify(text));
   }

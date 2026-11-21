@@ -75,9 +75,10 @@ function isZero(v) {
   return /^[+-]?(?:0+(?:\.0*)?|\.0+)(?:[a-z]+|%)?$/i.test(cssTrim(String(v || '')));
 }
 
-// A closing class as a whole class name (.frHKed, not .frHKed-extra), outside
-// quoted values.
-const CLOSE_CLASS_RES = CLOSE_CLASSES.map((name) => new RegExp('\\.' + name + '(?![\\w\\-\\\\\\u0080-\\uffff])'));
+// A closing class as a whole class name (.frHKed, not .frHKed-extra, and not
+// the escaped dot of .other\.frHKed), outside quoted values. No lookbehind:
+// Chrome 38.
+const CLOSE_CLASS_RES = CLOSE_CLASSES.map((name) => new RegExp('(?:^|[^\\\\])(?:\\\\\\\\)*\\.' + name + '(?![\\w\\-\\\\\\u0080-\\uffff])'));
 const QUOTED_RE = /"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'/g;
 function namesCloseClass(sel) {
   const bare = sel.replace(QUOTED_RE, '""');
