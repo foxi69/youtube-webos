@@ -561,6 +561,30 @@ run(async () => {
       !!drawn && env.doc.getElementById('previewbar') === drawn && env.marks().length === 2, env.marks().map(at).join(' '));
   }
   {
+    // Shown on the seek bar only (no skip, so no time listener) and the bar
+    // made visible by a parent: no sync comes, yet the marks follow the
+    // chapters once the pieces have a width (no playback here).
+    const env = await boot({ sbMode_sponsor: 'seek_bar' }, [seg('sponsor', 150, 450)], {
+      bar: '<div class="bar-host"><ytlr-progress-bar><ytlr-multi-markers-player-bar-renderer>' +
+        '<div idomkey="progress-bar"><div idomkey="chapter-0" style="width: calc(100px); margin-right: 10px"></div>' +
+        '<div idomkey="chapter-1" style="width: calc(100px)"></div><div idomkey="segment"></div></div>' +
+        '</ytlr-multi-markers-player-bar-renderer></ytlr-progress-bar></div>'
+    });
+    const at = (m) => `${parseFloat(m.style.left).toFixed(2)}/${parseFloat(m.style.width).toFixed(2)}`;
+    t(n('no sync: precondition: hidden, the plain line, and a look scheduled'),
+      env.marks().length === 1 && !!env.sb()._measureTimer, env.marks().map(at).join(' '));
+    for (const el of env.doc.querySelectorAll('[idomkey^="chapter-"]')) {
+      Object.defineProperty(el, 'offsetWidth', { configurable: true, get: () => 100 });
+    }
+    await wait(1300);
+    const marks = env.marks();
+    t(n('no sync: once the pieces have a width, the marks follow the chapters'),
+      marks.length === 2 && near(parseFloat(marks[0].style.left), (50 / 210) * 100) && near(parseFloat(marks[1].style.left), (110 / 210) * 100),
+      marks.map(at).join(' '));
+    await wait(1100);
+    t(n('no sync: and the look stops'), !env.sb()._measureTimer);
+  }
+  {
     // A relative width on a hidden bar is not a pixel width: one piece in
     // pixels and one in percent wait for the layout, then follow it.
     const env = await boot({}, [seg('sponsor', 150, 450)], {

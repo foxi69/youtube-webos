@@ -67,6 +67,8 @@ const FETCH_RETRY_DELAYS = [2000, 4000];
  * From Yasich217's fork.
  */
 const MINUTE_MS = 60 * 1000;
+// How often marks waiting for the chapter pieces' width look again (_watchChapterMeasure).
+const CHAPTER_MEASURE_MS = 1000;
 const REFRESH_POPULATED_MS = 15 * MINUTE_MS;
 const REFRESH_BACKOFF_MS = [5, 10, 20, 30].map(m => m * MINUTE_MS);
 
@@ -389,6 +391,7 @@ class SponsorBlockHandler {
         if (unread || !content || !total) {
             // No width to read yet: see _chapterNowMeasurable.
             this._chapterUnmeasured = true;
+            this._watchChapterMeasure();
             return null;
         }
         for (let i = 0; i < pieces.length; i++) {
@@ -420,6 +423,28 @@ class SponsorBlockHandler {
     _chapterNowMeasurable() {
         if (!this._chapterUnmeasured) return false;
         return this._chapterElements().some((el) => el.offsetWidth > 0);
+    }
+
+    /**
+     * While the marks wait for the pieces' width, a look once a second: the
+     * bar can be shown with no sync coming (a segment shown on the bar only
+     * keeps no time listener, and a parent showing it changes nothing the
+     * observers watch). Stops once the marks are drawn by the chapters, and
+     * with the handler.
+     */
+    _watchChapterMeasure() {
+        if (this._measureTimer || this.isDestroyed) return;
+        this._measureTimer = setInterval(() => {
+            if (this.isDestroyed || !this._chapterUnmeasured) {
+                clearInterval(this._measureTimer);
+                this._measureTimer = null;
+                return;
+            }
+            if (this._chapterNowMeasurable()) {
+                this.lastOverlayHash = null;
+                this.drawOverlay();
+            }
+        }, CHAPTER_MEASURE_MS);
     }
 
     /**
@@ -2143,6 +2168,10 @@ class SponsorBlockHandler {
         if (this._barRetryTimer) {
             clearInterval(this._barRetryTimer);
             this._barRetryTimer = null;
+        }
+        if (this._measureTimer) {
+            clearInterval(this._measureTimer);
+            this._measureTimer = null;
         }
         this._observedRoot = null;
         this._stopVideoWait();
