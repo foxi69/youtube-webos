@@ -232,6 +232,15 @@ run(async () => {
     t(n('...and that segment keeps its mark on the bar'), env.marks().length === 2, String(env.marks().length));
   }
   {
+    // Never Skip on These Channels: nothing is skipped, so no time comes off.
+    const listed = await boot({ sbShowTimeWithSkips: true, sbWhitelistChannels: ['listed channel'] },
+      [seg('sponsor', 30, 60)], { author: 'Listed Channel' });
+    const other = await boot({ sbShowTimeWithSkips: true, sbWhitelistChannels: ['Other Channel'] },
+      [seg('sponsor', 30, 60)], { author: 'Listed Channel' });
+    t(n('the time with skips removed: control: a channel not on the list gets it'), /\(9:30\)/.test(other.labelsCss()), other.labelsCss());
+    t(n('the time with skips removed: a channel on Never Skip gets none'), !/\(\d+:\d\d\)/.test(listed.labelsCss()), listed.labelsCss());
+  }
+  {
     const env = await boot({ sbFullVideoLabel: true }, [seg('sponsor', 0, 0, 'full')]);
     t(n('only a full-video label: no overlay on the bar'), env.overlay() === null &&
       env.doc.querySelector('.bar-host').children.length === 1);

@@ -760,7 +760,8 @@ run(async () => {
 
   // ---- Reset of the statistics while the copy is still being read ----
   {
-    const backup = savedCopy([[KEY, JSON.stringify({ sbTimeSaved: 100, sbSkipCount: 4, foxThemeApplied: true })]]);
+    // minVideoLength: a setting of the copy's own, to see that the read is over.
+    const backup = savedCopy([[KEY, JSON.stringify({ sbTimeSaved: 100, sbSkipCount: 4, minVideoLength: '5', foxThemeApplied: true })]]);
     let release;
     const gate = new Promise((r) => { release = r; });
     const page = boot({ data: backup, log: [], idb: { gate } });
@@ -771,7 +772,8 @@ run(async () => {
     t('precondition (reset during the read): the Reset button is there', !!button);
     if (button) page.win.document.querySelector('.ytaf-sb-stats .ytaf-list-btn').click();
     release();
-    await wait(500);
+    const read = await until(() => !!stored(page.win) && stored(page.win).minVideoLength === '5', 3000);
+    t('precondition (reset during the read): the copy was read', read, JSON.stringify(stored(page.win)));
     t('a Reset before the read is kept: the copy does not bring the totals back',
       stored(page.win).sbTimeSaved === 0 && stored(page.win).sbSkipCount === 0,
       JSON.stringify([stored(page.win).sbTimeSaved, stored(page.win).sbSkipCount]));
@@ -779,7 +781,7 @@ run(async () => {
   {
     // The counters already at zero, the start-up writes over, the read fails:
     // the reset alone must be stored, or the next start restores the old totals.
-    const backup = savedCopy([[KEY, JSON.stringify({ sbTimeSaved: 100, sbSkipCount: 4, foxThemeApplied: true })]]);
+    const backup = savedCopy([[KEY, JSON.stringify({ sbTimeSaved: 100, sbSkipCount: 4, minVideoLength: '5', foxThemeApplied: true })]]);
     let release;
     const gate = new Promise((r) => { release = r; });
     const first = boot({ data: backup, log: [], idb: { gate, failAfter: 0 } });
@@ -798,7 +800,8 @@ run(async () => {
       left[k] = first.win.localStorage.getItem(k);
     }
     const next = boot({ data: backup, log: [], storage: left });
-    await wait(500);
+    const nextRead = await until(() => !!stored(next.win) && stored(next.win).minVideoLength === '5', 3000);
+    t('precondition (reset, failed read): the next start read the copy', nextRead, JSON.stringify(stored(next.win)));
     t('a Reset of counters already at zero survives a failed read',
       stored(next.win).sbTimeSaved === 0 && stored(next.win).sbSkipCount === 0,
       JSON.stringify([stored(next.win).sbTimeSaved, stored(next.win).sbSkipCount]));
@@ -812,14 +815,17 @@ run(async () => {
     ]);
     const before = [backup.get(KEY), backup.get(PROFILE_KEY)];
     const writes = [];
+    const txIds = [];
     boot({
       config: { perAccountSettings: true, foxThemeApplied: true, minVideoLength: '5' },
       storage: Object.assign({ [PROFILE_KEY]: JSON.stringify({ minVideoLength: '20' }) }, IDENTITY),
-      data: backup, log: writes, idb: { abortWrites: true }
+      data: backup, log: writes, idb: { abortWrites: true, txIds }
     });
     await wait(1800);
     t('precondition (aborted write): both records were in it',
       writes.includes('aborted put ' + KEY) && writes.includes('aborted put ' + PROFILE_KEY), writes.join());
+    const txOf = (key) => { const w = txIds.find(([note]) => note === 'put ' + key); return w ? w[1] : null; };
+    t('...precondition: both records in one transaction', txOf(KEY) !== null && txOf(KEY) === txOf(PROFILE_KEY), JSON.stringify(txIds));
     t('an aborted write leaves both records of the copy as they were',
       backup.get(KEY) === before[0] && backup.get(PROFILE_KEY) === before[1], `${backup.get(KEY)} ${backup.get(PROFILE_KEY)}`);
   }
@@ -862,6 +868,53 @@ run(async () => {
     t('...the copy is not overwritten with the defaults', JSON.parse(backup.get(PROFILE_KEY)).minVideoLength === '20', backup.get(PROFILE_KEY));
     t('...and once read, no mark is left', page.win.localStorage.getItem('ytaf-settings-seeded') === null &&
       page.win.localStorage.getItem('ytaf-settings-recovering') === null);
+  }
+
+  // ---- A database that fails to open once: the next write tries again ----
+  {
+    const data = new Map();
+    const log = [];
+    const page = boot({ config: { minVideoLength: '5', foxThemeApplied: true }, data, log, idb: { openFails: 1 } });
+    await wait(1800);
+    t('open failing once: precondition: the copy at the start did not get through', !data.has(KEY), JSON.stringify(Array.from(data.keys())));
+    trustedKey(page.win, 404, page.win.document.body, 'keydown');
+    trustedKey(page.win, 404, page.win.document.body, 'keyup');
+    await wait(300);
+    const box = Array.prototype.slice.call(page.win.document.querySelectorAll('label'))
+      .find((l) => l.textContent.trim() === 'Skip AI-Upscaled Qualities');
+    if (box) box.querySelector('input').click();
+    await wait(400);
+    const copy = data.has(KEY) ? JSON.parse(data.get(KEY)) : null;
+    t('open failing once: a later change opens it again and is copied',
+      !!box && !!copy && copy.removeUpscaledFormats === false && copy.minVideoLength === '5', JSON.stringify(copy));
+  }
+
+  // ---- A read of the copy with no answer: the restore gives up, a switch of account works ----
+  {
+    // A recovery start (the mark left by a run whose read failed) with
+    // separate settings on, and a database that never answers the read.
+    const PROFILE_B = KEY + '::' + hashString('accountId=xyz');
+    const storage = Object.assign({}, IDENTITY, {
+      'ytaf-settings-recovering': '1',
+      [KEY]: JSON.stringify({ perAccountSettings: true, foxThemeApplied: true }),
+      [PROFILE_KEY]: JSON.stringify({ minVideoLength: '20' }),
+      [PROFILE_B]: JSON.stringify({ minVideoLength: '5' })
+    });
+    const backup = savedCopy([[KEY, JSON.stringify({ perAccountSettings: true, foxThemeApplied: true })]]);
+    const page = boot({ data: backup, log: [], storage, idb: { gate: new Promise(() => {}) } });
+    t('no answer: precondition: the account at the start has its settings', await panelValue(page.win, 'Hide Videos Shorter Than') === '20 min',
+      await panelValue(page.win, 'Hide Videos Shorter Than'));
+    await wait(10500);
+    page.win.localStorage.setItem('yt.leanback.default::last-identity-used', JSON.stringify({ data: { accountId: 'xyz' } }));
+    page.win.dispatchEvent(new page.win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: true } }));
+    page.win.dispatchEvent(new page.win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: false } }));
+    let switched = false;
+    for (let i = 0; i < 40 && !switched; i++) {
+      switched = await panelValue(page.win, 'Hide Videos Shorter Than') === '5 min';
+      if (!switched) await wait(50);
+    }
+    t('no answer: the read gives up, and a switch of account loads that account', switched);
+    t('...the mark stays for the next start', page.win.localStorage.getItem('ytaf-settings-recovering') === '1');
   }
 
   // ---- A database that does not open, then the next start ----
