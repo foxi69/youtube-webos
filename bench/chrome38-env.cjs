@@ -244,11 +244,12 @@ function jsdomUtils() {
  * isSyntheticKey), so page script cannot trigger its shortcuts; jsdom's
  * dispatchEvent() always marks the event untrusted, so a test pressing a key
  * that way is ignored. jsdom's internal dispatch keeps the flag as set here.
+ * isTrusted: another value for the flag (undefined: a Chrome without it, as 38).
  */
-function dispatchTrusted(target, event) {
+function dispatchTrusted(target, event, isTrusted) {
   const { implForWrapper } = jsdomUtils();
   const eventImpl = implForWrapper(event);
-  eventImpl.isTrusted = true;
+  eventImpl.isTrusted = arguments.length > 2 ? isTrusted : true;
   return implForWrapper(target)._dispatch(eventImpl);
 }
 
