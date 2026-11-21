@@ -1632,16 +1632,11 @@ async function skipChapter(direction = 'next') {
     chapterEls = getChapterEls();
   }
 
-  if (chapterEls.length === 0) {
-    if (!skipCommunityChapter(video, direction)) showNotification('No chapters found');
-    if (wasForcedNow) closeForcedControls();
-    return;
-  }
-
   const currentTime = video.currentTime;
+  // The renderer's own start times count even with no marker elements mounted.
   const starts = chapterStarts(chapterEls, video.duration);
 
-  // A bar without chapter markers.
+  // No chapters of its own.
   if (starts.length === 0) {
     if (!skipCommunityChapter(video, direction)) showNotification('No chapters found');
     if (wasForcedNow) closeForcedControls();

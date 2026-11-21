@@ -33,13 +33,14 @@ function findPlayer() {
 function place(button) {
   const player = findPlayer();
   const rect = player && player.getBoundingClientRect ? player.getBoundingClientRect() : null;
-  if (!rect || rect.width < 1 || rect.height < 1) {
+  const viewW = window.innerWidth || document.documentElement.clientWidth || (rect && rect.right);
+  const viewH = window.innerHeight || document.documentElement.clientHeight || (rect && rect.bottom);
+  if (!rect || rect.width < 1 || rect.height < 1 ||
+      rect.right <= 0 || rect.bottom <= 0 || rect.left >= viewW || rect.top >= viewH) {
     button.style.display = 'none';
     return;
   }
   button.style.display = '';
-  const viewW = window.innerWidth || document.documentElement.clientWidth || rect.right;
-  const viewH = window.innerHeight || document.documentElement.clientHeight || rect.bottom;
   button.style.right = `${Math.max(0, viewW - rect.right + rect.width * RIGHT_OF_WIDTH)}px`;
   button.style.bottom = `${Math.max(0, viewH - rect.bottom + rect.height * UP_OF_HEIGHT)}px`;
 }

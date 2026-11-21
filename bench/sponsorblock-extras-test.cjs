@@ -262,6 +262,16 @@ run(async () => {
     await wait(700);
     t(n('chapters off: no chapters found'), env.state.time === 10 && env.toasts().indexOf('No chapters found') !== -1, env.toasts());
   }
+  {
+    // The video's own chapter times, with no marker elements mounted: they win over the community's.
+    const env = await boot({}, [Object.assign(seg('chapter', 30, 60, 'chapter'), { description: 'Intro' })], { bar: BAR_MULTI });
+    env.win.document.querySelector('ytlr-multi-markers-player-bar-renderer').__instance =
+      { props: { data: { chapters: [{ start: 0 }, { start: 120 }] } } };
+    await env.playTo(10);
+    await press(env.win, 53);
+    await wait(700);
+    t(n('chapters: native start times without markers win over community chapters'), env.state.time === 120, String(env.state.time));
+  }
   // ---- The Skip button of a Manual Skip segment ----
   {
     const env = await boot({ sbMode_sponsor: 'manual_skip' }, [seg('sponsor', 30, 60)]);
@@ -280,6 +290,12 @@ run(async () => {
     box.width = 0; box.height = 0;
     await wait(600);
     t(n('skip button: hidden while the player is not on screen'), button().style.display === 'none');
+    // Its full size, moved past the right edge of the screen.
+    Object.assign(box, { left: 1920, right: 3200, width: 1280, height: 720 });
+    await wait(600);
+    t(n('skip button: hidden while the player is off the screen at its full size'), button().style.display === 'none',
+      button().style.display);
+    box.left = 0;
     box.width = 1920; box.height = 1080; box.right = 1920; box.bottom = 1080;
     await wait(600);
     t(n('skip button: follows the player back to full screen'), button().style.display === '' &&

@@ -69,11 +69,19 @@ run(async () => {
       row[1].onSelectCommand.watchEndpoint.videoId === 'aaaaaaaaaaa' && row[1].contentId === 'aaaaaaaaaaa' &&
       /\/vi\/aaaaaaaaaaa\/hqdefault\.jpg$/.test(row[1].header.tileHeaderRenderer.thumbnail.thumbnails[0].url));
     t('...the focus starts on the next video', rows(r)[0].shelfRenderer.content.horizontalListRenderer.selectedIndex === 1);
+    const menu = row[2].onLongPressCommand && row[2].onLongPressCommand.showMenuCommand;
+    t('...each video has its own long-press menu', !!menu && menu.contentId === 'bbbbbbbbbbb' &&
+      menu.menu.menuRenderer.items[0].menuNavigationItemRenderer.navigationEndpoint.watchEndpoint.videoId === 'bbbbbbbbbbb',
+      JSON.stringify(menu && menu.contentId));
+    t('...Clear queue has none', !row[0].onLongPressCommand);
 
     // The first queued video plays (from its tile): it leaves the queue.
     env.state(1, 'aaaaaaaaaaa');
     await wait(20);
     t('a queued video that plays leaves the queue', rows(env.parse(watchNext())).map(title).join() === 'Queue (1),Up next');
+    const left = tiles(rows(env.parse(watchNext()))[0]);
+    t('...and the one left is the other video', left.length === 2 && left[1].contentId === 'bbbbbbbbbbb',
+      left.map((x) => x.contentId).join());
 
     // Clear queue, as its tile sends it.
     const clear = tiles(rows(env.parse(watchNext()))[0])[0].onSelectCommand;

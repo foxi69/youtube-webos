@@ -75,6 +75,19 @@ export function crowdsourcedTitle(video) {
 }
 
 /**
+ * Whether the title as uploaded can change what a video shows: not when a
+ * trusted crowdsourced title wins anyway, unless Casual Mode has votes to
+ * compare with it.
+ */
+export function uploadedTitleMatters(video) {
+  if (!configRead('dearrowCrowdTitles')) return true;
+  const raw = video.raw;
+  const custom = raw && Array.isArray(raw.titles) ? raw.titles[0] : null;
+  if (!isTrusted(custom) || typeof custom.title !== 'string') return true;
+  return !!configRead('dearrowCasualMode') && Array.isArray(raw.casualVotes) && raw.casualVotes.length > 0;
+}
+
+/**
  * The title a video's tiles should show, or null for YouTube's own: the top
  * crowdsourced one when it is trusted, else the original when formatting
  * changes it.

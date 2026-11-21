@@ -342,10 +342,10 @@ function safeRunAction(custom) {
 
 /**
  * The Queue row under the player: a Clear queue tile, then the queued videos,
- * next first, as YouTube's own tiles (the long-press menu has its entries on
- * them too). Put first in the rows of a watch-next response while the queue
- * has videos (adblock.js). OK on a video plays it now, and it leaves the
- * queue (video-queue.js). From TizenTube.
+ * next first, as YouTube's own tiles, each video with a long-press menu of its
+ * own (these tiles are added after the menus are extended). Put first in the
+ * rows of a watch-next response while the queue has videos (adblock.js). OK on
+ * a video plays it now, and it leaves the queue (video-queue.js). From TizenTube.
  */
 export function queueShelf() {
   const videos = queuedVideos();
@@ -359,7 +359,7 @@ export function queueShelf() {
     }
   }];
   for (const video of videos) {
-    items.push({
+    const item = {
       tileRenderer: {
         contentType: 'TILE_CONTENT_TYPE_VIDEO',
         contentId: video.videoId,
@@ -370,7 +370,9 @@ export function queueShelf() {
         onSelectCommand: { watchEndpoint: { videoId: video.videoId } },
         style: 'TILE_STYLE_YTLR_DEFAULT'
       }
-    });
+    };
+    item.tileRenderer.onLongPressCommand = buildMenu(tileInfo(item), []);
+    items.push(item);
   }
   return {
     shelfRenderer: {

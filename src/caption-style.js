@@ -119,10 +119,10 @@ function installDelayHook() {
   const original = JSON.parse;
   JSON.parse = function (text, reviver) {
     const out = original.call(this, text, reviver);
-    // With a delay set, a caption track only, told by its first characters
-    // (lastIndexOf from 40 looks at those alone): everything else YouTube
-    // parses goes through with a number compare.
-    if (delayMs && typeof text === 'string' && text.lastIndexOf('"wireMagic"', 40) !== -1) {
+    // With a delay set, a caption track only (shiftCaptions checks wireMagic
+    // on the parsed object, wherever the text had it): everything else
+    // YouTube parses goes through with a property read.
+    if (delayMs) {
       try { shiftCaptions(out, delayMs); } catch { /* the track as it came */ }
     }
     return out;

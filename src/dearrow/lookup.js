@@ -27,7 +27,7 @@ import {
 } from './constants.js';
 import { videos, currentGeneration } from './state.js';
 import { loadThumb, thumbsEpoch } from './thumbs.js';
-import { isTrusted, resolveTitle, crowdsourcedTitle } from './titles.js';
+import { isTrusted, resolveTitle, crowdsourcedTitle, uploadedTitleMatters } from './titles.js';
 
 const DEBUG = false;
 // A lookup that failed (offline, the server down) is asked again when a
@@ -41,9 +41,9 @@ const OEMBED_TIMEOUT_MS = 8000;
 
 /**
  * Untranslated Titles: the title as uploaded, kept on the video as
- * `untranslated` when it differs from the one the tile shows (YouTube
- * translated it); asked for once per video. A failed or empty answer leaves
- * the title as YouTube shows it. From YouTube Anti Translate (zpix1).
+ * `untranslated` even when this tile already shows it (a later tile of the
+ * video may be translated); asked for once per video. A failed or empty answer
+ * leaves the title as YouTube shows it. From YouTube Anti Translate (zpix1).
  */
 async function fetchUntranslated(videoId, video) {
   if (video.untranslatedAsked) return;
@@ -51,7 +51,7 @@ async function fetchUntranslated(videoId, video) {
   try {
     const res = await fetchJsonWithTimeout(OEMBED_URL + encodeURIComponent(videoId), OEMBED_TIMEOUT_MS);
     const title = res && res.data && typeof res.data.title === 'string' ? res.data.title.trim() : '';
-    if (title && title !== (video.original || '').trim()) video.untranslated = title;
+    if (title) video.untranslated = title;
   } catch { /* the title as YouTube shows it */ }
 }
 
@@ -336,7 +336,7 @@ async function lookup(videoId, prefetch) {
       if (answer) settlePrefix(video.prefix, answer);
       else video.retryAt = Date.now() + RETRY_AFTER_MS;
     }
-    if (configRead('dearrowUntranslatedTitles')) {
+    if (configRead('dearrowUntranslatedTitles') && uploadedTitleMatters(video)) {
       await fetchUntranslated(videoId, video);
       if (videos.get(videoId) !== video) return;
     }

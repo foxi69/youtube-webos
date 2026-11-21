@@ -293,9 +293,53 @@ run(async () => {
     uploaded.set('translated2', 'How I built a boat');
     const el = render(win, 'translated2', 'Hogyan építettem csónakot');
     parse(browse([tile('translated2', 'Hogyan építettem csónakot')]));
-    await wait(600);
+    // The crowdsourced thumbnail on the tile: the lookup has run its course.
+    await waitFor(() => shownThumb(el).includes('COPY'), 2000);
+    t('untranslated off: precondition: the lookup finished', shownThumb(el).includes('COPY'), shownThumb(el).slice(0, 120));
     t('untranslated off: nothing asked, the title as shown',
       shownTitle(el) === 'Hogyan építettem csónakot' && !fetched.some((u) => u.indexOf('/oembed?') !== -1), shownTitle(el));
+    win.close();
+  }
+  {
+    // The first tile already shows the title as uploaded, a later one a translation.
+    const { win, parse, known, uploaded, fetched } = boot({ dearrowUntranslatedTitles: true, dearrowCrowdTitles: false });
+    known.add('boatvideo01');
+    uploaded.set('boatvideo01', 'How I built a boat');
+    const first = render(win, 'boatvideo01', 'How I built a boat');
+    parse(browse([tile('boatvideo01', 'How I built a boat')]));
+    await waitFor(() => shownThumb(first).includes('COPY'), 2000);
+    const later = render(win, 'boatvideo01', 'Hogyan építettem csónakot');
+    parse(browse([tile('boatvideo01', 'Hogyan építettem csónakot')]));
+    await waitFor(() => shownTitle(later) === 'How I built a boat', 2000);
+    t('untranslated: a later translated tile gets the title kept from the first',
+      shownTitle(later) === 'How I built a boat' && shownTitle(first) === 'How I built a boat', shownTitle(later));
+    t('untranslated: ...with YouTube asked once', fetched.filter((u) => u.indexOf('/oembed?') !== -1).length === 1);
+    win.close();
+  }
+  {
+    // A trusted crowdsourced title wins anyway: nothing to wait for.
+    const { win, parse, known, uploaded, fetched } = boot({ dearrowUntranslatedTitles: true });
+    known.add('crowdwins01');
+    uploaded.set('crowdwins01', 'As uploaded');
+    const el = render(win, 'crowdwins01', 'Translated');
+    parse(browse([tile('crowdwins01', 'Translated')]));
+    await waitFor(() => shownTitle(el) === 'Calm crowdwins01' && shownThumb(el).includes('COPY'), 2000);
+    t('untranslated, a trusted crowdsourced title: precondition: shown', shownTitle(el) === 'Calm crowdwins01', shownTitle(el));
+    t('untranslated, a trusted crowdsourced title: YouTube is not asked', !fetched.some((u) => u.indexOf('/oembed?') !== -1),
+      fetched.filter((u) => u.indexOf('/oembed?') !== -1).join());
+    win.close();
+  }
+  {
+    // Casual Mode compares its votes with the title as uploaded: that one is still asked for.
+    const { win, parse, known, casual, uploaded, fetched } = boot({ dearrowUntranslatedTitles: true, dearrowCasualMode: true });
+    known.add('casualasked');
+    uploaded.set('casualasked', 'As uploaded');
+    casual.set('casualasked', [{ id: 'funny', count: 1, title: 'as uploaded' }]);
+    const el = render(win, 'casualasked', 'Translated');
+    parse(browse([tile('casualasked', 'Translated')]));
+    await waitFor(() => shownTitle(el) === 'As uploaded', 2000);
+    t('untranslated, Casual Mode with votes: asked, and the vote for the uploaded title counts',
+      shownTitle(el) === 'As uploaded' && fetched.some((u) => u.indexOf('/oembed?') !== -1), shownTitle(el));
     win.close();
   }
 });

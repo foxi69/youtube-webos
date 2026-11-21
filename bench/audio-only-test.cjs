@@ -55,12 +55,15 @@ const response = () => ({
 });
 const audioOnly = (r) => !!(r.playerConfig && r.playerConfig.audioConfig && r.playerConfig.audioConfig.playAudioOnly === true) &&
   r.videoDetails.musicVideoType === 'MUSIC_VIDEO_TYPE_ATV';
+// Neither audio-only edit: one of the two alone is a response changed too.
+const untouched = (r) => !(r.playerConfig && r.playerConfig.audioConfig && 'playAudioOnly' in r.playerConfig.audioConfig) &&
+  !('musicVideoType' in r.videoDetails);
 
 run(async () => {
   {
     const env = boot({ audioOnlyStream: true });
     await wait(100);
-    t('before: a player response is left as it is', !audioOnly(env.parse(response())));
+    t('before: a player response is left as it is', untouched(env.parse(response())));
     await env.press();
     t('on: the picture is hidden', env.on());
     t('on: the video is loaded again where it is', env.loads.join() === 'aaaaaaaaaaa@42.5', env.loads.join());
@@ -70,7 +73,7 @@ run(async () => {
     t('on: also a player response inside a watch response', audioOnly(wrapped.playerResponse));
     await env.press();
     t('off: the picture comes back, and the video is loaded again with it',
-      !env.on() && env.loads.length === 2 && !audioOnly(env.parse(response())), env.loads.join());
+      !env.on() && env.loads.length === 2 && untouched(env.parse(response())), env.loads.join());
     t('no page error', env.errors.length === 0, env.errors[0]);
   }
   {
@@ -78,7 +81,7 @@ run(async () => {
     await wait(100);
     await env.press();
     t('without streaming: the picture is hidden, nothing is loaded again, responses as they are',
-      env.on() && env.loads.length === 0 && !audioOnly(env.parse(response())), env.loads.join());
+      env.on() && env.loads.length === 0 && untouched(env.parse(response())), env.loads.join());
   }
   {
     const env = boot({ audioOnlyStream: true, enableAdBlock: false });
@@ -89,6 +92,27 @@ run(async () => {
     env.win.document.body.className = 'WEB_PAGE_TYPE_BROWSE';
     env.win.location.hash = '#/';
     await wait(300);
-    t('leaving the watch page ends it', !env.on() && !audioOnly(env.parse(response())));
+    t('leaving the watch page ends it', !env.on() && untouched(env.parse(response())));
+  }
+  {
+    // A paused video stays paused through the reload, unless the viewer plays it first.
+    const paused = async (later) => {
+      const env = boot({ audioOnlyStream: true });
+      await wait(100);
+      const player = env.win.document.getElementById('ytlr-player__player-container-player');
+      let pauses = 0;
+      player.getPlayerState = () => 2;
+      player.pauseVideo = () => { pauses++; };
+      trustedKey(env.win, KEY_7);
+      trustedKey(env.win, KEY_7, env.win.document.body, 'keyup');
+      t(`paused (${later ? 'Play pressed' : 'no action'}): precondition: loaded again`, env.loads.length === 1, env.loads.join());
+      if (later) trustedKey(env.win, later);
+      await wait(200);
+      return pauses;
+    };
+    const kept = await paused(0);
+    t('paused: with no later action the pause is put back', kept === 1, String(kept));
+    const resumed = await paused(415);
+    t('paused: Play pressed before it is put back wins', resumed === 0, String(resumed));
   }
 });

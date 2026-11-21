@@ -138,6 +138,8 @@ run(async () => {
     const back = earlier.parse(track());
     t('0.5 s Earlier: 500 ms earlier, never before 0', back.events[0].tStartMs === 500 && back.events[1].tStartMs === 0,
       JSON.stringify(back.events));
+    const reordered = later.parse({ events: [{ tStartMs: 1000, dDurationMs: 2000 }], wireMagic: 'pb3' });
+    t('a track with wireMagic after its events is moved too', reordered.events[0].tStartMs === 1500, JSON.stringify(reordered.events));
     const other = later.parse({ responseContext: {}, events: [{ tStartMs: 1000 }] });
     t('a response that is no caption track is left alone', other.events[0].tStartMs === 1000);
     const off = boot({ subtitleDelay: 'off' });
