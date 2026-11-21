@@ -1752,6 +1752,22 @@ function pickCaptionTrack(tracks) {
     return byDefault || tracks[0] || null;
 }
 
+// The track in the viewer's subtitle language (Auto-Translate Subtitles), or
+// null: one with its own words first, then the auto-translated one
+// subtitle-translate.js adds for a video with none in that language.
+function preferredCaptionTrack(tracks) {
+    const lang = configRead('subtitleTranslateLang');
+    if (!lang || lang === 'off' || !tracks || !tracks.length) return null;
+    let translated = null;
+    for (let i = 0; i < tracks.length; i++) {
+        const track = tracks[i];
+        if (!track || String(track.languageCode || '').toLowerCase().split('-')[0] !== lang) continue;
+        if (!/\(auto-translated\)/.test(String(track.languageName || track.name || ''))) return track;
+        if (!translated) translated = track;
+    }
+    return translated;
+}
+
 function toggleSubtitlesLogic(player) {
     let toggledViaApi = false;
     if (player) {
@@ -1763,10 +1779,17 @@ function toggleSubtitlesLogic(player) {
             const isEnabled = currentTrack && (currentTrack.languageCode || currentTrack.vssId);
             if (isEnabled) { player.setOption('captions', 'track', {}); showNotification('Subtitles: OFF'); toggledViaApi = true; }
             else {
-              // The player's own choice, as its captions button makes it: the
-              // viewer's last language, else the video's (English on that TED
-              // talk, webOS 25). It only switches on, and at once.
-              if (typeof player.toggleSubtitlesOn === 'function') {
+              // The viewer's subtitle language, when one is set.
+              const preferred = preferredCaptionTrack(player.getOption('captions', 'tracklist'));
+              if (preferred) {
+                player.setOption('captions', 'track', preferred);
+                showNotification(`Subtitles: ON (${preferred.languageName || preferred.name || preferred.languageCode})`);
+                toggledViaApi = true;
+              }
+              // Else the player's own choice, as its captions button makes it:
+              // the viewer's last language, else the video's (English on that
+              // TED talk, webOS 25). It only switches on, and at once.
+              if (!toggledViaApi && typeof player.toggleSubtitlesOn === 'function') {
                 player.toggleSubtitlesOn();
                 const chosen = player.getOption('captions', 'track');
                 if (chosen && (chosen.languageCode || chosen.vssId)) {
