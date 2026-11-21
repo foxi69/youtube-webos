@@ -12,7 +12,8 @@
  * says playAudioOnly, with the music video type YouTube's TV app gives its
  * audio-only player, and the video playing is loaded again at the same point,
  * so no video stream is downloaded or decoded. Turned off, the video is loaded
- * again with its picture. From VacuumTube's Music Mode (music-mode/).
+ * again with its picture. At a speed other than 1x the picture is only hidden
+ * (see atNormalSpeed). From VacuumTube's Music Mode (music-mode/).
  */
 import { configRead } from './config.js';
 import { showNotification } from './notifications.js';
@@ -22,11 +23,25 @@ const CLASS = 'ytaf-audio-only';
 // The music video type of YouTube's own audio-only playback on TVs.
 const AUDIO_ONLY_TYPE = 'MUSIC_VIDEO_TYPE_ATV';
 
+// Asked for: the mode is on with Audio-Only Mode Streams Audio Only.
 let streaming = false;
+
+// The TV player plays the sound alone at 1x only: at any other speed it stalls
+// silently (measured on webOS 25). A speed change loads the video again, so
+// the response of that load decides: above or below 1x the whole video with
+// its picture hidden, the sound alone again back at 1x.
+function atNormalSpeed() {
+  try {
+    const speed = typeof window !== 'undefined' && window.ytafSpeed;
+    return !speed || typeof speed.getSpeed !== 'function' || speed.getSpeed() === 1;
+  } catch {
+    return true;
+  }
+}
 
 /** Whether the player responses are made audio-only now. */
 export function streamsAudioOnly() {
-  return streaming;
+  return streaming && atNormalSpeed();
 }
 
 const isObject = (value) => !!value && typeof value === 'object' && !Array.isArray(value);
@@ -120,11 +135,10 @@ function reloadCurrentVideo() {
 /** Toggle Audio-Only Mode: on or off, with a notice. */
 export function toggleAudioOnly() {
   const on = document.documentElement.classList.toggle(CLASS);
-  const stream = on && !!configRead('audioOnlyStream');
-  if (stream !== streaming) {
-    streaming = stream;
-    reloadCurrentVideo();
-  }
+  const before = streamsAudioOnly();
+  streaming = on && !!configRead('audioOnlyStream');
+  // Above 1x the picture is only hidden: no reload, the stream stays as it is.
+  if (streamsAudioOnly() !== before) reloadCurrentVideo();
   showNotification(`Audio-Only Mode ${on ? 'Enabled' : 'Disabled'}`);
   return on;
 }

@@ -84,6 +84,27 @@ run(async () => {
       env.on() && env.loads.length === 0 && untouched(env.parse(response())), env.loads.join());
   }
   {
+    // The TV player stalls on the sound alone at any speed but 1x: there the
+    // picture is only hidden, and back at 1x the sound alone again. A speed
+    // change loads the video again itself, so the response decides.
+    const env = boot({ audioOnlyStream: true });
+    await wait(100);
+    let speed = 1.5;
+    env.win.ytafSpeed = { getSpeed: () => speed };
+    await env.press();
+    t('at 1.5x: precondition: the picture is hidden', env.on());
+    t('at 1.5x: turned on, nothing is loaded again and responses are as they are',
+      env.loads.length === 0 && untouched(env.parse(response())), env.loads.join());
+    speed = 1;
+    t('back at 1x: responses are audio-only again', audioOnly(env.parse(response())));
+    speed = 2;
+    t('a speed change while on: the load it makes gets the whole video', untouched(env.parse(response())));
+    speed = 1;
+    await env.press();
+    t('off at 1x: the video is loaded again with its picture',
+      !env.on() && env.loads.join() === 'aaaaaaaaaaa@42.5' && untouched(env.parse(response())), env.loads.join());
+  }
+  {
     const env = boot({ audioOnlyStream: true, enableAdBlock: false });
     await wait(100);
     await env.press();

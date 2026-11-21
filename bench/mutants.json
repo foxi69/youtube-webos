@@ -101,7 +101,7 @@
   {"id":"sb-chapters-drawn","file":"src/sponsorblock.js","from":"!isFullVideoSegment(s) && s.category !== 'chapter' &&","to":"!isFullVideoSegment(s) &&","why":"community chapters are drawn on the seek bar as segments"},
   {"id":"subs-delay-sign","file":"src/config.js","from":"return (match[1] === 'm' ? -1 : 1) * Number(match[2]);","to":"return Number(match[2]);","why":"Earlier moves the subtitles later"},
   {"id":"subs-delay-clamp","file":"src/caption-style.js","from":"event.tStartMs = Math.max(0, event.tStartMs + delayMs);","to":"event.tStartMs = event.tStartMs + delayMs;","why":"an earlier delay gives the first subtitles a start before 0"},
-  {"id":"audio-stream-off","file":"src/audio-only.js","from":"const stream = on && !!configRead('audioOnlyStream');","to":"const stream = !!configRead('audioOnlyStream');","why":"Audio-Only Mode turned off keeps streaming the sound alone"},
+  {"id":"audio-stream-off","file":"src/audio-only.js","from":"streaming = on && !!configRead('audioOnlyStream');","to":"streaming = !!configRead('audioOnlyStream');","why":"Audio-Only Mode turned off keeps streaming the sound alone"},
   {"id":"audio-reload","file":"src/audio-only.js","from":"reloadCurrentVideo();","to":"","why":"the video playing keeps its picture stream until the next one"},
   {"id":"audio-page-end","file":"src/audio-only.js","from":"    streaming = false;","to":"","why":"leaving the watch page leaves the next video audio-only"},
   {"id":"queue-row-empty","file":"src/long-press-menu.js","from":"if (!videos.length) return null;","to":"","why":"a Queue row with Clear queue alone shows with nothing queued"},
@@ -126,5 +126,7 @@
   {"id":"config-owner-copied","file":"src/config.js","from":"    if (ownerRecordsToCopy.length) copyToBackup(ownerRecordsToCopy);","to":"","why":"the merged record of an account not in use stays old in the copy"},
   {"id":"config-reset-kept","file":"src/config.js","from":"      countBeforeRestore(key, 0, true);","to":"","why":"a Reset before the read is undone by the restored totals"},
   {"id":"sb-guard-whitelisted","file":"src/sponsorblock.js","from":" || this.isDestroyed || this.channelWhitelisted()) {","to":" || this.isDestroyed) {","why":"a channel put on Never Skip still has a seek before the highlight taken back to it"},
-  {"id":"caption-position-window","file":"src/caption-style.js","from":"${POSITION_CLASSES.high} .ytp-caption-window-container .caption-window {","to":"${POSITION_CLASSES.high} .ytp-caption-window-container {","why":"the transform on the 0 px caption area puts the subtitles above the top of the screen"}
+  {"id":"caption-position-window","file":"src/caption-style.js","from":"${POSITION_CLASSES.high} .ytp-caption-window-container .caption-window {","to":"${POSITION_CLASSES.high} .ytp-caption-window-container {","why":"the transform on the 0 px caption area puts the subtitles above the top of the screen"},
+  {"id":"audio-only-speed-gate","file":"src/audio-only.js","from":"return streaming && atNormalSpeed();","to":"return streaming;","why":"above 1x the responses stay audio-only and the TV player stalls silently"},
+  {"id":"audio-only-toggle-reload","file":"src/audio-only.js","from":"if (streamsAudioOnly() !== before) reloadCurrentVideo();","to":"if (streaming !== before) reloadCurrentVideo();","why":"turned on above 1x, the video is loaded again for nothing"}
 ]
