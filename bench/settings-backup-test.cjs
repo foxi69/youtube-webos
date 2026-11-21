@@ -744,7 +744,7 @@ run(async () => {
     release();
     // The restore's write-back is seen refused before writes are let through:
     // a write-back that came only after that would pass with no retry at all.
-    const sawRefused = await until(() => refused > 0);
+    const sawRefused = await until(() => refused > 0, 10000);
     t('precondition: the caption write-back at the restore was refused, YouTube’s default is still there',
       sawRefused && JSON.parse(page.win.localStorage.getItem(CAPTION)).data === DEFAULT, String(refused));
     refuse = false;

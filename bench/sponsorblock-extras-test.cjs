@@ -113,12 +113,22 @@ async function boot(cfg, segments, opts = {}) {
   }
   if (opts.copy) win.indexedDB = fakeIndexedDB(opts.copy, [], opts.idb || {});
   // opts.refuse: keys localStorage refuses to store (quota); opts.refused counts the refusals.
+  // Refused by setItem and by assignment alike (the app writes both ways), as
+  // settings-backup-test's stand-in does.
   if (opts.refuse) {
-    const set = win.Storage.prototype.setItem;
-    win.Storage.prototype.setItem = function (key, value) {
+    const real = win.localStorage;
+    const refuse = (key) => {
       if (opts.refuse.indexOf(key) !== -1) { opts.refused = (opts.refused || 0) + 1; throw new Error('QuotaExceededError'); }
-      return set.call(this, key, value);
     };
+    const proxy = new Proxy(real, {
+      get(target, prop) {
+        if (prop === 'setItem') return (key, value) => { refuse(key); target.setItem(key, value); };
+        const value = Reflect.get(target, prop);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+      set(target, prop, value) { refuse(prop); target.setItem(prop, String(value)); return true; }
+    });
+    Object.defineProperty(win, 'localStorage', { configurable: true, get: () => proxy });
   }
   evaluate();
   // The handler starts a moment after the page (about 0.8 s): wait for its
@@ -423,8 +433,10 @@ run(async () => {
     clock.now += 500;
     await press(env.win, BLUE);
     t(n('two undos: precondition: Blue took the second skip back'), Math.abs(env.state.time - 25) < 0.01, String(env.state.time));
+    // Past the second undone segment (20-35), inside only the first (30-60).
     await env.playTo(30.5);
-    t(n('two undos: the first undone segment still plays'), env.state.time === 30.5, String(env.state.time));
+    await env.playTo(36);
+    t(n('two undos: the first undone segment still plays'), env.state.time === 36, String(env.state.time));
   }
   {
     // A chain skip at the start undone, then a refresh puts a segment around
