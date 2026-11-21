@@ -82,5 +82,6 @@
   {"id":"sb-chapter-measure-look","file":"src/sponsorblock.js","from":"            this._watchChapterMeasure();\n","to":"","why":"with no sync coming (a segment on the bar only), marks drawn on a hidden bar stay on the plain line"},
   {"id":"sb-chapter-measure-stop","file":"src/sponsorblock.js","from":"if (this.isDestroyed || !this._chapterUnmeasured) {","to":"if (this.isDestroyed) {","why":"the look once a second goes on after the marks were drawn by the chapters"},
   {"id":"sb-chapter-sig-drawn","file":"src/sponsorblock.js","from":"+ '|' + rendererChapterStarts(true).join(',') + '|';","to":"+ '|';","why":"another chapter left out with the same pieces keeps the marks on the old chapters"},
-  {"id":"sb-sync-resize","file":"src/sponsorblock.js","from":"if (resized && this._chapterElements().length > 1) {","to":"if (false) {","why":"relative-width pieces on a bar that grows keep their marks at the old place"}
+  {"id":"sb-sync-resize","file":"src/sponsorblock.js","from":"if (resized && this._chapterElements().length > 1) {","to":"if (false) {","why":"relative-width pieces on a bar that grows keep their marks at the old place"},
+  {"id":"cf-escaped-quote","file":"src/comments-fix.js","from":"const QUOTED_RE = /\\\\[\\s\\S]|\"(?:[^\"\\\\]|\\\\[\\s\\S])*\"|'(?:[^'\\\\]|\\\\[\\s\\S])*'/g;","to":"const QUOTED_RE = /\"(?:[^\"\\\\]|\\\\[\\s\\S])*\"|'(?:[^'\\\\]|\\\\[\\s\\S])*'/g;","why":"an escaped quote in a class name starts a quoted value and hides the closing class after it"}
 ]

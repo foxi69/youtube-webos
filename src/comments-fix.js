@@ -79,9 +79,11 @@ function isZero(v) {
 // the escaped dot of .other\.frHKed), outside quoted values. No lookbehind:
 // Chrome 38.
 const CLOSE_CLASS_RES = CLOSE_CLASSES.map((name) => new RegExp('(?:^|[^\\\\])(?:\\\\\\\\)*\\.' + name + '(?![\\w\\-\\\\\\u0080-\\uffff])'));
-const QUOTED_RE = /"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'/g;
+// An escape outside a quoted value is matched first and kept: an escaped
+// quote (\" in a class name, as CSSOM serializes one) starts no value.
+const QUOTED_RE = /\\[\s\S]|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'/g;
 function namesCloseClass(sel) {
-  const bare = sel.replace(QUOTED_RE, '""');
+  const bare = sel.replace(QUOTED_RE, (m) => (m[0] === '\\' ? m : '""'));
   return CLOSE_CLASS_RES.some((re) => re.test(bare));
 }
 

@@ -543,6 +543,10 @@ run(async () => {
     await env.playTo(5);
     t(n('unmeasured chapters: no width yet, the overlay is not rebuilt'),
       !!before && env.doc.getElementById('previewbar') === before && env.marks().length === 1, env.marks().map(at).join(' '));
+    // The measure poll held (its own test is below): only the position sync
+    // may draw the marks again here. A timer id in place keeps it from starting.
+    env.win.clearInterval(env.sb()._measureTimer);
+    env.sb()._measureTimer = -1;
     for (const el of env.doc.querySelectorAll('[idomkey^="chapter-"]')) {
       Object.defineProperty(el, 'offsetWidth', { configurable: true, get: () => 100 });
     }

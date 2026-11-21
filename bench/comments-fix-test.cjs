@@ -124,7 +124,10 @@ run(async () => {
           configurable: true,
           value: [{ cssRules: [
             { selectorText: '.zylon-a, .frHKed .esc\\,x', style: { height: '0px' } },
-            { selectorText: '.other\\.frHKed, .pair\\\\.frHKed', style: { height: '0px' } }
+            { selectorText: '.other\\.frHKed, .pair\\\\.frHKed', style: { height: '0px' } },
+            // An escaped quote in a class name (CSSOM serializes a " so), then a
+            // quoted attribute value: no quoted value starts at the escape.
+            { selectorText: '.lead\\".frHKed .AmQJbe[data-x="yes"]', style: { height: '0px' } }
           ] }]
         });
       }
@@ -137,6 +140,8 @@ run(async () => {
       text.indexOf('.frHKed .esc\\,x { height: auto !important; visibility: hidden !important; }') !== -1 &&
         text.indexOf('zylon-a') === -1, text);
     t(n('selectors: an escaped dot is part of another class name'), text.indexOf('.other\\.frHKed') === -1, text);
+    t(n('selectors: an escaped quote starts no quoted value'),
+      text.indexOf('.lead\\".frHKed .AmQJbe[data-x="yes"] { height: auto !important;') !== -1, text);
     t(n('selectors: a dot after an escaped backslash starts a closing class'),
       text.indexOf('.pair\\\\.frHKed { height: auto !important;') !== -1, text);
     t(n('selectors: U+00A0 at the end of a name stays, and 0.0vh is a zero max-height'),
