@@ -361,9 +361,17 @@ class SponsorBlockHandler {
         const pieces = [];
         let content = 0;
         let total = 0;
+        let unread = false;
         for (let i = 0; i < els.length; i++) {
             const el = els[i];
-            const width = el.offsetWidth || parseFloat(el.style.width) || 0;
+            let width = el.offsetWidth;
+            if (!width) {
+                // Not laid out (a hidden bar): an inline width in pixels is its
+                // width; a relative one (50%, calc()) is known only once laid out.
+                const inline = el.style.width;
+                if (/^\d+(?:\.\d+)?px$/.test(inline)) width = parseFloat(inline);
+                else if (inline) unread = true;
+            }
             const cs = window.getComputedStyle(el);
             const ml = parseFloat(cs.marginLeft) || 0;
             const mr = parseFloat(cs.marginRight) || 0;
@@ -371,15 +379,15 @@ class SponsorBlockHandler {
             content += width;
             total += ml + width + mr;
         }
-        if (!content || !total) {
-            // No width to read yet (a hidden bar, a calc() width): see _chapterNowMeasurable.
+        if (unread || !content || !total) {
+            // No width to read yet: see _chapterNowMeasurable.
             this._chapterUnmeasured = true;
             return null;
         }
         for (let i = 0; i < pieces.length; i++) {
             const p = pieces[i];
             if (starts.length) {
-                p.from = i === 0 ? 0 : starts[i];
+                p.from = starts[i];
                 p.to = i + 1 < starts.length ? starts[i + 1] : duration;
             } else {
                 p.from = (p.from / content) * duration;
@@ -388,7 +396,12 @@ class SponsorBlockHandler {
         }
         // A chapter with no width or no time adds nothing to place a mark in.
         const shown = pieces.filter((p) => p.width > 0 && p.to > p.from);
-        return shown.length ? { pieces: shown, total } : null;
+        if (!shown.length) return null;
+        // The pieces shown cover the whole video: the first from 0, each up to
+        // the next one shown (the time of one left out goes to the piece before).
+        shown[0].from = 0;
+        for (let i = 0; i < shown.length; i++) shown[i].to = i + 1 < shown.length ? shown[i + 1].from : duration;
+        return { pieces: shown, total };
     }
 
     /**
