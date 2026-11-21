@@ -10,7 +10,8 @@
  * never created throws NotFoundError, so the app must create its store.
  * opts.gate: a promise the cursor waits for before its first record;
  * opts.failAfter: the cursor fails after that many records; opts.openFails:
- * the database does not open (onerror).
+ * the database does not open (onerror); opts.abortWrites: a write transaction
+ * aborts (onabort) with none of its records changed.
  */
 function fakeIndexedDB(data, log, opts = {}) {
   const later = (fn) => setTimeout(fn, 1);
@@ -19,12 +20,25 @@ function fakeIndexedDB(data, log, opts = {}) {
   const transaction = (name) => {
     if (!data.stores.has(name)) throw notFound(name);
     const tx = { oncomplete: null, onerror: null, onabort: null };
-    const done = () => later(() => tx.oncomplete && tx.oncomplete());
+    // As the real one: a transaction's writes land together, once, or not at all.
+    const staged = [];
+    const stage = (change) => {
+      staged.push(change);
+      if (staged.length > 1) return;
+      later(() => {
+        if (opts.abortWrites) {
+          if (tx.onabort) tx.onabort();
+          return;
+        }
+        for (const write of staged) write();
+        if (tx.oncomplete) tx.oncomplete();
+      });
+    };
     tx.objectStore = (storeName) => {
       if (storeName !== name) throw notFound(storeName);
       return {
-        put(value, key) { data.set(key, value); log.push('put ' + key); done(); },
-        delete(key) { data.delete(key); done(); },
+        put(value, key) { log.push('put ' + key); stage(() => data.set(key, value)); },
+        delete(key) { stage(() => data.delete(key)); },
         openCursor() {
           const keys = Array.from(data.keys()).sort();
           let i = 0;

@@ -680,17 +680,20 @@ class SponsorBlockHandler {
         video.currentTime = chain.endTime;
         this.lastSkipTime = chain.endTime;
         this.hasPerformedChainSkip = true;
-        this.noteSkip(chainFrom, chain.endTime, chain.segments.map(seg => seg.originalIndex));
-        
+        // The chain's segments, and those nested inside them: the jump covers both.
+        const covered = chain.segments.map(seg => seg.originalIndex);
+
         // Fast chronologically-sorted short-circuit skip mapping
         for (let i = 0; i < this.skipSegments.length; i++) {
             const seg = this.skipSegments[i];
-            if (seg.start > chain.endTime) break; 
-            
+            if (seg.start > chain.endTime) break;
+
            if (seg.mode === 'auto_skip' && seg.start < chain.endTime && seg.end <= chain.endTime + 0.1) {
                 this.skippedSegmentIndices.add(seg.originalIndex);
+                if (covered.indexOf(seg.originalIndex) === -1) covered.push(seg.originalIndex);
             }
         }
+        this.noteSkip(chainFrom, chain.endTime, covered);
 
         this.requestAF(() => {
             const categories = chain.chainDescription.split(' → ')

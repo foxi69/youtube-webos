@@ -11,17 +11,27 @@ import { SELECTORS } from './utils.js';
  * The channel name of the video in the player, or '' while it is not known.
  * With `videoID`: also '' while the player still reports another video (the
  * one before, as the next loads). Data without a video ID is taken as it is.
+ * webOS 25 leaves the author empty: then the title tray names the channel, but
+ * only when the player reports `videoID`, as the tray has no video identity.
  */
 export function currentChannelName(videoID) {
     try {
         const player = document.getElementById(SELECTORS.PLAYER_ID) || document.querySelector('.html5-video-player');
         const data = player && typeof player.getVideoData === 'function' ? player.getVideoData() : null;
-        if (!data || typeof data.author !== 'string') return '';
+        if (!data) return '';
         if (videoID && typeof data.video_id === 'string' && data.video_id && data.video_id !== videoID) return '';
-        return data.author.trim();
+        const author = typeof data.author === 'string' ? data.author.trim() : '';
+        if (author) return author;
+        return videoID && data.video_id === videoID ? titleTrayChannel() : '';
     } catch {
         return '';
     }
+}
+
+/** The first item of the title tray's metadata line (the channel), or ''. */
+export function titleTrayChannel() {
+    const line = document.querySelector('ytlr-video-title-tray ytlr-video-metadata-line yt-formatted-string');
+    return line ? line.textContent.trim() : '';
 }
 
 /** The video ID in the watch page's address (#/watch?v=ID), or null. */

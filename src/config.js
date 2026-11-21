@@ -890,7 +890,11 @@ export function configWrite(key, value) {
 export function configResetCounters() {
   for (const key of COUNTERS) {
     configWrite(key, 0);
-    if (!backupChecked) countBeforeRestore(key, 0, true);
+    if (!backupChecked) {
+      countBeforeRestore(key, 0, true);
+      // Counters already at zero: configWrite scheduled nothing to store this.
+      scheduleWrite();
+    }
   }
 }
 
@@ -1111,9 +1115,12 @@ function restoreFromBackup() {
         // localStorage, if any, written from the defaults this run): one from
         // the restored shared settings, as the account would start from.
         let record = (!writtenBeforeRead.has(key) && loadStored(key)) || records[key];
-        if (!record) record = pickAccountValues(Object.assign({}, defaultConfig, sharedConfig));
+        const seeded = !record;
+        if (seeded) record = pickAccountValues(Object.assign({}, defaultConfig, sharedConfig));
         for (const k of changed) record[k] = changes.values[k];
-        applyCounted(record, changes.counted);
+        // Counted with no account loaded, these are in the shared totals
+        // the seed was just taken from.
+        if (!(seeded && owner === '')) applyCounted(record, changes.counted);
         records[key] = record;
         const text = JSON.stringify(record);
         ownerRecordsToCopy = ownerRecordsToCopy.filter(([k]) => k !== key).concat([[key, text]]);

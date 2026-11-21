@@ -776,6 +776,53 @@ run(async () => {
       stored(page.win).sbTimeSaved === 0 && stored(page.win).sbSkipCount === 0,
       JSON.stringify([stored(page.win).sbTimeSaved, stored(page.win).sbSkipCount]));
   }
+  {
+    // The counters already at zero, the start-up writes over, the read fails:
+    // the reset alone must be stored, or the next start restores the old totals.
+    const backup = savedCopy([[KEY, JSON.stringify({ sbTimeSaved: 100, sbSkipCount: 4, foxThemeApplied: true })]]);
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const first = boot({ data: backup, log: [], idb: { gate, failAfter: 0 } });
+    await wait(1000);
+    trustedKey(first.win, 404, first.win.document.body, 'keydown');
+    trustedKey(first.win, 404, first.win.document.body, 'keyup');
+    const button = await until(() => first.win.document.querySelector('.ytaf-sb-stats .ytaf-list-btn'));
+    t('precondition (reset, failed read): the Reset button is there', !!button);
+    if (button) first.win.document.querySelector('.ytaf-sb-stats .ytaf-list-btn').click();
+    await wait(600);
+    release();
+    await wait(300);
+    const left = {};
+    for (let i = 0; i < first.win.localStorage.length; i++) {
+      const k = first.win.localStorage.key(i);
+      left[k] = first.win.localStorage.getItem(k);
+    }
+    const next = boot({ data: backup, log: [], storage: left });
+    await wait(500);
+    t('a Reset of counters already at zero survives a failed read',
+      stored(next.win).sbTimeSaved === 0 && stored(next.win).sbSkipCount === 0,
+      JSON.stringify([stored(next.win).sbTimeSaved, stored(next.win).sbSkipCount]));
+  }
+
+  // ---- A write of the copy that aborts ----
+  {
+    const backup = savedCopy([
+      [KEY, JSON.stringify({ perAccountSettings: true, foxThemeApplied: true, minVideoLength: '1' })],
+      [PROFILE_KEY, JSON.stringify({ minVideoLength: '2' })]
+    ]);
+    const before = [backup.get(KEY), backup.get(PROFILE_KEY)];
+    const writes = [];
+    boot({
+      config: { perAccountSettings: true, foxThemeApplied: true, minVideoLength: '5' },
+      storage: Object.assign({ [PROFILE_KEY]: JSON.stringify({ minVideoLength: '20' }) }, IDENTITY),
+      data: backup, log: writes, idb: { abortWrites: true }
+    });
+    await wait(1800);
+    t('precondition (aborted write): both records were in it',
+      writes.includes('put ' + KEY) && writes.includes('put ' + PROFILE_KEY), writes.join());
+    t('an aborted write leaves both records of the copy as they were',
+      backup.get(KEY) === before[0] && backup.get(PROFILE_KEY) === before[1], `${backup.get(KEY)} ${backup.get(PROFILE_KEY)}`);
+  }
 
   // ---- An account record written before a read that failed, then the next start ----
   {
