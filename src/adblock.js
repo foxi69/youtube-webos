@@ -1828,7 +1828,9 @@ function isUpscaledFormat(format) {
 function formatLines(format) {
   const w = Number(format.width) || 0;
   const h = Number(format.height) || 0;
-  if (w > 0 && h > 0) return Math.min(w, h);
+  // The 16:9 height of its size, as YouTube labels it: a 21:9 2560x1072 is
+  // 1440p, not 1072 lines; the short side keeps 4:3 and vertical ones right.
+  if (w > 0 && h > 0) return Math.max(Math.min(w, h), Math.round((Math.max(w, h) * 9) / 16));
   const match = /(\d{3,4})p/.exec(format.qualityLabel || '');
   return match ? Number(match[1]) : 0;
 }

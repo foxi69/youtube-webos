@@ -19,7 +19,6 @@ const { modern } = flavorFromArgs();
 const { t, run } = createReporter();
 
 // The bundle on a watch page with `segments` from the API (sponsorblock-fixtures.cjs).
-// The same `opts` object, so a test can change opts.author afterwards.
 const boot = (cfg, segments, opts = {}) => {
   if (opts.consoleErrors === undefined) opts.consoleErrors = false;
   return bootSponsorBlock(cfg, segments, opts);

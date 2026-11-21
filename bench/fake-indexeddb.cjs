@@ -10,16 +10,20 @@
  * never created throws NotFoundError, so the app must create its store.
  * opts.gate: a promise the cursor waits for before its first record;
  * opts.failAfter: the cursor fails after that many records; opts.openFails:
- * the database does not open (onerror); opts.abortWrites: a write transaction
- * aborts (onabort) with none of its records changed.
+ * the database does not open (onerror): true for every open, a number for
+ * that many first opens; opts.abortWrites: a write transaction
+ * aborts (onabort) with none of its records changed; opts.txIds: an array
+ * each write's [note, transaction number] is pushed to.
  */
 function fakeIndexedDB(data, log, opts = {}) {
   const later = (fn) => setTimeout(fn, 1);
   if (!data.stores) data.stores = new Set();
   const notFound = (name) => Object.assign(new Error(`No objectStore named ${name}`), { name: 'NotFoundError' });
+  let txCount = 0;
   const transaction = (name) => {
     if (!data.stores.has(name)) throw notFound(name);
     const tx = { oncomplete: null, onerror: null, onabort: null };
+    const txId = ++txCount;
     // As the real one: a transaction's writes land together, once, or not at all.
     const staged = [];
     const stage = (apply, note) => {
@@ -31,6 +35,7 @@ function fakeIndexedDB(data, log, opts = {}) {
         for (const write of staged) {
           if (!aborted) write.apply();
           if (write.note) log.push(aborted ? 'aborted ' + write.note : write.note);
+          if (write.note && opts.txIds) opts.txIds.push([write.note, txId]);
         }
         const finished = aborted ? tx.onabort : tx.oncomplete;
         if (finished) finished();
@@ -64,11 +69,14 @@ function fakeIndexedDB(data, log, opts = {}) {
     return tx;
   };
   const db = { transaction, createObjectStore(name) { data.stores.add(name); } };
+  let opens = 0;
   return {
     open(name, version = 1) {
       const req = { result: undefined, onsuccess: null, onerror: null, onupgradeneeded: null };
+      const fails = opts.openFails === true || (typeof opts.openFails === 'number' && opens < opts.openFails);
+      opens++;
       later(() => {
-        if (opts.openFails) {
+        if (fails) {
           req.error = new Error('open failed');
           if (req.onerror) req.onerror();
           return;

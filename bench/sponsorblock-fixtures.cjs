@@ -99,10 +99,12 @@ function fakeVideo(win, video, duration) {
  *
  * Resolves once the handler asked for the segments and applied the answer.
  */
+// The bundle, read once for every boot of a test file.
+let bundle = null;
 async function bootSponsorBlock(cfg, segments, opts = {}) {
   const bar = opts.bar || '';
   const { win, doc, errors, evaluate } = bootPage({
-    code: opts.code || readBundle(),
+    code: opts.code || bundle || (bundle = readBundle()),
     bodyClass: 'WEB_PAGE_TYPE_WATCH',
     inner: `\n    <div id="ytlr-player__player-container-player">${opts.noVideo ? '' : '<video></video>'}</div>${bar}`,
     url: `https://www.youtube.com/tv#/watch?v=${VIDEO_ID}`,

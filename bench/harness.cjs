@@ -401,7 +401,9 @@ function trustedKey(win, code, target, type = 'keydown', init) {
   if (props) {
     for (const name of Object.keys(props)) Object.defineProperty(event, name, { value: props[name], configurable: true });
   }
-  dispatchTrusted(target || win.document.body, event);
+  // No target given: the page's body. A target that was looked for and is
+  // missing (null) throws, so a test does not carry on with a press nothing took.
+  dispatchTrusted(target === undefined ? win.document.body : target, event);
   return event;
 }
 

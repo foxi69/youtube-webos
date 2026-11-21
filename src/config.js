@@ -1174,9 +1174,10 @@ function restoreFromBackup() {
       endRecovery();
     } else if (restored) {
       // The shared record is still to be stored, so the next start reads the
-      // copy again: the changes are kept for it, but not what the counters
-      // added, which is in the copy by then.
-      beforeRestore.sharedCounted = {};
+      // copy again: the changes are kept for it. What the counters added in
+      // an account is in that account's record, copied with it, so it goes;
+      // what they added to the shared totals is in no copy until the shared
+      // record is stored (endRecovery clears it then), so it stays.
       for (const owner of Object.keys(beforeRestore.own)) beforeRestore.own[owner].counted = {};
       saveBeforeRestore();
     }
