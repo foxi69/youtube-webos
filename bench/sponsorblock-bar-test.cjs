@@ -677,6 +677,53 @@ run(async () => {
       env.doc.getElementById('previewbar') === overlay && overlay.style.width === '333px', overlay.style.width);
   }
   {
+    // The renderer leaves out another chapter, with the same two pieces in the
+    // DOM: the pieces now mean other chapters, and the marks move.
+    const host = '<div class="bar-host"><ytlr-progress-bar><ytlr-multi-markers-player-bar-renderer>' +
+      '<div idomkey="progress-bar"><div idomkey="chapter-0" style="width: 100px; margin-right: 10px"></div>' +
+      '<div idomkey="chapter-1" style="width: 100px"></div><div idomkey="segment"></div></div>' +
+      '</ytlr-multi-markers-player-bar-renderer></ytlr-progress-bar></div>';
+    const env = await boot({}, [seg('sponsor', 300, 330)], { bar: host });
+    const renderer = env.doc.querySelector('ytlr-multi-markers-player-bar-renderer');
+    renderer.__instance = { props: { data: { chapters: [{ start: 0, width: 100 }, { start: 200, width: 100 }, { start: 400, width: 0 }] } } };
+    await wait(600);
+    await env.playTo(5);
+    const pct = (px) => (px / 210) * 100;
+    // 0-200 s in 0-100 px, 200-600 s in 110-210 px: 300 s at 110 + 100 * 100/400 = 135 px.
+    t(n('drawn chapters: precondition: placed by the chapters drawn'),
+      env.marks().length === 1 && near(parseFloat(env.marks()[0].style.left), pct(135)), env.marks().map((m) => m.style.left).join());
+    renderer.__instance = { props: { data: { chapters: [{ start: 0, width: 100 }, { start: 200, width: 0 }, { start: 400, width: 100 }] } } };
+    await wait(600);
+    await env.playTo(10);
+    // Now 0-400 s in 0-100 px: 300 s at 75 px.
+    t(n('drawn chapters: another chapter left out, same pieces: the marks move'),
+      env.marks().length === 1 && near(parseFloat(env.marks()[0].style.left), pct(75)), env.marks().map((m) => m.style.left).join());
+  }
+  {
+    // Pieces with a relative width on a bar that grows: their measured widths
+    // grow with it, and the marks follow at the next sync.
+    const host = '<div class="bar-host"><ytlr-progress-bar><ytlr-multi-markers-player-bar-renderer>' +
+      '<div idomkey="progress-bar"><div idomkey="chapter-0" style="width: 50%; margin-right: 10px"></div>' +
+      '<div idomkey="chapter-1" style="width: 50%"></div><div idomkey="segment"></div></div>' +
+      '</ytlr-multi-markers-player-bar-renderer></ytlr-progress-bar></div>';
+    const env = await boot({}, [seg('sponsor', 150, 450)], { bar: host });
+    const [a, b] = env.doc.querySelectorAll('[idomkey^="chapter-"]');
+    let piece = 100;
+    Object.defineProperty(a, 'offsetWidth', { configurable: true, get: () => piece });
+    Object.defineProperty(b, 'offsetWidth', { configurable: true, get: () => piece });
+    const bar = env.sb().progressBar;
+    Object.defineProperty(bar, 'offsetWidth', { configurable: true, get: () => piece * 2 + 10 });
+    await wait(1300);
+    await env.playTo(5);
+    t(n('resized bar: precondition: marks by the pieces at 100 px'),
+      env.marks().length === 2 && near(parseFloat(env.marks()[1].style.left), (110 / 210) * 100), env.marks().map((m) => m.style.left).join());
+    piece = 200;
+    await wait(600);
+    await env.playTo(10);
+    t(n('resized bar: the pieces at 200 px, the marks follow'),
+      env.marks().length === 2 && near(parseFloat(env.marks()[1].style.left), (210 / 410) * 100), env.marks().map((m) => m.style.left).join());
+  }
+  {
     // A first piece YouTube keeps at 0 px, with its start time in the
     // renderer's data: the first piece shown starts at 0, so a segment at the
     // start of the video has its mark.

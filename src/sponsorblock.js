@@ -337,7 +337,9 @@ class SponsorBlockHandler {
      */
     _chapterSig() {
         const els = this._chapterElements();
-        let sig = rendererChapterStarts().join(',') + '|';
+        // The chapters drawn too: the renderer can leave out another one with
+        // the same pieces in the DOM, and the pieces then mean other chapters.
+        let sig = rendererChapterStarts().join(',') + '|' + rendererChapterStarts(true).join(',') + '|';
         for (let i = 0; i < els.length; i++) {
             const st = els[i].style;
             sig += els[i].className + ':' + st.width + ':' + st.marginLeft + ':' + st.marginRight + ',';
@@ -512,6 +514,14 @@ class SponsorBlockHandler {
         // common case for the 500ms timeupdate sync and mutation-driven syncs).
         const sig = (isHidden ? 'h' : 'v') + '_' + pos.top + '_' + pos.left + '_' + width + '_' + height;
         if (sig === this._lastSyncSig) return;
+        // A chaptered bar of another width: pieces with a relative width
+        // changed with it, and their marks are placed by what they measure.
+        const resized = this._syncWidth !== undefined && width !== this._syncWidth;
+        this._syncWidth = width;
+        if (resized && this._chapterElements().length > 1) {
+            this.lastOverlayHash = null;
+            this.drawOverlay();
+        }
         this._lastSyncSig = sig;
 
         const st = this.overlay.style;
