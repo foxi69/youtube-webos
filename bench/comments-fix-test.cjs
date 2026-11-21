@@ -131,7 +131,9 @@ run(async () => {
             // A closing class only in a quoted value, or only inside :not():
             // not a rule for the closed state.
             { selectorText: '.zylon-q[data-label=".frHKed"]', style: { height: '0px' } },
-            { selectorText: '.AmQJbe:not(.frHKed), .frHKed .kept:not(.x)', style: { display: 'none' } }
+            { selectorText: '.AmQJbe:not(.frHKed), .frHKed .kept:not(.x)', style: { display: 'none' } },
+            // Twice negated, the closing class is selected again.
+            { selectorText: 'ytlr-animated-overlay:not(:not(.frHKed)) .AmQJbe', style: { height: '0px' } }
           ] }]
         });
       }
@@ -147,6 +149,8 @@ run(async () => {
     t(n('selectors: a closing class in a quoted value is no closing class'), text.indexOf('zylon-q') === -1, text);
     t(n('selectors: a closing class inside :not() is no closing class; one outside it still is'),
       text.indexOf('.AmQJbe:not(.frHKed)') === -1 && text.indexOf('.frHKed .kept:not(.x) { display: block') !== -1, text);
+    t(n('selectors: a closing class inside :not(:not()) is one again'),
+      text.indexOf('ytlr-animated-overlay:not(:not(.frHKed)) .AmQJbe { height: auto !important;') !== -1, text);
     t(n('selectors: an escaped quote starts no quoted value'),
       text.indexOf('.lead\\".frHKed .AmQJbe[data-x="yes"] { height: auto !important;') !== -1, text);
     t(n('selectors: a dot after an escaped backslash starts a closing class'),

@@ -85,24 +85,27 @@ const QUOTED_RE = /\\[\s\S]|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'/g;
 // A closing class inside :not() selects the element without it: the body of
 // each :not() is left out (quoted values are masked already, an escaped
 // bracket is part of a name).
-function withoutNot(sel) {
+// Inside an odd number of :not() the text is left out, inside an even number
+// (:not(:not(.frHKed)) selects the class) it is kept.
+function withoutNot(sel, negated = false) {
   let out = '';
   for (let i = 0; i < sel.length; i++) {
     if (sel[i] === '\\') {
-      out += sel.slice(i, i + 2);
+      if (!negated) out += sel.slice(i, i + 2);
       i++;
     } else if (sel.slice(i, i + 5).toLowerCase() === ':not(') {
+      const from = i + 5;
       let depth = 1;
-      i += 5;
+      i = from;
       while (i < sel.length && depth) {
         if (sel[i] === '\\') i++;
         else if (sel[i] === '(') depth++;
         else if (sel[i] === ')') depth--;
         i++;
       }
+      out += ':not(' + withoutNot(sel.slice(from, depth ? i : i - 1), !negated) + ')';
       i--;
-      out += ':not()';
-    } else {
+    } else if (!negated) {
       out += sel[i];
     }
   }

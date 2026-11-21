@@ -714,6 +714,32 @@ run(async () => {
       marks.length === 2 && near(parseFloat(marks[1].style.left), (110 / 210) * 100), marks.map(at).join(' '));
   }
   {
+    // Laid out, with margins that take the whole length back (negative
+    // margins are valid CSS): the plain line at once, with no look for a
+    // width and no draw and sync calling each other.
+    const env = await boot({}, [seg('sponsor', 150, 450)], {
+      holdMeasure: true,
+      bar: '<div class="bar-host"><ytlr-progress-bar><ytlr-multi-markers-player-bar-renderer>' +
+        '<div idomkey="progress-bar"><div idomkey="chapter-0" style="width: 100px; margin-right: -100px"></div>' +
+        '<div idomkey="chapter-1" style="width: 100px; margin-left: -100px"></div><div idomkey="segment"></div></div>' +
+        '</ytlr-multi-markers-player-bar-renderer></ytlr-progress-bar></div>'
+    });
+    for (const el of env.doc.querySelectorAll('[idomkey^="chapter-"]')) {
+      Object.defineProperty(el, 'offsetWidth', { configurable: true, get: () => 100 });
+    }
+    env.sb().lastOverlayHash = null;
+    env.sb().drawOverlay();
+    await wait(600);
+    await env.playTo(5);
+    t(n('zero extent: laid out, the plain line'), env.marks().length === 1 && near(parseFloat(env.marks()[0].style.left), 25),
+      env.marks().map((m) => m.style.left).join());
+    // The look set while hidden ends at its next step: nothing to wait for.
+    env.measureTick();
+    t(n('zero extent: the look for a width ends, no page error'), !env.measuring() && !env.sb()._chapterUnmeasured && env.errors.length === 0,
+      env.errors.join(' | '));
+  }
+
+  {
     // A hidden bar with a relative margin: not read as pixels (a hidden
     // subtree gives "1%" back as it is), so the plain line until laid out.
     const env = await boot({ sbMode_sponsor: 'seek_bar' }, [seg('sponsor', 150, 450)], {

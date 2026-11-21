@@ -402,12 +402,15 @@ class SponsorBlockHandler {
             content += width;
             total += ml + width + mr;
         }
-        if (unread || !content || !total) {
+        if (unread || (!laidOut && (!content || !total))) {
             // No width to read yet: see _chapterNowMeasurable.
             this._chapterUnmeasured = true;
             this._watchChapterMeasure();
             return null;
         }
+        // Laid out, and still no length to place marks in (negative margins
+        // taking it all back): the plain line, with nothing to wait for.
+        if (!content || !total) return null;
         for (let i = 0; i < pieces.length; i++) {
             const p = pieces[i];
             if (starts.length) {
