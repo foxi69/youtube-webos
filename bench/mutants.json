@@ -55,5 +55,10 @@
   {"id":"repeat-paused","file":"src/repeat-video.js","from":"if (repeatId === null || currentVideoId() !== repeatId || video !== getVideo() || video.paused) return;","to":"if (repeatId === null || currentVideoId() !== repeatId || video !== getVideo()) return;","why":"a paused seek to the end restarts"},
   {"id":"repeat-hash-other","file":"src/repeat-video.js","from":"if (repeatId !== null && videoIdOf(hash) !== repeatId) repeatId = null;","to":"","why":"repeat stays on for another video"},
   {"id":"queue-late-chosen","file":"src/video-queue.js","from":"if (choseAnother(next)) { putBack(next); return; }","to":"","why":"a late command replaces a video the viewer chose that is still loading"},
-  {"id":"replayed-own-style","file":"src/most-replayed.js","from":"|${uri.length}|${own}`","to":"|${uri.length}`","why":"a bar positioned with no change of size stays relative"}
+  {"id":"replayed-own-style","file":"src/most-replayed.js","from":"|${uri.length}|${own}`","to":"|${uri.length}`","why":"a bar positioned with no change of size stays relative"},
+  {"id":"ui-subs-player-choice","file":"src/ui.js","from":"if (!toggledViaApi && typeof player.toggleSubtitlesOn === 'function') {","to":"if (false) {","why":"Toggle Subtitles takes a track from the list instead of the one the player chooses"},
+  {"id":"ui-subs-tv-language","file":"src/ui.js","from":"if (lang && String(track.languageCode || '').toLowerCase().split('-')[0] === lang) return track;","to":"","why":"with no choice from the player, a track other than the one in the TV's language is switched on"},
+  {"id":"ui-subs-default-track","file":"src/ui.js","from":"return byDefault || tracks[0] || null;","to":"return tracks[0] || null;","why":"with no track in the TV's language, the first of the alphabetical list wins over the video's default"},
+  {"id":"ui-subs-preferred","file":"src/ui.js","from":"              if (preferred) {\n","to":"              if (false) {\n","why":"Toggle Subtitles ignores the subtitle language set in Auto-Translate Subtitles"},
+  {"id":"ui-subs-own-words","file":"src/ui.js","from":"if (!translated) translated = track;","to":"return track;","why":"the auto-translated copy wins over the track with its own words in the set language"}
 ]

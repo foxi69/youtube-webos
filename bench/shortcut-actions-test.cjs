@@ -324,6 +324,80 @@ run(async () => {
       /Subtitles: OFF/.test(env.toasts()), env.toasts());
   }
   {
+    // The player chooses (toggleSubtitlesOn, as on the TV): its track is used
+    // and named, not the first of an alphabetical list.
+    const env = await boot();
+    const player = env.doc.getElementById('ytlr-player__player-container-player');
+    let track = {};
+    const set = [];
+    let asked = 0;
+    player.getOption = (m, k) => (k === 'track' ? track :
+      [{ languageCode: 'af', languageName: 'Afrikaans' }, { languageCode: 'en', languageName: 'English' }]);
+    player.setOption = (m, k, v) => { set.push(v); track = v; };
+    player.toggleSubtitlesOn = () => { asked++; track = { languageCode: 'en', languageName: 'English' }; };
+    await env.press(D(K.subs));
+    t(n('subtitles: on with the player\'s own choice, named in the toast'),
+      asked === 1 && set.length === 0 && /Subtitles: ON \(English\)/.test(env.toasts()), `${asked} ${JSON.stringify(set)} ${env.toasts()}`);
+    await env.press(D(K.subs));
+    t(n('...and off again with an empty track'), set.length === 1 && Object.keys(set[0]).length === 0, JSON.stringify(set));
+  }
+  {
+    // A subtitle language set (Auto-Translate Subtitles): its track wins over
+    // the player's choice, its own words over the auto-translated copy.
+    const env = await boot({ subtitleTranslateLang: 'hu' });
+    const player = env.doc.getElementById('ytlr-player__player-container-player');
+    const set = [];
+    let asked = 0;
+    player.getOption = (m, k) => (k === 'track' ? {} : [{ languageCode: 'af', languageName: 'Afrikaans' },
+      { languageCode: 'hu', languageName: 'Magyar (auto-translated)' }, { languageCode: 'hu', languageName: 'magyar' }]);
+    player.setOption = (m, k, v) => set.push(v);
+    player.toggleSubtitlesOn = () => { asked++; };
+    await env.press(D(K.subs));
+    t(n('subtitles: the set subtitle language first, its own track over the translated one'),
+      asked === 0 && set.length === 1 && set[0].languageName === 'magyar' && /Subtitles: ON \(magyar\)/.test(env.toasts()),
+      `${asked} ${JSON.stringify(set)} ${env.toasts()}`);
+  }
+  {
+    // Only the auto-translated track in that language: that one.
+    const env = await boot({ subtitleTranslateLang: 'hu' });
+    const player = env.doc.getElementById('ytlr-player__player-container-player');
+    const set = [];
+    player.getOption = (m, k) => (k === 'track' ? {} : [{ languageCode: 'en', languageName: 'English' },
+      { languageCode: 'hu', languageName: 'Magyar (auto-translated)' }]);
+    player.setOption = (m, k, v) => set.push(v);
+    player.toggleSubtitlesOn = () => {};
+    await env.press(D(K.subs));
+    t(n('subtitles: the set language\'s auto-translated track when it has no other'),
+      set.length === 1 && set[0].languageName === 'Magyar (auto-translated)', JSON.stringify(set));
+  }
+  {
+    // No choice from the player (no toggleSubtitlesOn, or it set nothing):
+    // the TV's language from the list, not its alphabetical first.
+    const env = await boot();
+    const player = env.doc.getElementById('ytlr-player__player-container-player');
+    const set = [];
+    player.toggleSubtitlesOn = () => {};
+    player.getOption = (m, k) => (k === 'track' ? {} : [{ languageCode: 'af', languageName: 'Afrikaans' },
+      { languageCode: 'de', languageName: 'Deutsch', is_default: true }, { languageCode: 'en', languageName: 'English' }]);
+    player.setOption = (m, k, v) => set.push(v);
+    const lang = env.win.navigator.language.split('-')[0];
+    await env.press(D(K.subs));
+    t(n('subtitles: precondition: the page\'s language is English'), lang === 'en', lang);
+    t(n('subtitles: with no choice from the player, the track in the TV\'s language'),
+      set.length === 1 && set[0].languageCode === 'en' && /Subtitles: ON \(English\)/.test(env.toasts()), JSON.stringify(set));
+  }
+  {
+    // Neither the TV's language nor the player's choice: the video's default track.
+    const env = await boot();
+    const player = env.doc.getElementById('ytlr-player__player-container-player');
+    const set = [];
+    player.getOption = (m, k) => (k === 'track' ? {} : [{ languageCode: 'af', languageName: 'Afrikaans' },
+      { languageCode: 'de', languageName: 'Deutsch', is_default: true }]);
+    player.setOption = (m, k, v) => set.push(v);
+    await env.press(D(K.subs));
+    t(n('subtitles: no track in the TV\'s language, the default one'), set.length === 1 && set[0].languageCode === 'de', JSON.stringify(set));
+  }
+  {
     // No track list: the video's caption tracks.
     const env = await boot();
     const player = env.doc.getElementById('ytlr-player__player-container-player');
