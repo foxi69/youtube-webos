@@ -26,7 +26,6 @@ const writeQuality = (win, height, previous) => win.localStorage.setItem('yt-pla
   creation: Date.now(), expiration: Date.now() + 1e9
 }));
 
-// A trusted key press, as the remote sends: the speed keys too.
 // A press of some key (keyCode 0): the viewer's, for the subtitle and quality checks.
 const pressKey = (win) => trustedKey(win, 0);
 
