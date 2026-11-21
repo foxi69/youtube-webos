@@ -349,7 +349,8 @@ run(async () => {
     await wait(50);
     t(n('report on: precondition: the skip from 80 s'), env.state.time === 100, String(env.state.time));
     t(n('report on: a nested segment behind the playhead is not reported'),
-      env.reported.length === 1 && env.reported[0].endsWith('UUID=sponsor-30'), env.reported.join());
+      env.reported.length === 1 && env.reported[0].indexOf('UUID=sponsor-30') !== -1 && env.reported[0].indexOf('selfpromo') === -1,
+      env.reported.join());
   }
   {
     // After a seek elsewhere, Blue is no undo (the clock held, so only the distance decides).
