@@ -261,7 +261,8 @@ run(async () => {
     // the echo has no isTrusted, as on Chrome 38, so only the mod's own
     // record of what it sent can tell it from a press.
     // The clock held: however late the timers run, the key comes inside the echo window.
-    const env = boot({ config: { shortcut_key_yellow: 'config_menu' }, clock: {} });
+    const clock = {};
+    const env = boot({ config: { shortcut_key_yellow: 'config_menu' }, clock });
     const echoes = [];
     env.doc.addEventListener('keydown', (e) => {
       if (!e.__ytafSynthetic) return;
@@ -283,9 +284,21 @@ run(async () => {
     t(n('echo: precondition: both keep-alive keys were echoed'), echoed && echoes[0] === YELLOW && echoes[1] === YELLOW_ALT,
       echoes.join(','));
     t(n('echo: the echoed Yellow does not run the Yellow binding'), !panelOpen());
-    // Away from the keep-alive (paused: it sends nothing), a real press does.
+    // Away from the keep-alive (paused: it sends nothing). Chrome 38: a press
+    // has no isTrusted either; once the echo window is over it is a press again.
     env.state.playerState = 2;
     await wait(400);
+    clock.now += 1000;
+    trustedKey(env.win, YELLOW, env.doc.body, 'keydown', { isTrusted: undefined });
+    trustedKey(env.win, YELLOW, env.doc.body, 'keyup', { isTrusted: undefined });
+    t(n('echo: with no isTrusted, after the window, a Yellow runs its binding'), await until(panelOpen, 1000));
+    // Closed again as the other panel tests do, past its guard against a
+    // close right after it opened (600 ms of real time).
+    await wait(700);
+    clock.now += 1000;
+    env.win.ytaf_showOptionsPanel(false);
+    t(n('echo: precondition: the panel is closed again'), await until(() => !panelOpen(), 1000));
+    clock.now += 1000;
     trustedKey(env.win, YELLOW, env.doc.body, 'keydown');
     trustedKey(env.win, YELLOW, env.doc.body, 'keyup');
     t(n('echo: control: a real Yellow press runs it'), await until(panelOpen, 1000));

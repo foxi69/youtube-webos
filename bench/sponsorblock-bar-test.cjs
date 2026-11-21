@@ -587,6 +587,72 @@ run(async () => {
       marks.map(at).join(' '));
   }
   {
+    // A piece at 0% on a bar that is laid out (a chapter too short to draw):
+    // it is 0 px, not waiting for a width. The wait and its retry used to
+    // send each other round until the stack ran out.
+    const env = await boot({}, [seg('sponsor', 150, 450)], {
+      bar: '<div class="bar-host"><ytlr-progress-bar><ytlr-multi-markers-player-bar-renderer>' +
+        '<div idomkey="progress-bar"><div idomkey="chapter-0" style="width: 100px; margin-right: 10px"></div>' +
+        '<div idomkey="chapter-1" style="width: 0%"></div>' +
+        '<div idomkey="chapter-2" style="width: 100px"></div><div idomkey="segment"></div></div>' +
+        '</ytlr-multi-markers-player-bar-renderer></ytlr-progress-bar></div>'
+    });
+    const at = (m) => `${parseFloat(m.style.left).toFixed(2)}/${parseFloat(m.style.width).toFixed(2)}`;
+    t(n('0% piece: precondition: hidden, the plain line'), env.marks().length === 1, env.marks().map(at).join(' '));
+    const [a, b, c] = env.doc.querySelectorAll('[idomkey^="chapter-"]');
+    Object.defineProperty(a, 'offsetWidth', { configurable: true, get: () => 100 });
+    Object.defineProperty(b, 'offsetWidth', { configurable: true, get: () => 0 });
+    Object.defineProperty(c, 'offsetWidth', { configurable: true, get: () => 100 });
+    await wait(600);
+    await env.playTo(10);
+    // 210 px: 0-300 s in 0-100 px, the 0 px piece, 300-600 s in 110-210 px.
+    const pct = (px) => (px / 210) * 100;
+    const marks = env.marks();
+    t(n('0% piece: laid out, the marks follow the other pieces, with no page error'),
+      env.errors.length === 0 && marks.length === 2 && near(parseFloat(marks[0].style.left), pct(50)) &&
+        near(parseFloat(marks[0].style.width), pct(50)) && near(parseFloat(marks[1].style.left), pct(110)) &&
+        near(parseFloat(marks[1].style.width), pct(50)),
+      env.errors.join(' | ') + ' ' + marks.map(at).join(' '));
+  }
+  {
+    // The renderer tracked as the bar (no segment or progress-bar element):
+    // the pieces deeper inside are still found.
+    const env = await boot({}, [seg('sponsor', 150, 450)], {
+      bar: '<div class="bar-host"><ytlr-progress-bar><ytlr-multi-markers-player-bar-renderer><div class="row">' +
+        '<div idomkey="chapter-0" style="width: 100px; margin-right: 10px"></div><div idomkey="chapter-1" style="width: 100px"></div>' +
+        '</div></ytlr-multi-markers-player-bar-renderer></ytlr-progress-bar></div>'
+    });
+    const at = (m) => `${parseFloat(m.style.left).toFixed(2)}/${parseFloat(m.style.width).toFixed(2)}`;
+    const marks = env.marks();
+    t(n('renderer as the bar: precondition: it is the tracked element'),
+      !!env.sb().progressBar && env.sb().progressBar.tagName === 'YTLR-MULTI-MARKERS-PLAYER-BAR-RENDERER',
+      env.sb().progressBar && env.sb().progressBar.tagName);
+    t(n('renderer as the bar: its chapter pieces place the marks'),
+      marks.length === 2 && near(parseFloat(marks[1].style.left), (110 / 210) * 100), marks.map(at).join(' '));
+  }
+  {
+    // Chapter pieces changed while the duration is not known: the marks
+    // wait for it, and the overlay still follows the bar meanwhile.
+    const env = await boot({}, [seg('sponsor', 150, 450)], {
+      bar: '<div class="bar-host"><ytlr-progress-bar><ytlr-multi-markers-player-bar-renderer>' +
+        '<div idomkey="progress-bar"><div idomkey="chapter-0" style="width: 100px; margin-right: 10px"></div>' +
+        '<div idomkey="chapter-1" style="width: 100px"></div><div idomkey="segment"></div></div>' +
+        '</ytlr-multi-markers-player-bar-renderer></ytlr-progress-bar></div>'
+    });
+    await wait(600);
+    await env.playTo(5);
+    const overlay = env.doc.getElementById('previewbar');
+    const bar = env.sb().progressBar;
+    t(n('no duration: precondition: an overlay on a tracked bar'), !!overlay && !!bar);
+    env.state.duration = NaN;
+    env.doc.querySelector('[idomkey="chapter-0"]').style.marginRight = '20px';
+    Object.defineProperty(bar, 'offsetWidth', { configurable: true, get: () => 333 });
+    await wait(600);
+    await env.playTo(10);
+    t(n('no duration: the overlay still takes the bar\'s width'),
+      env.doc.getElementById('previewbar') === overlay && overlay.style.width === '333px', overlay.style.width);
+  }
+  {
     // A first piece YouTube keeps at 0 px, with its start time in the
     // renderer's data: the first piece shown starts at 0, so a segment at the
     // start of the video has its mark.

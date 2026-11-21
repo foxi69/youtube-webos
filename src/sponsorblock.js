@@ -310,7 +310,10 @@ class SponsorBlockHandler {
     _chapterTrack() {
         const bar = this.progressBar;
         if (!bar) return null;
-        return bar.querySelector('[idomkey="chapter-0"]') ? bar : bar.parentNode;
+        // Under the bar (at any depth, the renderer tracked itself): the
+        // pieces' own parent; else beside the bar.
+        const first = bar.querySelector('[idomkey="chapter-0"]');
+        return first ? first.parentNode : bar.parentNode;
     }
 
     _chapterElements() {
@@ -362,10 +365,14 @@ class SponsorBlockHandler {
         let content = 0;
         let total = 0;
         let unread = false;
+        // A piece with a width: the bar is laid out, and a piece with none
+        // there (0%, a chapter too short) is 0 px wide. The same test as
+        // _chapterNowMeasurable, so the two never send each other round.
+        const laidOut = els.some((el) => el.offsetWidth > 0);
         for (let i = 0; i < els.length; i++) {
             const el = els[i];
             let width = el.offsetWidth;
-            if (!width) {
+            if (!width && !laidOut) {
                 // Not laid out (a hidden bar): an inline width in pixels is its
                 // width; a relative one (50%, calc()) is known only once laid out.
                 const inline = el.style.width;
@@ -412,8 +419,7 @@ class SponsorBlockHandler {
      */
     _chapterNowMeasurable() {
         if (!this._chapterUnmeasured) return false;
-        const els = this._chapterElements();
-        return els.length > 1 && els[0].offsetWidth > 0;
+        return this._chapterElements().some((el) => el.offsetWidth > 0);
     }
 
     /**
@@ -450,16 +456,16 @@ class SponsorBlockHandler {
         const parent = ytPB.parentNode;
         if (!parent) return;
 
-        // Chapter pieces drawn (or resized) after the marks: drawn again over them.
+        // Chapter pieces drawn (or resized) after the marks: drawn again over
+        // them. Not drawn (no duration yet): the overlay still follows the bar.
         if (this._chapterSig() !== this._drawnChapterSig) {
             this.drawOverlay();
-            return;
-        }
-        // Pieces that had no width when the marks were drawn have one now.
-        if (this._chapterNowMeasurable()) {
+            if (this._chapterSig() === this._drawnChapterSig) return;
+        } else if (this._chapterNowMeasurable()) {
+            // Pieces that had no width when the marks were drawn have one now.
             this.lastOverlayHash = null;
             this.drawOverlay();
-            return;
+            if (!this._chapterUnmeasured) return;
         }
 
         // Use the inner slider element for precise height/position.
