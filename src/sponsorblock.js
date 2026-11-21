@@ -352,6 +352,7 @@ class SponsorBlockHandler {
      * plain line. Null with fewer than two pieces too (no gaps to allow for).
      */
     _chapterLayout(duration) {
+        this._chapterUnmeasured = false;
         const els = this._chapterElements();
         if (els.length < 2) return null;
         let starts = rendererChapterStarts();
@@ -370,7 +371,11 @@ class SponsorBlockHandler {
             content += width;
             total += ml + width + mr;
         }
-        if (!content || !total) return null;
+        if (!content || !total) {
+            // No width to read yet (a hidden bar, a calc() width): see _chapterNowMeasurable.
+            this._chapterUnmeasured = true;
+            return null;
+        }
         for (let i = 0; i < pieces.length; i++) {
             const p = pieces[i];
             if (starts.length) {
@@ -384,6 +389,18 @@ class SponsorBlockHandler {
         // A chapter with no width or no time adds nothing to place a mark in.
         const shown = pieces.filter((p) => p.width > 0 && p.to > p.from);
         return shown.length ? { pieces: shown, total } : null;
+    }
+
+    /**
+     * Marks drawn on the plain line because the chapter pieces had no width
+     * to read, which the pieces now have: their signature is the same, so
+     * only this tells that the chapters can place the marks. Reads the layout
+     * only while such a draw is waiting.
+     */
+    _chapterNowMeasurable() {
+        if (!this._chapterUnmeasured) return false;
+        const els = this._chapterElements();
+        return els.length > 1 && els[0].offsetWidth > 0;
     }
 
     /**
@@ -422,6 +439,12 @@ class SponsorBlockHandler {
 
         // Chapter pieces drawn (or resized) after the marks: drawn again over them.
         if (this._chapterSig() !== this._drawnChapterSig) {
+            this.drawOverlay();
+            return;
+        }
+        // Pieces that had no width when the marks were drawn have one now.
+        if (this._chapterNowMeasurable()) {
+            this.lastOverlayHash = null;
             this.drawOverlay();
             return;
         }

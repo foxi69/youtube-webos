@@ -523,6 +523,43 @@ run(async () => {
     t(n('late chapters: a gap changed by a class moves the marks'),
       env.marks().length === 2 && near(parseFloat(env.marks()[1].style.left), (130 / 230) * 100), env.marks().map(at).join(' '));
   }
+  {
+    // Chapter pieces with no width to read yet (a hidden bar, a calc() width):
+    // the plain line. Once they have one, drawn again by the chapters, though
+    // their signature did not change.
+    const env = await boot({}, [seg('sponsor', 150, 450)], {
+      bar: '<div class="bar-host"><ytlr-progress-bar><ytlr-multi-markers-player-bar-renderer>' +
+        '<div idomkey="progress-bar"><div idomkey="chapter-0" style="width: calc(100px); margin-right: 10px"></div>' +
+        '<div idomkey="chapter-1" style="width: calc(100px)"></div><div idomkey="segment"></div></div>' +
+        '</ytlr-multi-markers-player-bar-renderer></ytlr-progress-bar></div>'
+    });
+    const at = (m) => `${parseFloat(m.style.left).toFixed(2)}/${parseFloat(m.style.width).toFixed(2)}`;
+    t(n('unmeasured chapters: precondition: the plain line'),
+      env.marks().length === 1 && near(parseFloat(env.marks()[0].style.left), 25) && near(parseFloat(env.marks()[0].style.width), 50),
+      env.marks().map(at).join(' '));
+    // Still no width: a sync leaves the overlay as it is (no rebuild on every sync).
+    const before = env.doc.getElementById('previewbar');
+    await wait(600);
+    await env.playTo(5);
+    t(n('unmeasured chapters: no width yet, the overlay is not rebuilt'),
+      !!before && env.doc.getElementById('previewbar') === before && env.marks().length === 1, env.marks().map(at).join(' '));
+    for (const el of env.doc.querySelectorAll('[idomkey^="chapter-"]')) {
+      Object.defineProperty(el, 'offsetWidth', { configurable: true, get: () => 100 });
+    }
+    await wait(600);
+    await env.playTo(10);   // the overlay's own sync, at most every 500 ms
+    const marks = env.marks();
+    t(n('unmeasured chapters: once measurable, drawn again by the chapters'),
+      marks.length === 2 && near(parseFloat(marks[0].style.left), (50 / 210) * 100) && near(parseFloat(marks[0].style.width), (50 / 210) * 100) &&
+        near(parseFloat(marks[1].style.left), (110 / 210) * 100) && near(parseFloat(marks[1].style.width), (50 / 210) * 100),
+      marks.map(at).join(' '));
+    // Measured now: the next sync keeps the overlay (the wait is over).
+    const drawn = env.doc.getElementById('previewbar');
+    await wait(600);
+    await env.playTo(15);
+    t(n('unmeasured chapters: after the redraw, a sync keeps the overlay'),
+      !!drawn && env.doc.getElementById('previewbar') === drawn && env.marks().length === 2, env.marks().map(at).join(' '));
+  }
 
   // ---- Chapter start times from the renderer ----
   {

@@ -69,5 +69,8 @@
   {"id":"sb-chapter-replaced","file":"src/sponsorblock.js","from":"if (records.some((r) => r.type === 'childList')) this._watchChapters();","to":"","why":"chapter pieces replaced by equal ones are not watched, and their later gap leaves the marks stale"},
   {"id":"sb-chapter-drawn","file":"src/sponsorblock.js","from":"        if (starts.length > els.length) starts = rendererChapterStarts(true);","to":"","why":"a bar that leaves out a chapter too short to draw gets the plain line"},
   {"id":"sb-chapter-first-zero","file":"src/sponsorblock.js","from":"p.from = i === 0 ? 0 : starts[i];","to":"p.from = starts[i];","why":"a left-out first chapter has no piece for its time, and the marks in the first piece move"},
-  {"id":"utils-chapter-drawn-filter","file":"src/utils.js","from":"drawnOnly ? own.filter((chapter) => !chapter || chapter.width !== 0) : own","to":"own","why":"chapters the bar does not draw still count, and a bar that leaves one out gets the plain line"}
+  {"id":"utils-chapter-drawn-filter","file":"src/utils.js","from":"drawnOnly ? own.filter((chapter) => !chapter || chapter.width !== 0) : own","to":"own","why":"chapters the bar does not draw still count, and a bar that leaves one out gets the plain line"},
+  {"id":"sb-chapter-unmeasured-retry","file":"src/sponsorblock.js","from":"        if (this._chapterNowMeasurable()) {","to":"        if (false) {","why":"marks drawn while the chapter pieces had no width stay on the plain line once they have one"},
+  {"id":"sb-chapter-unmeasured-width","file":"src/sponsorblock.js","from":"return els.length > 1 && els[0].offsetWidth > 0;","to":"return els.length > 1;","why":"the overlay is rebuilt on every sync while the chapter pieces still have no width"},
+  {"id":"sb-chapter-unmeasured-reset","file":"src/sponsorblock.js","from":"        this._chapterUnmeasured = false;\n","to":"","why":"after the marks are placed by the chapters, every sync rebuilds the overlay"}
 ]
