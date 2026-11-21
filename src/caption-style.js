@@ -19,9 +19,12 @@
  *
  * SUBTITLE POSITION (Player)
  *   Default leaves the subtitles where YouTube puts them; Higher and Highest
- *   lift the whole caption area, for a TV or soundbar that covers the bottom of
+ *   lift the caption windows, for a TV or soundbar that covers the bottom of
  *   the picture, or text burnt into the video. A class on <html>, read by a
- *   static rule, so a caption window YouTube draws again keeps it.
+ *   static rule, so a caption window YouTube draws again keeps it. The rule
+ *   moves each window, not the caption area: on the TV the area is static and
+ *   0 px high, and a transform on it makes it the box the windows are placed
+ *   in (bottom: 5%), which put them above the top of the screen.
  */
 import { configRead, configWrite, configAddChangeListener, configFlush, subtitleDelayMs, configRestorePending } from './config.js';
 
@@ -95,8 +98,8 @@ function injectPositionStyle() {
   const style = document.createElement('style');
   style.id = STYLE_ID;
   style.textContent =
-    `html.${POSITION_CLASSES.raised} .ytp-caption-window-container { transform: translateY(-8vh) !important; }\n` +
-    `html.${POSITION_CLASSES.high} .ytp-caption-window-container { transform: translateY(-16vh) !important; }`;
+    `html.${POSITION_CLASSES.raised} .ytp-caption-window-container .caption-window { transform: translateY(-8vh) !important; }\n` +
+    `html.${POSITION_CLASSES.high} .ytp-caption-window-container .caption-window { transform: translateY(-16vh) !important; }`;
   (document.head || document.documentElement).appendChild(style);
 }
 

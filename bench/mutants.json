@@ -125,5 +125,6 @@
   {"id":"config-owner-counters","file":"src/config.js","from":"        if (!(seeded && owner === '')) applyCounted(record, changes.counted);","to":"","why":"a skip before the read is lost from the account's restored totals"},
   {"id":"config-owner-copied","file":"src/config.js","from":"    if (ownerRecordsToCopy.length) copyToBackup(ownerRecordsToCopy);","to":"","why":"the merged record of an account not in use stays old in the copy"},
   {"id":"config-reset-kept","file":"src/config.js","from":"      countBeforeRestore(key, 0, true);","to":"","why":"a Reset before the read is undone by the restored totals"},
-  {"id":"sb-guard-whitelisted","file":"src/sponsorblock.js","from":" || this.isDestroyed || this.channelWhitelisted()) {","to":" || this.isDestroyed) {","why":"a channel put on Never Skip still has a seek before the highlight taken back to it"}
+  {"id":"sb-guard-whitelisted","file":"src/sponsorblock.js","from":" || this.isDestroyed || this.channelWhitelisted()) {","to":" || this.isDestroyed) {","why":"a channel put on Never Skip still has a seek before the highlight taken back to it"},
+  {"id":"caption-position-window","file":"src/caption-style.js","from":"${POSITION_CLASSES.high} .ytp-caption-window-container .caption-window {","to":"${POSITION_CLASSES.high} .ytp-caption-window-container {","why":"the transform on the 0 px caption area puts the subtitles above the top of the screen"}
 ]
