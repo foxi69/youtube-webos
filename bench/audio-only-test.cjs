@@ -96,23 +96,34 @@ run(async () => {
   }
   {
     // A paused video stays paused through the reload, unless the viewer plays it first.
-    const paused = async (later) => {
+    const paused = async (label, later) => {
       const env = boot({ audioOnlyStream: true });
       await wait(100);
       const player = env.win.document.getElementById('ytlr-player__player-container-player');
       let pauses = 0;
+      let plays = 0;
       player.getPlayerState = () => 2;
       player.pauseVideo = () => { pauses++; };
+      player.playVideo = () => { plays++; };
+      const ownPlay = player.playVideo;
       trustedKey(env.win, KEY_7);
       trustedKey(env.win, KEY_7, env.win.document.body, 'keyup');
-      t(`paused (${later ? 'Play pressed' : 'no action'}): precondition: loaded again`, env.loads.length === 1, env.loads.join());
-      if (later) trustedKey(env.win, later);
+      t(`paused (${label}): precondition: loaded again`, env.loads.length === 1, env.loads.join());
+      if (later) later(env.win, player);
       await wait(200);
-      return pauses;
+      t(`paused (${label}): the player's play is its own again`, player.playVideo === ownPlay);
+      return { pauses, plays };
     };
-    const kept = await paused(0);
-    t('paused: with no later action the pause is put back', kept === 1, String(kept));
-    const resumed = await paused(415);
-    t('paused: Play pressed before it is put back wins', resumed === 0, String(resumed));
+    const kept = await paused('no action');
+    t('paused: with no later action the pause is put back', kept.pauses === 1, String(kept.pauses));
+    const resumed = await paused('Play key', (win) => trustedKey(win, 415));
+    t('paused: Play pressed before it is put back wins', resumed.pauses === 0, String(resumed.pauses));
+    const pointer = await paused('play asked of the player', (win, player) => player.playVideo());
+    t('paused: a play asked of the player wins, and reaches it', pointer.pauses === 0 && pointer.plays === 1,
+      `${pointer.pauses} ${pointer.plays}`);
+    const unrelated = await paused('unrelated pointer press', (win) => {
+      win.document.body.dispatchEvent(new win.MouseEvent('mousedown', { bubbles: true }));
+    });
+    t('paused: a pointer press on something else leaves the pause to be put back', unrelated.pauses === 1, String(unrelated.pauses));
   }
 });

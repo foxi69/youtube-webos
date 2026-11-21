@@ -63,21 +63,31 @@ let cancelPause = null;
 
 /** A video paused before its reload is paused again, unless the viewer acts first. */
 function pauseAfterLoad(player) {
-  const onAction = (evt) => {
-    if (evt.type !== 'keydown' || PLAYBACK_KEYS.indexOf(evt.keyCode) !== -1) cancelPause();
+  const onKey = (evt) => {
+    if (PLAYBACK_KEYS.indexOf(evt.keyCode) !== -1) cancelPause();
   };
+  // A play asked of the player (the pointer on Play, say): a press on anything
+  // else leaves the pause to be put back.
+  const ownPlay = Object.prototype.hasOwnProperty.call(player, 'playVideo');
+  const play = player.playVideo;
+  if (typeof play === 'function') {
+    player.playVideo = function (...args) {
+      if (cancelPause) cancelPause();
+      return play.apply(this, args);
+    };
+  }
   const timer = setTimeout(() => {
     cancelPause();
     try { player.pauseVideo(); } catch { /* gone */ }
   }, 100);
   cancelPause = () => {
     clearTimeout(timer);
-    window.removeEventListener('keydown', onAction, true);
-    window.removeEventListener('mousedown', onAction, true);
+    window.removeEventListener('keydown', onKey, true);
+    if (ownPlay) player.playVideo = play;
+    else delete player.playVideo;
     cancelPause = null;
   };
-  window.addEventListener('keydown', onAction, true);
-  window.addEventListener('mousedown', onAction, true);
+  window.addEventListener('keydown', onKey, true);
 }
 
 /** The video playing, loaded again where it is: the next player response decides audio or picture. */
