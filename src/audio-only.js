@@ -41,11 +41,7 @@ let stopKeepingCaptions = null;
 function atNormalSpeed() {
   try {
     const speed = typeof window !== 'undefined' && window.ytafSpeed;
-    if (speed && typeof speed.getSpeed === 'function' && speed.getSpeed() !== 1) return false;
-    // A rate set elsewhere (YouTube's own speed menu, with Playback Speed
-    // Control off, gives the app's speed as 1x): the video's own rate.
-    const video = document.querySelector('video');
-    return !video || !(video.playbackRate > 0) || video.playbackRate === 1;
+    return !speed || typeof speed.getSpeed !== 'function' || speed.getSpeed() === 1;
   } catch {
     return true;
   }

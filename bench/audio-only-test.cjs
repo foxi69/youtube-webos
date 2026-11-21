@@ -118,12 +118,7 @@ run(async () => {
     t('back at 1x: responses are audio-only again', audioOnly(env.parse(response())));
     speed = 2;
     t('a speed change while on: the load it makes gets the whole video', untouched(env.parse(response())));
-    // A rate the app's speed does not know of (YouTube's own menu, Playback
-    // Speed Control off): the video's rate counts too.
     speed = 1;
-    env.win.document.querySelector('video').playbackRate = 1.5;
-    t('the video at 1.5x by YouTube\'s own menu: the whole video', untouched(env.parse(response())));
-    env.win.document.querySelector('video').playbackRate = 1;
     await env.press();
     t('off at 1x: the video is loaded again with its picture',
       !env.on() && env.loads.join() === 'aaaaaaaaaaa@42.5' && untouched(env.parse(response())), env.loads.join());
