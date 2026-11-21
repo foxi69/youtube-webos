@@ -589,6 +589,28 @@ run(async () => {
     t(n('no sync: and the look stops'), !env.sb()._measureTimer);
   }
   {
+    // A hidden bar, one piece sized inline (100px), one by a stylesheet (no
+    // inline width): not drawn by the inline one alone, but once laid out,
+    // with no sync (seek bar only, no playback).
+    const env = await boot({ sbMode_sponsor: 'seek_bar' }, [seg('sponsor', 150, 450)], {
+      bar: '<div class="bar-host"><ytlr-progress-bar><ytlr-multi-markers-player-bar-renderer>' +
+        '<div idomkey="progress-bar"><div idomkey="chapter-0" style="width: 100px; margin-right: 10px"></div>' +
+        '<div idomkey="chapter-1"></div><div idomkey="segment"></div></div>' +
+        '</ytlr-multi-markers-player-bar-renderer></ytlr-progress-bar></div>'
+    });
+    const at = (m) => `${parseFloat(m.style.left).toFixed(2)}/${parseFloat(m.style.width).toFixed(2)}`;
+    t(n('stylesheet width: precondition: hidden, the plain line, and a look scheduled'),
+      env.marks().length === 1 && near(parseFloat(env.marks()[0].style.left), 25) && !!env.sb()._measureTimer, env.marks().map(at).join(' '));
+    for (const el of env.doc.querySelectorAll('[idomkey^="chapter-"]')) {
+      Object.defineProperty(el, 'offsetWidth', { configurable: true, get: () => 100 });
+    }
+    await wait(1300);
+    const marks = env.marks();
+    t(n('stylesheet width: once laid out, the marks follow both pieces'),
+      marks.length === 2 && near(parseFloat(marks[0].style.left), (50 / 210) * 100) && near(parseFloat(marks[1].style.left), (110 / 210) * 100),
+      marks.map(at).join(' '));
+  }
+  {
     // A relative width on a hidden bar is not a pixel width: one piece in
     // pixels and one in percent wait for the layout, then follow it.
     const env = await boot({}, [seg('sponsor', 150, 450)], {

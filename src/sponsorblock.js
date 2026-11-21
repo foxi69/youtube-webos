@@ -378,10 +378,11 @@ class SponsorBlockHandler {
             let width = el.offsetWidth;
             if (!width && !laidOut) {
                 // Not laid out (a hidden bar): an inline width in pixels is its
-                // width; a relative one (50%, calc()) is known only once laid out.
+                // width (0px too); a relative one (50%, calc()) or one from a
+                // stylesheet (no inline width) is known only once laid out.
                 const inline = el.style.width;
                 if (/^\d+(?:\.\d+)?px$/.test(inline)) width = parseFloat(inline);
-                else if (inline) unread = true;
+                else unread = true;
             }
             const cs = window.getComputedStyle(el);
             const ml = parseFloat(cs.marginLeft) || 0;
