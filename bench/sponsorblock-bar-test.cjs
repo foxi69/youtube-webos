@@ -560,6 +560,18 @@ run(async () => {
     t(n('start times: a bar with only some of the chapters gets the plain line'),
       env.marks().length === 1 && near(parseFloat(env.marks()[0].style.left), 25) && near(parseFloat(env.marks()[0].style.width), 50),
       env.marks().map(at).join(' '));
+    // The bar leaves out a chapter too short to draw (width 0 in the data, as
+    // on the TV: a 7 s introduction): the pieces are the other chapters, and
+    // the first one starts at 0.
+    env.doc.querySelector('ytlr-multi-markers-player-bar-renderer').__instance =
+      { props: { data: { chapters: [{ start: 0, width: 0 }, { start: 10, width: 100 }, { start: 200, width: 100 }] } } };
+    await wait(600);
+    await env.playTo(25);
+    const left = env.marks();
+    t(n('start times: a chapter the bar leaves out is skipped, the others keep their pieces'),
+      left.length === 2 && near(parseFloat(left[0].style.left), pct(75)) && near(parseFloat(left[0].style.width), pct(25)) &&
+        near(parseFloat(left[1].style.left), pct(110)) && near(parseFloat(left[1].style.width), pct(62.5)),
+      left.map(at).join(' '));
   }
   {
     // Only shown in the bar (no skip left to keep the time listener on): a

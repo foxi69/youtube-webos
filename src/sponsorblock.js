@@ -343,16 +343,19 @@ class SponsorBlockHandler {
     /**
      * The chapter pieces as laid out: each one's x and width in the bar, and
      * the times it spans. The times are the renderer's chapter start times;
-     * without them, the pieces' widths share out the duration. A long video
-     * whose bar draws only some of its chapters (fewer pieces than start
-     * times) has no layout: which piece is which chapter is not known, and
-     * the marks go on a plain line. Null with fewer than two pieces too (no
-     * gaps to allow for).
+     * without them, the pieces' widths share out the duration. The bar leaves
+     * out a chapter too short to draw (the 7 s introduction of a 2-hour video,
+     * read on the TV), which the renderer gives a width of 0: the pieces are
+     * the other chapters, and a left-out one's time goes to the piece before
+     * it (the first piece starts at 0). When the pieces still do not match
+     * the chapters, which piece is which is not known, and the marks go on a
+     * plain line. Null with fewer than two pieces too (no gaps to allow for).
      */
     _chapterLayout(duration) {
         const els = this._chapterElements();
         if (els.length < 2) return null;
-        const starts = rendererChapterStarts();
+        let starts = rendererChapterStarts();
+        if (starts.length > els.length) starts = rendererChapterStarts(true);
         if (starts.length && starts.length !== els.length) return null;
         const pieces = [];
         let content = 0;
@@ -371,7 +374,7 @@ class SponsorBlockHandler {
         for (let i = 0; i < pieces.length; i++) {
             const p = pieces[i];
             if (starts.length) {
-                p.from = starts[i];
+                p.from = i === 0 ? 0 : starts[i];
                 p.to = i + 1 < starts.length ? starts[i + 1] : duration;
             } else {
                 p.from = (p.from / content) * duration;

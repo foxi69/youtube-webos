@@ -124,14 +124,16 @@ export const isSearchPage = () => _isSearchPage;
 
 /**
  * The chapters' start times in seconds, from the bar renderer's data
- * (chapters[].start); empty when it has none.
+ * (chapters[].start); empty when it has none. With `drawnOnly`, without the
+ * chapters the bar does not draw: the renderer gives those a width of 0.
  */
-export function rendererChapterStarts() {
+export function rendererChapterStarts(drawnOnly = false) {
   const host = document.querySelector('ytlr-multi-markers-player-bar-renderer');
   const props = host && host.__instance && host.__instance.props;
   const own = props && props.data && Array.isArray(props.data.chapters) ? props.data.chapters : [];
+  const listed = drawnOnly ? own.filter((chapter) => !chapter || chapter.width !== 0) : own;
   // A number only: Number(null) is 0, a chapter at the start that is not there.
-  return own.map((chapter) => chapter && chapter.start).filter((s) => typeof s === 'number' && isFinite(s));
+  return listed.map((chapter) => chapter && chapter.start).filter((s) => typeof s === 'number' && isFinite(s));
 }
 
 // Cached <video> lookup. Several shortcut handlers re-query
