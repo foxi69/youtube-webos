@@ -204,6 +204,8 @@ export function skippableSeconds(segments, duration) {
     let start = Number(seg.segment[0]);
     let end = Number(seg.segment[1]);
     if (isNaN(start) || isNaN(end) || end <= start) continue;
+    // Ignore Segments Shorter Than: these play in full.
+    if (end - start < (Number(configRead('sbMinSegmentLength')) || 0)) continue;
 
     if (duration > 0) {
       start = Math.max(0, Math.min(start, duration));

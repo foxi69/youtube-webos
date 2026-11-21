@@ -67,11 +67,12 @@ run(async () => {
     t('the speed feature is installed', !!speed);
     if (!speed) return;
     speed.setSpeed(1.75, { immediate: true });
-    await wait(300);
+    // Stored once the write (debounced) has run.
+    await until(() => stored(win).savedPlaybackSpeed === 1.75 && stored(win).toggleSpeed === 1.75, 3000);
     t('a speed set is stored, and as the toggle speed', stored(win).savedPlaybackSpeed === 1.75 && stored(win).toggleSpeed === 1.75,
       JSON.stringify([stored(win).savedPlaybackSpeed, stored(win).toggleSpeed]));
     speed.setSpeed(1, { immediate: true });
-    await wait(300);
+    await until(() => stored(win).savedPlaybackSpeed === 1, 3000);
     t('1x is stored too, the toggle speed stays', stored(win).savedPlaybackSpeed === 1 && stored(win).toggleSpeed === 1.75);
     t('no page error', errors.length === 0, errors[0]);
   }

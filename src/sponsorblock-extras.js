@@ -7,14 +7,45 @@ import { configRead, configWrite } from './config.js';
 import { showNotification } from './notifications.js';
 import { SELECTORS } from './utils.js';
 
-/** The channel name of the video in the player, or '' while it is not known. */
-export function currentChannelName() {
+/**
+ * The channel name of the video in the player, or '' while it is not known.
+ * With `videoID`: also '' while the player still reports another video (the
+ * one before, as the next loads). Data without a video ID is taken as it is.
+ * webOS 25 leaves the author empty: then the title tray names the channel, but
+ * only when the player reports `videoID`, as the tray has no video identity.
+ */
+export function currentChannelName(videoID) {
     try {
         const player = document.getElementById(SELECTORS.PLAYER_ID) || document.querySelector('.html5-video-player');
         const data = player && typeof player.getVideoData === 'function' ? player.getVideoData() : null;
-        return data && typeof data.author === 'string' ? data.author.trim() : '';
+        if (!data) return '';
+        if (videoID && typeof data.video_id === 'string' && data.video_id && data.video_id !== videoID) return '';
+        const author = typeof data.author === 'string' ? data.author.trim() : '';
+        if (author) return author;
+        return videoID && data.video_id === videoID ? titleTrayChannel() : '';
     } catch {
         return '';
+    }
+}
+
+/** The first item of the title tray's metadata line (the channel), or ''. */
+export function titleTrayChannel() {
+    const line = document.querySelector('ytlr-video-title-tray ytlr-video-metadata-line yt-formatted-string');
+    return line ? line.textContent.trim() : '';
+}
+
+/** The video ID in the watch page's address (#/watch?v=ID), or null. */
+export function videoIdFromHash() {
+    try {
+        const hash = window.location.hash;
+        if (!hash.startsWith('#')) return null;
+        const parts = hash.split('?');
+        if (parts.length < 2) return null;
+        if (typeof URLSearchParams !== 'undefined') return new URLSearchParams(parts[1]).get('v');
+        const match = parts[1].match(/(?:[?&]|^)v=([^&]+)/);
+        return match ? match[1] : null;
+    } catch {
+        return null;
     }
 }
 
@@ -32,9 +63,11 @@ export function isChannelWhitelisted(name) {
  * channel of the video playing goes on the list, or off it.
  */
 export function toggleChannelWhitelist() {
-    const name = currentChannelName();
+    // The video being watched: while the player still reports the one before
+    // (the next one loading), its channel is not taken for this one's.
+    const name = currentChannelName(videoIdFromHash());
     if (!name) {
-        showNotification('No channel to add');
+        showNotification(currentChannelName() ? 'The channel is not known yet: try again in a moment' : 'No channel to add');
         return;
     }
     const list = Array.isArray(configRead('sbWhitelistChannels')) ? configRead('sbWhitelistChannels') : [];

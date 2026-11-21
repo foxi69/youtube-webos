@@ -229,4 +229,19 @@ run(async () => {
     await tick();
     t('cancel() after the end: the result stays', s.now !== 'pending' && s.now.value === null, JSON.stringify(s.now));
   }
+
+  // ---- Every mutant still finds its line ----
+  // The sweep skips a mutant whose `from` is not in its file exactly once,
+  // and a skipped one is counted neither killed nor survived: a change to the
+  // source that moves the text away must move the mutant along.
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const root = path.join(__dirname, '..');
+    const stale = JSON.parse(fs.readFileSync(path.join(__dirname, 'mutants.json'), 'utf8'))
+      .map((m) => [m.id, fs.readFileSync(path.join(root, m.file), 'utf8').split(m.from).length - 1])
+      .filter(([, n]) => n !== 1);
+    t('every mutant in bench/mutants.json is found exactly once in its file', stale.length === 0,
+      stale.map(([id, n]) => id + ': ' + n + ' times').join(', '));
+  }
 });
