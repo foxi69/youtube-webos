@@ -38,6 +38,10 @@ function openDb() {
     request.onerror = () => reject(request.error || new Error('backup database failed to open'));
     request.onblocked = () => reject(new Error('backup database blocked'));
   });
+  // A failed open is not kept: the next read or write tries again, so one
+  // passing error does not leave the rest of the run with no copy.
+  const opening = dbPromise;
+  opening.catch(() => { if (dbPromise === opening) dbPromise = null; });
   return dbPromise;
 }
 
@@ -64,9 +68,21 @@ export function backupWrite(entries) {
 /**
  * Every [key, text] pair whose key starts with `prefix`; [] when there is no
  * copy (no IndexedDB, or an empty one). A read that fails part way rejects, so
- * a part of the copy is never taken for all of it.
+ * a part of the copy is never taken for all of it; so does one with no answer
+ * within READ_TIMEOUT_MS (a database that never answers would otherwise keep
+ * the restore, and every switch of account waiting for it, for the whole run).
+ * Generous: a slow TV's read that does answer must not count as failed (on
+ * webOS 25 the read takes well under a second).
  */
+const READ_TIMEOUT_MS = 10000;
 export function backupReadAll(prefix) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('backup read timed out')), READ_TIMEOUT_MS);
+    readAll(prefix).then((out) => { clearTimeout(timer); resolve(out); }, (e) => { clearTimeout(timer); reject(e); });
+  });
+}
+
+function readAll(prefix) {
   return openDb().then((db) => {
     if (!db) return [];
     return new Promise((resolve, reject) => {

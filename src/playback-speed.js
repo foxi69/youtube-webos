@@ -632,6 +632,18 @@ export function createSpeedController({
     return true;
   }
 
+  /**
+   * Another account's settings loaded (Separate Settings for Each Account):
+   * its remembered speed, or 1x when it remembers none, for the next video it
+   * opens, set with no reload as at the start. Not while a video plays.
+   */
+  function rememberedSpeed(speed) {
+    const next = speed !== 1 && isSupportedSpeed(speed) && enabled() && isSupported() ? speed : 1;
+    if (next === currentSpeed || pending || onPlaybackPage()) return false;
+    currentSpeed = next;
+    return true;
+  }
+
   // Toggle Speed (1x / Last): from 1x to `other`, from any other speed to 1x.
   // Not on a live stream, which plays at 1x whatever is set: the speed set
   // stays for the next video that is not live.
@@ -741,6 +753,7 @@ export function createSpeedController({
     step,
     reset,
     restoreSpeed,
+    rememberedSpeed,
     toggle,
     stop,
     onRateRequest,
@@ -880,6 +893,12 @@ export function initPlaybackSpeed() {
   window.ytafSpeed = speedInstance ? speedInstance.controller : null;
   if (speedInstance) {
     if (configRead('rememberPlaybackSpeed')) speedInstance.controller.restoreSpeed(Number(configRead('savedPlaybackSpeed')));
+    // Separate Settings for Each Account: the account picked in Who's watching
+    // brings its own Remember Playback Speed, not the one the app started with.
+    window.addEventListener('ytaf-profile-change', () => {
+      const remembered = configRead('rememberPlaybackSpeed') ? Number(configRead('savedPlaybackSpeed')) : 1;
+      speedInstance.controller.rememberedSpeed(remembered);
+    });
     configAddChangeListener('enablePlaybackSpeed', ({ detail }) => {
       if (!detail.newValue) speedInstance.controller.stop();
     });

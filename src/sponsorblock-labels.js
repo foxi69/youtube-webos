@@ -272,7 +272,9 @@ export function pickFullLabel(segments) {
  *
  * Exported so the tests can assert on the generated CSS directly.
  */
-export function buildCss(segments, duration) {
+// noSkips: nothing is skipped on this video (Never Skip on These Channels),
+// so no time is taken off; the full-video label still says what it is.
+export function buildCss(segments, duration, noSkips = false) {
   let css = '';
 
   if (configRead('sbFullVideoLabel')) {
@@ -286,7 +288,7 @@ export function buildCss(segments, duration) {
     }
   }
 
-  if (configRead('sbShowTimeWithSkips') && duration > 0 && !isNaN(duration)) {
+  if (configRead('sbShowTimeWithSkips') && !noSkips && duration > 0 && !isNaN(duration)) {
     const skipped = skippableSeconds(segments, duration);
     // Nothing to remove means nothing worth saying - the bracketed figure would
     // just repeat the duration already next to it.
@@ -329,8 +331,8 @@ class SponsorBlockLabels {
    * Called whenever an input can have moved: after the fetch, on
    * durationchange, and when a SponsorBlock setting changes.
    */
-  update(segments, duration) {
-    this.write(buildCss(segments, duration));
+  update(segments, duration, { noSkips = false } = {}) {
+    this.write(buildCss(segments, duration, noSkips));
   }
 
   clear() {

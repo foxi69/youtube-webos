@@ -118,6 +118,10 @@ async function boot(cfg, segments, opts = {}) {
     const body = [{ videoID: VIDEO_ID, segments: JSON.parse(JSON.stringify(net.segments)) }];
     return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) });
   };
+  // opts.author: the channel the player names for the video.
+  if ('author' in opts) {
+    win.document.getElementById('ytlr-player__player-container-player').getVideoData = () => ({ video_id: VIDEO_ID, author: opts.author });
+  }
   const video = win.document.querySelector('video');
   const v = fakeVideo(win, video, opts.duration || 600);
   evaluate();
@@ -353,6 +357,15 @@ run(async () => {
     const env = await boot({ sbShowTimeWithSkips: true, sbMinSegmentLength: '5' }, [seg('sponsor', 30, 33), seg('selfpromo', 100, 120)]);
     t(n('the time with skips removed leaves in a segment too short to skip'), /\(9:40\)/.test(env.labelsCss()), env.labelsCss());
     t(n('...and that segment keeps its mark on the bar'), env.marks().length === 2, String(env.marks().length));
+  }
+  {
+    // Never Skip on These Channels: nothing is skipped, so no time comes off.
+    const listed = await boot({ sbShowTimeWithSkips: true, sbWhitelistChannels: ['listed channel'] },
+      [seg('sponsor', 30, 60)], { author: 'Listed Channel' });
+    const other = await boot({ sbShowTimeWithSkips: true, sbWhitelistChannels: ['Other Channel'] },
+      [seg('sponsor', 30, 60)], { author: 'Listed Channel' });
+    t(n('the time with skips removed: control: a channel not on the list gets it'), /\(9:30\)/.test(other.labelsCss()), other.labelsCss());
+    t(n('the time with skips removed: a channel on Never Skip gets none'), !/\(\d+:\d\d\)/.test(listed.labelsCss()), listed.labelsCss());
   }
   {
     const env = await boot({ sbFullVideoLabel: true }, [seg('sponsor', 0, 0, 'full')]);

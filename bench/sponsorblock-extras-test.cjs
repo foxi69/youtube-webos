@@ -112,6 +112,14 @@ async function boot(cfg, segments, opts = {}) {
     win.Date.now = () => opts.clock.now;
   }
   if (opts.copy) win.indexedDB = fakeIndexedDB(opts.copy, [], opts.idb || {});
+  // opts.refuse: keys localStorage refuses to store (quota); opts.refused counts the refusals.
+  if (opts.refuse) {
+    const set = win.Storage.prototype.setItem;
+    win.Storage.prototype.setItem = function (key, value) {
+      if (opts.refuse.indexOf(key) !== -1) { opts.refused = (opts.refused || 0) + 1; throw new Error('QuotaExceededError'); }
+      return set.call(this, key, value);
+    };
+  }
   evaluate();
   // The handler starts a moment after the page (about 0.8 s): wait for its
   // request, then for the answer to be applied.
@@ -252,6 +260,31 @@ run(async () => {
       JSON.stringify([stored(env.win).sbTimeSaved, stored(env.win).sbSkipCount]));
   }
   {
+    // A skip before the read, and localStorage refusing the shared record: the
+    // skip stays in the journal, and the next start adds it to the copy's totals.
+    const clock = {};
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const copy = savedCopy([['ytaf-configuration', JSON.stringify({ sbTimeSaved: 100, sbSkipCount: 4, foxThemeApplied: true })]]);
+    const opts = { clock, copy, idb: { gate }, refuse: ['ytaf-configuration'] };
+    const env = await boot({}, [seg('sponsor', 30, 60)], opts);
+    await env.playTo(30.2);
+    t(n('refused shared record: precondition: the segment was skipped'), env.state.time === 60, String(env.state.time));
+    release();
+    await wait(400);
+    t(n('refused shared record: precondition: localStorage refused it'), opts.refused > 0, String(opts.refused));
+    const left = {};
+    for (let i = 0; i < env.win.localStorage.length; i++) {
+      const k = env.win.localStorage.key(i);
+      left[k] = env.win.localStorage.getItem(k);
+    }
+    const next = await boot({}, [seg('sponsor', 30, 60)], { copy, storage: left });
+    await wait(400);
+    t(n('refused shared record: the next start has the totals of the copy with the skip'),
+      Math.abs(stored(next.win).sbTimeSaved - (100 + 60 - 30.2)) < 1e-9 && stored(next.win).sbSkipCount === 5,
+      JSON.stringify([stored(next.win).sbTimeSaved, stored(next.win).sbSkipCount]));
+  }
+  {
     // The same with Separate Settings for Each Account: the counters are the
     // account's, and the skip before the read adds to the account's totals.
     const clock = {};
@@ -307,6 +340,16 @@ run(async () => {
     const uuids = env.reported.map((r) => r.split('UUID=')[1]).sort().join();
     t(n('report on: a segment nested in a chain skip is reported too'),
       env.state.seeks.join() === '60' && uuids === 'selfpromo-10,sponsor-0', `${env.state.seeks.join()} ${uuids}`);
+  }
+  {
+    // A segment nested in the one skipped, already behind the playhead: not
+    // crossed by the jump, so not reported.
+    const env = await boot({ sbReportSkips: true }, [seg('sponsor', 30, 100), seg('selfpromo', 35, 40)]);
+    await env.playTo(80);
+    await wait(50);
+    t(n('report on: precondition: the skip from 80 s'), env.state.time === 100, String(env.state.time));
+    t(n('report on: a nested segment behind the playhead is not reported'),
+      env.reported.length === 1 && env.reported[0].endsWith('UUID=sponsor-30'), env.reported.join());
   }
   {
     // After a seek elsewhere, Blue is no undo (the clock held, so only the distance decides).
@@ -374,6 +417,29 @@ run(async () => {
     // Back in the new segment before the undone one: its skip stops at the undone one's start.
     await env.playTo(25);
     t(n('undo, then an overlapping segment: a skip from before it stops at its start'), env.state.time === 30, String(env.state.time));
+    // That skip undone too: the first undone segment still plays, its exemption kept.
+    // (The clock moved on a little: a second Blue at the same instant is a repeat.)
+    clock.now += 500;
+    await press(env.win, BLUE);
+    t(n('two undos: precondition: Blue took the second skip back'), Math.abs(env.state.time - 25) < 0.01, String(env.state.time));
+    await env.playTo(30.5);
+    t(n('two undos: the first undone segment still plays'), env.state.time === 30.5, String(env.state.time));
+  }
+  {
+    // A chain skip at the start undone, then a refresh puts a segment around
+    // the undone one: the chain is not taken again over it.
+    const clock = {};
+    const env = await boot({}, [seg('sponsor', 0.2, 20)], { clock });
+    await wait(100);
+    t(n('undone chain: precondition: the chain skip at the start'), env.state.time === 20, String(env.state.time));
+    await press(env.win, BLUE);
+    t(n('undone chain: precondition: Blue went back to the start'), env.state.time < 0.5, String(env.state.time));
+    env.sb().applyRefreshedSegments([seg('selfpromo', 0, 60), seg('sponsor', 0.2, 20)], 'around');
+    await wait(50);
+    env.sb().hasPerformedChainSkip = false;
+    const jumped = env.sb().executeChainSkip(env.video);
+    t(n('undone chain: no chain skip across the undone segment nested in the new one'), !jumped && env.state.time < 20,
+      `${jumped} ${env.state.time}`);
   }
 
   // ---- Never Skip on These Channels and the highlight ----

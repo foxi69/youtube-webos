@@ -7,6 +7,7 @@
  * Usage: node bench/speed-remember-test.cjs <bundle> [legacy|modern]
  */
 const { createReporter, bootPage, trustedKey, wait, until } = require('./harness.cjs');
+const { hashString } = require('./fake-indexeddb.cjs');
 
 const { t, run } = createReporter();
 
@@ -18,6 +19,7 @@ function boot(config, opts = {}) {
     bodyClass: 'WEB_PAGE_TYPE_WATCH',
     url: 'https://www.youtube.com/tv#/watch?v=aaaaaaaaaaa',
     consoleErrors: false,
+    storage: opts.storage,
     config: Object.assign({
       enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
       thumbnailQuality: 'off', enableAutoLogin: false, checkForUpdates: false, showWhatsNew: false
@@ -75,6 +77,34 @@ run(async () => {
     await until(() => stored(win).savedPlaybackSpeed === 1, 3000);
     t('1x is stored too, the toggle speed stays', stored(win).savedPlaybackSpeed === 1 && stored(win).toggleSpeed === 1.75);
     t('no page error', errors.length === 0, errors[0]);
+  }
+
+  // ---- Separate settings for each account: each account's own remembered speed ----
+  {
+    const KEY = 'ytaf-configuration';
+    const identity = (id) => JSON.stringify({ data: { accountId: id } });
+    const storage = {
+      'yt.leanback.default::last-identity-used': identity('abc'),
+      [KEY + '::' + hashString('accountId=abc')]: JSON.stringify({ rememberPlaybackSpeed: true, savedPlaybackSpeed: 2 }),
+      [KEY + '::' + hashString('accountId=xyz')]: JSON.stringify({ rememberPlaybackSpeed: false, savedPlaybackSpeed: 1.5 })
+    };
+    const { win } = boot({ perAccountSettings: true }, { storage });
+    t('per account: precondition: the account at the start plays at its remembered 2x', win.ytafSpeed.getSpeed() === 2,
+      win.ytafSpeed.getSpeed());
+    // Who's watching: another account picked, then back on a watch page.
+    const pick = async (id) => {
+      win.document.body.className = 'WEB_PAGE_TYPE_ACCOUNT_SELECTOR';
+      win.dispatchEvent(new win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: true } }));
+      win.localStorage.setItem('yt.leanback.default::last-identity-used', identity(id));
+      win.dispatchEvent(new win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: false } }));
+      await wait(200);
+      win.document.body.className = 'WEB_PAGE_TYPE_WATCH';
+    };
+    await pick('xyz');
+    t('per account: an account with Remember off plays at 1x, not the speed of the first', win.ytafSpeed.getSpeed() === 1,
+      win.ytafSpeed.getSpeed());
+    await pick('abc');
+    t('per account: back to the first account, its remembered speed again', win.ytafSpeed.getSpeed() === 2, win.ytafSpeed.getSpeed());
   }
 
   // ---- Remember Playback Speed ----

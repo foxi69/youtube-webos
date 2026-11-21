@@ -665,7 +665,10 @@ class SponsorBlockHandler {
         // as it does everywhere else.
         if (this.tempWhitelistIndex !== -1 &&
             chain.segments.some(seg => seg.originalIndex === this.tempWhitelistIndex)) return false;
-        if (chain.segments.some(seg => this.isUndone(seg))) return false;
+        // A segment of an undone skip anywhere the jump would cross, nested
+        // inside the chain's segments (a refresh) too, plays.
+        const chainStart = video.currentTime;
+        if (this.skipSegments.some(seg => seg.start < chain.endTime && seg.end > chainStart && this.isUndone(seg))) return false;
         // With "Skip Segments Once", a chain already skipped (the viewer went
         // back to the start) plays through like any other skipped segment.
         if (configGetAll().skipSegmentsOnce && this.skippedSegmentIndices &&
@@ -732,10 +735,13 @@ class SponsorBlockHandler {
                     this.rebuildSkipSegments();
                     // An Auto Skip to Start that waited for the channel.
                     this._jumpIfPending();
+                    // The time with skips removed, now that the channel is known.
+                    this.updateLabels();
                 } else if (!this.channelWhitelisted()) {
                     // The list was emptied meanwhile: nothing to wait for.
                     this.rebuildSkipSegments();
                     this._jumpIfPending();
+                    this.updateLabels();
                 }
             }, CHANNEL_RETRY_MS);
         }
@@ -812,12 +818,17 @@ class SponsorBlockHandler {
         const keys = new Set(last.keys.filter(Boolean));
         // Its segments gone in a refresh: nothing left to take back.
         if (!this.segments.some((seg, i) => keys.has(this.segmentKey(i)))) return false;
+        const video = this.video;
+        // An undo still in force on this video keeps its segments playing too
+        // (one undone, another skip then undone before passing the first).
+        const prior = this.undone && this.undone.video === video ? this.undone : null;
+        if (prior) prior.keys.forEach((key) => { keys.add(key); });
+        const until = prior ? Math.max(prior.until, last.to) : last.to;
         this.clearUndone();
         // Its own timeupdate listener: the skip listener is off once no
         // segment is ahead, and playback passing the skip must end it.
-        const video = this.video;
-        const onTime = () => { if (video.currentTime >= last.to) this.clearUndone(); };
-        this.undone = { keys, until: last.to, video, onTime };
+        const onTime = () => { if (video.currentTime >= until) this.clearUndone(); };
+        this.undone = { keys, until, video, onTime };
         video.addEventListener('timeupdate', onTime);
         // Our own seek: the highlight's guard (autoJumpToHighlight) leaves it.
         this.ownSkipTarget = last.from;
@@ -1511,7 +1522,7 @@ class SponsorBlockHandler {
         if (this.isDestroyed) return;
         const video = this.video || getVideo();
         const duration = video && !isNaN(video.duration) ? video.duration : 0;
-        sponsorBlockLabels.update(this.segments, duration);
+        sponsorBlockLabels.update(this.segments, duration, { noSkips: this.channelWhitelisted() });
     }
 
     processSegments(duration) {
@@ -1753,6 +1764,9 @@ class SponsorBlockHandler {
                 }
                 break;
             }
+            // Nested in the one skipped but already behind the playhead: not
+            // crossed by the jump, so not marked or reported as skipped.
+            if (next.end <= currentTime) continue;
             if (next.start > jumpTarget + 0.2) break;
 
             jumpTarget = Math.max(jumpTarget, next.end);
