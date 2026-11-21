@@ -15,7 +15,7 @@ import logoBlueUrl from './icons/logo-blue.png';
 import logoRedUrl from './icons/logo-red.png';
 import logoDarkUrl from './icons/logo-dark.png';
 import { isWebOS25, isLegacyWebOS } from './webos-utils.js';
-import { subtitleTranslateLanguages } from './subtitle-translate.js';
+import { subtitleTranslateLanguages, pickTrack, currentTarget } from './subtitle-translate.js';
 import { showNotification, setNotificationOled, setNotificationTheme } from './notifications.js';
 import { blockChannel, openFocusedLongPressMenu } from './long-press-menu.js';
 import { VERSION_LABEL } from './version.js';
@@ -1735,37 +1735,66 @@ function triggerInternal(element, name) {
 // --- Shortcut Helper Functions (Static Logic) ---
 // Extracted to prevent object allocation inside handlers
 
-// A track to switch on when the player cannot choose one itself: the TV's
-// language, else the video's default, else the first. The first alone is no
-// choice: the list is in alphabetical order (Afrikaans first on a TED talk
-// with many translations, measured on the TV).
+// A name's text: a string, { simpleText } or { runs }, as YouTube gives it
+// (subtitle-translate.js's own tracks too); '' when it has none.
+function nameText(name) {
+    if (typeof name === 'string') return name;
+    if (name && typeof name.simpleText === 'string') return name.simpleText;
+    if (name && Array.isArray(name.runs)) return name.runs.map((run) => (run && typeof run.text === 'string' ? run.text : '')).join('');
+    return '';
+}
+
+// The notice for a track switched on: its first name with text, else its
+// language code, else no name at all.
+function subtitlesOnNotice(track) {
+    const names = [track.languageName, track.name, track.trackName, track.languageCode];
+    for (let i = 0; i < names.length; i++) {
+        const text = nameText(names[i]);
+        if (text) return `Subtitles: ON (${text})`;
+    }
+    return 'Subtitles: ON';
+}
+
+// A list entry that can be switched on as it is: a track, not a translation
+// entry (as pickTrack takes them).
+function usableTrack(track) {
+    return !!track && typeof track === 'object' && !track.translationLanguage;
+}
+
+// The tracks to choose from: the player's list, else the video's caption
+// tracks (the captions API can answer before it has a list).
+function captionTracks(player, trackList) {
+    if (Array.isArray(trackList) && trackList.length) return trackList;
+    const videoData = player.getVideoData ? player.getVideoData() : null;
+    return videoData && Array.isArray(videoData.captionTracks) ? videoData.captionTracks : [];
+}
+
+// A track to switch on when the player cannot choose one itself: in the TV's
+// language, picked as Subtitles When a Video Starts picks (pickTrack: its own
+// words before speech recognition), its region or script first (zh-TW, then
+// zh); else the video's default; else the first. No translation entry in any
+// of the three. The first alone is no choice: the list is in alphabetical
+// order (Afrikaans first on a TED talk with many translations, measured on
+// the TV).
 function pickCaptionTrack(tracks) {
     if (!tracks || !tracks.length) return null;
-    const lang = String((typeof navigator !== 'undefined' && navigator.language) || '').toLowerCase().split('-')[0];
-    let byDefault = null;
-    for (let i = 0; i < tracks.length; i++) {
-        const track = tracks[i];
-        if (!track) continue;
-        if (lang && String(track.languageCode || '').toLowerCase().split('-')[0] === lang) return track;
-        if (!byDefault && (track.is_default || track.isDefault)) byDefault = track;
-    }
-    return byDefault || tracks[0] || null;
+    const tag = String((typeof navigator !== 'undefined' && navigator.language) || '').toLowerCase();
+    const base = tag.split('-')[0];
+    const inTvLanguage = (tag ? pickTrack(tracks, tag) : null) || (base && base !== tag ? pickTrack(tracks, base) : null);
+    if (inTvLanguage) return inTvLanguage;
+    for (let i = 0; i < tracks.length; i++) if (usableTrack(tracks[i]) && (tracks[i].is_default || tracks[i].isDefault)) return tracks[i];
+    for (let i = 0; i < tracks.length; i++) if (usableTrack(tracks[i])) return tracks[i];
+    return null;
 }
 
 // The track in the viewer's subtitle language (Auto-Translate Subtitles), or
-// null: one with its own words first, then the auto-translated one
-// subtitle-translate.js adds for a video with none in that language.
+// null: the same language and the same pick as Subtitles When a Video Starts
+// (currentTarget, pickTrack), so both turn on the same one: its own words,
+// else speech recognition, else the auto-translated copy subtitle-translate.js
+// adds to a video with no track in that language.
 function preferredCaptionTrack(tracks) {
-    const lang = configRead('subtitleTranslateLang');
-    if (!lang || lang === 'off' || !tracks || !tracks.length) return null;
-    let translated = null;
-    for (let i = 0; i < tracks.length; i++) {
-        const track = tracks[i];
-        if (!track || String(track.languageCode || '').toLowerCase().split('-')[0] !== lang) continue;
-        if (!/\(auto-translated\)/.test(String(track.languageName || track.name || ''))) return track;
-        if (!translated) translated = track;
-    }
-    return translated;
+    const lang = currentTarget();
+    return lang ? pickTrack(tracks, lang) : null;
 }
 
 function toggleSubtitlesLogic(player) {
@@ -1776,32 +1805,37 @@ function toggleSubtitlesLogic(player) {
         if (typeof player.getOption === 'function' && typeof player.setOption === 'function') {
           try {
             const currentTrack = player.getOption('captions', 'track');
-            const isEnabled = currentTrack && (currentTrack.languageCode || currentTrack.vssId);
-            if (isEnabled) { player.setOption('captions', 'track', {}); showNotification('Subtitles: OFF'); toggledViaApi = true; }
+            // The player's own track objects name it vss_id, ours vssId.
+            const isOn = (track) => !!track && !!(track.languageCode || track.vssId || track.vss_id);
+            if (isOn(currentTrack)) { player.setOption('captions', 'track', {}); showNotification('Subtitles: OFF'); toggledViaApi = true; }
             else {
-              // The viewer's subtitle language, when one is set.
-              const preferred = preferredCaptionTrack(player.getOption('captions', 'tracklist'));
-              if (preferred) {
-                player.setOption('captions', 'track', preferred);
-                showNotification(`Subtitles: ON (${preferred.languageName || preferred.name || preferred.languageCode})`);
+              const list = player.getOption('captions', 'tracklist');
+              const tracks = captionTracks(player, list);
+              const switchOn = (track) => {
+                player.setOption('captions', 'track', track);
+                showNotification(subtitlesOnNotice(track));
                 toggledViaApi = true;
-              }
+              };
+              // The viewer's subtitle language, when one is set.
+              const preferred = preferredCaptionTrack(tracks);
+              if (preferred) switchOn(preferred);
               // Else the player's own choice, as its captions button makes it:
               // the viewer's last language, else the video's (English on that
-              // TED talk, webOS 25). It only switches on, and at once.
+              // TED talk, webOS 25). It only switches on, and has set the track
+              // when it returns (measured on the TV).
               if (!toggledViaApi && typeof player.toggleSubtitlesOn === 'function') {
                 player.toggleSubtitlesOn();
                 const chosen = player.getOption('captions', 'track');
-                if (chosen && (chosen.languageCode || chosen.vssId)) {
-                  showNotification(`Subtitles: ON (${chosen.languageName || chosen.name || chosen.languageCode})`);
+                if (isOn(chosen)) {
+                  showNotification(subtitlesOnNotice(chosen));
                   toggledViaApi = true;
                 }
               }
+              // Else from the list, or the video's own tracks when the list
+              // has none to use (they are the tracks already when it had none).
               if (!toggledViaApi) {
-                const trackList = player.getOption('captions', 'tracklist');
-                const videoData = player.getVideoData ? player.getVideoData() : null;
-                const targetTrack = pickCaptionTrack(trackList && trackList.length ? trackList : videoData && videoData.captionTracks);
-                if (targetTrack) { player.setOption('captions', 'track', targetTrack); showNotification(`Subtitles: ON (${targetTrack.languageName || targetTrack.name || targetTrack.languageCode})`); toggledViaApi = true; }
+                const target = pickCaptionTrack(tracks) || (tracks === list ? pickCaptionTrack(captionTracks(player, [])) : null);
+                if (target) switchOn(target);
               }
             }
           } catch (e) { console.warn('[Shortcut] Subtitle API Error:', e); }

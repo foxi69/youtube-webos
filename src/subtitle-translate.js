@@ -193,7 +193,7 @@ function patchRenderer(renderer, code) {
  * track is a plain (non-ASR) track in that language, so it is found here too;
  * it only exists when the video had no track in the language to begin with.
  */
-function pickTrack(list, code) {
+export function pickTrack(list, code) {
   if (!Array.isArray(list)) return null;
   let asr = null;
   for (const t of list) {
@@ -284,7 +284,7 @@ function startWith(renderer, target) {
   }
 }
 
-function currentTarget() {
+export function currentTarget() {
   const code = configRead('subtitleTranslateLang');
   return code && code !== 'off' && subtitleTranslateLanguages[code] ? code : null;
 }
