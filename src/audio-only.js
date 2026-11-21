@@ -79,58 +79,6 @@ function getPlayer() {
   return document.getElementById(SELECTORS.PLAYER_ID) || document.querySelector('.html5-video-player');
 }
 
-// The keys that always mean play or pause: Play, Pause. OK depends on what has
-// the focus: on the Play control it reaches the player's playVideo below.
-const PLAYBACK_KEYS = [415, 19];
-// Ends the pause a reload still has to put back, or null when none is waiting.
-let cancelPause = null;
-
-/** The viewer chose play or pause: a pause still waiting from a reload is dropped. */
-export function cancelPendingPause() {
-  if (cancelPause) cancelPause();
-}
-
-/** A video paused before its reload is paused again, unless the viewer acts first. */
-// How long a reloaded video may take to play before its pause is put back anyway.
-const PAUSE_FALLBACK_MS = 3000;
-
-function pauseAfterLoad(player, videoId) {
-  const onKey = (evt) => {
-    if (PLAYBACK_KEYS.indexOf(evt.keyCode) !== -1) cancelPause();
-  };
-  // A play asked of the player (the pointer on Play, say): a press on anything
-  // else leaves the pause to be put back.
-  const ownPlay = Object.prototype.hasOwnProperty.call(player, 'playVideo');
-  const play = player.playVideo;
-  if (typeof play === 'function') {
-    player.playVideo = function (...args) {
-      if (cancelPause) cancelPause();
-      return play.apply(this, args);
-    };
-  }
-  const pauseNow = () => {
-    cancelPause();
-    try { player.pauseVideo(); } catch { /* gone */ }
-  };
-  // Put back once the reloaded video plays: a pause asked while it still
-  // loads is lost on a slow TV, and it then plays. Its first PLAYING, or the
-  // fallback when none comes.
-  const onState = ({ detail }) => {
-    if (detail && detail.state === 1 && (!detail.videoId || detail.videoId === videoId)) pauseNow();
-  };
-  const timer = setTimeout(pauseNow, PAUSE_FALLBACK_MS);
-  cancelPause = () => {
-    clearTimeout(timer);
-    window.removeEventListener('yt-player-state-change', onState);
-    window.removeEventListener('keydown', onKey, true);
-    if (ownPlay) player.playVideo = play;
-    else delete player.playVideo;
-    cancelPause = null;
-  };
-  window.addEventListener('yt-player-state-change', onState);
-  window.addEventListener('keydown', onKey, true);
-}
-
 /** The video playing, loaded again where it is: the next player response decides audio or picture. */
 function reloadCurrentVideo() {
   const player = getPlayer();
@@ -140,15 +88,20 @@ function reloadCurrentVideo() {
     const videoId = data && (data.video_id || data.videoId);
     if (!videoId) return false;
     const at = Math.max(0, Number(player.getCurrentTime && player.getCurrentTime()) || 0);
-    // A pause still waiting from the reload before: the video counts as paused.
-    const paused = !!cancelPause || (typeof player.getPlayerState === 'function' && player.getPlayerState() === 2);
-    if (cancelPause) cancelPause();
+    // Paused, or cued by the reload before and not played yet.
+    const state = typeof player.getPlayerState === 'function' ? player.getPlayerState() : -1;
+    const paused = state === 2 || state === 5;
     // The TV player's reload drops the subtitles: put back as the speed reload does.
     const captions = readCaptions(player);
     if (stopKeepingCaptions) stopKeepingCaptions();
-    player.loadVideoById(videoId, at);
+    // A paused video is cued, not loaded: it waits at its time with nothing
+    // to pause again, and the viewer's Play (YouTube's own control too) just
+    // plays it. Measured on a webOS 25 TV: the cued video keeps its time and
+    // streams as its new response says. A pause put back after a load lost
+    // to that Play, which never reaches the player's playVideo.
+    if (paused && typeof player.cueVideoById === 'function') player.cueVideoById({ videoId, startSeconds: at });
+    else player.loadVideoById(videoId, at);
     stopKeepingCaptions = captions ? keepCaptions(window, player, captions, () => keyAt, { videoId, keyAt }) : null;
-    if (paused && typeof player.pauseVideo === 'function') pauseAfterLoad(player, videoId);
     return true;
   } catch (e) {
     console.warn('[AudioOnly] Reloading the video failed:', e);
@@ -170,7 +123,6 @@ export function toggleAudioOnly() {
 if (typeof window !== 'undefined') {
   window.addEventListener('ytaf-page-update', (e) => {
     if (!e.detail || e.detail.isWatch || e.detail.isShorts) return;
-    if (cancelPause) cancelPause();
     document.documentElement.classList.remove(CLASS);
     // The next video opened loads with its picture.
     streaming = false;

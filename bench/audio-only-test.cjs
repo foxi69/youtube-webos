@@ -34,7 +34,8 @@ function boot(cfg) {
         getVideoData: () => ({ video_id: 'aaaaaaaaaaa' }),
         getCurrentTime: () => 42.5,
         getPlayerState: () => 1,
-        loadVideoById: (id, at) => loads.push(id + '@' + at)
+        loadVideoById: (id, at) => loads.push(id + '@' + at),
+        cueVideoById: (opts) => loads.push('cue:' + opts.videoId + '@' + opts.startSeconds)
       });
     }
   });
@@ -135,59 +136,37 @@ run(async () => {
     t('leaving the watch page ends it', !env.on() && untouched(env.parse(response())));
   }
   {
-    // A paused video stays paused through the reload, unless the viewer plays it first.
-    const paused = async (label, later, cfg = {}) => {
-      const env = boot(Object.assign({ audioOnlyStream: true }, cfg));
-      await wait(100);
-      env.win.document.querySelector('video').play = () => Promise.resolve();
-      const player = env.win.document.getElementById('ytlr-player__player-container-player');
-      let pauses = 0;
-      let plays = 0;
-      player.getPlayerState = () => 2;
-      player.pauseVideo = () => { pauses++; };
-      player.playVideo = () => { plays++; };
-      const ownPlay = player.playVideo;
-      trustedKey(env.win, KEY_7);
-      trustedKey(env.win, KEY_7, env.win.document.body, 'keyup');
-      t(`paused (${label}): precondition: loaded again`, env.loads.length === 1, env.loads.join());
-      if (later) later(env.win, player);
-      await wait(200);
-      // Still loading (no PLAYING yet): the pause waits, as on a slow TV.
-      const early = pauses;
-      env.win.dispatchEvent(new env.win.CustomEvent('yt-player-state-change', { detail: { state: 1, videoId: 'aaaaaaaaaaa' } }));
-      await wait(50);
-      t(`paused (${label}): the player's play is its own again`, player.playVideo === ownPlay);
-      return { pauses, plays, early };
-    };
-    const kept = await paused('no action');
-    t('paused: not before the reloaded video plays', kept.early === 0, String(kept.early));
-    t('paused: with no later action the pause is put back once it plays', kept.pauses === 1, String(kept.pauses));
-    const resumed = await paused('Play key', (win) => trustedKey(win, 415));
-    t('paused: Play pressed before it is put back wins', resumed.pauses === 0, String(resumed.pauses));
-    const pointer = await paused('play asked of the player', (win, player) => player.playVideo());
-    t('paused: a play asked of the player wins, and reaches it', pointer.pauses === 0 && pointer.plays === 1,
-      `${pointer.pauses} ${pointer.plays}`);
-    const unrelated = await paused('unrelated pointer press', (win) => {
-      win.document.body.dispatchEvent(new win.MouseEvent('mousedown', { bubbles: true }));
-    });
-    t('paused: a pointer press on something else leaves the pause to be put back', unrelated.pauses === 1, String(unrelated.pauses));
-    const otherOk = await paused('OK on another control', (win) => trustedKey(win, 13));
-    t('paused: OK on something else leaves the pause to be put back', otherOk.pauses === 1, String(otherOk.pauses));
-    const shortcut = await paused('Play/Pause shortcut', (win) => {
-      trustedKey(win, 56);
-      trustedKey(win, 56, win.document.body, 'keyup');
-    }, { shortcut_key_8: 'play_pause' });
-    t('paused: the Play/Pause shortcut wins', shortcut.pauses === 0, String(shortcut.pauses));
-    // No PLAYING ever comes: the fallback puts the pause back anyway.
+    // A paused video is cued where it is, not loaded: it waits there with no
+    // pause to put back, and whatever the viewer then plays it with plays it.
     const env = boot({ audioOnlyStream: true });
     await wait(100);
     const player = env.win.document.getElementById('ytlr-player__player-container-player');
+    let state = 2;
     let pauses = 0;
-    player.getPlayerState = () => 2;
+    player.getPlayerState = () => state;
     player.pauseVideo = () => { pauses++; };
-    player.playVideo = () => {};
     await env.press();
+    t('paused: cued where it is, not loaded', env.loads.join() === 'cue:aaaaaaaaaaa@42.5', env.loads.join());
+    // Cued and not played yet (state 5): off again, cued again.
+    state = 5;
+    await env.press();
+    t('cued, not played yet: cued again, not loaded', env.loads.join() === 'cue:aaaaaaaaaaa@42.5,cue:aaaaaaaaaaa@42.5', env.loads.join());
+    env.win.dispatchEvent(new env.win.CustomEvent('yt-player-state-change', { detail: { state: 1, videoId: 'aaaaaaaaaaa' } }));
     await wait(3200);
-    t('paused: with no PLAYING at all, the pause is put back after a while', pauses === 1, String(pauses));
+    t('paused: nothing paused again, now or later', pauses === 0, String(pauses));
+    // Playing: loaded, so it plays on.
+    state = 1;
+    await env.press();
+    t('playing: loaded, not cued', env.loads[2] === 'aaaaaaaaaaa@42.5', env.loads.join());
+  }
+  {
+    // A player with no cueVideoById: a paused video is loaded as before.
+    const env = boot({ audioOnlyStream: true });
+    await wait(100);
+    const player = env.win.document.getElementById('ytlr-player__player-container-player');
+    player.getPlayerState = () => 2;
+    delete player.cueVideoById;
+    await env.press();
+    t('paused, no cue in the player: loaded', env.loads.join() === 'aaaaaaaaaaa@42.5', env.loads.join());
   }
 });

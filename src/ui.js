@@ -8,7 +8,7 @@ import { initLogoStyle } from './logo-style.js';
 import { initMathLetters } from './math-letters.js';
 import { initPlaybackSpeed, stepSpeed, resetSpeed, toggleSpeed } from './playback-speed.js';
 import { toggleChannelWhitelist, formatTimeSaved, titleTrayChannel } from './sponsorblock-extras.js';
-import { toggleAudioOnly, cancelPendingPause } from './audio-only.js';
+import { toggleAudioOnly } from './audio-only.js';
 import sponsorBlockUI from './Sponsorblock-UI.js';
 import { sendKey, REMOTE_KEYS, COLOR_CODE_MAP, isGuestMode, invalidateGuestModeCache, isWatchPage, isShortsPage, isSearchPage, SELECTORS, getVideo, SYNTHETIC_KEY_FLAG, isAutoplayOn, isLiveStream } from './utils.js';
 import { initTrackingBlock, destroyTrackingBlock } from './adblock.js';
@@ -1122,7 +1122,7 @@ function createOptionsPanel() {
   createElement('div', { text: 'Lifts the subtitles, for a TV or soundbar that covers the bottom of the picture. Their font, size and colours are in YouTube\'s own settings, and are kept now', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   createConfigCheckbox('forceOriginalAudio'),
   createConfigCheckbox('audioOnlyStream'),
-  createElement('div', { text: 'With the Audio-Only Mode action: only the sound is downloaded and played, not the hidden picture. The video loads again where it is when the mode goes on or off', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
+  createElement('div', { text: 'With the Audio-Only Mode action: only the sound is downloaded and played, not the hidden picture. The video loads again where it is when the mode goes on or off. Only at 1x: at another speed the picture is only hidden', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   createAlignedCycleControl('timeRemainingMode', timeRemainingModes),
   createConfigCheckbox('showMostReplayed'),
   createConfigCheckbox('hideEndcards'),
@@ -2024,7 +2024,6 @@ function refreshPageLogic() {
 }
 
 function playPauseLogic(video) {
-    cancelPendingPause();
     const notify = (msg) => {
         if (activePlayPauseNotification) {
             activePlayPauseNotification.update(msg);
