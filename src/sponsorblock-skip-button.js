@@ -24,9 +24,21 @@ const FOLLOW_MS = 500;
 const RIGHT_OF_WIDTH = 0.025;
 const UP_OF_HEIGHT = 0.2;
 
+// On the TV (webOS 25) the player's own element is 0 px high: YouTube's
+// <ytlr-player> around it and the <video> have its size. The first one with a
+// size places the button; with none, the first found (the button hides).
+const PLAYER_SELECTORS = ['#ytlr-player__player-container-player', '.html5-video-player', 'ytlr-player', 'video'];
+
 function findPlayer() {
-  return document.getElementById('ytlr-player__player-container-player') ||
-    document.querySelector('.html5-video-player') || document.querySelector('video');
+  let first = null;
+  for (const selector of PLAYER_SELECTORS) {
+    const el = document.querySelector(selector);
+    if (!el || typeof el.getBoundingClientRect !== 'function') continue;
+    if (!first) first = el;
+    const rect = el.getBoundingClientRect();
+    if (rect.width >= 1 && rect.height >= 1) return el;
+  }
+  return first;
 }
 
 /** Puts the button in the player's bottom right; hidden while the player is not on screen. */

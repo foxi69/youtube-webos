@@ -449,6 +449,22 @@ run(async () => {
     t(n('skip button: and it goes'), !button());
   }
   {
+    // As on the TV (webOS 25): the player's own element is 0 px high, and
+    // YouTube's <ytlr-player> around it has the player's size.
+    const env = await boot({ sbMode_sponsor: 'manual_skip' }, [seg('sponsor', 30, 60)]);
+    env.player.getBoundingClientRect = () => ({ left: 0, top: 0, right: 1920, bottom: 0, width: 1920, height: 0 });
+    const outer = env.win.document.createElement('ytlr-player');
+    outer.getBoundingClientRect = () => ({ left: 0, top: 0, right: 1920, bottom: 1080, width: 1920, height: 1080 });
+    env.win.document.body.appendChild(outer);
+    Object.defineProperty(env.win, 'innerWidth', { configurable: true, value: 1920 });
+    Object.defineProperty(env.win, 'innerHeight', { configurable: true, value: 1080 });
+    await env.playTo(30.2);
+    const button = env.win.document.querySelector('.ytaf-sb-skip-button');
+    t(n('skip button: a player element with no height is passed over for <ytlr-player>'),
+      !!button && button.style.display === '' && button.style.right === '48px' && button.style.bottom === '216px',
+      button ? `${button.style.display}|${button.style.right} ${button.style.bottom}` : 'none');
+  }
+  {
     const env = await boot({ sbMode_sponsor: 'manual_skip', shortcut_key_blue: 'none', shortcut_key_red: 'sb_manual_skip' },
       [seg('sponsor', 30, 60)]);
     await env.playTo(30.2);

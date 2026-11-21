@@ -128,5 +128,6 @@
   {"id":"sb-guard-whitelisted","file":"src/sponsorblock.js","from":" || this.isDestroyed || this.channelWhitelisted()) {","to":" || this.isDestroyed) {","why":"a channel put on Never Skip still has a seek before the highlight taken back to it"},
   {"id":"caption-position-window","file":"src/caption-style.js","from":"${POSITION_CLASSES.high} .ytp-caption-window-container .caption-window {","to":"${POSITION_CLASSES.high} .ytp-caption-window-container {","why":"the transform on the 0 px caption area puts the subtitles above the top of the screen"},
   {"id":"audio-only-speed-gate","file":"src/audio-only.js","from":"return streaming && atNormalSpeed();","to":"return streaming;","why":"above 1x the responses stay audio-only and the TV player stalls silently"},
-  {"id":"audio-only-toggle-reload","file":"src/audio-only.js","from":"if (streamsAudioOnly() !== before) reloadCurrentVideo();","to":"if (streaming !== before) reloadCurrentVideo();","why":"turned on above 1x, the video is loaded again for nothing"}
+  {"id":"audio-only-toggle-reload","file":"src/audio-only.js","from":"if (streamsAudioOnly() !== before) reloadCurrentVideo();","to":"if (streaming !== before) reloadCurrentVideo();","why":"turned on above 1x, the video is loaded again for nothing"},
+  {"id":"sb-skip-button-sized-player","file":"src/sponsorblock-skip-button.js","from":"if (rect.width >= 1 && rect.height >= 1) return el;","to":"return el;","why":"on the TV the player element is 0 px high, and the Skip button is never shown"}
 ]
