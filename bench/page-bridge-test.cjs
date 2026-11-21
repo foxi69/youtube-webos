@@ -15,7 +15,7 @@
  * each command.
  */
 const path = require('path');
-const { createReporter, flavorFromArgs, readBundle, bootPage, dispatchTrusted, wait } = require('./harness.cjs');
+const { createReporter, flavorFromArgs, readBundle, bootPage, trustedKey, dispatchTrusted, wait } = require('./harness.cjs');
 
 // `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
 // with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
@@ -83,10 +83,15 @@ function boot(cfg = {}, opts = {}) {
 }
 
 // A trusted key press (keydown and keyup) of the remote on the focused element.
+// make(type): the event itself, where the page has no KeyboardEvent to build one.
 function press(win, keyCode, make) {
   const target = win.document.activeElement || win.document.body;
   for (const type of ['keydown', 'keyup']) {
-    const e = make ? make(type) : new win.KeyboardEvent(type, { bubbles: true, cancelable: true });
+    if (!make) {
+      trustedKey(win, keyCode, target, type);
+      continue;
+    }
+    const e = make(type);
     Object.defineProperty(e, 'keyCode', { get: () => keyCode, configurable: true });
     dispatchTrusted(target, e);
   }

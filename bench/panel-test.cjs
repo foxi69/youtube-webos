@@ -7,7 +7,7 @@
  * every page ends up identical to the all-synchronous build, and that opening
  * and closing the panel repeatedly doesn't duplicate anything.
  */
-const { createReporter, bootPage, trustedKey: key, dispatchTrusted } =require('./harness.cjs');
+const { createReporter, bootPage, trustedKey: key } = require('./harness.cjs');
 
 // With `modern` on the command line, bootPage runs the modern bundle (webOS 22
 // and newer) in a Chrome 87 environment with a webOS 23 user agent, instead of
@@ -262,9 +262,7 @@ setTimeout(async () => {
       else if (e.keyCode === 13 && d.activeElement === keyA) okOnA++;
     });
     const typeKey = (k, code) => {
-      const e = new win.KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true });
-      Object.defineProperty(e, 'keyCode', { get: () => code, configurable: true });
-      dispatchTrusted(d.activeElement, e);
+      key(win, code, d.activeElement, 'keydown', { key: k });
     };
     typeKey('l', 76);
     await new Promise((r) => setTimeout(r, 500));

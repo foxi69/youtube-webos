@@ -11,16 +11,13 @@
  *
  * Usage: node bench/dearrow-cases-test.cjs <bundle> [legacy|modern]
  */
-const fs = require('fs');
 const crypto = require('crypto');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, applyChrome87Downgrade, UA, setUserAgent } = require('./chrome38-env.cjs');
-const { createReporter, trustedKey, wait } = require('./harness.cjs');
+const { createReporter, flavorFromArgs, readBundle, bootPage, trustedKey, wait } = require('./harness.cjs');
 
-const bundlePath = process.argv[2] || 'dist/webOSUserScripts/userScript.js';
 // `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
 // with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
-const modern = process.argv[3] === 'modern';
+const { modern } = flavorFromArgs();
+const bundle = readBundle();
 const GREEN = 404;
 const BADGE = '◉';
 const pad = 'z'.repeat(600);
@@ -40,16 +37,16 @@ function boot(cfg, { copySize = 1000 } = {}) {
   const errors = [];
   const fetched = [];
   const images = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => { errors.push(e.message); allErrors.push(e.message); });
-  const dom = new JSDOM('<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app></ytlr-app></body></html>',
-    { runScripts: 'outside-only', url: 'https://www.youtube.com/tv', virtualConsole: vc, pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, modern ? UA.webos23 : UA.webos3);
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  // Chrome 23 has it; the Chrome 38 environment takes it away all the same.
-  win.Element.prototype.remove = function remove() { if (this.parentNode) this.parentNode.removeChild(this); };
-  win.launchParams = '{}';
+  // The page in its environment (the user agent, the Chrome 38 or 87 one,
+  // Element#remove); the stubs below go in before the bundle runs.
+  const page = bootPage({
+    code: bundle,
+    launchParams: '{}',
+    consoleErrors: false,
+    onError: (text) => { errors.push(text); allErrors.push(text); },
+    evaluate: false
+  });
+  const win = page.win;
   win.XMLHttpRequest = class { open() {} send() {} setRequestHeader() {} getResponseHeader() { return null; } addEventListener() {} };
   let rafQ = [];
   win.requestAnimationFrame = (cb) => { rafQ.push(cb); return rafQ.length; };
@@ -106,7 +103,7 @@ function boot(cfg, { copySize = 1000 } = {}) {
   win.HTMLElement.prototype.getBoundingClientRect = function () {
     return this.__box || { left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 };
   };
-  win.eval(fs.readFileSync(bundlePath, 'utf8'));
+  page.evaluate();
   const parse = (obj) => win.JSON.parse(win.JSON.stringify(obj));
   const pump = () => { const q = rafQ; rafQ = []; for (const cb of q) cb(Date.now()); };
   const toggle = (label, on) => {

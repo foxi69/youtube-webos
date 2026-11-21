@@ -5,124 +5,24 @@
  *
  *   node bench/sponsorblock-extras-test.cjs <bundle> [legacy|modern]
  *
- * The harness is sponsorblock-skip-test's, with the player's channel name.
+ * The page and the API are sponsorblock-fixtures.cjs's.
  */
-const { createReporter, flavorFromArgs, readBundle, bootPage, trustedKey, wait } = require('./harness.cjs');
+const { createReporter, flavorFromArgs, trustedKey, wait } = require('./harness.cjs');
+const { VIDEO_ID, seg, fakeVideo, bootSponsorBlock } = require('./sponsorblock-fixtures.cjs');
 
-// `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
-// with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
 const { modern } = flavorFromArgs();
-const code = readBundle();
-
-const VIDEO_ID = 'abcdefghijk';
-const PRIMARY = 'https://sponsor.ajay.app/api/skipSegments/';
 
 const { t, run } = createReporter();
 
-const seg = (category, start, end, actionType = 'skip') =>
-  ({ UUID: `${category}-${start}`, category, actionType, segment: [start, end] });
+// The bundle on a watch page with `segments` from the API (sponsorblock-fixtures.cjs).
+// The same `opts` object, so a test can change opts.author afterwards.
+const boot = (cfg, segments, opts = {}) => {
+  if (opts.consoleErrors === undefined) opts.consoleErrors = false;
+  if (!('author' in opts)) opts.author = 'Some Channel';
+  return bootSponsorBlock(cfg, segments, opts);
+};
 
-// A <video> whose time, play state and duration the test sets.
-function fakeVideo(win, video, duration) {
-  const state = { time: 0, paused: false, muted: false, seeks: [], ready: 4 };
-  const fire = (type) => video.dispatchEvent(new win.Event(type));
-  Object.defineProperties(video, {
-    currentTime: {
-      configurable: true,
-      get: () => state.time,
-      set: (v) => {
-        state.time = v;
-        state.seeks.push(v);
-        fire('seeking');
-        setTimeout(() => fire('seeked'), 5);
-      }
-    },
-    duration: { configurable: true, get: () => duration },
-    paused: { configurable: true, get: () => state.paused },
-    seeking: { configurable: true, get: () => false },
-    readyState: { configurable: true, get: () => state.ready },
-    muted: { configurable: true, get: () => state.muted, set: (v) => { state.muted = !!v; } },
-    play: { configurable: true, value: () => { state.paused = false; fire('playing'); return Promise.resolve(); } },
-    pause: { configurable: true, value: () => { state.paused = true; fire('pause'); } }
-  });
-  // Playback reaching `time`: a timeupdate there, as the element sends.
-  const playTo = async (time) => {
-    state.time = time;
-    fire('timeupdate');
-    await wait(40);   // the rAF loop, the toast, a seek's 'seeked'
-  };
-  return { state, playTo };
-}
-
-/**
- * The bundle on a watch page with `segments` from the API. `api` decides what
- * each server answers: { primary: status, fallback: status } (200 by default).
- */
-async function boot(cfg, segments, opts = {}) {
-  const { win, errors, evaluate } = bootPage({
-    code,
-    bodyClass: 'WEB_PAGE_TYPE_WATCH',
-    inner: '\n    <div id="ytlr-player__player-container-player"><video></video></div>',
-    url: `https://www.youtube.com/tv#/watch?v=${VIDEO_ID}`,
-    ignoreNavigation: true,
-    consoleErrors: false,
-    // opts.copy: localStorage empty, the settings come from this copy in IndexedDB.
-    config: opts.copy ? undefined : Object.assign({
-      enableAdBlock: false, enableSponsorBlock: true, enableReturnYouTubeDislike: false,
-      enableDeArrow: false, thumbnailQuality: 'off', enableAutoLogin: false,
-      checkForUpdates: false, showWhatsNew: false, sbPeriodicRefresh: false
-    }, cfg),
-    evaluate: false,
-    storage: opts.storage
-  });
-  const asked = [];
-  const reported = [];
-  const api = opts.api || {};
-  win.fetch = (resource, init) => {
-    const url = String(resource && resource.url || resource);
-    if (url.indexOf('/viewedVideoSponsorTime') !== -1) {
-      reported.push((init && init.method) + ' ' + url);
-      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
-    }
-    if (url.indexOf('/skipSegments/') === -1) return new Promise(() => {});
-    asked.push(url);
-    const status = url.indexOf(PRIMARY) === 0 ? (api.primary || 200) : (api.fallback || 200);
-    const body = [{ videoID: VIDEO_ID, segments: JSON.parse(JSON.stringify(segments)) }];
-    return Promise.resolve({ ok: status === 200, status, json: () => Promise.resolve(body) });
-  };
-  const player = win.document.getElementById('ytlr-player__player-container-player');
-  // opts.videoId: the video the player reports (the one before, say), undefined for none.
-  player.getVideoData = () => ({
-    video_id: 'videoId' in opts ? opts.videoId : VIDEO_ID,
-    author: 'author' in opts ? opts.author : 'Some Channel'
-  });
-  const video = win.document.querySelector('video');
-  const v = fakeVideo(win, video, 'duration' in opts ? opts.duration : 600);
-  if (opts.startAt) v.state.time = opts.startAt;
-  if (opts.readyState !== undefined) v.state.ready = opts.readyState;
-  // opts.holdClock: the page's Date.now stands still, so a window the bundle
-  // times with it (the highlight's 4 s) cannot run out on a slow machine.
-  if (opts.holdClock) {
-    const held = win.Date.now();
-    win.Date.now = () => held;
-  }
-  // opts.clock: the page's Date.now is { now }, moved by the test.
-  if (opts.clock) {
-    opts.clock.now = win.Date.now();
-    win.Date.now = () => opts.clock.now;
-  }
-  if (opts.copy) win.indexedDB = fakeIndexedDB(opts.copy, [], opts.idb || {});
-  evaluate();
-  // The handler starts a moment after the page (about 0.8 s): wait for its
-  // request, then for the answer to be applied.
-  for (let i = 0; i < 100 && !asked.length; i++) await wait(50);
-  await wait(150);
-  const toasts = () => (win.document.querySelector('.ytaf-notification-container') || {}).textContent || '';
-  return { win, errors, asked, reported, video, ...v, toasts, sb: () => win.sponsorblock };
-}
-
-
-const { fakeIndexedDB, savedCopy, hashString } = require('./fake-indexeddb.cjs');
+const { savedCopy, hashString } = require('./fake-indexeddb.cjs');
 const stored = (win) => JSON.parse(win.localStorage.getItem('ytaf-configuration') || '{}');
 const BLUE = 406;
 const press = async (win, code) => {
@@ -297,7 +197,7 @@ run(async () => {
     await env.playTo(30.2);
     await wait(50);
     t(n('report on: the skipped segment is reported viewed, by its UUID'),
-      env.reported.length === 1 && env.reported[0] === 'POST https://sponsor.ajay.app/api/viewedVideoSponsorTime?UUID=sponsor-30',
+      env.reported.length === 1 && env.reported[0] === 'POST https://sponsor.ajay.app/api/viewedVideoSponsorTime?UUID=sponsor-30-skip',
       env.reported.join());
   }
   {
@@ -306,7 +206,7 @@ run(async () => {
     await wait(50);
     const uuids = env.reported.map((r) => r.split('UUID=')[1]).sort().join();
     t(n('report on: a segment nested in a chain skip is reported too'),
-      env.state.seeks.join() === '60' && uuids === 'selfpromo-10,sponsor-0', `${env.state.seeks.join()} ${uuids}`);
+      env.state.seeks.join() === '60' && uuids === 'selfpromo-10-skip,sponsor-0-skip', `${env.state.seeks.join()} ${uuids}`);
   }
   {
     // After a seek elsewhere, Blue is no undo (the clock held, so only the distance decides).

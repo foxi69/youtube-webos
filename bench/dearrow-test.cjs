@@ -15,7 +15,7 @@
  * Usage: node bench/dearrow-test.cjs [bundle] [legacy|modern]
  */
 const crypto = require('crypto');
-const { createReporter, bootPage, flavorFromArgs, wait, dispatchTrusted } = require('./harness.cjs');
+const { createReporter, bootPage, flavorFromArgs, wait, trustedKey } = require('./harness.cjs');
 
 const { modern } = flavorFromArgs();
 const GREEN = 404;
@@ -357,9 +357,7 @@ run(async () => {
       win.URL.createObjectURL = (b) => { blobsMade++; return make(b); };
     }
     // The switch in the panel.
-    const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-    Object.defineProperty(e, 'keyCode', { get: () => GREEN, configurable: true });
-    dispatchTrusted(win.document.body, e);
+    trustedKey(win, GREEN);
     for (let i = 0; i < 20; i++) pump();
     const sw = Array.from(win.document.querySelectorAll('#ytaf-page-ui-tweaks label'))
       .find((l) => l.querySelector('.label-text')?.textContent === 'DeArrow');
@@ -472,9 +470,7 @@ run(async () => {
     const el = render(win, itemsOf(last)[0]);
     await wait(700); // the check has answered (no maxresdefault), and the sweep has run
     t(`the tile on screen has DeArrow's thumbnail (${shipped} shipped)`, shownThumb(el).indexOf('COPY') !== -1, shownThumb(el));
-    const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-    Object.defineProperty(e, 'keyCode', { get: () => GREEN, configurable: true });
-    dispatchTrusted(win.document.body, e);
+    trustedKey(win, GREEN);
     for (let i = 0; i < 20; i++) pump();
     const sw = Array.from(win.document.querySelectorAll('#ytaf-page-ui-tweaks label'))
       .find((l) => l.querySelector('.label-text')?.textContent === 'DeArrow');
@@ -506,9 +502,7 @@ run(async () => {
     await wait(500);
     t('newest response: the tile has DeArrow\'s thumbnail before it is turned off',
       replaced && shownThumb(el).indexOf('COPY') !== -1, shownThumb(el));
-    const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-    Object.defineProperty(e, 'keyCode', { get: () => GREEN, configurable: true });
-    dispatchTrusted(win.document.body, e);
+    trustedKey(win, GREEN);
     for (let i = 0; i < 20; i++) pump();
     const sw = Array.from(win.document.querySelectorAll('#ytaf-page-ui-tweaks label'))
       .find((l) => l.querySelector('.label-text')?.textContent === 'DeArrow');
@@ -569,9 +563,7 @@ run(async () => {
     // Not on screen: only in a stored response.
     const away = parse(browse([tile('otherclick1', 'Loud other')]));
     await waitFor(() => shownTitle(el) === 'the iPhone review' && tileTitle(itemsOf(away)[0]) === 'Calm other', 2000);
-    const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-    Object.defineProperty(e, 'keyCode', { get: () => GREEN, configurable: true });
-    dispatchTrusted(win.document.body, e);
+    trustedKey(win, GREEN);
     for (let i = 0; i < 20; i++) pump();
     const input = Array.from(win.document.querySelectorAll('#ytaf-page-ui-tweaks label'))
       .find((l) => l.querySelector('.label-text')?.textContent === 'Crowdsourced Titles')?.querySelector('input');
@@ -754,9 +746,7 @@ run(async () => {
     /** Flips a switch on the UI Tweaks page. */
     const flip = (win, pump, label, on) => {
       if (!win.document.querySelector('#ytaf-page-ui-tweaks')) {
-        const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-        Object.defineProperty(e, 'keyCode', { get: () => GREEN, configurable: true });
-        dispatchTrusted(win.document.body, e);
+        trustedKey(win, GREEN);
         for (let i = 0; i < 20; i++) pump();
       }
       const input = Array.from(win.document.querySelectorAll('#ytaf-page-ui-tweaks label'))
@@ -1000,9 +990,7 @@ run(async () => {
   {
     // Cycling the row in the panel: only what this build's formatter has.
     const p = boot({ dearrowTitleFormatting: 'disable' });
-    const e = new p.win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-    Object.defineProperty(e, 'keyCode', { get: () => 404, configurable: true });
-    dispatchTrusted(p.win.document.body, e);
+    trustedKey(p.win, 404);
     await wait(50);
     const panel = p.win.document.querySelector('.ytaf-ui-container');
     for (let i = 0; i < 20; i++) panel.ensurePage(i);

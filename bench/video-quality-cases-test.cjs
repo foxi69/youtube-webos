@@ -15,18 +15,12 @@
  *
  * Usage: node bench/video-quality-cases-test.cjs <bundle> [legacy|modern]
  */
-const fs = require('fs');
-const path = require('path');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { UA, setUserAgent, applyChrome38Downgrade, applyChrome87Downgrade } = require('./chrome38-env.cjs');
-const { createReporter, trustedKey, wait, until } = require('./harness.cjs');
+const { createReporter, flavorFromArgs, readBundle, bootPage, failingXHR, trustedKey, wait, until, UA } = require('./harness.cjs');
 
-const ROOT = path.resolve(__dirname, '..');
-const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
 // `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
 // with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
-const modern = process.argv[3] === 'modern';
-const bundle = fs.readFileSync(bundlePath, 'utf8');
+const { modern } = flavorFromArgs();
+const bundle = readBundle();
 
 const GREEN = 404;
 const KEY = 'yt-player-quality';
@@ -45,29 +39,24 @@ const allErrors = [];
  * record in storage before the app starts.
  */
 function boot(cfg, { player = true, events = true, record, ua, quality = 'hd720', state = 1, levels } = {}) {
-  const errors = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => { errors.push(e.message); allErrors.push(e.message); });
-  const dom = new JSDOM('<!doctype html><html><body class="WEB_PAGE_TYPE_WATCH"><ytlr-app></ytlr-app></body></html>',
-    { runScripts: 'outside-only', url: 'https://www.youtube.com/tv#/watch?v=abcdefghijk', virtualConsole: vc, pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, ua || (modern ? UA.webos23 : UA.webos3));
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  // Chrome 23 has it; the Chrome 38 environment takes it away all the same.
-  win.Element.prototype.remove = function remove() { if (this.parentNode) this.parentNode.removeChild(this); };
-  win.launchParams = '{}';
-  win.fetch = () => Promise.reject(new Error('offline'));
-  win.XMLHttpRequest = class {
-    open() {} send() { if (this.onerror) this.onerror(); }
-    setRequestHeader() {} getResponseHeader() { return null; } addEventListener() {}
-  };
-  win.requestAnimationFrame = (cb) => setTimeout(() => cb(Date.now()), 0);
-  win.cancelAnimationFrame = () => {};
-  if (record) win.localStorage.setItem(KEY, JSON.stringify(record));
-  win.localStorage.setItem('ytaf-configuration', JSON.stringify(Object.assign({
-    enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-    thumbnailQuality: 'off', enableAutoLogin: false, enablePlaybackSpeed: false, forceQuality: 'max'
-  }, cfg)));
+  const { win, errors, evaluate } = bootPage({
+    code: bundle,
+    bodyClass: 'WEB_PAGE_TYPE_WATCH',
+    url: 'https://www.youtube.com/tv#/watch?v=abcdefghijk',
+    userAgent: ua || (modern ? UA.webos23 : UA.webos3),
+    launchParams: '{}',
+    xhr: failingXHR(),
+    raf: 'timer',
+    config: Object.assign({
+      enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
+      thumbnailQuality: 'off', enableAutoLogin: false, enablePlaybackSpeed: false, forceQuality: 'max'
+    }, cfg),
+    storage: record ? { [KEY]: JSON.stringify(record) } : {},
+    consoleErrors: false,
+    onError: (text) => allErrors.push(text),
+    fetch: () => Promise.reject(new Error('offline')),
+    evaluate: false
+  });
 
   const log = { calls: [], listeners: 0 };
   const p = win.document.createElement('div');
@@ -104,7 +93,7 @@ function boot(cfg, { player = true, events = true, record, ua, quality = 'hd720'
   };
   const mount = () => win.document.querySelector('ytlr-app').appendChild(p);
   if (player === true) mount();
-  win.eval(bundle);
+  evaluate();
   if (typeof player === 'number') setTimeout(mount, player);
 
   const toasts = () => Array.from(win.document.querySelectorAll('.ytaf-notification-container .message')).map((m) => m.textContent);

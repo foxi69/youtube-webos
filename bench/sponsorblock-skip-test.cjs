@@ -9,101 +9,21 @@
  * The <video> is a stand-in whose time the test moves: a 'timeupdate' after
  * each move, 'seeking'/'seeked' after each seek the bundle makes.
  */
-const { createReporter, flavorFromArgs, readBundle, bootPage, wait } = require('./harness.cjs');
+const { createReporter, flavorFromArgs, wait } = require('./harness.cjs');
+const { VIDEO_ID, PRIMARY, FALLBACK, seg, bootSponsorBlock } = require('./sponsorblock-fixtures.cjs');
 
 // `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
 // with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
 const { modern } = flavorFromArgs();
-const code = readBundle();
-
-const VIDEO_ID = 'abcdefghijk';
-const PRIMARY = 'https://sponsor.ajay.app/api/skipSegments/';
-const FALLBACK = 'https://sponsorblock.inf.re/api/skipSegments/';
 
 const { t, run } = createReporter();
 
-const seg = (category, start, end, actionType = 'skip') =>
-  ({ UUID: `${category}-${start}`, category, actionType, segment: [start, end] });
-
-// A <video> whose time, play state and duration the test sets.
-function fakeVideo(win, video, duration) {
-  const state = { time: 0, paused: false, muted: false, seeks: [], ready: 4 };
-  const fire = (type) => video.dispatchEvent(new win.Event(type));
-  Object.defineProperties(video, {
-    currentTime: {
-      configurable: true,
-      get: () => state.time,
-      set: (v) => {
-        state.time = v;
-        state.seeks.push(v);
-        fire('seeking');
-        setTimeout(() => fire('seeked'), 5);
-      }
-    },
-    duration: { configurable: true, get: () => duration },
-    paused: { configurable: true, get: () => state.paused },
-    seeking: { configurable: true, get: () => false },
-    readyState: { configurable: true, get: () => state.ready },
-    muted: { configurable: true, get: () => state.muted, set: (v) => { state.muted = !!v; } },
-    play: { configurable: true, value: () => { state.paused = false; fire('playing'); return Promise.resolve(); } },
-    pause: { configurable: true, value: () => { state.paused = true; fire('pause'); } }
-  });
-  // Playback reaching `time`: a timeupdate there, as the element sends.
-  const playTo = async (time) => {
-    state.time = time;
-    fire('timeupdate');
-    await wait(40);   // the rAF loop, the toast, a seek's 'seeked'
-  };
-  return { state, playTo };
-}
-
-/**
- * The bundle on a watch page with `segments` from the API. `api` decides what
- * each server answers: { primary: status, fallback: status } (200 by default).
- */
-async function boot(cfg, segments, opts = {}) {
-  const { win, errors, evaluate } = bootPage({
-    code,
-    bodyClass: 'WEB_PAGE_TYPE_WATCH',
-    inner: '\n    <div id="ytlr-player__player-container-player"><video></video></div>',
-    url: `https://www.youtube.com/tv#/watch?v=${VIDEO_ID}`,
-    ignoreNavigation: true,
-    consoleErrors: false,
-    config: Object.assign({
-      enableAdBlock: false, enableSponsorBlock: true, enableReturnYouTubeDislike: false,
-      enableDeArrow: false, thumbnailQuality: 'off', enableAutoLogin: false,
-      checkForUpdates: false, showWhatsNew: false, sbPeriodicRefresh: false
-    }, cfg),
-    evaluate: false
-  });
-  const asked = [];
-  const api = opts.api || {};
-  win.fetch = (resource) => {
-    const url = String(resource && resource.url || resource);
-    if (url.indexOf('/skipSegments/') === -1) return new Promise(() => {});
-    asked.push(url);
-    const status = url.indexOf(PRIMARY) === 0 ? (api.primary || 200) : (api.fallback || 200);
-    const body = [{ videoID: VIDEO_ID, segments: JSON.parse(JSON.stringify(segments)) }];
-    return Promise.resolve({ ok: status === 200, status, json: () => Promise.resolve(body) });
-  };
-  const video = win.document.querySelector('video');
-  const v = fakeVideo(win, video, 'duration' in opts ? opts.duration : 600);
-  if (opts.startAt) v.state.time = opts.startAt;
-  if (opts.readyState !== undefined) v.state.ready = opts.readyState;
-  // opts.holdClock: the page's Date.now stands still, so a window the bundle
-  // times with it (the highlight's 4 s) cannot run out on a slow machine.
-  if (opts.holdClock) {
-    const held = win.Date.now();
-    win.Date.now = () => held;
-  }
-  evaluate();
-  // The handler starts a moment after the page (about 0.8 s): wait for its
-  // request, then for the answer to be applied.
-  for (let i = 0; i < 100 && !asked.length; i++) await wait(50);
-  await wait(150);
-  const toasts = () => (win.document.querySelector('.ytaf-notification-container') || {}).textContent || '';
-  return { win, errors, asked, video, ...v, toasts, sb: () => win.sponsorblock };
-}
+// The bundle on a watch page with `segments` from the API (sponsorblock-fixtures.cjs).
+// The same `opts` object, so a test can change opts.author afterwards.
+const boot = (cfg, segments, opts = {}) => {
+  if (opts.consoleErrors === undefined) opts.consoleErrors = false;
+  return bootSponsorBlock(cfg, segments, opts);
+};
 
 run(async () => {
   const f = modern ? 'modern' : 'legacy';

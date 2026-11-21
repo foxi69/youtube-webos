@@ -6,7 +6,7 @@
  *
  *   node bench/settings-dependencies-test.cjs <bundle> [legacy|modern]
  */
-const { createReporter, flavorFromArgs, readBundle, bootPage, dispatchTrusted, wait } = require('./harness.cjs');
+const { createReporter, flavorFromArgs, readBundle, bootPage, trustedKey, wait } = require('./harness.cjs');
 
 const { modern } = flavorFromArgs();
 const code = readBundle();
@@ -27,9 +27,7 @@ run(async () => {
     fetch: 'pending'
   });
   await wait(20);
-  const e = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-  Object.defineProperty(e, 'keyCode', { get: () => GREEN, configurable: true });
-  dispatchTrusted(win.document.body, e);
+  trustedKey(win, GREEN);
   // The UI Tweaks page is built in a frame after the panel opens: waited for
   // (a busy machine runs that frame late).
   for (let i = 0; i < 60 && !win.document.getElementById('ytaf-page-ui-tweaks'); i++) await wait(50);

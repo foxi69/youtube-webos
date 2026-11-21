@@ -22,9 +22,7 @@
  * stand-in (custom-event-target.ts) and is out of the test's reach; it is
  * checked through the Tracking Block alone.
  */
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, applyChrome87Downgrade, UA, setUserAgent } = require('./chrome38-env.cjs');
-const { createReporter, flavorFromArgs, readBundle, trustedKey, wait } = require('./harness.cjs');
+const { createReporter, flavorFromArgs, readBundle, bootPage, trustedKey, wait } = require('./harness.cjs');
 
 // `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
 // with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
@@ -60,31 +58,31 @@ function nodeBlobFileReader(win) {
  * otherwise a TV with its own fetch, whose calls land in `fetched`.
  */
 function boot({ polyfill }) {
-  const errors = [];
   const debug = [];
   const info = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => errors.push('jsdomError: ' + (e.stack || e.message)));
-  vc.on('error', (...a) => errors.push('console.error: ' + a.map(String).join(' ')));
-  vc.on('debug', (...a) => debug.push(a));
-  vc.on('info', (...a) => info.push(a.map(String).join(' ')));
-  const dom = new JSDOM('<!doctype html><html><head></head><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app></ytlr-app></body></html>',
-    { runScripts: 'outside-only', url: ORIGIN + '/tv', virtualConsole: vc, pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, modern ? UA.webos23 : UA.webos3);
-  win.launchParams = '{}';
-  win.localStorage.setItem('ytaf-configuration', JSON.stringify({
-    enableAdBlock: true, enableTrackingBlock: true, enableSponsorBlock: false,
-    enableReturnYouTubeDislike: false, enableDeArrow: false, thumbnailQuality: 'off',
-    enableAutoLogin: false, checkForUpdates: false, showWhatsNew: false
-  }));
-  if (!win.requestAnimationFrame) win.requestAnimationFrame = (cb) => win.setTimeout(() => cb(Date.now()), 16);
-  if (!win.cancelAnimationFrame) win.cancelAnimationFrame = (id) => win.clearTimeout(id);
-  const reflect = win.Reflect;
-  const eventTarget = win.EventTarget;
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  // Chrome 23 has it; the Chrome 38 environment takes it away all the same.
-  win.Element.prototype.remove = function remove() { if (this.parentNode) this.parentNode.removeChild(this); };
+  // Reflect and a constructible EventTarget as jsdom has them, before the
+  // environment takes them away (a TV with its own fetch has both).
+  let reflect;
+  let eventTarget;
+  const page = bootPage({
+    code,
+    url: ORIGIN + '/tv',
+    launchParams: '{}',
+    config: {
+      enableAdBlock: true, enableTrackingBlock: true, enableSponsorBlock: false,
+      enableReturnYouTubeDislike: false, enableDeArrow: false, thumbnailQuality: 'off',
+      enableAutoLogin: false, checkForUpdates: false, showWhatsNew: false
+    },
+    errorStacks: true,
+    console: {
+      debug: (...a) => debug.push(a),
+      info: (...a) => info.push(a.map(String).join(' '))
+    },
+    setup: (w) => { reflect = w.Reflect; eventTarget = w.EventTarget; },
+    catchThrow: true,
+    evaluate: false
+  });
+  const { win, errors } = page;
 
   // Every XMLHttpRequest: the polyfill's fetch goes through it; it answers
   // `{"path":...}` for any URL. Other modules' requests are recorded too.
@@ -148,9 +146,8 @@ function boot({ polyfill }) {
       return add.apply(this, arguments);
     };
   }
-  let threw = null;
-  try { win.eval(code); } catch (e) { threw = e; }
-  return { win, errors, debug, info, xhrs, fetched, registry: () => registry, threw };
+  page.evaluate();
+  return { win, errors, debug, info, xhrs, fetched, registry: () => registry, threw: page.threw };
 }
 
 // What a call to window.fetch came to: { res, body } or { error }.

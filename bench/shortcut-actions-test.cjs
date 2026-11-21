@@ -14,7 +14,7 @@
  * is counted. The sleep timer's and the keep-alive's long timers are held by
  * the test and run when it says.
  */
-const { createReporter, flavorFromArgs, readBundle, bootPage, dispatchTrusted, wait } = require('./harness.cjs');
+const { createReporter, flavorFromArgs, readBundle, bootPage, trustedKey, wait } = require('./harness.cjs');
 
 // `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
 // with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
@@ -119,10 +119,8 @@ async function boot(cfg = {}, opts = {}) {
     let taken = false;
     for (const type of ['keydown', 'keyup']) {
       if (only && only !== type) continue;
-      const e = new win.KeyboardEvent(type, Object.assign({ bubbles: true, cancelable: true }, type === 'keydown' ? init : {}));
-      Object.defineProperty(e, 'keyCode', { get: () => keyCode, configurable: true });
-      const notTaken = dispatchTrusted(target, e);
-      if (type === only || type === 'keydown') taken = !notTaken;
+      const e = trustedKey(win, keyCode, target, type, type === 'keydown' ? init : {});
+      if (type === only || type === 'keydown') taken = e.defaultPrevented;
     }
     await wait(opts.gap || 120);
     return taken;
