@@ -110,6 +110,19 @@ async function boot(cfg, segments, opts = {}) {
     };
     win.clearInterval = (id) => { polls.delete(id); return realClear(id); };
   }
+  // opts.holdMeasure: the look for the chapter pieces' width (every 1 s) is
+  // not timed; measureTick() runs it once, measuring() tells it is set.
+  const measure = { fn: null, id: -7 };
+  if (opts.holdMeasure) {
+    const nextInterval = win.setInterval.bind(win);
+    const nextClear = win.clearInterval.bind(win);
+    win.setInterval = (fn, ms, ...args) => {
+      if (ms !== 1000) return nextInterval(fn, ms, ...args);
+      measure.fn = fn;
+      return measure.id;
+    };
+    win.clearInterval = (id) => { if (id === measure.id) { measure.fn = null; return undefined; } return nextClear(id); };
+  }
   const net = { segments, asked: [] };
   win.fetch = (resource) => {
     const url = String(resource && resource.url || resource);
@@ -191,7 +204,8 @@ async function boot(cfg, segments, opts = {}) {
     throw new Error('no switch "' + text + '" in the panel');
   };
   return { win, doc, errors, net, video, ...v, toasts, overlay, marks, rows, popupShown, labelsCss, playerState,
-    openPanel, closePanel, cycle, pickColor, toggle, polls: () => polls.size, sb: () => win.sponsorblock };
+    openPanel, closePanel, cycle, pickColor, toggle, polls: () => polls.size, sb: () => win.sponsorblock,
+    measureTick: () => { if (measure.fn) measure.fn(); }, measuring: () => !!measure.fn };
 }
 
 run(async () => {
@@ -501,7 +515,9 @@ run(async () => {
     track.insertAdjacentHTML('afterbegin',
       '<div idomkey="chapter-0" style="width: 100px; margin-right: 10px"></div><div idomkey="chapter-1" style="width: 100px"></div>');
     await wait(600);
-    await env.playTo(10);   // the overlay's own sync, at most every 500 ms
+    // Drawn again by the chapter observer or the bar's own check of the
+    // insert, else at the overlay's sync (at most every 500 ms): any of them.
+    await env.playTo(10);
     const marks = env.marks();
     t(n('late chapters: the marks are drawn again by the chapters'),
       marks.length === 2 && near(parseFloat(marks[0].style.left), (50 / 210) * 100) && near(parseFloat(marks[1].style.left), (110 / 210) * 100),
@@ -567,8 +583,10 @@ run(async () => {
   {
     // Shown on the seek bar only (no skip, so no time listener) and the bar
     // made visible by a parent: no sync comes, yet the marks follow the
-    // chapters once the pieces have a width (no playback here).
+    // chapters once the pieces have a width (no playback here). The look is
+    // run by hand (holdMeasure), not by a real 1 s timer.
     const env = await boot({ sbMode_sponsor: 'seek_bar' }, [seg('sponsor', 150, 450)], {
+      holdMeasure: true,
       bar: '<div class="bar-host"><ytlr-progress-bar><ytlr-multi-markers-player-bar-renderer>' +
         '<div idomkey="progress-bar"><div idomkey="chapter-0" style="width: calc(100px); margin-right: 10px"></div>' +
         '<div idomkey="chapter-1" style="width: calc(100px)"></div><div idomkey="segment"></div></div>' +
@@ -576,23 +594,26 @@ run(async () => {
     });
     const at = (m) => `${parseFloat(m.style.left).toFixed(2)}/${parseFloat(m.style.width).toFixed(2)}`;
     t(n('no sync: precondition: hidden, the plain line, and a look scheduled'),
-      env.marks().length === 1 && !!env.sb()._measureTimer, env.marks().map(at).join(' '));
+      env.marks().length === 1 && env.measuring(), env.marks().map(at).join(' '));
+    env.measureTick();
+    t(n('no sync: a look with no width yet draws nothing new'), env.marks().length === 1 && env.measuring(), env.marks().map(at).join(' '));
     for (const el of env.doc.querySelectorAll('[idomkey^="chapter-"]')) {
       Object.defineProperty(el, 'offsetWidth', { configurable: true, get: () => 100 });
     }
-    await wait(1300);
+    env.measureTick();
     const marks = env.marks();
     t(n('no sync: once the pieces have a width, the marks follow the chapters'),
       marks.length === 2 && near(parseFloat(marks[0].style.left), (50 / 210) * 100) && near(parseFloat(marks[1].style.left), (110 / 210) * 100),
       marks.map(at).join(' '));
-    await wait(1100);
-    t(n('no sync: and the look stops'), !env.sb()._measureTimer);
+    env.measureTick();
+    t(n('no sync: and the look stops'), !env.measuring() && !env.sb()._measureTimer);
   }
   {
     // A hidden bar, one piece sized inline (100px), one by a stylesheet (no
     // inline width): not drawn by the inline one alone, but once laid out,
-    // with no sync (seek bar only, no playback).
+    // with no sync (seek bar only, no playback; the look run by hand).
     const env = await boot({ sbMode_sponsor: 'seek_bar' }, [seg('sponsor', 150, 450)], {
+      holdMeasure: true,
       bar: '<div class="bar-host"><ytlr-progress-bar><ytlr-multi-markers-player-bar-renderer>' +
         '<div idomkey="progress-bar"><div idomkey="chapter-0" style="width: 100px; margin-right: 10px"></div>' +
         '<div idomkey="chapter-1"></div><div idomkey="segment"></div></div>' +
@@ -600,11 +621,11 @@ run(async () => {
     });
     const at = (m) => `${parseFloat(m.style.left).toFixed(2)}/${parseFloat(m.style.width).toFixed(2)}`;
     t(n('stylesheet width: precondition: hidden, the plain line, and a look scheduled'),
-      env.marks().length === 1 && near(parseFloat(env.marks()[0].style.left), 25) && !!env.sb()._measureTimer, env.marks().map(at).join(' '));
+      env.marks().length === 1 && near(parseFloat(env.marks()[0].style.left), 25) && env.measuring(), env.marks().map(at).join(' '));
     for (const el of env.doc.querySelectorAll('[idomkey^="chapter-"]')) {
       Object.defineProperty(el, 'offsetWidth', { configurable: true, get: () => 100 });
     }
-    await wait(1300);
+    env.measureTick();
     const marks = env.marks();
     t(n('stylesheet width: once laid out, the marks follow both pieces'),
       marks.length === 2 && near(parseFloat(marks[0].style.left), (50 / 210) * 100) && near(parseFloat(marks[1].style.left), (110 / 210) * 100),
@@ -681,6 +702,61 @@ run(async () => {
       marks.length === 2 && near(parseFloat(marks[1].style.left), (110 / 210) * 100), marks.map(at).join(' '));
   }
   {
+    // The same with no chapter-0 among the pieces (keyed from 1): still found.
+    const env = await boot({}, [seg('sponsor', 150, 450)], {
+      bar: '<div class="bar-host"><ytlr-progress-bar><ytlr-multi-markers-player-bar-renderer><div class="row">' +
+        '<div idomkey="chapter-1" style="width: 100px; margin-right: 10px"></div><div idomkey="chapter-2" style="width: 100px"></div>' +
+        '</div></ytlr-multi-markers-player-bar-renderer></ytlr-progress-bar></div>'
+    });
+    const at = (m) => `${parseFloat(m.style.left).toFixed(2)}/${parseFloat(m.style.width).toFixed(2)}`;
+    const marks = env.marks();
+    t(n('renderer as the bar, no chapter-0: its pieces place the marks'),
+      marks.length === 2 && near(parseFloat(marks[1].style.left), (110 / 210) * 100), marks.map(at).join(' '));
+  }
+  {
+    // A hidden bar with a relative margin: not read as pixels (a hidden
+    // subtree gives "1%" back as it is), so the plain line until laid out.
+    const env = await boot({ sbMode_sponsor: 'seek_bar' }, [seg('sponsor', 150, 450)], {
+      holdMeasure: true,
+      bar: '<div class="bar-host"><ytlr-progress-bar><ytlr-multi-markers-player-bar-renderer>' +
+        '<div idomkey="progress-bar"><div idomkey="chapter-0" style="width: 100px; margin-right: 5%"></div>' +
+        '<div idomkey="chapter-1" style="width: 100px"></div><div idomkey="segment"></div></div>' +
+        '</ytlr-multi-markers-player-bar-renderer></ytlr-progress-bar></div>'
+    });
+    const at = (m) => `${parseFloat(m.style.left).toFixed(2)}/${parseFloat(m.style.width).toFixed(2)}`;
+    t(n('relative margin: hidden, the plain line and a look scheduled'),
+      env.marks().length === 1 && near(parseFloat(env.marks()[0].style.left), 25) && env.measuring(), env.marks().map(at).join(' '));
+    // Laid out: the piece's margin as computed then (10 px in this layout).
+    const [a, b] = env.doc.querySelectorAll('[idomkey^="chapter-"]');
+    Object.defineProperty(a, 'offsetWidth', { configurable: true, get: () => 100 });
+    Object.defineProperty(b, 'offsetWidth', { configurable: true, get: () => 100 });
+    const realStyle = env.win.getComputedStyle.bind(env.win);
+    env.win.getComputedStyle = (el, ...rest) => {
+      const cs = realStyle(el, ...rest);
+      return el === a ? { marginLeft: '0px', marginRight: '10px', getPropertyValue: (p) => cs.getPropertyValue(p) } : cs;
+    };
+    env.measureTick();
+    const marks = env.marks();
+    t(n('relative margin: once laid out, the marks follow the chapters'),
+      marks.length === 2 && near(parseFloat(marks[1].style.left), (110 / 210) * 100), marks.map(at).join(' '));
+  }
+  {
+    // The look for a width ends at a draw with no marks at all (the segments
+    // gone), not only at one drawn by the chapters.
+    const env = await boot({ sbMode_sponsor: 'seek_bar' }, [seg('sponsor', 150, 450)], {
+      holdMeasure: true,
+      bar: '<div class="bar-host"><ytlr-progress-bar><ytlr-multi-markers-player-bar-renderer>' +
+        '<div idomkey="progress-bar"><div idomkey="chapter-0" style="width: calc(100px); margin-right: 10px"></div>' +
+        '<div idomkey="chapter-1" style="width: calc(100px)"></div><div idomkey="segment"></div></div>' +
+        '</ytlr-multi-markers-player-bar-renderer></ytlr-progress-bar></div>'
+    });
+    t(n('look ends: precondition: a look scheduled'), env.measuring());
+    env.sb().segments = [];
+    env.sb().drawOverlay();
+    env.measureTick();
+    t(n('look ends: a draw with no segments stops it'), !env.measuring() && !env.sb()._measureTimer);
+  }
+  {
     // Chapter pieces changed while the duration is not known: the marks
     // wait for it, and the overlay still follows the bar meanwhile.
     const env = await boot({}, [seg('sponsor', 150, 450)], {
@@ -748,6 +824,23 @@ run(async () => {
     await env.playTo(10);
     t(n('resized bar: the pieces at 200 px, the marks follow'),
       env.marks().length === 2 && near(parseFloat(env.marks()[1].style.left), (210 / 410) * 100), env.marks().map((m) => m.style.left).join());
+    // Hidden by a parent: the bar and its pieces at 0 px. No redraw then (the
+    // relative pieces have nothing to read), and none when it is back at the
+    // same width.
+    const drawn = env.doc.getElementById('previewbar');
+    const width = piece;
+    Object.defineProperty(bar, 'offsetWidth', { configurable: true, get: () => (piece ? piece * 2 + 10 : 0) });
+    piece = 0;
+    await wait(600);
+    await env.playTo(15);
+    t(n('resized bar: hidden (0 px), the marks are not drawn again'),
+      env.doc.getElementById('previewbar') === drawn && env.marks().length === 2, env.marks().map((m) => m.style.left).join());
+    piece = width;
+    await wait(600);
+    await env.playTo(20);
+    t(n('resized bar: shown again at its width, still not drawn again'),
+      env.doc.getElementById('previewbar') === drawn && env.marks().length === 2 &&
+        near(parseFloat(env.marks()[1].style.left), (210 / 410) * 100), env.marks().map((m) => m.style.left).join());
   }
   {
     // A first piece YouTube keeps at 0 px, with its start time in the
@@ -841,7 +934,12 @@ run(async () => {
     const old = env.doc.querySelector('[idomkey="chapter-0"]');
     const fresh = old.cloneNode(true);
     old.parentNode.replaceChild(fresh, old);
+    // The bar's own check of the replace (on an animation frame) over before
+    // the gap changes: only the observer on the new piece can then move the
+    // marks.
     await wait(100);
+    await new Promise((r) => env.win.requestAnimationFrame(() => env.win.requestAnimationFrame(r)));
+    await wait(50);
     fresh.style.marginRight = '30px';
     await wait(300);
     t(n('seek bar only: a replaced piece is watched, its new gap moves the marks'),

@@ -1808,7 +1808,7 @@ let lastViewerKeyAt = 0;
 let commentsOpenedFor = null;
 let endTimer = null;
 window.addEventListener('keydown', (evt) => {
-    if (!evt[SYNTHETIC_KEY_FLAG] && !isSyntheticKeyEcho(evt)) lastViewerKeyAt = Date.now();
+    if (!evt[SYNTHETIC_KEY_FLAG]) lastViewerKeyAt = Date.now();
 }, true);
 window.addEventListener('yt-player-state-change', ({ detail }) => {
     if (!detail) return;

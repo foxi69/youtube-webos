@@ -313,9 +313,13 @@ class SponsorBlockHandler {
         const bar = this.progressBar;
         if (!bar) return null;
         // Under the bar (at any depth, the renderer tracked itself): the
-        // pieces' own parent; else beside the bar.
-        const first = bar.querySelector('[idomkey="chapter-0"]');
-        return first ? first.parentNode : bar.parentNode;
+        // pieces' own parent; else beside the bar. Any piece, not chapter-0
+        // alone: a first chapter left out may leave no chapter-0.
+        const keyed = bar.querySelectorAll('[idomkey^="chapter-"]');
+        for (let i = 0; i < keyed.length; i++) {
+            if (/^chapter-\d+$/.test(keyed[i].getAttribute('idomkey'))) return keyed[i].parentNode;
+        }
+        return bar.parentNode;
     }
 
     _chapterElements() {
@@ -384,9 +388,16 @@ class SponsorBlockHandler {
                 if (/^\d+(?:\.\d+)?px$/.test(inline)) width = parseFloat(inline);
                 else unread = true;
             }
+            // Margins as laid out; on a bar that is not, only pixel ones (a
+            // hidden subtree gives a relative margin back as it is written).
             const cs = window.getComputedStyle(el);
-            const ml = parseFloat(cs.marginLeft) || 0;
-            const mr = parseFloat(cs.marginRight) || 0;
+            const margin = (v) => {
+                if (laidOut || !v || v === '0' || /^-?\d+(?:\.\d+)?px$/.test(v)) return parseFloat(v) || 0;
+                unread = true;
+                return 0;
+            };
+            const ml = margin(cs.marginLeft);
+            const mr = margin(cs.marginRight);
             pieces.push({ x: total + ml, width, from: content, to: content + width });
             content += width;
             total += ml + width + mr;
@@ -432,8 +443,9 @@ class SponsorBlockHandler {
      * While the marks wait for the pieces' width, a look once a second: the
      * bar can be shown with no sync coming (a segment shown on the bar only
      * keeps no time listener, and a parent showing it changes nothing the
-     * observers watch). Stops once the marks are drawn by the chapters, and
-     * with the handler.
+     * observers watch). Stops at the first draw that waits for no width (by
+     * the chapters, or the plain line for another reason), at a draw that
+     * places no marks at all, and with the handler.
      */
     _watchChapterMeasure() {
         if (this._measureTimer || this.isDestroyed) return;
@@ -517,11 +529,15 @@ class SponsorBlockHandler {
         if (sig === this._lastSyncSig) return;
         // A chaptered bar of another width: pieces with a relative width
         // changed with it, and their marks are placed by what they measure.
-        const resized = this._syncWidth !== undefined && width !== this._syncWidth;
-        this._syncWidth = width;
+        // Not a bar hidden (0 px): its pieces have no width to read then, and
+        // shown again at the width it had, nothing changed.
+        const resized = width > 0 && this._syncWidth !== undefined && width !== this._syncWidth;
+        if (width > 0) this._syncWidth = width;
         if (resized && this._chapterElements().length > 1) {
             this.lastOverlayHash = null;
             this.drawOverlay();
+            // Everything filtered out: no overlay left to place.
+            if (!this.overlay) return;
         }
         this._lastSyncSig = sig;
 
@@ -1222,7 +1238,10 @@ class SponsorBlockHandler {
         sponsorBlockUI.updateSegments(this.segments.filter(s => !isFullVideoSegment(s) && (muting || s.actionType !== 'mute')));
     }
 
-    /** Whether drawOverlay() would draw a mark for this segment. */
+    /**
+     * Whether drawOverlay() may draw a mark for this segment (on a chaptered
+     * bar one starting at or after the end, or of no length, gets none).
+     */
     _isDrawable(segment, config) {
         // A full-video label spans [0, 0] and would draw a zero-width bar.
         if (isFullVideoSegment(segment)) return false;
@@ -1478,7 +1497,13 @@ class SponsorBlockHandler {
     }
 
     drawOverlay() {
-        if (this.isDestroyed || !this._barObserverStarted || !this.segments.length) return;
+        // A draw that places no marks at all (no segments, no bar, no
+        // duration, all filtered out) ends the look for a width
+        // (_watchChapterMeasure); one unchanged since the last keeps it.
+        if (this.isDestroyed || !this._barObserverStarted || !this.segments.length) {
+            this._chapterUnmeasured = false;
+            return;
+        }
 
         // FIX (replay): a detached progressBar is still truthy. Drawing against
         // it inserted the overlay into an orphaned subtree — which is why the
@@ -1489,12 +1514,16 @@ class SponsorBlockHandler {
             this._anchorCache = null;
             this._anchorCacheBar = null;
             this.lastOverlayHash = null;
+            this._chapterUnmeasured = false;
             this._scheduleBarRetry();
             return;
         }
 
         const duration = this.video ? this.video.duration : 0;
-        if (!duration || isNaN(duration)) return;
+        if (!duration || isNaN(duration)) {
+            this._chapterUnmeasured = false;
+            return;
+        }
 
         const config = configGetAll();
         // Include a signature of every segment color so changing a color
@@ -1553,6 +1582,7 @@ class SponsorBlockHandler {
         // label). Leave the bar clean rather than inserting an empty overlay.
         if (!fragment.childNodes.length) {
             this.overlay = null;
+            this._chapterUnmeasured = false;
             return;
         }
 

@@ -127,7 +127,11 @@ run(async () => {
             { selectorText: '.other\\.frHKed, .pair\\\\.frHKed', style: { height: '0px' } },
             // An escaped quote in a class name (CSSOM serializes a " so), then a
             // quoted attribute value: no quoted value starts at the escape.
-            { selectorText: '.lead\\".frHKed .AmQJbe[data-x="yes"]', style: { height: '0px' } }
+            { selectorText: '.lead\\".frHKed .AmQJbe[data-x="yes"]', style: { height: '0px' } },
+            // A closing class only in a quoted value, or only inside :not():
+            // not a rule for the closed state.
+            { selectorText: '.zylon-q[data-label=".frHKed"]', style: { height: '0px' } },
+            { selectorText: '.AmQJbe:not(.frHKed), .frHKed .kept:not(.x)', style: { display: 'none' } }
           ] }]
         });
       }
@@ -140,6 +144,9 @@ run(async () => {
       text.indexOf('.frHKed .esc\\,x { height: auto !important; visibility: hidden !important; }') !== -1 &&
         text.indexOf('zylon-a') === -1, text);
     t(n('selectors: an escaped dot is part of another class name'), text.indexOf('.other\\.frHKed') === -1, text);
+    t(n('selectors: a closing class in a quoted value is no closing class'), text.indexOf('zylon-q') === -1, text);
+    t(n('selectors: a closing class inside :not() is no closing class; one outside it still is'),
+      text.indexOf('.AmQJbe:not(.frHKed)') === -1 && text.indexOf('.frHKed .kept:not(.x) { display: block') !== -1, text);
     t(n('selectors: an escaped quote starts no quoted value'),
       text.indexOf('.lead\\".frHKed .AmQJbe[data-x="yes"] { height: auto !important;') !== -1, text);
     t(n('selectors: a dot after an escaped backslash starts a closing class'),

@@ -82,8 +82,34 @@ const CLOSE_CLASS_RES = CLOSE_CLASSES.map((name) => new RegExp('(?:^|[^\\\\])(?:
 // An escape outside a quoted value is matched first and kept: an escaped
 // quote (\" in a class name, as CSSOM serializes one) starts no value.
 const QUOTED_RE = /\\[\s\S]|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'/g;
+// A closing class inside :not() selects the element without it: the body of
+// each :not() is left out (quoted values are masked already, an escaped
+// bracket is part of a name).
+function withoutNot(sel) {
+  let out = '';
+  for (let i = 0; i < sel.length; i++) {
+    if (sel[i] === '\\') {
+      out += sel.slice(i, i + 2);
+      i++;
+    } else if (sel.slice(i, i + 5).toLowerCase() === ':not(') {
+      let depth = 1;
+      i += 5;
+      while (i < sel.length && depth) {
+        if (sel[i] === '\\') i++;
+        else if (sel[i] === '(') depth++;
+        else if (sel[i] === ')') depth--;
+        i++;
+      }
+      i--;
+      out += ':not()';
+    } else {
+      out += sel[i];
+    }
+  }
+  return out;
+}
 function namesCloseClass(sel) {
-  const bare = sel.replace(QUOTED_RE, (m) => (m[0] === '\\' ? m : '""'));
+  const bare = withoutNot(sel.replace(QUOTED_RE, (m) => (m[0] === '\\' ? m : '""')));
   return CLOSE_CLASS_RES.some((re) => re.test(bare));
 }
 
