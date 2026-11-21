@@ -1815,8 +1815,9 @@ const isVideoFormat = (format) => !!format && typeof format.mimeType === 'string
  * adaptiveFormats: the video formats YouTube upscaled with AI, and those above
  * the chosen number of lines, are dropped, so neither the adaptive stream nor
  * Force Max Quality (which asks for the best level left) can pick them. Audio
- * formats are left alone. A video with nothing left after a step keeps its
- * formats for that step: a picture the setting did not want beats no picture.
+ * formats are left alone. A video with nothing the TV can play left after a
+ * step keeps its formats for that step: a picture the setting did not want
+ * beats no picture.
  */
 function filterVideoFormats(holder, dropUpscaled, maxLines) {
   const formats = holder && holder.streamingData && holder.streamingData.adaptiveFormats;
@@ -1825,6 +1826,20 @@ function filterVideoFormats(holder, dropUpscaled, maxLines) {
   if (maxLines > 0) dropFormats(formats, (format) => formatLines(format) > maxLines);
 }
 
+/**
+ * Whether the TV can play a format, by MSE's own probe (as the player asks it,
+ * so narrowed by Force Video Codec too). No probe to ask: assumed yes; a probe
+ * that throws: no, so the formats are kept.
+ */
+function canPlayFormat(format) {
+  const ms = typeof window !== 'undefined' ? window.MediaSource : null;
+  if (!ms || typeof ms.isTypeSupported !== 'function') return true;
+  try { return !!ms.isTypeSupported(format.mimeType); }
+  catch { return false; }
+}
+
+// A step drops its formats only when one the TV can play is left: an AV1
+// format kept on a TV without AV1 is no picture either.
 function dropFormats(formats, shouldDrop) {
   let kept = 0;
   let dropped = 0;
@@ -1832,7 +1847,7 @@ function dropFormats(formats, shouldDrop) {
     const format = formats[i];
     if (!isVideoFormat(format)) continue;
     if (shouldDrop(format)) dropped++;
-    else kept++;
+    else if (canPlayFormat(format)) kept++;
   }
   if (!dropped || !kept) return;
   let w = 0;

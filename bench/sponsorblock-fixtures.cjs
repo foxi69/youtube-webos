@@ -11,6 +11,7 @@
  * Used by sponsorblock-skip-test, -bar-test, -lifecycle-test and -extras-test.
  */
 const { readBundle, bootPage, wait } = require('./harness.cjs');
+const { fakeIndexedDB } = require('./fake-indexeddb.cjs');
 
 const VIDEO_ID = 'abcdefghijk';
 const OTHER_ID = 'zyxwvutsrqp';
@@ -85,6 +86,10 @@ function fakeVideo(win, video, duration) {
  *   readyState   the <video>'s readyState (4)
  *   author       the player gets getVideoData(), with this channel name; read
  *                on each call, so a test can change it on `opts`
+ *   videoId      the video getVideoData() reports (VIDEO_ID); read on each call
+ *   copy         localStorage empty: the settings come from this IndexedDB copy
+ *   idb          the fake IndexedDB's options, with `copy`
+ *   storage      localStorage entries at the start
  *   holdClock    the page's Date.now stands still
  *   clock        { now }: the page's Date.now, moved by the test
  *   api          { primary, fallback }: each server's status
@@ -103,12 +108,13 @@ async function bootSponsorBlock(cfg, segments, opts = {}) {
     url: `https://www.youtube.com/tv#/watch?v=${VIDEO_ID}`,
     ignoreNavigation: true,
     consoleErrors: opts.consoleErrors !== false,
-    config: Object.assign({
+    config: opts.copy ? undefined : Object.assign({
       enableAdBlock: false, enableSponsorBlock: true, enableReturnYouTubeDislike: false,
       enableDeArrow: false, thumbnailQuality: 'off', enableAutoLogin: false,
       checkForUpdates: false, showWhatsNew: false, sbPeriodicRefresh: false
     }, cfg),
-    evaluate: false
+    evaluate: false,
+    storage: opts.storage
   });
   const api = opts.api || {};
   const net = {
@@ -131,7 +137,9 @@ async function bootSponsorBlock(cfg, segments, opts = {}) {
   const player = doc.getElementById('ytlr-player__player-container-player');
   // Only with a channel to give: a player with getVideoData() is read by
   // other parts of the app too.
-  if ('author' in opts) player.getVideoData = () => ({ video_id: VIDEO_ID, author: opts.author });
+  if ('author' in opts) {
+    player.getVideoData = () => ({ video_id: 'videoId' in opts ? opts.videoId : VIDEO_ID, author: opts.author });
+  }
   let v = null;
   if (!opts.noVideo) {
     v = fakeVideo(win, doc.querySelector('video'), 'duration' in opts ? opts.duration : 600);
@@ -146,6 +154,7 @@ async function bootSponsorBlock(cfg, segments, opts = {}) {
     opts.clock.now = win.Date.now();
     win.Date.now = () => opts.clock.now;
   }
+  if (opts.copy) win.indexedDB = fakeIndexedDB(opts.copy, [], opts.idb || {});
   if (opts.beforeEval) opts.beforeEval(win);
   evaluate();
   // The handler starts a moment after the page (about 0.8 s): wait for its

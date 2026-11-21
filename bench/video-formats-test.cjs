@@ -9,7 +9,8 @@ const { createReporter, bootPage, trustedKey, wait, UA } = require('./harness.cj
 
 const pad = 'z'.repeat(600);
 
-function boot(cfg) {
+// opts.mse: the TV's MediaSource.isTypeSupported (none by default, as in jsdom).
+function boot(cfg, opts = {}) {
   let NS;
   const { win } = bootPage({
     bodyClass: 'WEB_PAGE_TYPE_BROWSE',
@@ -22,7 +23,10 @@ function boot(cfg) {
     }, cfg),
     consoleErrors: false,
     restoreRemove: false,
-    setup: (w) => { NS = w.JSON.stringify; },
+    setup: (w) => {
+      NS = w.JSON.stringify;
+      if (opts.mse) w.MediaSource = { isTypeSupported: opts.mse };
+    },
     fetch: () => Promise.reject(new Error('offline'))
   });
   const parse = (obj) => win.JSON.parse(NS(obj));
@@ -93,6 +97,29 @@ run(async () => {
     const both = boot({ forceQuality: 'up1080', removeUpscaledFormats: true }).parse(player(mixed));
     t('both: each filter drops its own (the upscaled 1080p, the real 1440p)', itags(both) === '398,251', itags(both));
   }
+  // ---- Only formats the TV can play count as left ----
+  {
+    // A TV without AV1: MSE says no to av01.
+    const noAv1 = (type) => String(type).indexOf('av01') === -1;
+    const av1 = (itag, w, h, xtags) => Object.assign(video(itag, w, h, xtags), { mimeType: 'video/mp4; codecs="av01.0.08M.08"' });
+    const avc = (itag, w, h, xtags) => Object.assign(video(itag, w, h, xtags), { mimeType: 'video/mp4; codecs="avc1.640028"' });
+    const probed = [];
+    const up = boot({ removeUpscaledFormats: true }, { mse: (type) => { probed.push(type); return noAv1(type); } })
+      .parse(player([av1(399, 1920, 1080), avc(137, 1920, 1080, SR), audio]));
+    t('playable: precondition: the probe of the TV was asked', probed.some((p) => p.indexOf('av01') !== -1), probed.join(' | '));
+    t('playable: no AV1 on the TV, only an upscaled AVC to play: the upscaled one stays',
+      itags(up) === '399,137,251', itags(up));
+    const upOk = boot({ removeUpscaledFormats: true }, { mse: noAv1 })
+      .parse(player([av1(399, 1920, 1080), avc(136, 1280, 720), avc(137, 1920, 1080, SR), audio]));
+    t('playable: control: with a real AVC left, the upscaled one goes', itags(upOk) === '399,136,251', itags(upOk));
+    const cap = boot({ forceQuality: 'up720', removeUpscaledFormats: false }, { mse: noAv1 })
+      .parse(player([av1(398, 1280, 720), avc(137, 1920, 1080), audio]));
+    t('playable: no AV1, the only AVC above the limit: it stays', itags(cap) === '398,137,251', itags(cap));
+    const throws = boot({ forceQuality: 'up720', removeUpscaledFormats: false }, { mse: () => { throw new Error('probe'); } })
+      .parse(player([av1(398, 1280, 720), avc(137, 1920, 1080), audio]));
+    t('playable: a probe that throws counts as no: the formats stay', itags(throws) === '398,137,251', itags(throws));
+  }
+
   // ---- Up to as the only filter on ----
   {
     // Every other filter of player responses off: Ad Blocking (and the

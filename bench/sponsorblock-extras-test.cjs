@@ -8,7 +8,7 @@
  * The page and the API are sponsorblock-fixtures.cjs's.
  */
 const { createReporter, flavorFromArgs, trustedKey, wait } = require('./harness.cjs');
-const { seg, fakeVideo, bootSponsorBlock } = require('./sponsorblock-fixtures.cjs');
+const { VIDEO_ID, seg, fakeVideo, bootSponsorBlock } = require('./sponsorblock-fixtures.cjs');
 
 const { modern } = flavorFromArgs();
 
@@ -22,6 +22,7 @@ const boot = (cfg, segments, opts = {}) => {
   return bootSponsorBlock(cfg, segments, opts);
 };
 
+const { savedCopy, hashString } = require('./fake-indexeddb.cjs');
 const stored = (win) => JSON.parse(win.localStorage.getItem('ytaf-configuration') || '{}');
 const BLUE = 406;
 const press = async (win, code) => {
@@ -75,6 +76,36 @@ run(async () => {
     await press(env.win, 56);
     t(n('whitelist action: pressed again, it comes off'), JSON.stringify(stored(env.win).sbWhitelistChannels) === '[]');
   }
+  {
+    // The player still reports the video before: the action waits for this one.
+    const opts = { videoId: 'zzzzzzzzzzz', author: 'Old Channel' };
+    const env = await boot({ shortcut_key_8: 'sb_whitelist_channel' }, [seg('sponsor', 30, 60)], opts);
+    await press(env.win, 56);
+    t(n('whitelist action, the video before reported: its channel is not added'),
+      JSON.stringify(stored(env.win).sbWhitelistChannels || []) === '[]' && /not known yet/.test(env.toasts()),
+      `${JSON.stringify(stored(env.win).sbWhitelistChannels)} ${env.toasts()}`);
+    opts.videoId = VIDEO_ID;
+    opts.author = 'New Channel';
+    await press(env.win, 56);
+    t(n('whitelist action: once this video is reported, its channel is added'),
+      JSON.stringify(stored(env.win).sbWhitelistChannels) === '["New Channel"]', JSON.stringify(stored(env.win).sbWhitelistChannels));
+  }
+  {
+    // webOS 25: the player has no author, the title tray names the channel.
+    const tray = '<ytlr-video-title-tray><ytlr-video-metadata-line><yt-formatted-string>Tray Channel' +
+      '</yt-formatted-string></ytlr-video-metadata-line></ytlr-video-title-tray>';
+    const env = await boot({ shortcut_key_8: 'sb_whitelist_channel' }, [seg('sponsor', 30, 60)], { author: '' });
+    env.win.document.body.insertAdjacentHTML('beforeend', tray);
+    await press(env.win, 56);
+    t(n('whitelist action, no author: the title tray names the channel'),
+      JSON.stringify(stored(env.win).sbWhitelistChannels) === '["Tray Channel"]', JSON.stringify(stored(env.win).sbWhitelistChannels));
+    // The tray has no video identity: with the player on another video it is not read.
+    const other = await boot({ shortcut_key_8: 'sb_whitelist_channel' }, [seg('sponsor', 30, 60)], { author: '', videoId: 'zzzzzzzzzzz' });
+    other.win.document.body.insertAdjacentHTML('beforeend', tray);
+    await press(other.win, 56);
+    t(n('whitelist action, no author, the video before reported: the tray is not taken for this one'),
+      JSON.stringify(stored(other.win).sbWhitelistChannels || []) === '[]', JSON.stringify(stored(other.win).sbWhitelistChannels));
+  }
 
   // ---- Undo with Blue, the time saved ----
   // The page's clock stands still unless moved: the 8 s window cannot run out on a slow machine.
@@ -93,7 +124,73 @@ run(async () => {
     await env.playTo(31);
     t(n('undo: ...and the segment plays'), env.state.time === 31, String(env.state.time));
     t(n('undo: "Skip undone" is shown'), env.toasts().indexOf('Skip undone') !== -1, env.toasts());
+    await wait(300);
+    t(n('stats: the undone skip is taken off again, the earlier ones stay'),
+      Math.abs(stored(env.win).sbTimeSaved - 100) < 1e-9 && stored(env.win).sbSkipCount === 4,
+      JSON.stringify([stored(env.win).sbTimeSaved, stored(env.win).sbSkipCount]));
     t(n('report off: nothing is sent'), env.reported.length === 0, env.reported.join());
+  }
+  {
+    // localStorage emptied: a skip before the copy of the settings is read
+    // adds to the copy's totals, and its undo after the read takes it off them.
+    const clock = {};
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const copy = savedCopy([['ytaf-configuration', JSON.stringify({ sbTimeSaved: 100, sbSkipCount: 4, foxThemeApplied: true })]]);
+    const env = await boot({}, [seg('sponsor', 30, 60)], { clock, copy, idb: { gate } });
+    await env.playTo(30.2);
+    t(n('stats before the read: precondition: the segment was skipped'), env.state.time === 60, String(env.state.time));
+    release();
+    await wait(400);
+    t(n('stats before the read: the skip is added to the restored totals'),
+      Math.abs(stored(env.win).sbTimeSaved - (100 + 60 - 30.2)) < 1e-9 && stored(env.win).sbSkipCount === 5,
+      JSON.stringify([stored(env.win).sbTimeSaved, stored(env.win).sbSkipCount]));
+    await press(env.win, BLUE);
+    await wait(300);
+    t(n('stats before the read: its undo after the read leaves the restored totals'),
+      Math.abs(stored(env.win).sbTimeSaved - 100) < 1e-9 && stored(env.win).sbSkipCount === 4,
+      JSON.stringify([stored(env.win).sbTimeSaved, stored(env.win).sbSkipCount]));
+  }
+  {
+    // The same with Separate Settings for Each Account: the counters are the
+    // account's, and the skip before the read adds to the account's totals.
+    const clock = {};
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const PROFILE = 'ytaf-configuration::' + hashString('accountId=abc');
+    const copy = savedCopy([
+      ['ytaf-configuration', JSON.stringify({ perAccountSettings: true, foxThemeApplied: true })],
+      [PROFILE, JSON.stringify({ sbTimeSaved: 100, sbSkipCount: 4 })]
+    ]);
+    const storage = { 'yt.leanback.default::last-identity-used': JSON.stringify({ data: { accountId: 'abc' } }) };
+    const env = await boot({}, [seg('sponsor', 30, 60)], { clock, copy, storage, idb: { gate } });
+    await env.playTo(30.2);
+    release();
+    await wait(400);
+    const own = () => JSON.parse(env.win.localStorage.getItem(PROFILE) || '{}');
+    t(n('stats before the read, per account: the skip is added to the account’s totals'),
+      Math.abs(own().sbTimeSaved - (100 + 60 - 30.2)) < 1e-9 && own().sbSkipCount === 5, JSON.stringify(own()));
+    await press(env.win, BLUE);
+    await wait(300);
+    t(n('stats before the read, per account: its undo leaves the account’s totals'),
+      Math.abs(own().sbTimeSaved - 100) < 1e-9 && own().sbSkipCount === 4, JSON.stringify(own()));
+  }
+  {
+    // Per-account settings in the copy, but no record of this account: it
+    // starts from the restored shared totals, which hold the early skip once.
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const PROFILE = 'ytaf-configuration::' + hashString('accountId=abc');
+    const copy = savedCopy([['ytaf-configuration', JSON.stringify({ perAccountSettings: true, foxThemeApplied: true, sbTimeSaved: 100, sbSkipCount: 4 })]]);
+    const storage = { 'yt.leanback.default::last-identity-used': JSON.stringify({ data: { accountId: 'abc' } }) };
+    const env = await boot({}, [seg('sponsor', 30, 60)], { copy, storage, idb: { gate } });
+    await env.playTo(30.2);
+    t(n('stats before the read, new account: precondition: the segment was skipped'), env.state.time === 60, String(env.state.time));
+    release();
+    await wait(400);
+    const own = JSON.parse(env.win.localStorage.getItem(PROFILE) || '{}');
+    t(n('stats before the read, new account: the skip is counted once'),
+      Math.abs(own.sbTimeSaved - (100 + 60 - 30.2)) < 1e-9 && own.sbSkipCount === 5, JSON.stringify(own));
   }
   {
     const env = await boot({ sbReportSkips: true }, [seg('sponsor', 30, 60)]);
@@ -104,6 +201,14 @@ run(async () => {
       env.reported.join());
   }
   {
+    // A jump from the start over a sponsor with a self-promo inside it: both reported.
+    const env = await boot({ sbReportSkips: true }, [seg('sponsor', 0, 60), seg('selfpromo', 10, 20)]);
+    await wait(50);
+    const uuids = env.reported.map((r) => r.split('UUID=')[1]).sort().join();
+    t(n('report on: a segment nested in a chain skip is reported too'),
+      env.state.seeks.join() === '60' && uuids === 'selfpromo-10-skip,sponsor-0-skip', `${env.state.seeks.join()} ${uuids}`);
+  }
+  {
     // After a seek elsewhere, Blue is no undo (the clock held, so only the distance decides).
     const clock = {};
     const env = await boot({}, [seg('sponsor', 30, 60)], { clock });
@@ -111,6 +216,10 @@ run(async () => {
     await env.playTo(300);
     await press(env.win, BLUE);
     t(n('undo: not after the viewer went somewhere else'), env.state.time === 300, String(env.state.time));
+    await wait(300);
+    t(n('stats: a Blue that undoes nothing leaves the skip counted'),
+      Math.abs(stored(env.win).sbTimeSaved - (60 - 30.2)) < 1e-9 && stored(env.win).sbSkipCount === 1,
+      JSON.stringify([stored(env.win).sbTimeSaved, stored(env.win).sbSkipCount]));
   }
   {
     // More than 8 s later, where playback would be by then: no undo.
@@ -221,6 +330,41 @@ run(async () => {
     await env.playTo(30.5);
     t(n('whitelist, channel known and not listed: skipped'), env.state.time === 60, String(env.state.time));
   }
+  // ---- The player still reports the video before ----
+  {
+    // The one before is on the list, this one is not: its segment is skipped once the player reports it.
+    const opts = { videoId: 'zzzzzzzzzzz', author: 'Old Channel' };
+    const env = await boot({ sbWhitelistChannels: ['Old Channel'] }, [seg('sponsor', 30, 60)], opts);
+    await env.playTo(30.2);
+    t(n('whitelist, the video before reported: its listed channel is not taken for this one'),
+      env.state.time === 30.2 && env.state.seeks.length === 0, String(env.state.time));
+    opts.videoId = VIDEO_ID;
+    opts.author = 'New Channel';
+    await wait(1300);
+    await env.playTo(30.5);
+    t(n('whitelist, the video before reported: once this one is, its segment is skipped'), env.state.time === 60, String(env.state.time));
+  }
+  {
+    // The one before is not on the list, this one is: nothing is skipped, also once the player reports it.
+    const opts = { videoId: 'zzzzzzzzzzz', author: 'Old Channel' };
+    const env = await boot({ sbWhitelistChannels: ['New Channel'] }, [seg('sponsor', 30, 60)], opts);
+    await env.playTo(30.2);
+    t(n('whitelist, the video before reported: its unlisted channel does not make this one skip'),
+      env.state.time === 30.2 && env.state.seeks.length === 0, String(env.state.time));
+    opts.videoId = VIDEO_ID;
+    opts.author = 'New Channel';
+    await wait(1300);
+    await env.playTo(30.5);
+    t(n('whitelist, the video before reported: once this one is, still not skipped'),
+      env.state.time === 30.5 && env.state.seeks.length === 0, String(env.state.time));
+  }
+  {
+    // Data with no video ID: its channel name is taken as it is (known, not listed: skipped at once).
+    const env = await boot({ sbWhitelistChannels: ['Other Channel'] }, [seg('sponsor', 30, 60)], { videoId: undefined });
+    await env.playTo(30.2);
+    t(n('whitelist, no video ID in the data: its channel counts as known'), env.state.time === 60, String(env.state.time));
+  }
+
   // ---- Undo, the highlight's guard and a new <video> ----
   {
     // Auto Skip to Start jumped to the highlight at 90; a skip from 93 is
@@ -229,11 +373,33 @@ run(async () => {
     const env = await boot({ sbMode_highlight: 'auto_skip' }, [seg('poi_highlight', 90, 90, 'poi'), seg('sponsor', 93, 120)], { clock });
     await wait(100);
     t(n('undo and highlight: jumped to the highlight first'), env.state.seeks[0] === 90, env.state.seeks.join());
+    // The guard's own 4 s timer is held: only the undo can end the guard, not a slow machine.
+    const guard = env.sb()._highlightGuard;
+    t(n('undo and highlight: precondition: the highlight guard is on'), !!guard && !!guard.timer);
+    if (guard) env.win.clearTimeout(guard.timer);
     await env.playTo(93.2);
     t(n('undo and highlight: the segment was skipped'), env.state.time === 120, String(env.state.time));
     await press(env.win, BLUE);
     await wait(100);
     t(n('undo and highlight: the undo is not taken back to the highlight'), Math.abs(env.state.time - 93.2) < 0.01, env.state.seeks.join());
+    t(n('undo and highlight: ...with the guard still on after the undo seek'), !!guard && env.sb()._highlightGuard === guard);
+  }
+  {
+    // The highlight's guard holds, then the channel goes on Never Skip on
+    // These Channels: a seek before the highlight is not taken back to it.
+    const clock = {};
+    const env = await boot({ sbMode_highlight: 'auto_skip', shortcut_key_8: 'sb_whitelist_channel' },
+      [seg('poi_highlight', 90, 90, 'poi')], { clock });
+    await wait(100);
+    const guard = env.sb()._highlightGuard;
+    t(n('highlight guard, channel listed: precondition: jumped, guard on'), env.state.seeks[0] === 90 && !!guard, env.state.seeks.join());
+    if (guard) env.win.clearTimeout(guard.timer);
+    await press(env.win, 56);
+    t(n('highlight guard, channel listed: precondition: listed'),
+      JSON.stringify(stored(env.win).sbWhitelistChannels) === '["Some Channel"]', JSON.stringify(stored(env.win).sbWhitelistChannels));
+    env.video.currentTime = 85;
+    await wait(100);
+    t(n('highlight guard, channel listed: a seek before the highlight stays'), env.state.time === 85, env.state.seeks.join());
   }
   {
     const clock = {};

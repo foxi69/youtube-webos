@@ -52,10 +52,12 @@ const LEGACY = 'dist/webOSUserScripts/userScript.js';
 // mutant. That legacy build is dist/ itself, built from each mutant, so the
 // tests that read dist/ with no bundle given (launch-test: dist/index.js)
 // see the mutant too; dist/ is built again from the sources at the end. The
-// perf build's test is left out.
+// perf build's test is left out, and so is mutation-sweep-test: it tests this
+// runner, no source a mutant changes, and its check that each mutant's `from`
+// is in place fails for every mutant, which would count all of them killed.
 const ci = fs.readFileSync(path.join(__dirname, 'ci.sh'), 'utf8').replace(/\\\n/g, ' ');
 const tests = [];
-const add = (name, argv) => { if (!tests.some((t) => t.name === name && t.argv.join() === argv.join())) tests.push({ name, argv }); };
+const add = (name, argv) => { if (name !== 'mutation-sweep-test' && !tests.some((t) => t.name === name && t.argv.join() === argv.join())) tests.push({ name, argv }); };
 const words = (text) => text.trim().split(/\s+/).filter(Boolean);
 const loop = /for t in (.*?); do\s*run "\$t" "\$M" modern/s.exec(ci);
 if (!loop) throw new Error('bench/ci.sh: the modern test loop was not found');

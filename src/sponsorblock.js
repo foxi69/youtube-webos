@@ -5,7 +5,7 @@ import sponsorBlockUI from './Sponsorblock-UI.js';
 import sponsorBlockLabels, { isFullVideoSegment } from './sponsorblock-labels.js';
 import { isLegacyWebOS } from './webos-utils.js';
 import { getVideo } from './utils.js';
-import { currentChannelName, isChannelWhitelisted } from './sponsorblock-extras.js';
+import { currentChannelName, isChannelWhitelisted, videoIdFromHash } from './sponsorblock-extras.js';
 import { fetchJsonWithTimeout } from './fetch-timeout.js';
 import './sponsorblock.css';
 
@@ -680,17 +680,20 @@ class SponsorBlockHandler {
         video.currentTime = chain.endTime;
         this.lastSkipTime = chain.endTime;
         this.hasPerformedChainSkip = true;
-        this.noteSkip(chainFrom, chain.endTime, chain.segments.map(seg => seg.originalIndex));
-        
+        // The chain's segments, and those nested inside them: the jump covers both.
+        const covered = chain.segments.map(seg => seg.originalIndex);
+
         // Fast chronologically-sorted short-circuit skip mapping
         for (let i = 0; i < this.skipSegments.length; i++) {
             const seg = this.skipSegments[i];
-            if (seg.start > chain.endTime) break; 
-            
+            if (seg.start > chain.endTime) break;
+
            if (seg.mode === 'auto_skip' && seg.start < chain.endTime && seg.end <= chain.endTime + 0.1) {
                 this.skippedSegmentIndices.add(seg.originalIndex);
+                if (covered.indexOf(seg.originalIndex) === -1) covered.push(seg.originalIndex);
             }
         }
+        this.noteSkip(chainFrom, chain.endTime, covered);
 
         this.requestAF(() => {
             const categories = chain.chainDescription.split(' → ')
@@ -711,13 +714,13 @@ class SponsorBlockHandler {
     /**
      * Whether nothing is to be skipped for Never Skip on These Channels: the
      * video's channel is on the list, or, with a list, its channel is not known
-     * yet. Then the segments are built again once it is (a try a second, ten
+     * yet (the player still reporting the video before counts as not known). Then the segments are built again once it is (a try a second, ten
      * at most); a channel still unknown after that counts as not listed.
      */
     channelWhitelisted() {
         const list = configRead('sbWhitelistChannels');
         if (!Array.isArray(list) || !list.length) return false;
-        const name = currentChannelName();
+        const name = currentChannelName(this.videoID);
         if (name) return isChannelWhitelisted(name);
         if ((this.channelRetries || 0) >= CHANNEL_RETRIES) return false;
         if (!this.channelRetryTimer && !this.isDestroyed) {
@@ -725,7 +728,7 @@ class SponsorBlockHandler {
                 this.channelRetryTimer = null;
                 if (this.isDestroyed) return;
                 this.channelRetries = (this.channelRetries || 0) + 1;
-                if (currentChannelName() || this.channelRetries >= CHANNEL_RETRIES) {
+                if (currentChannelName(this.videoID) || this.channelRetries >= CHANNEL_RETRIES) {
                     this.rebuildSkipSegments();
                     // An Auto Skip to Start that waited for the channel.
                     this._jumpIfPending();
@@ -819,6 +822,11 @@ class SponsorBlockHandler {
         // Our own seek: the highlight's guard (autoJumpToHighlight) leaves it.
         this.ownSkipTarget = last.from;
         video.currentTime = last.from;
+        // Its time was not saved after all: taken off the statistics again.
+        try {
+            configWrite('sbTimeSaved', Math.max(0, (Number(configRead('sbTimeSaved')) || 0) - (last.to - last.from)));
+            configWrite('sbSkipCount', Math.max(0, (Number(configRead('sbSkipCount')) || 0) - 1));
+        } catch { /* statistics are best effort */ }
         this.requestAF(() => showNotification('Skip undone'));
         return true;
     }
@@ -1813,7 +1821,7 @@ class SponsorBlockHandler {
         // Never Skip on These Channels: no jump by itself there either (Blue
         // still jumps). A channel not known yet: the jump waits for it.
         if (this.channelWhitelisted()) {
-            if (!currentChannelName()) this.highlightPending = true;
+            if (!currentChannelName(this.videoID)) this.highlightPending = true;
             return;
         }
         if (!this.jumpToNextHighlight()) return;
@@ -1823,7 +1831,8 @@ class SponsorBlockHandler {
         this.ownSkipTarget = null;
         this._endHighlightGuard();
         const onSeeked = () => {
-            if (Date.now() > until || this.video !== video || this.isDestroyed) {
+            // Ended too by the channel put on Never Skip on These Channels meanwhile.
+            if (Date.now() > until || this.video !== video || this.isDestroyed || this.channelWhitelisted()) {
                 this._endHighlightGuard();
             } else if (this.ownSkipTarget !== null && Math.abs(video.currentTime - this.ownSkipTarget) < 0.5) {
                 // A skip of SponsorBlock's own. Kept, not used up: the skip
@@ -2163,20 +2172,6 @@ if (typeof window !== 'undefined') {
 
     window.sponsorblock = null;
     let initTimeout = null;
-
-    const videoIdFromHash = () => {
-        try {
-            const hash = window.location.hash;
-            if (!hash.startsWith('#')) return null;
-            const parts = hash.split('?');
-            if (parts.length < 2) return null;
-            if (typeof URLSearchParams !== 'undefined') return new URLSearchParams(parts[1]).get('v');
-            const match = parts[1].match(/(?:[?&]|^)v=([^&]+)/);
-            return match ? match[1] : null;
-        } catch {
-            return null;
-        }
-    };
 
     const initSB = () => {
         // A hash change within the same video keeps the handler: its segments

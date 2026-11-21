@@ -1,5 +1,5 @@
 import { aiVideoModes, subtitlesAtStartModes, logoStyles, timeRemainingModes, thumbnailQualityModes, videoCodecModes, uiThemes, clockModes, startPageModes, minVideoLengthModes, seekStepModes, maxVideoAgeModes, searchUploadDateModes, dearrowTitleFormats, dearrowThumbnailFallbacks, forceQualityModes, subtitlePositionModes, sbMinSegmentLengthModes, searchDurationModes, searchTypeModes, searchFeatureModes } from './config.js';
-import { configAddChangeListener, configRead, configWrite, configGetDesc, segmentTypes, configGetDefault, shortcutActions, sbModes, sbModesHighlight, videoPreviewModes, videoQualityDisplayModes, configGetProfileStatus } from './config.js';
+import { configAddChangeListener, configRead, configWrite, configGetDesc, segmentTypes, configGetDefault, shortcutActions, sbModes, sbModesHighlight, videoPreviewModes, videoQualityDisplayModes, configGetProfileStatus, configResetCounters } from './config.js';
 import './ui.css';
 import './auto-login.js';
 import './return-dislike.js';
@@ -7,7 +7,7 @@ import { initVideoQuality } from './video-quality.js';
 import { initLogoStyle } from './logo-style.js';
 import { initMathLetters } from './math-letters.js';
 import { initPlaybackSpeed, stepSpeed, resetSpeed, toggleSpeed } from './playback-speed.js';
-import { toggleChannelWhitelist, formatTimeSaved } from './sponsorblock-extras.js';
+import { toggleChannelWhitelist, formatTimeSaved, titleTrayChannel } from './sponsorblock-extras.js';
 import sponsorBlockUI from './Sponsorblock-UI.js';
 import { sendKey, REMOTE_KEYS, COLOR_CODE_MAP, isGuestMode, invalidateGuestModeCache, isWatchPage, isShortsPage, isSearchPage, SELECTORS, getVideo, SYNTHETIC_KEY_FLAG, isAutoplayOn, isLiveStream } from './utils.js';
 import { initTrackingBlock, destroyTrackingBlock } from './adblock.js';
@@ -489,7 +489,7 @@ function createSbStatsLine() {
   };
   const reset = createElement('button', {
     class: 'ytaf-list-btn', text: 'Reset', tabIndex: 0,
-    events: { click: () => { configWrite('sbTimeSaved', 0); configWrite('sbSkipCount', 0); } }
+    events: { click: () => configResetCounters() }
   });
   configAddChangeListener('sbTimeSaved', update);
   configAddChangeListener('sbSkipCount', update);
@@ -608,9 +608,7 @@ function currentVideoChannel() {
     const data = player && typeof player.getVideoData === 'function' ? player.getVideoData() : null;
     if (data && typeof data.author === 'string') author = data.author.trim();
   } catch { /* the tray below */ }
-  if (author) return author;
-  const line = document.querySelector('ytlr-video-title-tray ytlr-video-metadata-line yt-formatted-string');
-  return line ? line.textContent.trim() : '';
+  return author || titleTrayChannel();
 }
 
 /**
