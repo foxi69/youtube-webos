@@ -122,6 +122,20 @@ export const isWatchPage = () => _isWatchPage;
 export const isShortsPage = () => _isShortsPage;
 export const isSearchPage = () => _isSearchPage;
 
+/**
+ * The chapters' start times in seconds, from the bar renderer's data
+ * (chapters[].start); empty when it has none. With `drawnOnly`, without the
+ * chapters the bar does not draw: the renderer gives those a width of 0.
+ */
+export function rendererChapterStarts(drawnOnly = false) {
+  const host = document.querySelector('ytlr-multi-markers-player-bar-renderer');
+  const props = host && host.__instance && host.__instance.props;
+  const own = props && props.data && Array.isArray(props.data.chapters) ? props.data.chapters : [];
+  const listed = drawnOnly ? own.filter((chapter) => !chapter || chapter.width !== 0) : own;
+  // A number only: Number(null) is 0, a chapter at the start that is not there.
+  return listed.map((chapter) => chapter && chapter.start).filter((s) => typeof s === 'number' && isFinite(s));
+}
+
 // Cached <video> lookup. Several shortcut handlers re-query
 // document.querySelector('video') per keypress; cache it for the lifetime of
 // a watch/shorts session and invalidate when the page state changes.
@@ -241,6 +255,21 @@ try {
 // perf_mon.js (and anything else that needs "was this a real remote press?").
 export const SYNTHETIC_KEY_FLAG = '__ytafSynthetic';
 
+// YouTube TV sends a colour key this module dispatches back a moment later,
+// unflagged, as the colour's other keycode (Yellow 405 -> 170; measured on
+// webOS 25: 1-24 ms later). A Chrome with isTrusted marks that echo untrusted
+// and a press trusted; Chrome 38 has no isTrusted, so there the colour and time
+// of the last one sent tell the echo from a press.
+const ECHO_WINDOW_MS = 100;
+let lastSentColor = null;
+let lastSentAt = 0;
+
+/** Whether `evt` is YouTube's echo of a colour key this module just sent. */
+export function isSyntheticKeyEcho(evt) {
+  if (!lastSentColor || evt[SYNTHETIC_KEY_FLAG] || evt.isTrusted === true) return false;
+  return Date.now() - lastSentAt < ECHO_WINDOW_MS && COLOR_CODE_MAP.get(evt.keyCode || evt.charCode) === lastSentColor;
+}
+
 export function sendKey(keyDef, target = document.body) {
   if (!keyDef?.code) { 
       if (process.env.NODE_ENV !== 'production') console.warn('[Utils] Invalid key definition');
@@ -270,8 +299,17 @@ export function sendKey(keyDef, target = document.body) {
   Object.defineProperties(keyDownEvt, { keyCode: codeDesc, which: codeDesc, charCode: charDesc });
   Object.defineProperties(keyUpEvt,   { keyCode: codeDesc, which: codeDesc, charCode: charDesc });
 
+  const color = COLOR_CODE_MAP.get(keyDef.code) || null;
+  // A key that is no colour (UP from another keep-alive) leaves the record:
+  // the echo of a colour sent just before still comes.
+  if (color) {
+    lastSentColor = color;
+    lastSentAt = Date.now();
+  }
   target.dispatchEvent(keyDownEvt);
+  if (color) lastSentAt = Date.now();
   target.dispatchEvent(keyUpEvt);
+  if (color) lastSentAt = Date.now();
 }
 
 export async function waitForChildAdd(parent, predicate, observeAttributes, abortSignal, timeoutMs = 30000) {
