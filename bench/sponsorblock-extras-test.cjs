@@ -130,6 +130,8 @@ async function boot(cfg, segments, opts = {}) {
     });
     Object.defineProperty(win, 'localStorage', { configurable: true, get: () => proxy });
   }
+  // opts.beforeEvaluate(win): set up the page (hold a timer, say) before the bundle runs.
+  if (opts.beforeEvaluate) opts.beforeEvaluate(win);
   evaluate();
   // The handler starts a moment after the page (about 0.8 s): wait for its
   // request, then for the answer to be applied.
@@ -171,6 +173,21 @@ run(async () => {
     await env.playTo(100.2);
     t(n('min length: a 20 s one still is'), env.state.muted === true && env.state.time === 100.2,
       `${env.state.muted} ${env.state.time}`);
+  }
+
+  {
+    // At the boundary: 3.2 to 8.2 is 5 s (8.2 - 3.2 is 4.999999999999999 in
+    // JavaScript) and is skipped; 13.2 to 18.1 is shorter and plays.
+    const env = await boot({ sbMinSegmentLength: '5' }, [seg('sponsor', 3.2, 8.2), seg('selfpromo', 13.2, 18.1)]);
+    await env.playTo(3.4);
+    t(n('min length: a segment of exactly the minimum, in fractions, is skipped'), env.state.time === 8.2, String(env.state.time));
+    await env.playTo(13.4);
+    t(n('min length: one a tenth shorter plays'), env.state.time === 13.4, String(env.state.time));
+  }
+  {
+    const env = await boot({ sbMinSegmentLength: '5', enableMutedSegments: true }, [seg('sponsor', 3.2, 8.2, 'mute')]);
+    await env.playTo(3.4);
+    t(n('min length: a muted segment of exactly the minimum, in fractions, is muted'), env.state.muted === true, String(env.state.muted));
   }
 
   // ---- Never Skip on These Channels ----
@@ -304,6 +321,79 @@ run(async () => {
     t(n('refused shared record: the next start has the totals of the copy with the skip'),
       Math.abs(stored(next.win).sbTimeSaved - (100 + 60 - 30.2)) < 1e-9 && stored(next.win).sbSkipCount === 5,
       JSON.stringify([stored(next.win).sbTimeSaved, stored(next.win).sbSkipCount]));
+  }
+  {
+    // Separate settings on in the copy, a skip before the read, and both the
+    // shared record and the account's refused by localStorage, while the copy
+    // aborts its writes: the account's merged totals are nowhere stored, so
+    // the skip stays in the journal and the next start adds it once.
+    const clock = {};
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const PROFILE = 'ytaf-configuration::' + hashString('accountId=abc');
+    const copy = savedCopy([
+      ['ytaf-configuration', JSON.stringify({ perAccountSettings: true, foxThemeApplied: true })],
+      [PROFILE, JSON.stringify({ sbTimeSaved: 100, sbSkipCount: 4 })]
+    ]);
+    const storage = { 'yt.leanback.default::last-identity-used': JSON.stringify({ data: { accountId: 'abc' } }) };
+    const idb = { gate, abortWrites: true, txIds: [] };
+    const opts = { clock, copy, storage, idb, refuse: ['ytaf-configuration', PROFILE] };
+    const env = await boot({}, [seg('sponsor', 30, 60)], opts);
+    await env.playTo(30.2);
+    t(n('both refused, copy aborts: precondition: the segment was skipped'), env.state.time === 60, String(env.state.time));
+    release();
+    const tried = await until(() => idb.txIds.some(([note]) => note === 'put ' + PROFILE), 3000);
+    t(n('both refused, copy aborts: precondition: the account\u2019s record was tried in the copy, and aborted'),
+      tried && copy.get(PROFILE) === JSON.stringify({ sbTimeSaved: 100, sbSkipCount: 4 }), JSON.stringify(idb.txIds));
+    await wait(50);
+    const journal = JSON.parse(env.win.localStorage.getItem('ytaf-settings-changed') || 'null');
+    t(n('both refused, copy aborts: the skip stays in the journal'),
+      !!journal && !!journal.own && !!journal.own[''] && !!journal.own[''].counted.sbSkipCount, JSON.stringify(journal));
+    const left = {};
+    for (let i = 0; i < env.win.localStorage.length; i++) {
+      const k = env.win.localStorage.key(i);
+      left[k] = env.win.localStorage.getItem(k);
+    }
+    const next = await boot({}, [seg('sponsor', 30, 60)], { copy, storage: left });
+    const own = () => JSON.parse(next.win.localStorage.getItem(PROFILE) || '{}');
+    await until(() => own().sbSkipCount !== undefined, 3000);
+    t(n('both refused, copy aborts: the next start has the account\u2019s totals with the skip, once'),
+      Math.abs(own().sbTimeSaved - (100 + 60 - 30.2)) < 1e-9 && own().sbSkipCount === 5, JSON.stringify(own()));
+  }
+  {
+    // Its control: the same, with the copy storing the account's merged
+    // record. The journal lets the skip go once it is there, and the next
+    // start (the copy's 129.8 s) does not add it again.
+    const clock = {};
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const PROFILE = 'ytaf-configuration::' + hashString('accountId=abc');
+    const copy = savedCopy([
+      ['ytaf-configuration', JSON.stringify({ perAccountSettings: true, foxThemeApplied: true })],
+      [PROFILE, JSON.stringify({ sbTimeSaved: 100, sbSkipCount: 4 })]
+    ]);
+    const storage = { 'yt.leanback.default::last-identity-used': JSON.stringify({ data: { accountId: 'abc' } }) };
+    const opts = { clock, copy, storage, idb: { gate }, refuse: ['ytaf-configuration', PROFILE] };
+    const env = await boot({}, [seg('sponsor', 30, 60)], opts);
+    await env.playTo(30.2);
+    release();
+    const stored = await until(() => { try { return JSON.parse(copy.get(PROFILE)).sbSkipCount === 5; } catch { return false; } }, 3000);
+    t(n('both refused, copy stores: precondition: the copy has the account\u2019s merged totals'), stored, copy.get(PROFILE));
+    const cleared = await until(() => {
+      const j = JSON.parse(env.win.localStorage.getItem('ytaf-settings-changed') || 'null');
+      return !!j && !!j.own && !!j.own[''] && Object.keys(j.own[''].counted || {}).length === 0;
+    }, 2000);
+    t(n('both refused, copy stores: the journal lets the skip go'), cleared, env.win.localStorage.getItem('ytaf-settings-changed'));
+    const left = {};
+    for (let i = 0; i < env.win.localStorage.length; i++) {
+      const k = env.win.localStorage.key(i);
+      left[k] = env.win.localStorage.getItem(k);
+    }
+    const next = await boot({}, [seg('sponsor', 30, 60)], { copy, storage: left });
+    const own = () => JSON.parse(next.win.localStorage.getItem(PROFILE) || '{}');
+    await until(() => own().sbSkipCount !== undefined, 3000);
+    t(n('both refused, copy stores: the next start counts the skip once'),
+      Math.abs(own().sbTimeSaved - (100 + 60 - 30.2)) < 1e-9 && own().sbSkipCount === 5, JSON.stringify(own()));
   }
   {
     // The same with Separate Settings for Each Account: the counters are the
@@ -485,6 +575,17 @@ run(async () => {
       env.state.seeks.join() === '60' && uuids === 'selfpromo-10,sponsor-0', `${env.state.seeks.join()} ${uuids}`);
   }
   {
+    // The jump from the start made at 0.4 s: a segment nested at 0.1 to 0.25 s
+    // is behind the playhead, played and not crossed, so not reported. (The
+    // case above, a jump made at 0, reports both.)
+    const env = await boot({ sbReportSkips: true }, [seg('sponsor', 0, 60), seg('selfpromo', 0.1, 0.25)], { startAt: 0.4 });
+    await wait(50);
+    const uuids = env.reported.map((r) => r.split('UUID=')[1]).sort().join();
+    t(n('report on: precondition: the jump from the start was made at 0.4 s'), env.state.seeks.join() === '60',
+      env.state.seeks.join());
+    t(n('report on: a start jump from 0.4 s does not report a segment already behind it'), uuids === 'sponsor-0', uuids);
+  }
+  {
     // A segment nested in the one skipped, already behind the playhead: not
     // crossed by the jump, so not reported.
     const env = await boot({ sbReportSkips: true }, [seg('sponsor', 30, 100), seg('selfpromo', 35, 40)]);
@@ -613,12 +714,29 @@ run(async () => {
   }
 
   {
-    // The channel not known yet, and the list emptied while the jump waits: it comes.
-    const opts = { author: '' };
+    // The channel not known yet, and the list emptied while the jump waits: it
+    // comes, from the change of the list itself. The channel's 1 s retry is
+    // held (not run), so it cannot be what makes the jump.
+    const held = [];
+    const opts = {
+      author: '',
+      beforeEvaluate: (w) => {
+        const realSet = w.setTimeout.bind(w);
+        const realClear = w.clearTimeout.bind(w);
+        w.setTimeout = (fn, ms, ...args) => {
+          if (ms !== 1000) return realSet(fn, ms, ...args);
+          held.push({ id: -700 - held.length, fn });
+          return held[held.length - 1].id;
+        };
+        w.clearTimeout = (id) => { if (!held.some((h) => h.id === id)) realClear(id); };
+      }
+    };
     const env = await boot({ sbWhitelistChannels: ['Other Channel'], sbMode_highlight: 'auto_skip' },
       [seg('poi_highlight', 90, 91, 'poi')], opts);
     await wait(200);
     t(n('whitelist emptied while the jump waits: it waits first'), env.state.seeks.length === 0, env.state.seeks.join());
+    t(n('whitelist emptied while the jump waits: precondition: the channel retry is set, and held'),
+      !!env.sb() && held.some((h) => h.id === env.sb().channelRetryTimer), String(env.sb() && env.sb().channelRetryTimer));
     // The panel, on its SponsorBlock tab, where the list is.
     trustedKey(env.win, 404);
     await wait(100);
@@ -627,8 +745,40 @@ run(async () => {
     const entry = Array.prototype.slice.call(env.win.document.querySelectorAll('.ytaf-list-btn'))
       .find((b) => b.textContent === '\u2715 Other Channel');
     if (entry) entry.click();
-    await wait(1300);
-    t(n('whitelist emptied while the jump waits: the jump comes'), !!entry && env.state.seeks[0] === 90, env.state.seeks.join());
+    const jumped = await until(() => env.state.seeks[0] === 90, 1500);
+    t(n('whitelist emptied while the jump waits: the jump comes, with the retry still held'), !!entry && jumped,
+      env.state.seeks.join());
+  }
+
+  // ---- The channel known only after its ten retries ----
+  for (const known of [true, false]) {
+    // The channel's 1 s retries are held and run by hand; after the tenth the
+    // channel counts as not listed. Known at the next play (a listed one): its
+    // segment plays; still unknown (the control): it is skipped.
+    const held = [];
+    const opts = {
+      author: '',
+      beforeEvaluate: (w) => {
+        const realSet = w.setTimeout.bind(w);
+        w.setTimeout = (fn, ms, ...args) => {
+          if (ms !== 1000) return realSet(fn, ms, ...args);
+          held.push(fn);
+          return -900 - held.length;
+        };
+      }
+    };
+    const env = await boot({ sbWhitelistChannels: ['Some Channel'] }, [seg('sponsor', 30, 60)], opts);
+    const name = 'channel after its retries (' + (known ? 'known then' : 'still unknown') + ')';
+    for (let i = 0; i < 40 && env.sb() && (env.sb().channelRetries || 0) < 10; i++) {
+      if (held.length) held.shift()();
+      await wait(10);
+    }
+    t(n(name + ': precondition: its ten retries ran'), !!env.sb() && env.sb().channelRetries === 10, String(env.sb() && env.sb().channelRetries));
+    if (known) opts.author = 'Some Channel';
+    env.win.dispatchEvent(new env.win.CustomEvent('yt-player-state-change', { detail: { state: 1 } }));
+    await env.playTo(30.2);
+    if (known) t(n(name + ': known at the next play, listed: nothing is skipped'), env.state.time === 30.2, String(env.state.time));
+    else t(n(name + ': control: counted as not listed, skipped'), env.state.time === 60, String(env.state.time));
   }
 
   // ---- The channel not known yet ----

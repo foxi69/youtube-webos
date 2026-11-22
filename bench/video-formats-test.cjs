@@ -118,6 +118,27 @@ run(async () => {
     const throws = boot({ forceQuality: 'up720', removeUpscaledFormats: false }, { mse: () => { throw new Error('probe'); } })
       .parse(player([av1(398, 1280, 720), avc(137, 1920, 1080), audio]));
     t('playable: a probe that throws counts as no: the formats stay', itags(throws) === '398,137,251', itags(throws));
+    // The probe throws for AV1 only, and an AVC 720p is there to play: handled
+    // as a no, the cap still applies (1080p goes); an exception that escaped
+    // would leave the whole response as it came (1080p stays).
+    const avcOnly = (type) => { if (String(type).indexOf('av01') !== -1) throw new Error('probe'); return true; };
+    const contained = boot({ forceQuality: 'up720', removeUpscaledFormats: false }, { mse: avcOnly })
+      .parse(player([av1(398, 1280, 720), avc(136, 1280, 720), avc(137, 1920, 1080), audio]));
+    t('playable: a probe that throws is contained: the cap still applies with a playable AVC left',
+      itags(contained) === '398,136,251', itags(contained));
+  }
+
+  // ---- A format of no known size: kept, and no reason to drop the bigger ones ----
+  {
+    const avc = (itag, w, h) => Object.assign(video(itag, w, h), { mimeType: 'video/mp4; codecs="avc1.640028"' });
+    const unknown = (itag) => ({ itag, mimeType: 'video/mp4; codecs="avc1.640033"' });
+    const only = boot({ forceQuality: 'up1080', removeUpscaledFormats: false })
+      .parse(player([avc(264, 2560, 1440), unknown(266), audio]));
+    t('no known size: with nothing known to fit, the 1440p stays beside it', itags(only) === '264,266,251', itags(only));
+    const fits = boot({ forceQuality: 'up1080', removeUpscaledFormats: false })
+      .parse(player([avc(264, 2560, 1440), unknown(266), avc(136, 1280, 720), audio]));
+    t('no known size: control: with a 720p known to fit, the 1440p goes and the unknown one stays',
+      itags(fits) === '266,136,251', itags(fits));
   }
 
   // ---- A wide or vertical size counts by its 16:9 height, as YouTube labels it ----

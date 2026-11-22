@@ -433,6 +433,73 @@ run(async () => {
     t('...and on again, the account has it', back, String(input('Skip AI-Upscaled Qualities') && input('Skip AI-Upscaled Qualities').checked));
   }
 
+  // ---- An account's write still waiting when the copy is read ----
+  {
+    // Separate settings on in abc before the read, then Force Max Quality set
+    // to Max there, and the copy read before that write is made. The copy's
+    // shared record has no forceQuality: the account's Max must not land in it.
+    const backup = savedCopy([
+      [KEY, JSON.stringify({ perAccountSettings: false, foxThemeApplied: true, minVideoLength: '5' })],
+      [PROFILE_KEY, JSON.stringify({ minVideoLength: '20' })]
+    ]);
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const page = boot({ data: backup, log: [], storage: IDENTITY, idb: { gate } });
+    await wait(300);
+    trustedKey(page.win, 404, page.win.document.body, 'keydown');
+    trustedKey(page.win, 404, page.win.document.body, 'keyup');
+    await until(() => page.win.document.querySelector('.ytaf-ui-container label'));
+    const perAccount = Array.prototype.slice.call(page.win.document.querySelectorAll('label'))
+      .find((l) => l.textContent.trim() === 'Separate Settings for Each Account').querySelector('input');
+    perAccount.click();
+    t('pending account write: precondition: separate settings on before the read', perAccount.checked === true);
+    await until(() => { const r = stored(page.win, PROFILE_KEY); return !!r; }, 2000);
+    const row = Array.prototype.slice.call(page.win.document.querySelectorAll('.ytaf-ui-container .shortcut-control-row'))
+      .find((r) => r.querySelector('.shortcut-label') && r.querySelector('.shortcut-label').textContent.trim() === 'Force Max Quality');
+    row.focus();
+    trustedKey(page.win, 39, row);
+    t('pending account write: precondition: Max chosen in the account', row.querySelector('.current-value').textContent === 'Max',
+      row.querySelector('.current-value').textContent);
+    // Read at once: the 200 ms write of the change is still waiting.
+    release();
+    const read = await until(() => !!stored(page.win) && stored(page.win).minVideoLength === '5', 3000);
+    t('pending account write: precondition: the copy was read', read, JSON.stringify(stored(page.win)));
+    await wait(300);
+    t('pending account write: the shared record does not take the account\u2019s Max',
+      stored(page.win).forceQuality !== 'max', JSON.stringify(stored(page.win)));
+    t('...the account\u2019s record has it', !!stored(page.win, PROFILE_KEY) && stored(page.win, PROFILE_KEY).forceQuality === 'max',
+      JSON.stringify(stored(page.win, PROFILE_KEY)));
+  }
+
+  // ---- Reset All Settings while the copy is read ----
+  {
+    // The copy has Up to 480p; the app shows Off (its default) while the read
+    // waits, and Reset All Settings is pressed: Off must stay once read. The
+    // statistics are not reset (RESET_KEEPS), so the copy's come back: the
+    // restore did run.
+    const backup = savedCopy([[KEY, JSON.stringify({ forceQuality: 'up480', sbTimeSaved: 42, foxThemeApplied: true })]]);
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const page = boot({ data: backup, log: [], idb: { gate } });
+    await wait(300);
+    trustedKey(page.win, 404, page.win.document.body, 'keydown');
+    trustedKey(page.win, 404, page.win.document.body, 'keyup');
+    await until(() => page.win.document.querySelector('.ytaf-tab-btn'), 2000);
+    const tabs = page.win.document.querySelectorAll('.ytaf-tab-btn');
+    tabs[tabs.length - 1].click();
+    const button = Array.prototype.slice.call(page.win.document.querySelectorAll('#ytaf-page-about button'))
+      .find((b) => b.textContent === 'Reset All Settings');
+    t('reset during the read: precondition: Force Max Quality shows Off, the copy not read yet', !!button &&
+      !!stored(page.win) && stored(page.win).forceQuality === 'off', JSON.stringify(stored(page.win)));
+    button.click();
+    button.click();
+    release();
+    const read = await until(() => !!stored(page.win) && stored(page.win).sbTimeSaved === 42, 3000);
+    t('reset during the read: precondition: the copy was read (its statistics back)', read, JSON.stringify(stored(page.win)));
+    t('reset during the read: Force Max Quality stays Off, not the copy\u2019s Up to 480p', stored(page.win).forceQuality === 'off',
+      JSON.stringify(stored(page.win)));
+  }
+
   // ---- A change after the restore, then a switch back with localStorage emptied ----
   {
     // The copy read at the start is older than a change made since: switched
@@ -624,8 +691,15 @@ run(async () => {
       [KEY + '::zzzz', JSON.stringify({ minVideoLength: '20' })]
     ]);
     const shared = backup.get(KEY);
-    const page = boot({ data: backup, log: [], idb: { failAfter: 1 } });
-    await wait(700);
+    const idb = { failAfter: 1 };
+    const page = boot({ data: backup, log: [], idb });
+    // The cursor's error delivered, and the app's own first write made: what
+    // the failure leaves is in place, whenever the callbacks ran.
+    t('a failed read: precondition: the cursor failed after its first record',
+      await until(() => idb.cursorFailed === 1, 3000), String(idb.cursorFailed));
+    t('...precondition: the start wrote its settings',
+      await until(() => !!stored(page.win) && stored(page.win).foxThemeApplied === true, 3000), JSON.stringify(stored(page.win)));
+    await wait(50);
     t('a failed read restores nothing', !!stored(page.win) && stored(page.win).minVideoLength === '0', JSON.stringify(stored(page.win)));
     t('...and copies nothing over the copy', backup.get(KEY) === shared && backup.has(KEY + '::zzzz'), backup.get(KEY));
   }

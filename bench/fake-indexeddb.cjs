@@ -9,7 +9,8 @@
  * onupgradeneeded before onsuccess, and a transaction on a store that was
  * never created throws NotFoundError, so the app must create its store.
  * opts.gate: a promise the cursor waits for before its first record;
- * opts.failAfter: the cursor fails after that many records; opts.openFails:
+ * opts.failAfter: the cursor fails after that many records (opts.cursorFailed
+ * counts the failures delivered, for a test to wait for); opts.openFails:
  * the database does not open (onerror): true for every open, a number for
  * that many first opens; opts.abortWrites: a write transaction
  * aborts (onabort) with none of its records changed; opts.txIds: an array
@@ -65,6 +66,7 @@ function fakeIndexedDB(data, log, opts = {}) {
             if (opts.failAfter !== undefined && i >= opts.failAfter) {
               req.error = new Error('read failed');
               if (req.onerror) req.onerror();
+              opts.cursorFailed = (opts.cursorFailed || 0) + 1;
               return;
             }
             const key = keys[i++];
