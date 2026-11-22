@@ -268,6 +268,31 @@ run(async () => {
     t('switched off over a broken record: left, no error', win.localStorage.getItem(KEY) === '{broken' && errors.length === 0,
       errors[0]);
   }
+  // Up to 720p makes YouTube record 720p. Switched off, that record goes with
+  // Force Max Quality; a viewer's own, told apart by its time or size, stays.
+  for (const [name, offset, quality, kept] of [
+    ['its own 720p record, as the range was set', 0, 720, false],
+    ['its own 720p record, at the end of the window', 5000, 720, false],
+    ['a 720p pick just after the window', 5001, 720, true],
+    ['a 720p record from just before the range', -1, 720, true],
+    ['a 1080p pick inside the window', 100, 1080, true]
+  ]) {
+    const { win, log, stored, toggle } = boot({ forceQuality: 'up720' }, { quality: 'hd1080', state: 3 });
+    await wait(50);
+    const own = JSON.parse(win.localStorage.getItem('ytaf-force-record') || 'null');
+    t(`Up to 720p, ${name}: precondition: the range was set and noted`,
+      log.calls.includes('range:hd720') && own?.level === 'hd720' && typeof own?.at === 'number',
+      `${log.calls.join()} ${JSON.stringify(own)}`);
+    if (!own) continue;
+    win.localStorage.setItem(KEY, JSON.stringify({
+      data: JSON.stringify({ quality, previousQuality: 1080 }), creation: own.at + offset, expiration: own.at + YEAR
+    }));
+    toggle('Force Max Quality', false);
+    t(`Up to 720p, ${name}: ${kept ? 'kept' : 'removed'} when switched off`,
+      kept ? stored()?.data?.quality === quality : win.localStorage.getItem(KEY) === null, win.localStorage.getItem(KEY));
+    t(`Up to 720p, ${name}: the note goes too`, win.localStorage.getItem('ytaf-force-record') === null,
+      win.localStorage.getItem('ytaf-force-record'));
+  }
 
   // ---- How the player is found and followed ----
   {
