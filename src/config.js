@@ -664,6 +664,7 @@ function writeNow() {
         try {
           window.localStorage[key] = own;
           if (!backupChecked) noteWrittenBeforeRead(key);
+          else forgetWrittenBeforeRead(key);
           delete unwrittenRecords[key];
           written.push([key, own]);
         } catch {
@@ -713,10 +714,19 @@ function readSeeded() {
   } catch { return []; }
 }
 const writtenBeforeRead = new Set(recovering ? readSeeded() : []);
+function saveSeeded() {
+  try {
+    window.localStorage.setItem(SEEDED_KEY, JSON.stringify(Array.from(writtenBeforeRead)));
+    return true;
+  } catch { return false; }
+}
 function noteWrittenBeforeRead(key) {
-  if (writtenBeforeRead.has(key)) return;
   writtenBeforeRead.add(key);
-  try { window.localStorage.setItem(SEEDED_KEY, JSON.stringify(Array.from(writtenBeforeRead))); } catch { /* no storage */ }
+  return saveSeeded();
+}
+// Stored in localStorage after the read: that record is the newest again.
+function forgetWrittenBeforeRead(key) {
+  if (writtenBeforeRead.delete(key)) saveSeeded();
 }
 // The settings changed before the copy was read (CHANGED_KEY, below).
 const CHANGED_KEY = 'ytaf-settings-changed';
@@ -727,6 +737,7 @@ function endRecovery() {
     window.localStorage.removeItem(SEEDED_KEY);
     window.localStorage.removeItem(CHANGED_KEY);
   } catch { /* no storage */ }
+  writtenBeforeRead.clear();
 }
 // A write made before the copy was read: copied once it has been.
 let backupMissed = false;
@@ -813,6 +824,8 @@ let ownerRecordsToCopy = [];
 // The owners (journal keys) whose merged record localStorage refused: their
 // counters' additions stay in the journal until the copy has the record.
 let ownersAwaitingCopy = [];
+// Those records' keys: localStorage still holds an older record for each.
+let recordsAwaitingCopy = [];
 // The restore put changes made before the read into the shared record.
 let sharedChangedByRestore = false;
 // No switch of account before the copy was read (or its read failed): the
@@ -1175,11 +1188,13 @@ function restoreFromBackup() {
       ownerRecordsToCopy = ownerRecordsToCopy.filter(([k]) => k !== key).concat([[key, text]]);
       try {
         window.localStorage.setItem(key, text);
+        forgetWrittenBeforeRead(key);
         delete unwrittenRecords[key];
       } catch {
         // Refused (quota): applied from memory, over the older record still in localStorage.
         unwrittenRecords[key] = record;
         ownersAwaitingCopy.push(owner);
+        recordsAwaitingCopy.push(key);
       }
     }
     if (perAccount && profile !== null) switchProfile(profile);
@@ -1209,16 +1224,21 @@ function restoreFromBackup() {
     // changes in the shared record: with nothing changed there is nothing to keep.
     if (backupMissed || sharedChangedByRestore) scheduleWrite();
     const awaiting = sharedRestorePending ? ownersAwaitingCopy : [];
+    const awaitingRecords = recordsAwaitingCopy;
     if (ownerRecordsToCopy.length) {
       copyToBackup(ownerRecordsToCopy, awaiting.length ? (ok) => {
         // Not stored: the next start applies them to the copy's older record, once.
         if (!ok || !sharedRestorePending) return;
+        // The copy is now ahead of the record localStorage kept, so the next
+        // start takes the copy's. Unmarked, the additions stay in the journal.
+        if (!awaitingRecords.filter((key) => unwrittenRecords[key]).every(noteWrittenBeforeRead)) return;
         for (const owner of awaiting) if (beforeRestore.own[owner]) beforeRestore.own[owner].counted = {};
         saveBeforeRestore();
       } : undefined);
     }
     ownerRecordsToCopy = [];
     ownersAwaitingCopy = [];
+    recordsAwaitingCopy = [];
     // A switch of account that waited for the read.
     checkAccountChange();
   }, () => {

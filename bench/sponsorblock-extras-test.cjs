@@ -265,6 +265,36 @@ run(async () => {
       JSON.stringify([stored(env.win).sbTimeSaved, stored(env.win).sbSkipCount]));
     t(n('report off: nothing is sent'), env.reported.length === 0, env.reported.join());
   }
+  for (const [label, seekAway, swallowed] of [
+    ['undo after a seek', 70, false],
+    ['undo after a seek close by', 61, false],
+    ['undo after a seek, the skip’s own seeked lost', 70, true],
+    ['undo after playing on', null, false]
+  ]) {
+    // Skipped from 30.2 to 60, five seconds on: a seek of the viewer's ends the
+    // undo, though each target is within what playing could have reached.
+    const clock = {};
+    const env = await boot({ sbTimeSaved: 100, sbSkipCount: 4 }, [seg('sponsor', 30, 60)], { clock });
+    await env.playTo(30.2);
+    t(n(label + ': precondition: the segment was skipped'), env.state.time === 60, String(env.state.time));
+    await wait(30);
+    t(n(label + ': precondition: the skip can be undone'), !!env.sb().lastAutoSkip && env.sb().lastAutoSkip.landed === true);
+    if (swallowed) env.sb().lastAutoSkip.landed = false;
+    clock.now += 5000;
+    if (seekAway) {
+      env.video.currentTime = seekAway;
+      await wait(30);
+    } else {
+      await env.playTo(70);
+    }
+    await press(env.win, BLUE);
+    if (seekAway) {
+      t(n(label + ': Blue stays where the viewer went'), env.state.time === seekAway, String(env.state.time));
+      t(n(label + ': "Skip undone" is not shown'), env.toasts().indexOf('Skip undone') === -1, env.toasts());
+    } else {
+      t(n(label + ': Blue still goes back'), Math.abs(env.state.time - 30.2) < 0.01, String(env.state.time));
+    }
+  }
   {
     // localStorage emptied: a skip before the copy of the settings is read
     // adds to the copy's totals, and its undo after the read takes it off them.
@@ -394,6 +424,62 @@ run(async () => {
     await until(() => own().sbSkipCount !== undefined, 3000);
     t(n('both refused, copy stores: the next start counts the skip once'),
       Math.abs(own().sbTimeSaved - (100 + 60 - 30.2)) < 1e-9 && own().sbSkipCount === 5, JSON.stringify(own()));
+  }
+  for (const laterWrite of [false, true]) {
+    // The account's record survives in localStorage and refuses the merge, the
+    // copy takes it (129.8 s) and the journal lets the skip go: the next start
+    // takes the copy's, not the 100 s left behind. With a later write stored
+    // locally (the copy refusing that one), the local record is the newest.
+    const name = laterWrite ? 'stale record, written later' : 'stale record';
+    const clock = {};
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const PROFILE = 'ytaf-configuration::' + hashString('accountId=abc');
+    const old = JSON.stringify({ sbTimeSaved: 100, sbSkipCount: 4 });
+    const copy = savedCopy([
+      ['ytaf-configuration', JSON.stringify({ perAccountSettings: true, foxThemeApplied: true })],
+      [PROFILE, old]
+    ]);
+    const storage = { 'yt.leanback.default::last-identity-used': JSON.stringify({ data: { accountId: 'abc' } }), [PROFILE]: old };
+    const idb = { gate };
+    const opts = { clock, copy, storage, idb, refuse: ['ytaf-configuration', PROFILE] };
+    const env = await boot({}, [seg('sponsor', 30, 60), seg('sponsor', 70, 80)], opts);
+    await env.playTo(30.2);
+    t(n(name + ': precondition: the segment was skipped'), env.state.time === 60, String(env.state.time));
+    release();
+    const inCopy = await until(() => { try { return JSON.parse(copy.get(PROFILE)).sbSkipCount === 5; } catch { return false; } }, 3000);
+    t(n(name + ': precondition: the copy has the merged totals'), inCopy, copy.get(PROFILE));
+    t(n(name + ': precondition: localStorage still has the older record'), env.win.localStorage.getItem(PROFILE) === old,
+      env.win.localStorage.getItem(PROFILE));
+    t(n(name + ': the record is marked as older than the copy'),
+      await until(() => (env.win.localStorage.getItem('ytaf-settings-seeded') || '').indexOf(PROFILE) !== -1, 2000),
+      String(env.win.localStorage.getItem('ytaf-settings-seeded')));
+    if (laterWrite) {
+      idb.abortWrites = true;
+      opts.refuse.splice(opts.refuse.indexOf(PROFILE), 1);
+      await env.playTo(70.2);
+      t(n(name + ': precondition: the second segment was skipped'), env.state.time === 80, String(env.state.time));
+      const local = await until(() => { try { return JSON.parse(env.win.localStorage.getItem(PROFILE)).sbSkipCount === 6; } catch { return false; } }, 2000);
+      t(n(name + ': precondition: the later write is in localStorage only'),
+        local && JSON.parse(copy.get(PROFILE)).sbSkipCount === 5, String(env.win.localStorage.getItem(PROFILE)));
+      t(n(name + ': the mark goes with it'),
+        (env.win.localStorage.getItem('ytaf-settings-seeded') || '').indexOf(PROFILE) === -1,
+        String(env.win.localStorage.getItem('ytaf-settings-seeded')));
+    }
+    await wait(50);
+    const left = {};
+    for (let i = 0; i < env.win.localStorage.length; i++) {
+      const k = env.win.localStorage.key(i);
+      left[k] = env.win.localStorage.getItem(k);
+    }
+    const next = await boot({}, [seg('sponsor', 30, 60)], { copy, storage: left });
+    const want = laterWrite ? 6 : 5;
+    const own = () => JSON.parse(next.win.localStorage.getItem(PROFILE) || '{}');
+    await until(() => own().sbSkipCount === want, 3000);
+    await wait(100);
+    const saved = 100 + (60 - 30.2) + (laterWrite ? 80 - 70.2 : 0);
+    t(n(name + ': the next start has the newest totals, each skip once'),
+      own().sbSkipCount === want && Math.abs(own().sbTimeSaved - saved) < 1e-9, JSON.stringify(own()));
   }
   {
     // The same with Separate Settings for Each Account: the counters are the

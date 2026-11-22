@@ -7,7 +7,9 @@
  * page loads, with its version and object stores on data.version and
  * data.stores. As the real one: a database opened at a higher version gets
  * onupgradeneeded before onsuccess, and a transaction on a store that was
- * never created throws NotFoundError, so the app must create its store.
+ * never created throws NotFoundError, so the app must create its store. A
+ * transaction is readonly unless opened 'readwrite': a write in it throws
+ * ReadOnlyError, and its cursor still reads.
  * opts.gate: a promise the cursor waits for before its first record;
  * opts.failAfter: the cursor fails after that many records (opts.cursorFailed
  * counts the failures delivered, for a test to wait for); opts.openFails:
@@ -32,8 +34,11 @@ function fakeIndexedDB(data, log, opts = {}) {
   if (!data.stores) data.stores = new Set();
   const notFound = (name) => Object.assign(new Error(`No objectStore named ${name}`), { name: 'NotFoundError' });
   let txCount = 0;
-  const transaction = (name) => {
+  const transaction = (name, mode = 'readonly') => {
     if (!data.stores.has(name)) throw notFound(name);
+    const writable = () => {
+      if (mode !== 'readwrite') throw Object.assign(new Error('The transaction is read-only.'), { name: 'ReadOnlyError' });
+    };
     const tx = { oncomplete: null, onerror: null, onabort: null };
     const txId = ++txCount;
     // As the real one: a transaction's writes land together, once, or not at all.
@@ -56,8 +61,8 @@ function fakeIndexedDB(data, log, opts = {}) {
     tx.objectStore = (storeName) => {
       if (storeName !== name) throw notFound(storeName);
       return {
-        put(value, key) { stage(() => data.set(key, value), 'put ' + key); },
-        delete(key) { stage(() => data.delete(key)); },
+        put(value, key) { writable(); stage(() => data.set(key, value), 'put ' + key); },
+        delete(key) { writable(); stage(() => data.delete(key)); },
         openCursor() {
           const keys = Array.from(data.keys()).sort();
           let i = 0;
@@ -106,9 +111,9 @@ function fakeIndexedDB(data, log, opts = {}) {
           return;
         }
         const conn = Object.assign({}, db, { closed: false, onclose: null, onversionchange: null });
-        conn.transaction = (storeName) => {
+        conn.transaction = (storeName, mode) => {
           if (conn.closed) throw Object.assign(new Error('The database connection is closing.'), { name: 'InvalidStateError' });
-          return transaction(storeName);
+          return transaction(storeName, mode);
         };
         conn.close = () => { conn.closed = true; };
         conn.lose = () => { conn.closed = true; };

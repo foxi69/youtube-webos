@@ -1371,6 +1371,13 @@ class SponsorBlockHandler {
 
         this.addEvent(this.video, 'seeked', () => {
             if (this.isDestroyed) return;
+            // The undo is for the skip's own seek landing and playback from
+            // there: any other seek moved away, and Blue no longer goes back.
+            const skip = this.lastAutoSkip;
+            if (skip) {
+                if (skip.landed || Math.abs(this.video.currentTime - skip.to) > 2) this.lastAutoSkip = null;
+                else skip.landed = true;
+            }
             this.checkMutedSegment();
             this._clearSkipWatchdog();
             this.stopHighFreqLoop();

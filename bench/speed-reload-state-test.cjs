@@ -23,7 +23,7 @@ const EN = { languageCode: 'en', vss_id: '.en', kind: '' };
 const HEIGHTS = { highres: 4320, hd2160: 2160, hd1440: 1440, hd1080: 1080, hd720: 720, large: 480 };
 const writeQuality = (win, height, previous) => win.localStorage.setItem('yt-player-quality', JSON.stringify({
   data: JSON.stringify({ quality: height, previousQuality: previous }),
-  creation: Date.now(), expiration: Date.now() + 1e9
+  creation: win.Date.now(), expiration: win.Date.now() + 1e9
 }));
 
 // A trusted key press, as the remote sends: the speed keys too.
@@ -345,14 +345,56 @@ run(async () => {
       t('speed’s record, limit moved: precondition: Force set 1080p', await until(() => log.ranges.includes('hd1080'), 3000), log.ranges.join());
       // The page's clock past Force's 5 s, so the reloads' records are outside its window.
       const realNow = win.Date.now.bind(win.Date);
+      const forcedBy = realNow();
       win.Date.now = () => realNow() + 6000;
       speed.setSpeed(1.5, { immediate: true });
       await sleep(900);
       speed.setSpeed(1, { immediate: true });
       await sleep(900);
+      const recordAt = JSON.parse(win.localStorage.getItem('yt-player-quality')).creation;
+      t('speed’s record, limit moved: precondition: the record is past Force’s 5 s', recordAt > forcedBy + 5000,
+        String(recordAt - forcedBy));
       log.ranges.length = 0;
       t('speed’s record, limit moved: precondition: Up to 720p chosen', await moveForceRow(win, 'Up to 720p', 39) === 'Up to 720p');
       t('speed’s record, limit moved: the new limit applies', await until(() => log.ranges.includes('hd720'), 3000), log.ranges.join());
+    }
+    win.close();
+  }
+  {
+    // A 480p pick on one video, then Force's record on the next: the pick is
+    // not the next video's, and its speed reload keeps Force's limit.
+    const { win, p, log, speed, emit, setQuality, pump } = boot(0, { force: 'up720' });
+    t('pick, then Force on the next video: precondition: the speed feature is installed', !!speed);
+    if (speed) {
+      win.dispatchEvent(new win.CustomEvent('yt-navigate-finish', { detail: { pageType: 'watch' } }));
+      await sleep(300);
+      p.videoId = 'pickvideoa1';
+      setQuality('hd2160');
+      emit(-1); emit(3); emit(1); pump(); pump();
+      t('pick, then Force on the next video: precondition: Force set 720p on the first',
+        await until(() => log.ranges.includes('hd720'), 3000), log.ranges.join());
+      await sleep(20);
+      pressKey(win);
+      await sleep(20);
+      writeQuality(win, 480, 720);
+      setQuality('large');
+      speed.setSpeed(1.5, { immediate: true });
+      await sleep(900);
+      t('pick, then Force on the next video: precondition: the first video’s reload kept the pick',
+        log.ranges[log.ranges.length - 1] === 'large', log.ranges.join());
+      speed.setSpeed(1, { immediate: true });
+      await sleep(900);
+      log.ranges.length = 0;
+      p.videoId = 'pickvideob2';
+      setQuality('hd2160');
+      emit(-1); emit(3); emit(1); pump(); pump();
+      t('pick, then Force on the next video: precondition: Force set 720p on the second',
+        await until(() => log.ranges.includes('hd720'), 3000), log.ranges.join());
+      log.ranges.length = 0;
+      speed.setSpeed(1.5, { immediate: true });
+      await sleep(900);
+      t('pick, then Force on the next video: its reload is at Force’s limit, not the old pick',
+        log.ranges.length > 0 && !log.ranges.includes('large') && log.ranges[log.ranges.length - 1] === 'hd720', log.ranges.join());
     }
     win.close();
   }

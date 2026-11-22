@@ -283,7 +283,8 @@ run(async () => {
     // in localStorage and every write of it is refused (quota): the restore
     // merges both changes into it, the second over the first.
     const backup = savedCopy([
-      [KEY, JSON.stringify({ perAccountSettings: true, foxThemeApplied: true })],
+      // sbSkipCount: 7, a value nothing here changes: seen once the recovery has applied the copy.
+      [KEY, JSON.stringify({ perAccountSettings: true, foxThemeApplied: true, sbSkipCount: 7 })],
       [PROFILE_KEY, JSON.stringify({ minVideoLength: '20', removeUpscaledFormats: true })]
     ]);
     let release;
@@ -331,9 +332,14 @@ run(async () => {
     const after = row.querySelector('.current-value').textContent;
     t('precondition (two owners): the account\'s change made', after !== before, before + ' -> ' + after);
     await wait(300);
+    t('...precondition: the copy\'s value is not there before the read', (stored(page.win) || {}).sbSkipCount !== 7,
+      JSON.stringify(stored(page.win)));
+    const refusedBefore = refusing.refused;
     release();
-    await wait(800);
-    t('...precondition: the account\'s record was refused', refusing.refused > 0, String(refusing.refused));
+    t('...precondition: the recovery applied the copy',
+      await until(() => (stored(page.win) || {}).sbSkipCount === 7, 5000), JSON.stringify(stored(page.win)));
+    t('...precondition: the recovery\'s write of the account\'s record was refused', refusing.refused > refusedBefore,
+      refusedBefore + ' -> ' + refusing.refused);
     const upscaled = input('Skip AI-Upscaled Qualities');
     t('two owners: the change made with no account loaded is kept', !!upscaled && upscaled.checked === false,
       String(upscaled && upscaled.checked));

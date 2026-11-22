@@ -398,7 +398,8 @@ export function createSpeedController({
     // A key in between (a pick in YouTube's menu, even within a second) makes
     // the record the viewer's.
     const forced = !!forcedRange && record.at >= forcedRange.from && !keyPressedBetween(forcedRange.from, record.at);
-    if (!ours && !forced) lastPick = record.level;
+    // Force's record replaced whatever was picked before it (on another video, say).
+    if (!ours) lastPick = forced ? null : record.level;
     return lastPick;
   }
 
