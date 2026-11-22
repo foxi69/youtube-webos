@@ -394,8 +394,10 @@ export function createSpeedController({
     const own = ownRanges.get(record.level);
     const ours = !!own && record.at >= own.from &&
       (record.at < own.until || !keyPressedBetween(own.last, record.at));
-    const forced = !!forcedRange && record.at >= forcedRange.from &&
-      (record.at < forcedRange.until || !keyPressedBetween(forcedRange.from, record.at));
+    // Force Max Quality's: written after its range with no key pressed since.
+    // A key in between (a pick in YouTube's menu, even within a second) makes
+    // the record the viewer's.
+    const forced = !!forcedRange && record.at >= forcedRange.from && !keyPressedBetween(forcedRange.from, record.at);
     if (!ours && !forced) lastPick = record.level;
     return lastPick;
   }
@@ -786,7 +788,7 @@ export function createSpeedController({
     clearQualityPick,
     noteForcedRange() {
       const now = Date.now();
-      forcedRange = { from: now, until: now + OWN_RECORD_MS };
+      forcedRange = { from: now };
     },
     leaveVideo,
     dispose
@@ -941,9 +943,13 @@ export function initPlaybackSpeed() {
         const player =
           document.getElementById(SELECTORS.PLAYER_ID) ||
           document.querySelector('.html5-video-player');
-        if (!player || typeof player.getPlaybackQuality !== 'function') return;
-        const cap = speedInstance.controller.capQuality();
-        if ((QUALITY_HEIGHTS[player.getPlaybackQuality()] || 0) > QUALITY_HEIGHTS[cap]) speedInstance.controller.setRange(player, cap);
+        if (!player || typeof player.getPlaybackQuality !== 'function' || typeof player.setPlaybackQualityRange !== 'function') return;
+        try {
+          const cap = speedInstance.controller.capQuality();
+          if ((QUALITY_HEIGHTS[player.getPlaybackQuality()] || 0) > QUALITY_HEIGHTS[cap]) speedInstance.controller.setRange(player, cap);
+        } catch {
+          // A player between two videos: the next video takes the limit.
+        }
       }, LIMIT_APPLY_MS);
     });
     // The next video (autoplay, a tile) keeps the speed but starts at the

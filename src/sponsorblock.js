@@ -2,7 +2,7 @@ import sha256 from 'tiny-sha256';
 import { configAddChangeListener, configRemoveChangeListener, segmentTypes, configGetAll, configRead, configWrite, configActiveProfile } from './config';
 import { showNotification } from './notifications.js';
 import sponsorBlockUI from './Sponsorblock-UI.js';
-import sponsorBlockLabels, { isFullVideoSegment } from './sponsorblock-labels.js';
+import sponsorBlockLabels, { isFullVideoSegment, shorterThan } from './sponsorblock-labels.js';
 import { isLegacyWebOS } from './webos-utils.js';
 import { getVideo, rendererChapterStarts } from './utils.js';
 import { currentChannelName, isChannelWhitelisted, videoIdFromHash } from './sponsorblock-extras.js';
@@ -614,7 +614,7 @@ class SponsorBlockHandler {
             if (!mode || mode === 'disable' || mode === 'seek_bar') continue;
             if (seg.actionType && seg.actionType !== 'skip') continue;
             // Ignore Segments Shorter Than: too short to be worth a jump.
-            if (minLength && seg.segment[1] - seg.segment[0] < minLength) continue;
+            if (shorterThan(seg.segment[0], seg.segment[1], minLength)) continue;
 
             this.skipSegments.push({
                 start: seg.segment[0],
@@ -642,7 +642,7 @@ class SponsorBlockHandler {
             for (let i = 0; i < this.segments.length; i++) {
                 const seg = this.segments[i];
                 if (seg.actionType !== 'mute' || seg.category === 'poi_highlight') continue;
-                if (minLength && seg.segment[1] - seg.segment[0] < minLength) continue;
+                if (shorterThan(seg.segment[0], seg.segment[1], minLength)) continue;
                 const mode = config[CONFIG_MAPPING[seg.category]];
                 if (mode !== 'auto_skip' && mode !== 'manual_skip') continue;
                 list.push({ start: seg.segment[0], end: seg.segment[1], categoryName: this.getCategoryName(seg.category) });
@@ -946,7 +946,9 @@ class SponsorBlockHandler {
 
            if (seg.mode === 'auto_skip' && seg.start < chain.endTime && seg.end <= chain.endTime + 0.1) {
                 this.skippedSegmentIndices.add(seg.originalIndex);
-                if (covered.indexOf(seg.originalIndex) === -1) covered.push(seg.originalIndex);
+                // Reported (noteSkip) only where the jump crossed it: one already
+                // behind where it started was played, not skipped.
+                if (seg.end > chainStart && covered.indexOf(seg.originalIndex) === -1) covered.push(seg.originalIndex);
             }
         }
         this.noteSkip(chainStart, chain.endTime, covered);
@@ -972,14 +974,18 @@ class SponsorBlockHandler {
      * video's channel is on the list, or, with a list, its channel is not known
      * yet (the player still reporting the video before counts as not known).
      * Then the segments are built again once it is (a try a second, ten at
-     * most); a channel still unknown after that counts as not listed.
+     * most); a channel still unknown after that counts as not listed until it
+     * is known (looked at again as playback starts, see PLAYING below).
      */
     channelWhitelisted() {
         const list = configRead('sbWhitelistChannels');
         if (!Array.isArray(list) || !list.length) return false;
         const name = currentChannelName(this.videoID);
         if (name) return isChannelWhitelisted(name);
-        if ((this.channelRetries || 0) >= CHANNEL_RETRIES) return false;
+        if ((this.channelRetries || 0) >= CHANNEL_RETRIES) {
+            this.channelUnresolved = true;
+            return false;
+        }
         if (!this.channelRetryTimer && !this.isDestroyed) {
             this.channelRetryTimer = setTimeout(() => {
                 this.channelRetryTimer = null;
@@ -1283,6 +1289,14 @@ class SponsorBlockHandler {
                 // Re-evaluate tracking (re-enables time listener if needed)
                 this.resetSegmentTracking();
                 this.hasPerformedChainSkip = false;
+                // A channel still unknown after its retries, known by now: the
+                // segments are built again for Never Skip on These Channels.
+                // One lookup a play while unresolved, none otherwise.
+                if (this.channelUnresolved && currentChannelName(this.videoID)) {
+                    this.channelUnresolved = false;
+                    this.rebuildSkipSegments();
+                    this.updateLabels();
+                }
                 this.executeChainSkip(this.video);
             } else if (state === 2) { // PAUSED
                 this.stopHighFreqLoop();

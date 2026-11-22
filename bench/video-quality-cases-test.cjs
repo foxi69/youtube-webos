@@ -307,12 +307,15 @@ run(async () => {
   {
     // Storage refused: Force Max Quality still sets the range. Switched off
     // first, so its cached record is gone and switching on really writes.
-    const { win, log, s, emit, toggle, errors } = boot({}, { levels: ['auto'] });
+    // The panel's settle timer is held and run before the video's events: a
+    // state event while the row may still move forces nothing.
+    const { win, log, s, emit, toggle, errors, applyTimers } = boot({}, { levels: ['auto'], holdApply: true });
     await wait(50);
     toggle('Force Max Quality', false);
     let refused = 0;
     win.Storage.prototype.setItem = () => { refused++; throw new Error('quota'); };
     toggle('Force Max Quality', true);
+    for (const h of applyTimers.filter((x) => !x.cleared && !x.ran)) { h.ran = true; h.fn(); }
     log.calls.length = 0;
     s.videoId = 'quotavideo1';
     s.levels = ['hd2160', 'hd1080', 'hd720', 'auto'];

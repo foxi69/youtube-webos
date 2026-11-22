@@ -165,6 +165,15 @@ export function categoryColor(category) {
 }
 
 /** A segment the API returned as a whole-video label. */
+/**
+ * Ignore Segments Shorter Than: whether [start, end] is shorter than `min`
+ * seconds (0: off). Compared with a millisecond to spare, so a segment of
+ * exactly that length counts (8.2 - 3.2 is 4.999999999999999).
+ */
+export function shorterThan(start, end, min) {
+  return min > 0 && end - start < min - 0.001;
+}
+
 export function isFullVideoSegment(segment) {
   return !!segment && segment.actionType === 'full';
 }
@@ -205,7 +214,7 @@ export function skippableSeconds(segments, duration) {
     let end = Number(seg.segment[1]);
     if (isNaN(start) || isNaN(end) || end <= start) continue;
     // Ignore Segments Shorter Than: these play in full.
-    if (end - start < (Number(configRead('sbMinSegmentLength')) || 0)) continue;
+    if (shorterThan(start, end, Number(configRead('sbMinSegmentLength')) || 0)) continue;
 
     if (duration > 0) {
       start = Math.max(0, Math.min(start, duration));

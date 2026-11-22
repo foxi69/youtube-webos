@@ -810,19 +810,23 @@ function applyCounted(record, counted) {
 // The account records the restore merged changes into: copied once the copy
 // has been read, as they need not be the account in use (whose writes copy it).
 let ownerRecordsToCopy = [];
+// The owners (journal keys) whose merged record localStorage refused: their
+// counters' additions stay in the journal until the copy has the record.
+let ownersAwaitingCopy = [];
 // The restore put changes made before the read into the shared record.
 let sharedChangedByRestore = false;
 // No switch of account before the copy was read (or its read failed): the
 // changes made before it stay with the one account they were made in.
 let restoreSettled = backupChecked;
-function copyToBackup(written) {
+/** Copies `written` to IndexedDB; `onStored(true)` once the copy has them, (false) when it could not. */
+function copyToBackup(written, onStored) {
   if (!written.length) return;
   if (!backupChecked) { backupMissed = true; return; }
   if (sharedRestorePending && written.some(([key]) => key === CONFIG_KEY)) {
     sharedRestorePending = false;
     endRecovery();
   }
-  backupWrite(written).catch(() => { /* best effort */ });
+  backupWrite(written).then((ok) => { if (onStored) onStored(ok); }, () => { if (onStored) onStored(false); });
 }
 
 const flushPendingWrite = () => {
@@ -880,9 +884,7 @@ export function configWrite(key, value) {
   if (!backupChecked && COUNTERS.has(key)) {
     countBeforeRestore(key, (Number(value) || 0) - (Number(oldValue) || 0), false);
   } else if (!backupChecked && !APP_RECORDS.has(key)) {
-    if (!activeProfile || DEVICE_KEYS.has(key)) beforeRestore.shared[key] = value;
-    if (!DEVICE_KEYS.has(key)) ownChanges(activeProfile).values[key] = value;
-    beforeRestoreChanged = true;
+    journalBeforeRestore(key, value);
   }
   localConfig[key] = value;
   scheduleWrite();
@@ -918,8 +920,24 @@ const RESET_KEEPS = new Set(['perAccountSettings', 'foxThemeApplied', 'captionSt
 export function configResetAll() {
   for (const [key, option] of configOptions) {
     if (RESET_KEEPS.has(key)) continue;
-    configWrite(key, Array.isArray(option.default) ? option.default.slice() : option.default);
+    const value = Array.isArray(option.default) ? option.default.slice() : option.default;
+    // Before the copy is read, a setting showing its default already is reset
+    // too: the copy's value (Up to 480p, say) must not come back over it.
+    // configWrite records only a change.
+    if (!backupChecked && !COUNTERS.has(key) && !APP_RECORDS.has(key) && localConfig[key] === value) {
+      journalBeforeRestore(key, value);
+      scheduleWrite();
+      continue;
+    }
+    configWrite(key, value);
   }
+}
+
+/** A change made before the copy was read, kept over the copy's value (restoreFromBackup). */
+function journalBeforeRestore(key, value) {
+  if (!activeProfile || DEVICE_KEYS.has(key)) beforeRestore.shared[key] = value;
+  if (!DEVICE_KEYS.has(key)) ownChanges(activeProfile).values[key] = value;
+  beforeRestoreChanged = true;
 }
 
 function notifyChange(key, newValue, oldValue) {
@@ -1061,6 +1079,11 @@ function restoreFromBackup() {
     }
     const shared = records[CONFIG_KEY];
     if (!shared) return false;
+    // A write still waiting is made now, by the profile it belongs to: below,
+    // with no profile loaded while the copy is applied, switchProfile would
+    // flush it into the shared record (an account's change, say, of a key the
+    // older copy lacks). Its change is in the journal either way.
+    flushPendingWrite();
     // A setting changed before the read keeps its new value, in the record
     // written back and in use: one changed in the shared settings in the
     // shared record, one changed in an account's in that account's (below).
@@ -1154,6 +1177,7 @@ function restoreFromBackup() {
       } catch {
         // Refused (quota): applied from memory, over the older record still in localStorage.
         unwrittenRecords[key] = record;
+        ownersAwaitingCopy.push(owner);
       }
     }
     if (perAccount && profile !== null) switchProfile(profile);
@@ -1167,8 +1191,12 @@ function restoreFromBackup() {
       // copy again: the changes are kept for it. What the counters added in
       // an account is in that account's record, copied with it, so it goes;
       // what they added to the shared totals is in no copy until the shared
-      // record is stored (endRecovery clears it then), so it stays.
-      for (const owner of Object.keys(beforeRestore.own)) beforeRestore.own[owner].counted = {};
+      // record is stored (endRecovery clears it then), so it stays. An
+      // account whose record localStorage refused too has it only once the
+      // copy does: its additions go then (below), not before.
+      for (const owner of Object.keys(beforeRestore.own)) {
+        if (ownersAwaitingCopy.indexOf(owner) === -1) beforeRestore.own[owner].counted = {};
+      }
       saveBeforeRestore();
     }
     backupChecked = true;
@@ -1178,8 +1206,17 @@ function restoreFromBackup() {
     // Copied only if something was written meanwhile, or the restore kept
     // changes in the shared record: with nothing changed there is nothing to keep.
     if (backupMissed || sharedChangedByRestore) scheduleWrite();
-    if (ownerRecordsToCopy.length) copyToBackup(ownerRecordsToCopy);
+    const awaiting = sharedRestorePending ? ownersAwaitingCopy : [];
+    if (ownerRecordsToCopy.length) {
+      copyToBackup(ownerRecordsToCopy, awaiting.length ? (ok) => {
+        // Not stored: the next start applies them to the copy's older record, once.
+        if (!ok || !sharedRestorePending) return;
+        for (const owner of awaiting) if (beforeRestore.own[owner]) beforeRestore.own[owner].counted = {};
+        saveBeforeRestore();
+      } : undefined);
+    }
     ownerRecordsToCopy = [];
+    ownersAwaitingCopy = [];
     // A switch of account that waited for the read.
     checkAccountChange();
   }, () => {

@@ -146,16 +146,20 @@ function varint(n: number, out: number[]): void {
 
 /** The search `params` for the filters chosen, or '' for none. */
 export function searchParams(uploadDate: string, type: string, duration: string, feature: string): string {
+  // A stored value is looked up as an own key only: "constructor" or another
+  // name Object.prototype has is no mode, and is left out.
+  const own = (map: Record<string, number>, key: string): number | undefined =>
+    Object.prototype.hasOwnProperty.call(map, key) ? map[key] : undefined;
   const filters: number[] = [];
   const add = (field: number, value: number | undefined) => {
     if (!value) return;
     varint(field << 3, filters);
     varint(value, filters);
   };
-  add(1, SEARCH_UPLOAD_DATES[uploadDate]);
-  add(2, SEARCH_TYPES[type]);
-  add(3, SEARCH_DURATIONS[duration]);
-  const featureField = SEARCH_FEATURES[feature];
+  add(1, own(SEARCH_UPLOAD_DATES, uploadDate));
+  add(2, own(SEARCH_TYPES, type));
+  add(3, own(SEARCH_DURATIONS, duration));
+  const featureField = own(SEARCH_FEATURES, feature);
   if (featureField) add(featureField, 1);
   if (!filters.length) return '';
   const bytes = [0x12];

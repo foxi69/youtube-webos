@@ -233,17 +233,39 @@ function setLocalStorageQuality() {
  * app goes back to choosing the quality itself instead of staying pinned.
  * A record the viewer set through YouTube's own menu is left alone.
  */
+// The record YouTube writes for a range Force Max Quality set (Up to 720p:
+// 720p; Max: the video's best level) is noted, so switching Force Max Quality off
+// removes it too: left, a later start's speed reload would take it for the
+// viewer's pick. Kept across starts. One written later than this is not ours.
+const FORCED_RECORD_KEY = 'ytaf-force-record';
+const FORCED_RECORD_MS = 5000;
+
+function noteForcedRecord(level) {
+  try { window.localStorage.setItem(FORCED_RECORD_KEY, JSON.stringify({ level, at: Date.now() })); } catch { /* storage denied */ }
+}
+
+/** Whether YouTube's quality record `parsed` (with its `data`) is the one a Force Max Quality range wrote. */
+function isForcedRecord(parsed, data) {
+  let own;
+  try { own = JSON.parse(window.localStorage.getItem(FORCED_RECORD_KEY) || 'null'); } catch { return false; }
+  if (!own || typeof own.at !== 'number' || typeof own.level !== 'string') return false;
+  const created = Number(parsed.creation);
+  if (!(created >= own.at && created <= own.at + FORCED_RECORD_MS)) return false;
+  return QUALITY_HEIGHTS[own.level] === data.quality;
+}
+
 function clearLocalStorageQuality() {
   try {
     const stored = window.localStorage.getItem(QUALITY_KEY);
     if (stored) {
       const parsed = JSON.parse(stored);
       const data = parsed && parsed.data ? JSON.parse(parsed.data) : null;
-      if (data && data.quality === 4320 && data.previousQuality === 4320) {
+      if (data && ((data.quality === 4320 && data.previousQuality === 4320) || isForcedRecord(parsed, data))) {
         window.localStorage.removeItem(QUALITY_KEY);
       }
     }
   } catch { /* ignore */ }
+  try { window.localStorage.removeItem(FORCED_RECORD_KEY); } catch { /* storage denied */ }
   cachedQualitySettings = null;
   cachedQualityExpiration = 0;
   // Switched back on at once, the record must be written again, not throttled.
@@ -332,6 +354,8 @@ function setQualityOnPlayer() {
 
     const level = targetLevel();
     noteForcedQuality();
+    // Max is the video's best level: the record YouTube writes says that one.
+    noteForcedRecord(level === 'highres' ? (player.getAvailableQualityLevels?.() || []).find((q) => q !== 'auto') || level : level);
     player.setPlaybackQualityRange(level, level);
     rangeSet = true;
     player.setPlaybackQuality?.(level);
@@ -535,6 +559,9 @@ function handleStateChange(state) {
 
   // Everything below is quality forcing only.
   if (!_shouldForce) return;
+  // The panel row still moving (applyToPlayingVideo pending): a state event
+  // meanwhile (buffering) must not force a mode stepped through on the way.
+  if (applyNowTimer !== null) return;
 
   try {
     const videoData = player.getVideoData?.();
@@ -785,6 +812,7 @@ function setupListeners() {
       _shouldForce = evt.detail.newValue !== 'off';
       if (!_shouldForce) {
         clearTimeout(applyNowTimer);
+        applyNowTimer = null;
         if (wasForcing) clearLocalStorageQuality();
         return;
       }

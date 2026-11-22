@@ -1827,7 +1827,12 @@ function filterVideoFormats(holder, dropUpscaled, maxLines) {
   const formats = holder && holder.streamingData && holder.streamingData.adaptiveFormats;
   if (!Array.isArray(formats)) return;
   if (dropUpscaled) dropFormats(formats, isUpscaledFormat);
-  if (maxLines > 0) dropFormats(formats, (format) => formatLines(format) > maxLines);
+  // A format of no known size is kept, and is no reason to drop the others:
+  // only one known to fit lets the bigger ones go.
+  if (maxLines > 0) {
+    dropFormats(formats, (format) => formatLines(format) > maxLines,
+      (format) => formatLines(format) > 0 && formatLines(format) <= maxLines);
+  }
 }
 
 /**
@@ -1843,15 +1848,16 @@ function canPlayFormat(format) {
 }
 
 // A step drops its formats only when one the TV can play is left: an AV1
-// format kept on a TV without AV1 is no picture either.
-function dropFormats(formats, shouldDrop) {
+// format kept on a TV without AV1 is no picture either. `fits`: which of
+// the formats left count as that one (all of them by default).
+function dropFormats(formats, shouldDrop, fits) {
   let kept = 0;
   let dropped = 0;
   for (let i = 0; i < formats.length; i++) {
     const format = formats[i];
     if (!isVideoFormat(format)) continue;
     if (shouldDrop(format)) dropped++;
-    else if (canPlayFormat(format)) kept++;
+    else if ((!fits || fits(format)) && canPlayFormat(format)) kept++;
   }
   if (!dropped || !kept) return;
   let w = 0;

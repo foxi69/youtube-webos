@@ -397,8 +397,11 @@ run(async () => {
     log.ranges.length = 0;
     flip(false); flip(true);
     emit(3); pump(); pump();
+    // A state event while the row's settle timer is pending forces nothing;
+    // the timer then applies Max to the video playing.
+    t('...precondition: nothing forced while the row may still move', !log.ranges.includes('highres'), log.ranges.join());
     t('explicitly enabling Force Max Quality releases the retained manual choice',
-      log.ranges.includes('highres'), log.ranges.join());
+      await until(() => log.ranges.includes('highres'), 2000), log.ranges.join());
     win.close();
   }
   {
