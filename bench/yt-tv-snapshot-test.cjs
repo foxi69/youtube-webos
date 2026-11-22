@@ -66,6 +66,25 @@ t('the command at a new place is named', moved.some((c) => /new place: .*lockupV
 const none = diff(base, build(capture('none', undefined)));
 t('no preview command at all is named', none.some((c) => /no preview command/.test(c)), none.join(' | '));
 
+// ---- A capture of several bundles (b0..b3-main.js, as the TV loads them) ----
+function bundles(name, files) {
+  const dir = capture(name, command());
+  fs.unlinkSync(path.join(dir, '05_x_main.js'));
+  for (const [file, code] of Object.entries(files)) fs.writeFileSync(path.join(dir, file), code);
+  return dir;
+}
+const split = build(bundles('split', { 'b0-main.js': 'var q=1;', 'b1-main.js': CODE, 'b2-main.js': 'z.graftPlayback(y);' }));
+t('several bundles: the one naming the most anchors is kept, not the first or the last',
+  !!split.code && split.code.bundle === 'b1-main.js' && split.code.anchors.blockAdoption.count === 1 &&
+  split.code.anchors.forceSeamlessAutotransition.count === 1, JSON.stringify(split.code && split.code.bundle));
+const splitDiff = diff(base, split).filter((c) => c.startsWith('code:'));
+t('...and against a one-bundle capture of the same code, no code change', splitDiff.length === 0, splitDiff.join(' | '));
+const unnamed = build(bundles('unnamed', { 'b1-main.js': 'var r=2;', 'b0-main.js': 'var q=1;' }));
+const unnamedDiff = diff(base, unnamed);
+t('no bundle names any: the first is kept and the names show as gone',
+  !!unnamed.code && unnamed.code.bundle === 'b0-main.js' && unnamedDiff.some((c) => c === 'code: "blockAdoption" is gone (1 -> 0)'),
+  JSON.stringify(unnamed.code && unnamed.code.bundle) + ' ' + unnamedDiff.join(' | '));
+
 // ---- watch-code: the daily check of the public bundle, the network stubbed ----
 const { mainBundleUrl, watchCode, codeAnchors } = require('../tools/yt-tv-snapshot.cjs');
 const BASE = '/s/_/kabuki/_/js/k=kabuki.base_cr.en_US.abc.es5.O/am=AAAA/d=1/excm=main/rs=XYZ/m=base';
