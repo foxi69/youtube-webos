@@ -701,7 +701,8 @@ run(async () => {
     t(n('undone, ended segment: precondition: skipped in one jump'), env.state.time === 60, String(env.state.time));
     await press(env.win, BLUE);
     t(n('undone, ended segment: precondition: Blue went back'), Math.abs(env.state.time - 30.2) < 0.01, String(env.state.time));
-    env.sb().applyRefreshedSegments([seg('sponsor', 30, 35), seg('selfpromo', 20, 55)], 'refreshed');
+    // By start, as a refresh hands them over.
+    env.sb().applyRefreshedSegments([seg('selfpromo', 20, 55), seg('sponsor', 30, 35)], 'refreshed');
     await wait(50);
     await env.playTo(36);
     t(n('undone, ended segment: the new segment around it is skipped to its end'), env.state.time === 55, String(env.state.time));
