@@ -9,7 +9,7 @@ import { initMathLetters } from './math-letters.js';
 import { initPlaybackSpeed, stepSpeed, resetSpeed, toggleSpeed } from './playback-speed.js';
 import { toggleChannelWhitelist, formatTimeSaved, titleTrayChannel } from './sponsorblock-extras.js';
 import sponsorBlockUI from './Sponsorblock-UI.js';
-import { sendKey, REMOTE_KEYS, COLOR_CODE_MAP, isGuestMode, invalidateGuestModeCache, isWatchPage, isShortsPage, isSearchPage, SELECTORS, getVideo, SYNTHETIC_KEY_FLAG, isAutoplayOn, isLiveStream } from './utils.js';
+import { sendKey, REMOTE_KEYS, COLOR_CODE_MAP, isGuestMode, invalidateGuestModeCache, isWatchPage, isShortsPage, isSearchPage, SELECTORS, getVideo, SYNTHETIC_KEY_FLAG, isSyntheticKeyEcho, isAutoplayOn, isLiveStream, rendererChapterStarts } from './utils.js';
 import { initTrackingBlock, destroyTrackingBlock } from './adblock.js';
 import logoOrangeUrl from './icons/logo-orange.png';
 import logoBlueUrl from './icons/logo-blue.png';
@@ -1501,11 +1501,7 @@ window.addEventListener('ytaf-page-update', cancelDelayedPlaybackActions);
  * video, read on the TV), which put the skip minutes off.
  */
 function chapterStarts(chapterEls, duration) {
-  const host = document.querySelector('ytlr-multi-markers-player-bar-renderer');
-  const props = host && host.__instance && host.__instance.props;
-  const own = props && props.data && Array.isArray(props.data.chapters) ? props.data.chapters : [];
-  // A number only: Number(null) is 0, a chapter at the start that is not there.
-  const starts = own.map((chapter) => chapter && chapter.start).filter((s) => typeof s === 'number' && isFinite(s));
+  const starts = rendererChapterStarts();
   if (starts.length) return starts;
   const widths = [];
   let total = 0;
@@ -2268,7 +2264,7 @@ function isTextBox(el) {
   return el.tagName === 'INPUT' && el.type !== 'checkbox' && el.type !== 'color';
 }
 
-const isSyntheticKey = (evt) => !!evt[SYNTHETIC_KEY_FLAG] || evt.isTrusted === false;
+const isSyntheticKey = (evt) => !!evt[SYNTHETIC_KEY_FLAG] || evt.isTrusted === false || isSyntheticKeyEcho(evt);
 
 // The key that closed the settings panel (Back, Escape, an Enter, the menu
 // key) is swallowed until it is released: a held Back keeps repeating, and

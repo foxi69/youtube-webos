@@ -65,25 +65,112 @@ function collectRules() {
   return res;
 }
 
-function isZero(v) {
-  return v === '0' || v === '0px' || v === '0rem';
+// CSS whitespace only: U+00A0 and the like can be part of a name.
+function cssTrim(text) {
+  return text.replace(/^[ \t\n\f\r]+|[ \t\n\f\r]+$/g, '');
 }
 
-function findCollapsingSelectors() {
+// Any zero length, as declared (0, 0px, 0em, 0.0vh...).
+function isZero(v) {
+  return /^[+-]?(?:0+(?:\.0*)?|\.0+)(?:[a-z]+|%)?$/i.test(cssTrim(String(v || '')));
+}
+
+// A closing class as a whole class name (.frHKed, not .frHKed-extra, and not
+// the escaped dot of .other\.frHKed), outside quoted values. No lookbehind:
+// Chrome 38.
+const CLOSE_CLASS_RES = CLOSE_CLASSES.map((name) => new RegExp('(?:^|[^\\\\])(?:\\\\\\\\)*\\.' + name + '(?![\\w\\-\\\\\\u0080-\\uffff])'));
+// An escape outside a quoted value is matched first and kept: an escaped
+// quote (\" in a class name, as CSSOM serializes one) starts no value.
+const QUOTED_RE = /\\[\s\S]|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'/g;
+// A closing class inside :not() selects the element without it: the body of
+// each :not() is left out (quoted values are masked already, an escaped
+// bracket is part of a name).
+// Inside an odd number of :not() the text is left out, inside an even number
+// (:not(:not(.frHKed)) selects the class) it is kept.
+function withoutNot(sel, negated = false) {
+  let out = '';
+  for (let i = 0; i < sel.length; i++) {
+    if (sel[i] === '\\') {
+      if (!negated) out += sel.slice(i, i + 2);
+      i++;
+    } else if (sel.slice(i, i + 5).toLowerCase() === ':not(') {
+      const from = i + 5;
+      let depth = 1;
+      i = from;
+      while (i < sel.length && depth) {
+        if (sel[i] === '\\') i++;
+        else if (sel[i] === '(') depth++;
+        else if (sel[i] === ')') depth--;
+        i++;
+      }
+      out += ':not(' + withoutNot(sel.slice(from, depth ? i : i - 1), !negated) + ')';
+      i--;
+    } else if (!negated) {
+      out += sel[i];
+    }
+  }
+  return out;
+}
+function namesCloseClass(sel) {
+  const bare = withoutNot(sel.replace(QUOTED_RE, (m) => (m[0] === '\\' ? m : '""')));
+  return CLOSE_CLASS_RES.some((re) => re.test(bare));
+}
+
+// Only what the rule collapses is undone: the element keeps every other value
+// it has (.AmQJbe has an inline width that a blanket `width: auto !important`
+// would beat).
+function collapsedOverrides(s) {
+  const out = [];
+  if (s.display === 'none') out.push('display: block');
+  if (isZero(s.height)) out.push('height: auto');
+  if (isZero(s.width)) out.push('width: auto');
+  if (isZero(s.maxHeight)) out.push('max-height: none');
+  return out;
+}
+
+// A selector list split on its top-level commas (not those inside :is(),
+// [attr] or a quoted value, whose brackets do not count either, nor an
+// escaped one, which is part of a name).
+function splitSelectorList(text) {
+  const parts = [];
+  let depth = 0;
+  let start = 0;
+  let quote = '';
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '\\') i++;
+    else if (quote) {
+      if (ch === quote) quote = '';
+    }
+    else if (ch === '"' || ch === "'") quote = ch;
+    else if (ch === '(' || ch === '[') depth++;
+    else if (ch === ')' || ch === ']') depth--;
+    else if (ch === ',' && depth === 0) {
+      parts.push(cssTrim(text.slice(start, i)));
+      start = i + 1;
+    }
+  }
+  parts.push(cssTrim(text.slice(start)));
+  return parts.filter(Boolean);
+}
+
+// A minified sheet merges rules with the same body into one selector list, so
+// only the selectors of a list that name a closing class are overridden: the
+// whole list would keep unrelated classes (.zylon-hidden) laid out.
+function findCollapsingRules() {
   const rules = collectRules();
-  const sels = [];
+  const found = [];
   for (let i = 0; i < rules.length; i++) {
     const r = rules[i];
-    const sel = r.selectorText;
-    let usesCloseClass = false;
-    for (let j = 0; j < CLOSE_CLASSES.length; j++) {
-      if (sel.indexOf('.' + CLOSE_CLASSES[j]) !== -1) { usesCloseClass = true; break; }
+    if (!namesCloseClass(r.selectorText)) continue;
+    const overrides = collapsedOverrides(r.style);
+    if (!overrides.length) continue;
+    const parts = splitSelectorList(r.selectorText);
+    for (let k = 0; k < parts.length; k++) {
+      if (namesCloseClass(parts[k])) found.push({ selector: parts[k], overrides });
     }
-    if (!usesCloseClass) continue;
-    const s = r.style;
-    if (s.display === 'none' || isZero(s.height) || isZero(s.width) || isZero(s.maxHeight)) sels.push(sel);
   }
-  return sels;
+  return found;
 }
 
 function applyFix(fromStartup) {
@@ -93,20 +180,19 @@ function applyFix(fromStartup) {
     scans++;
   }
 
-  const sels = findCollapsingSelectors();
+  const found = findCollapsingRules();
   if (!styleEl) {
     styleEl = document.createElement('style');
     styleEl.id = 'ytaf-comments-close-fix';
     (document.head || document.documentElement).appendChild(styleEl);
   }
 
-  if (sels.length) {
+  if (found.length) {
     foundRules = true;
-    styleEl.textContent = sels.map((s) =>
-      s + ' { display: block !important; height: auto !important; width: auto !important;' +
-      ' max-height: none !important; visibility: hidden !important; }'
+    styleEl.textContent = found.map((r) =>
+      r.selector + ' { ' + r.overrides.concat('visibility: hidden').map((d) => d + ' !important;').join(' ') + ' }'
     ).join('\n');
-    console.info('[CommentsFix] Close-collapse override applied to: ' + sels.join(' , '));
+    console.info('[CommentsFix] Close-collapse override applied to: ' + found.map((r) => r.selector).join(' , '));
   } else {
     styleEl.textContent = FALLBACK_CSS;
     if (!fromStartup) console.info('[CommentsFix] No collapsing close rule found (scan ' + scans + '/' + MAX_SCANS + '), using fallback');

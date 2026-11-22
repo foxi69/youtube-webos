@@ -13,7 +13,7 @@
  * bundle sends back (ack: false holds the screensaver off). The 30 s Shorts
  * keep-alive runs every 0.3 s here.
  */
-const { createReporter, flavorFromArgs, readBundle, bootPage, wait } = require('./harness.cjs');
+const { createReporter, flavorFromArgs, readBundle, bootPage, trustedKey, wait, until } = require('./harness.cjs');
 
 // `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
 // with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
@@ -28,17 +28,18 @@ const { t, run } = createReporter();
 
 /**
  * The bundle on the browse page, the player mounted. `bridge: false` leaves
- * PalmServiceBridge out, as on a firmware without it.
+ * PalmServiceBridge out, as on a firmware without it. `clock`: the page's
+ * Date.now is clock.now, set by the test (held, it does not move on its own).
  */
 function boot(opts = {}) {
   const { win, doc, errors, evaluate } = bootPage({
     code,
     inner: '\n    <div id="ytlr-player__player-container"><div id="ytlr-player__player-container-player"></div></div>\n    ',
-    config: {
+    config: Object.assign({
       enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
       enableDeArrow: false, thumbnailQuality: 'off', enableAutoLogin: false,
       checkForUpdates: false, showWhatsNew: false
-    },
+    }, opts.config),
     fetch: 'pending',
     evaluate: false
   });
@@ -64,6 +65,10 @@ function boot(opts = {}) {
   const keys = [];
   doc.addEventListener('keydown', (e) => { if (e.__ytafSynthetic) keys.push(e.keyCode); }, true);
 
+  if (opts.clock) {
+    opts.clock.now = win.Date.now();
+    win.Date.now = () => opts.clock.now;
+  }
   evaluate();
 
   const env = {
@@ -246,6 +251,84 @@ run(async () => {
     await wait(700);
     t(n('watch page: the keep-alive stops'), env.keys.length === 0, env.keys.join(','));
     t(n('keep-alive: no page errors'), env.errors.length === 0, env.errors.join(' | '));
+    env.win.close();
+  }
+
+  // ---- YouTube's echo of the keep-alive's Yellow is no press ----
+  {
+    // YouTube TV sends each Yellow the mod dispatches back a moment later,
+    // unflagged, as keycode 170 (measured on webOS 25: 1-24 ms later). Here
+    // the echo has no isTrusted, as on Chrome 38, so only the mod's own
+    // record of what it sent can tell it from a press.
+    // The clock held: however late the timers run, the key comes inside the echo window.
+    const clock = {};
+    const env = boot({ config: { shortcut_key_yellow: 'config_menu' }, clock });
+    const echoes = [];
+    env.doc.addEventListener('keydown', (e) => {
+      if (!e.__ytafSynthetic) return;
+      setTimeout(() => {
+        echoes.push(e.keyCode);
+        trustedKey(env.win, YELLOW_ALT, env.doc.body, 'keydown', { isTrusted: undefined });
+        trustedKey(env.win, YELLOW_ALT, env.doc.body, 'keyup', { isTrusted: undefined });
+      }, 5);
+    }, true);
+    const panelOpen = () => {
+      const c = env.doc.querySelector('.ytaf-ui-container');
+      return !!c && env.win.getComputedStyle(c).display !== 'none';
+    };
+    await wait(50);
+    env.addVideo();
+    await env.page('SHORTS');
+    const echoed = await until(() => echoes.length >= 2, 3000);
+    await wait(50);
+    t(n('echo: precondition: both keep-alive keys were echoed'), echoed && echoes[0] === YELLOW && echoes[1] === YELLOW_ALT,
+      echoes.join(','));
+    t(n('echo: the echoed Yellow does not run the Yellow binding'), !panelOpen());
+    // Away from the keep-alive (paused: it sends nothing). Chrome 38: a press
+    // has no isTrusted either; once the echo window is over it is a press again.
+    env.state.playerState = 2;
+    await wait(400);
+    clock.now += 1000;
+    trustedKey(env.win, YELLOW, env.doc.body, 'keydown', { isTrusted: undefined });
+    trustedKey(env.win, YELLOW, env.doc.body, 'keyup', { isTrusted: undefined });
+    t(n('echo: with no isTrusted, after the window, a Yellow runs its binding'), await until(panelOpen, 1000));
+    // Closed again as the other panel tests do, past its guard against a
+    // close right after it opened (600 ms of real time).
+    await wait(700);
+    clock.now += 1000;
+    env.win.ytaf_showOptionsPanel(false);
+    t(n('echo: precondition: the panel is closed again'), await until(() => !panelOpen(), 1000));
+    clock.now += 1000;
+    trustedKey(env.win, YELLOW, env.doc.body, 'keydown');
+    trustedKey(env.win, YELLOW, env.doc.body, 'keyup');
+    t(n('echo: control: a real Yellow press runs it'), await until(panelOpen, 1000));
+    t(n('echo: no page errors'), env.errors.length === 0, env.errors.join(' | '));
+    env.win.close();
+  }
+
+  // ---- A real Yellow just after the keep-alive's is a press ----
+  {
+    // A Chrome with isTrusted marks the remote's press trusted: one that
+    // comes inside the echo's window still runs its binding.
+    // The clock held: however late the timers run, the key comes inside the echo window.
+    const env = boot({ config: { shortcut_key_yellow: 'config_menu' }, clock: {} });
+    let pressed = false;
+    env.doc.addEventListener('keydown', (e) => {
+      if (!e.__ytafSynthetic || pressed) return;
+      pressed = e.keyCode;
+      setTimeout(() => {
+        trustedKey(env.win, YELLOW, env.doc.body, 'keydown');
+        trustedKey(env.win, YELLOW, env.doc.body, 'keyup');
+      }, 5);
+    }, true);
+    await wait(50);
+    env.addVideo();
+    await env.page('SHORTS');
+    t(n('echo window: precondition: the keep-alive sent Yellow'), await until(() => pressed === YELLOW, 3000), String(pressed));
+    t(n('echo window: a trusted Yellow inside it runs the Yellow binding'), await until(() => {
+      const c = env.doc.querySelector('.ytaf-ui-container');
+      return !!c && env.win.getComputedStyle(c).display !== 'none';
+    }, 1000));
     env.win.close();
   }
 });
