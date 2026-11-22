@@ -556,7 +556,10 @@ run(async () => {
     const next = await boot({}, [seg('sponsor', 30, 60)], { copy, storage: left });
     const want = laterWrite ? 6 : 5;
     const own = () => JSON.parse(next.win.localStorage.getItem(PROFILE) || '{}');
-    await until(() => own().sbSkipCount === want, 3000);
+    // Waited for the restore to finish (its mark gone), not for the totals:
+    // localStorage may hold the wanted count before the copy is read.
+    const finished = await until(() => next.win.localStorage.getItem('ytaf-settings-recovering') === null, 3000);
+    t(n(name + ': precondition: the next start finished its restore'), finished);
     await wait(100);
     const saved = 100 + (60 - 30.2) + (laterWrite ? 80 - 70.2 : 0);
     t(n(name + ': the next start has the newest totals, each skip once'),

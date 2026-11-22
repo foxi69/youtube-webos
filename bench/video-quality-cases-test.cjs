@@ -221,7 +221,7 @@ run(async () => {
     // them all: Up to picks the best level up to its size.
     // The 600 ms settle timer is held: each step of the row starts it again,
     // and only the one after the last step applies the level.
-    const { win, log, emit, toggle, applyTimers } = boot({ forceQuality: 'off' }, { holdApply: true });
+    const { win, log, s, emit, toggle, applyTimers } = boot({ forceQuality: 'off' }, { holdApply: true });
     await wait(50);
     emit(1);
     t('changed mid-video: precondition: off, nothing set', !log.calls.some((c) => c.startsWith('range')), log.calls.join());
@@ -249,8 +249,10 @@ run(async () => {
       stepped.slice(0, -1).every((h) => h.cleared) && live().length === 1, stepped.map((h) => h.cleared).join());
     t('changed mid-video: nothing applied while the row moves', !log.calls.some((c) => c.startsWith('range')), log.calls.join());
     runLive();
-    t('changed mid-video: Up to 1080p, once the last timer runs the video playing goes to 1080p', log.calls.indexOf('range:hd1080') !== -1 &&
-      !log.calls.some((c) => c === 'range:highres' || c === 'range:hd2160'), log.calls.join());
+    // One range, 1080p, and the player ends there.
+    const ranges = log.calls.filter((c) => c.startsWith('range:'));
+    t('changed mid-video: Up to 1080p, once the last timer runs the video playing goes to 1080p',
+      ranges.join() === 'range:hd1080' && s.quality === 'hd1080', log.calls.join() + ' ' + s.quality);
   }
   {
     // A pick of the viewer's in YouTube's menu is not ours to drop.
