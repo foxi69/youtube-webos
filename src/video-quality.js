@@ -228,11 +228,6 @@ function setLocalStorageQuality() {
   }
 }
 
-/**
- * Switching the option off drops the 4320p record this module wrote, so the
- * app goes back to choosing the quality itself instead of staying pinned.
- * A record the viewer set through YouTube's own menu is left alone.
- */
 // The record YouTube writes for a range Force Max Quality set (Up to 720p:
 // 720p; Max: the video's best level) is noted, so switching Force Max Quality off
 // removes it too: left, a later start's speed reload would take it for the
@@ -254,6 +249,12 @@ function isForcedRecord(parsed, data) {
   return QUALITY_HEIGHTS[own.level] === data.quality;
 }
 
+/**
+ * Switching the option off drops the 4320p record this module wrote and the
+ * one YouTube wrote for its range, so the app goes back to choosing the
+ * quality itself instead of staying pinned.
+ * A record the viewer set through YouTube's own menu is left alone.
+ */
 function clearLocalStorageQuality() {
   try {
     const stored = window.localStorage.getItem(QUALITY_KEY);

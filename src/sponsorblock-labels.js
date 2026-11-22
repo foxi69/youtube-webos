@@ -164,7 +164,6 @@ export function categoryColor(category) {
   return '#00d400';
 }
 
-/** A segment the API returned as a whole-video label. */
 /**
  * Ignore Segments Shorter Than: whether [start, end] is shorter than `min`
  * seconds (0: off). Compared with a millisecond to spare, so a segment of
@@ -174,6 +173,7 @@ export function shorterThan(start, end, min) {
   return min > 0 && end - start < min - 0.001;
 }
 
+/** A segment the API returned as a whole-video label. */
 export function isFullVideoSegment(segment) {
   return !!segment && segment.actionType === 'full';
 }
