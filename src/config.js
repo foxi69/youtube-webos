@@ -975,7 +975,9 @@ function switchProfile(profile) {
     localConfig[key] = newValue;
     notifyChange(key, newValue, oldValue);
   }
-  window.dispatchEvent(new CustomEvent('ytaf-profile-change'));
+  // detail.from: the profile loaded before (null: none, as at the start or
+  // while the copy was read), detail.to: this one.
+  window.dispatchEvent(new CustomEvent('ytaf-profile-change', { detail: { from: previous, to: profile } }));
 }
 
 /**
@@ -1105,49 +1107,51 @@ function restoreFromBackup() {
       restoringBackup = false;
     }
     activeProfile = null;
-    if (localConfig.perAccountSettings) {
-      const profile = readAccountProfile();
-      // The accounts' own settings changed before the read keep their change
-      // too: each record, from localStorage or the copy, takes them before
-      // the account loads it. The account they were made in, else (made in
-      // the shared settings: first, as before the switch was turned on) the
-      // one in use.
-      const owners = Object.keys(beforeRestore.own).filter(Boolean);
-      if (beforeRestore.own['']) owners.unshift('');
-      // Two owners can be one account (changes made with per-account off,
-      // then on in it): the second starts from the first's merge, which a
-      // refused write keeps out of localStorage.
-      const merged = {};
-      for (const owner of owners) {
-        const changes = beforeRestore.own[owner];
-        const account = owner || profile;
-        const changed = Object.keys(changes.values);
-        if (!storesProfile(account) || (!changed.length && !Object.keys(changes.counted).length)) continue;
-        const key = profileStorageKey(account);
-        // No record of the account to go by (none in the copy, and the one in
-        // localStorage, if any, written from the defaults this run): one from
-        // the restored shared settings, as the account would start from.
-        let record = merged[key] || (!writtenBeforeRead.has(key) && loadStored(key)) || records[key];
-        const seeded = !record;
-        if (seeded) record = pickAccountValues(Object.assign({}, defaultConfig, sharedConfig));
-        for (const k of changed) record[k] = changes.values[k];
-        // Counted with no account loaded, these are in the shared totals
-        // the seed was just taken from.
-        if (!(seeded && owner === '')) applyCounted(record, changes.counted);
-        records[key] = record;
-        merged[key] = record;
-        const text = JSON.stringify(record);
-        ownerRecordsToCopy = ownerRecordsToCopy.filter(([k]) => k !== key).concat([[key, text]]);
-        try {
-          window.localStorage.setItem(key, text);
-          delete unwrittenRecords[key];
-        } catch {
-          // Refused (quota): applied from memory, over the older record still in localStorage.
-          unwrittenRecords[key] = record;
-        }
+    const perAccount = !!localConfig.perAccountSettings;
+    const profile = readAccountProfile();
+    // The accounts' own settings changed before the read keep their change
+    // too: each record, from localStorage or the copy, takes them before
+    // the account loads it. The account they were made in, else (made in
+    // the shared settings: first, as before the switch was turned on) the
+    // one in use. Separate settings switched off before the read: an
+    // account's changes made while they were on still go to its record (it
+    // has them when they are on again); those made in the shared settings
+    // are in the shared record already.
+    const owners = Object.keys(beforeRestore.own).filter(Boolean);
+    if (perAccount && beforeRestore.own['']) owners.unshift('');
+    // Two owners can be one account (changes made with per-account off,
+    // then on in it): the second starts from the first's merge, which a
+    // refused write keeps out of localStorage.
+    const merged = {};
+    for (const owner of owners) {
+      const changes = beforeRestore.own[owner];
+      const account = owner || profile;
+      const changed = Object.keys(changes.values);
+      if (!storesProfile(account) || (!changed.length && !Object.keys(changes.counted).length)) continue;
+      const key = profileStorageKey(account);
+      // No record of the account to go by (none in the copy, and the one in
+      // localStorage, if any, written from the defaults this run): one from
+      // the restored shared settings, as the account would start from.
+      let record = merged[key] || (!writtenBeforeRead.has(key) && loadStored(key)) || records[key];
+      const seeded = !record;
+      if (seeded) record = pickAccountValues(Object.assign({}, defaultConfig, sharedConfig));
+      for (const k of changed) record[k] = changes.values[k];
+      // Counted with no account loaded, these are in the shared totals
+      // the seed was just taken from.
+      if (!(seeded && owner === '')) applyCounted(record, changes.counted);
+      records[key] = record;
+      merged[key] = record;
+      const text = JSON.stringify(record);
+      ownerRecordsToCopy = ownerRecordsToCopy.filter(([k]) => k !== key).concat([[key, text]]);
+      try {
+        window.localStorage.setItem(key, text);
+        delete unwrittenRecords[key];
+      } catch {
+        // Refused (quota): applied from memory, over the older record still in localStorage.
+        unwrittenRecords[key] = record;
       }
-      if (profile !== null) switchProfile(profile);
     }
+    if (perAccount && profile !== null) switchProfile(profile);
     return true;
   }).then((restored) => {
     restoreSettled = true;

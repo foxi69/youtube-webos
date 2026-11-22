@@ -8,7 +8,7 @@
  *
  * Usage: node bench/speed-reload-state-test.cjs <bundle> [legacy|modern]
  */
-const { createReporter, readBundle, bootPage, failingXHR, dispatchTrusted, wait: sleep } = require('./harness.cjs');
+const { createReporter, readBundle, bootPage, failingXHR, dispatchTrusted, trustedKey, until, wait: sleep } = require('./harness.cjs');
 
 // With `modern`, bootPage runs the modern bundle (webOS 22 and newer) in a
 // Chrome 87 environment with a webOS 23 user agent, instead of the legacy one
@@ -29,6 +29,7 @@ const writeQuality = (win, height, previous) => win.localStorage.setItem('yt-pla
 // A trusted key press, as the remote sends: the speed keys too.
 const pressKey = (win) => dispatchTrusted(win.document.body, new win.KeyboardEvent('keydown', { bubbles: true }));
 
+// force: Force Max Quality on (Max), or the mode itself ('up1080').
 // lateRecord: the record follows each range call by 50 ms (true) or that many ms.
 // reloadTrack: the subtitles YouTube's reload turns on (else it toggles them).
 // oldRecord: a height already recorded a minute before the app started: the
@@ -50,7 +51,7 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
     frameTime: 0,
     config: {
       enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-      thumbnailQuality: 'off', enableAutoLogin: false, forceQuality: force ? 'max' : 'off'
+      thumbnailQuality: 'off', enableAutoLogin: false, forceQuality: typeof force === 'string' ? force : force ? 'max' : 'off'
     },
     fetch: () => Promise.reject(new Error('offline')),
     beforeEval(win) {
@@ -188,6 +189,60 @@ run(async () => {
       speed.setSpeed(1, { immediate: true });
       await sleep(900);
       t('Force Max Quality on, no pick: back at 1x is Max, not the recorded 1080p cap', log.ranges.join() === 'highres',
+        log.ranges.join());
+    }
+    win.close();
+  }
+  {
+    // Force Max Quality Up to 1080p, no pick: back at 1x the reset asks for
+    // the best level up to 1080p (as video-quality.js does), not Max.
+    const { win, log, speed } = boot(0, { force: 'up1080' });
+    if (speed) {
+      speed.setSpeed(1.5, { immediate: true });
+      await sleep(900);
+      t('Up to 1080p: precondition: capped at 1080p above 1x', log.ranges.length > 0 && log.ranges.every((r) => r === 'hd1080'),
+        log.ranges.join());
+      log.ranges.length = 0;
+      speed.setSpeed(1, { immediate: true });
+      await sleep(900);
+      t('Up to 1080p, no pick: back at 1x is the best up to 1080p, not Max', log.ranges.join() === 'hd1080', log.ranges.join());
+    }
+    win.close();
+  }
+  {
+    // Up to 480p: its limit holds above 1x too, below the speed's 1080p cap.
+    const { win, log, speed } = boot(0, { force: 'up480' });
+    if (speed) {
+      speed.setSpeed(1.5, { immediate: true });
+      await sleep(900);
+      t('Up to 480p: above 1x the cap is 480p, not 1080p', log.ranges.length > 0 && log.ranges.every((r) => r === 'large'),
+        log.ranges.join());
+    }
+    win.close();
+  }
+  {
+    // Max at 1.5x (capped at 1080p), then Up to 480p chosen in the panel: the
+    // video playing goes down to 480p once the row stops.
+    const { win, log, speed } = boot(0, { force: true });
+    if (speed) {
+      speed.setSpeed(1.5, { immediate: true });
+      await sleep(900);
+      t('Max to Up to 480p at 1.5x: precondition: capped at 1080p', log.ranges.length > 0 && log.ranges.every((r) => r === 'hd1080'),
+        log.ranges.join());
+      log.ranges.length = 0;
+      trustedKey(win, 404);
+      await until(() => win.document.querySelector('.ytaf-ui-container .shortcut-control-row'), 2000);
+      const row = Array.from(win.document.querySelectorAll('.ytaf-ui-container .shortcut-control-row'))
+        .find((r) => r.querySelector('.shortcut-label') && r.querySelector('.shortcut-label').textContent.trim() === 'Force Max Quality');
+      for (let i = 0; i < 10 && row && row.querySelector('.current-value').textContent !== 'Up to 480p'; i++) {
+        row.focus();
+        trustedKey(win, 39, row);
+      }
+      t('Max to Up to 480p at 1.5x: precondition: Up to 480p chosen', !!row && row.querySelector('.current-value').textContent === 'Up to 480p',
+        row ? row.querySelector('.current-value').textContent : 'no row');
+      t('Max to Up to 480p at 1.5x: nothing while the row moves', log.ranges.length === 0, log.ranges.join());
+      const lowered = await until(() => log.ranges.includes('large'), 2000);
+      t('Max to Up to 480p at 1.5x: once it stops, the video playing goes to 480p', lowered && log.ranges.join() === 'large',
         log.ranges.join());
     }
     win.close();

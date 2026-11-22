@@ -1287,6 +1287,17 @@ class SponsorBlockHandler {
         
         window.addEventListener('yt-player-state-change', this.boundStateChange);
 
+        // The statistics an undo takes back are the profile's that earned them:
+        // switched away from that profile, the skip is not the new one's to take
+        // back. Loaded from none (the restore of the copy loading the account in
+        // use), the skip's totals went to that account, so it stays.
+        if (this.boundProfileChange) window.removeEventListener('ytaf-profile-change', this.boundProfileChange);
+        this.boundProfileChange = (evt) => {
+            const from = evt && evt.detail ? evt.detail.from : undefined;
+            if (from !== null) this.lastAutoSkip = null;
+        };
+        window.addEventListener('ytaf-profile-change', this.boundProfileChange);
+
         // Resize forces an immediate overlay re-sync (bypassing the timeupdate throttle).
         if (this.boundResize) window.removeEventListener('resize', this.boundResize);
         this.boundResize = () => {
@@ -2384,6 +2395,11 @@ class SponsorBlockHandler {
         if (this.boundStateChange) {
             window.removeEventListener('yt-player-state-change', this.boundStateChange);
             this.boundStateChange = null;
+        }
+
+        if (this.boundProfileChange) {
+            window.removeEventListener('ytaf-profile-change', this.boundProfileChange);
+            this.boundProfileChange = null;
         }
 
         if (this.boundResize) {

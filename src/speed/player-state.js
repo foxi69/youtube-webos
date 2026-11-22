@@ -13,6 +13,20 @@ export const QUALITY_HEIGHTS = {
   large: 480, medium: 360, small: 240, tiny: 144
 };
 
+/**
+ * The level Force Max Quality asks for: 'highres' with no limit (Max); with
+ * Up to `lines`, the best of `levels` (best first, as the player lists them)
+ * up to that size, else the smallest (no hard limit, as with the formats).
+ */
+export function levelUpTo(levels, lines) {
+  if (!lines) return 'highres';
+  const named = (levels || []).filter((q) => q !== 'auto');
+  for (let i = 0; i < named.length; i++) {
+    if (QUALITY_HEIGHTS[named[i]] && QUALITY_HEIGHTS[named[i]] <= lines) return named[i];
+  }
+  return named[named.length - 1] || 'highres';
+}
+
 // After the reloaded video first plays: the captions module can still drop or
 // change the track on its own within a few seconds.
 export const CAPTION_CHECKS_MS = [1000, 2500, 5000];

@@ -15,6 +15,13 @@ const DB_NAME = 'ytaf-settings-backup';
 const STORE = 'kv';
 
 let dbPromise = null;
+// The connection dbPromise holds once it opened.
+let openedDb = null;
+
+/** Drops the cached connection `db` (closed by the browser, say) so the next read or write opens again. */
+function forgetDb(db) {
+  if (db && db === openedDb) { openedDb = null; dbPromise = null; }
+}
 
 /**
  * The database: null on a TV with no IndexedDB at all (there is no copy
@@ -39,8 +46,17 @@ function openDb() {
     // beside the next one.
     let gaveUp = false;
     request.onsuccess = () => {
-      if (!gaveUp) { resolve(request.result); return; }
-      try { request.result.close(); } catch { /* gone already */ }
+      const db = request.result;
+      if (gaveUp) {
+        try { db.close(); } catch { /* gone already */ }
+        return;
+      }
+      openedDb = db;
+      // Closed by the browser (storage cleared, a newer version opened
+      // elsewhere): later writes must not keep using it.
+      db.onclose = () => forgetDb(db);
+      db.onversionchange = () => { try { db.close(); } catch { /* gone already */ } forgetDb(db); };
+      resolve(db);
     };
     request.onerror = () => reject(request.error || new Error('backup database failed to open'));
     request.onblocked = () => { gaveUp = true; reject(new Error('backup database blocked')); };
@@ -52,9 +68,22 @@ function openDb() {
   return dbPromise;
 }
 
+// Generous: a slow TV's read that does answer must not count as failed (on
+// webOS 25 the read takes well under a second). Writes wait for the open as
+// long, no more: one that never settles would keep each write's entries.
+const READ_TIMEOUT_MS = 10000;
+
+/** `promise`, or a rejection once `ms` pass with no answer. */
+function withDeadline(promise, ms, what) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(what + ' timed out')), ms);
+    promise.then((v) => { clearTimeout(timer); resolve(v); }, (e) => { clearTimeout(timer); reject(e); });
+  });
+}
+
 /** Writes each [key, text] pair; a key whose text is null is deleted. False when it could not. */
 export function backupWrite(entries) {
-  return openDb().catch(() => null).then((db) => {
+  return withDeadline(openDb(), READ_TIMEOUT_MS, 'backup open').catch(() => null).then((db) => {
     if (!db) return false;
     return new Promise((resolve) => {
       try {
@@ -67,14 +96,14 @@ export function backupWrite(entries) {
         tx.oncomplete = () => resolve(true);
         tx.onerror = () => resolve(false);
         tx.onabort = () => resolve(false);
-      } catch { resolve(false); }
+      } catch {
+        // A connection closed under it (InvalidStateError): the next write opens again.
+        forgetDb(db);
+        resolve(false);
+      }
     });
   });
 }
-
-// Generous: a slow TV's read that does answer must not count as failed (on
-// webOS 25 the read takes well under a second).
-const READ_TIMEOUT_MS = 10000;
 
 /**
  * Every [key, text] pair whose key starts with `prefix`; [] when there is no
@@ -84,10 +113,7 @@ const READ_TIMEOUT_MS = 10000;
  * the restore, and every switch of account waiting for it, for the whole run).
  */
 export function backupReadAll(prefix) {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('backup read timed out')), READ_TIMEOUT_MS);
-    readAll(prefix).then((out) => { clearTimeout(timer); resolve(out); }, (e) => { clearTimeout(timer); reject(e); });
-  });
+  return withDeadline(readAll(prefix), READ_TIMEOUT_MS, 'backup read');
 }
 
 function readAll(prefix) {
@@ -105,7 +131,10 @@ function readAll(prefix) {
           cursor.continue();
         };
         request.onerror = () => reject(request.error || new Error('backup read failed'));
-      } catch (e) { reject(e); }
+      } catch (e) {
+        forgetDb(db);
+        reject(e);
+      }
     });
   });
 }

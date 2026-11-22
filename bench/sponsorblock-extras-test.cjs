@@ -330,6 +330,40 @@ run(async () => {
       Math.abs(own().sbTimeSaved - 100) < 1e-9 && own().sbSkipCount === 4, JSON.stringify(own()));
   }
   {
+    // A skip in one account, then a switch to another within the 8 s: Blue
+    // takes nothing back, so neither account's totals change for it.
+    const clock = {};
+    const A = 'ytaf-configuration::' + hashString('accountId=abc');
+    const B = 'ytaf-configuration::' + hashString('accountId=xyz');
+    const storage = {
+      'yt.leanback.default::last-identity-used': JSON.stringify({ data: { accountId: 'abc' } }),
+      [A]: JSON.stringify({ sbTimeSaved: 100, sbSkipCount: 4 }),
+      [B]: JSON.stringify({ sbTimeSaved: 7, sbSkipCount: 1 })
+    };
+    const env = await boot({ perAccountSettings: true }, [seg('sponsor', 30, 60)], { clock, storage });
+    const rec = (key) => JSON.parse(env.win.localStorage.getItem(key) || '{}');
+    await env.playTo(30.2);
+    t(n('switch after a skip: precondition: the segment was skipped'), env.state.time === 60, String(env.state.time));
+    t(n('switch after a skip: precondition: the skip is in the first account’s totals'),
+      await until(() => rec(A).sbSkipCount === 5, 2000), JSON.stringify(rec(A)));
+    const changes = [];
+    env.win.addEventListener('ytaf-profile-change', (e) => changes.push(e.detail));
+    env.win.localStorage.setItem('yt.leanback.default::last-identity-used', JSON.stringify({ data: { accountId: 'xyz' } }));
+    env.win.dispatchEvent(new env.win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: true } }));
+    env.win.dispatchEvent(new env.win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: false } }));
+    t(n('switch after a skip: precondition: switched from the first account to the other'),
+      changes.length === 1 && changes[0].from === hashString('accountId=abc') && changes[0].to === hashString('accountId=xyz'),
+      JSON.stringify(changes));
+    await press(env.win, BLUE);
+    t(n('switch after a skip: Blue does not go back'), env.state.time === 60, String(env.state.time));
+    t(n('switch after a skip: no "Skip undone"'), env.toasts().indexOf('Skip undone') === -1, env.toasts());
+    await wait(300);
+    t(n('switch after a skip: the other account’s totals are untouched'),
+      rec(B).sbTimeSaved === 7 && rec(B).sbSkipCount === 1, JSON.stringify(rec(B)));
+    t(n('switch after a skip: the first account keeps the skip'),
+      Math.abs(rec(A).sbTimeSaved - (100 + 60 - 30.2)) < 1e-9 && rec(A).sbSkipCount === 5, JSON.stringify(rec(A)));
+  }
+  {
     // Per-account settings in the copy, but no record of this account: it
     // starts from the restored shared totals, which hold the early skip once.
     let release;

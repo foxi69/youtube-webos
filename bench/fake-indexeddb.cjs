@@ -16,8 +16,16 @@
  * each write's [note, transaction number] is pushed to; opts.opened: set
  * to the number of opens asked for so far; opts.blockFirst: the first open
  * is blocked (onblocked), then gets through 20 ms later, and opts.closed
- * counts the closes of that late connection.
+ * counts the closes of that late connection. opts.conns: an array each
+ * opened connection is pushed to; conn.drop() closes it as the browser does
+ * (onclose, and a transaction on it throws InvalidStateError), conn.lose()
+ * only makes its transactions throw. opts.openGate: a promise each open waits
+ * for before it answers (never resolved: an open that never settles).
+ * The records are those of the app's database, DB_NAME: an open of any other
+ * name fails, so a renamed database (whose users would lose their copy) does
+ * not pass the restore tests.
  */
+const DB_NAME = 'ytaf-settings-backup';
 function fakeIndexedDB(data, log, opts = {}) {
   const later = (fn) => setTimeout(fn, 1);
   if (!data.stores) data.stores = new Set();
@@ -76,11 +84,11 @@ function fakeIndexedDB(data, log, opts = {}) {
   return {
     open(name, version = 1) {
       const req = { result: undefined, onsuccess: null, onerror: null, onupgradeneeded: null, onblocked: null };
-      const fails = opts.openFails === true || (typeof opts.openFails === 'number' && opens < opts.openFails);
+      const fails = name !== DB_NAME || opts.openFails === true || (typeof opts.openFails === 'number' && opens < opts.openFails);
       const blocked = !!opts.blockFirst && opens === 0;
       opens++;
       opts.opened = opens;
-      later(() => {
+      const answer = () => later(() => {
         if (blocked) {
           if (req.onblocked) req.onblocked();
           setTimeout(() => {
@@ -90,17 +98,28 @@ function fakeIndexedDB(data, log, opts = {}) {
           return;
         }
         if (fails) {
-          req.error = new Error('open failed');
+          req.error = new Error(name !== DB_NAME ? 'not the database these records belong to: ' + name : 'open failed');
           if (req.onerror) req.onerror();
           return;
         }
-        req.result = db;
+        const conn = Object.assign({}, db, { closed: false, onclose: null, onversionchange: null });
+        conn.transaction = (storeName) => {
+          if (conn.closed) throw Object.assign(new Error('The database connection is closing.'), { name: 'InvalidStateError' });
+          return transaction(storeName);
+        };
+        conn.close = () => { conn.closed = true; };
+        conn.lose = () => { conn.closed = true; };
+        conn.drop = () => { conn.closed = true; if (conn.onclose) conn.onclose(); };
+        if (opts.conns) opts.conns.push(conn);
+        req.result = conn;
         if (version > (data.version || 0)) {
           data.version = version;
           if (req.onupgradeneeded) req.onupgradeneeded();
         }
         if (req.onsuccess) req.onsuccess();
       });
+      if (opts.openGate) opts.openGate.then(answer);
+      else answer();
       return req;
     }
   };

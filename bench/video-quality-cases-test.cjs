@@ -44,7 +44,7 @@ const allErrors = [];
  * whether the player takes state listeners. opts.record: the yt-player-quality
  * record in storage before the app starts.
  */
-function boot(cfg, { player = true, events = true, record, ua, quality = 'hd720', state = 1, levels } = {}) {
+function boot(cfg, { player = true, events = true, record, ua, quality = 'hd720', state = 1, levels, holdApply = false } = {}) {
   const errors = [];
   const vc = new VirtualConsole();
   vc.on('jsdomError', (e) => { errors.push(e.message); allErrors.push(e.message); });
@@ -63,6 +63,24 @@ function boot(cfg, { player = true, events = true, record, ua, quality = 'hd720'
   };
   win.requestAnimationFrame = (cb) => setTimeout(() => cb(Date.now()), 0);
   win.cancelAnimationFrame = () => {};
+  // holdApply: the page's 600 ms timers (the panel change applied to the video
+  // playing) are held, to be run by hand; cleared ones are noted.
+  const applyTimers = [];
+  if (holdApply) {
+    const realSet = win.setTimeout.bind(win);
+    const realClear = win.clearTimeout.bind(win);
+    win.setTimeout = (fn, ms, ...args) => {
+      if (ms !== 600) return realSet(fn, ms, ...args);
+      const held = { id: -100 - applyTimers.length, fn, cleared: false };
+      applyTimers.push(held);
+      return held.id;
+    };
+    win.clearTimeout = (id) => {
+      const held = applyTimers.find((h) => h.id === id);
+      if (held) held.cleared = true;
+      else realClear(id);
+    };
+  }
   if (record) win.localStorage.setItem(KEY, JSON.stringify(record));
   win.localStorage.setItem('ytaf-configuration', JSON.stringify(Object.assign({
     enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
@@ -133,7 +151,7 @@ function boot(cfg, { player = true, events = true, record, ua, quality = 'hd720'
     input.checked = on;
     input.dispatchEvent(new win.Event('change'));
   };
-  return { win, p, s, log, errors, emit, toasts, stored, toggle, video: p.querySelector('video') };
+  return { win, p, s, log, errors, emit, toasts, stored, toggle, applyTimers, video: p.querySelector('video') };
 }
 
 run(async () => {
@@ -201,25 +219,37 @@ run(async () => {
     // new level at once, once the row stops (Off steps through Max on the way
     // to an Up to). Its formats were read with the option off, so it lists
     // them all: Up to picks the best level up to its size.
-    const { win, log, emit, toggle } = boot({ forceQuality: 'off' });
+    // The 600 ms settle timer is held: each step of the row starts it again,
+    // and only the one after the last step applies the level.
+    const { win, log, emit, toggle, applyTimers } = boot({ forceQuality: 'off' }, { holdApply: true });
     await wait(50);
     emit(1);
     t('changed mid-video: precondition: off, nothing set', !log.calls.some((c) => c.startsWith('range')), log.calls.join());
+    const live = () => applyTimers.filter((h) => !h.cleared && !h.ran);
+    const runLive = () => { for (const h of live()) { h.ran = true; h.fn(); } };
     toggle('Force Max Quality', true);
-    t('changed mid-video: not at each step of the row', !log.calls.some((c) => c.startsWith('range')), log.calls.join());
-    await wait(800);
-    t('changed mid-video: Max, the video playing goes to its best at once', log.calls.some((c) => c === 'range:highres'), log.calls.join());
+    t('changed mid-video: precondition: the change set a 600 ms settle timer', live().length === 1, String(live().length));
+    t('changed mid-video: nothing applied before it runs', !log.calls.some((c) => c.startsWith('range')), log.calls.join());
+    runLive();
+    t('changed mid-video: Max, once it runs the video playing goes to its best', log.calls.some((c) => c === 'range:highres'), log.calls.join());
     log.calls.length = 0;
     const row = Array.from(win.document.querySelectorAll('.ytaf-ui-container .shortcut-control-row'))
       .find((r) => r.querySelector('.shortcut-label')?.textContent.trim() === 'Force Max Quality');
+    const before = applyTimers.length;
+    let steps = 0;
     for (let i = 0; i < 12 && row.querySelector('.current-value').textContent !== 'Up to 1080p'; i++) {
       row.focus();
       trustedKey(win, 39, row);
+      steps++;
     }
-    t('changed mid-video: precondition: Up to 1080p chosen', row.querySelector('.current-value').textContent === 'Up to 1080p',
-      row.querySelector('.current-value').textContent);
-    await wait(800);
-    t('changed mid-video: Up to 1080p, the video playing goes to 1080p at once', log.calls.indexOf('range:hd1080') !== -1 &&
+    t('changed mid-video: precondition: Up to 1080p chosen, more than one step', steps > 1 &&
+      row.querySelector('.current-value').textContent === 'Up to 1080p', steps + ' ' + row.querySelector('.current-value').textContent);
+    const stepped = applyTimers.slice(before);
+    t('changed mid-video: each step starts the timer again, the earlier ones cleared', stepped.length === steps &&
+      stepped.slice(0, -1).every((h) => h.cleared) && live().length === 1, stepped.map((h) => h.cleared).join());
+    t('changed mid-video: nothing applied while the row moves', !log.calls.some((c) => c.startsWith('range')), log.calls.join());
+    runLive();
+    t('changed mid-video: Up to 1080p, once the last timer runs the video playing goes to 1080p', log.calls.indexOf('range:hd1080') !== -1 &&
       !log.calls.some((c) => c === 'range:highres' || c === 'range:hd2160'), log.calls.join());
   }
   {

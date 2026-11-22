@@ -3,7 +3,7 @@ import { showNotification } from './notifications.js';
 import { isWebOS25 } from './webos-utils.js';
 import { sendKey, REMOTE_KEYS, SELECTORS, isWatchPage, getVideo } from './utils.js';
 import { speedCapsQuality, speedKeepsQuality, clearSpeedQualityPick } from './playback-speed.js';
-import { QUALITY_KEY, QUALITY_HEIGHTS } from './speed/player-state.js';
+import { QUALITY_KEY, QUALITY_HEIGHTS, levelUpTo } from './speed/player-state.js';
 
 const DEBUG = false;
 
@@ -160,13 +160,7 @@ function levelsListed() {
 // formats). A video read before Up to was set lists them all; one read with
 // it lists only those, so its best is that level.
 function targetLevel() {
-  const lines = forceQualityLines(configRead('forceQuality'));
-  if (!lines) return 'highres';
-  const levels = (player.getAvailableQualityLevels?.() || []).filter((q) => q !== 'auto');
-  for (let i = 0; i < levels.length; i++) {
-    if (QUALITY_HEIGHTS[levels[i]] && QUALITY_HEIGHTS[levels[i]] <= lines) return levels[i];
-  }
-  return levels[levels.length - 1] || 'highres';
+  return levelUpTo(player.getAvailableQualityLevels?.() || [], forceQualityLines(configRead('forceQuality')));
 }
 
 // At the level forced already. Max means the best level this video offers

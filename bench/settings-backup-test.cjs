@@ -390,6 +390,49 @@ run(async () => {
     t('...and its copy gets the change, though another account is in use', copied, backup.get(PROFILE_KEY));
   }
 
+  // ---- Separate settings on, a change in the account, off again: all before the read ----
+  {
+    // The account's change goes to its record though separate settings are
+    // off once the copy is read: on again, the account has it.
+    const backup = savedCopy([
+      [KEY, JSON.stringify({ perAccountSettings: false, foxThemeApplied: true, minVideoLength: '5' })],
+      [PROFILE_KEY, JSON.stringify({ minVideoLength: '20', removeUpscaledFormats: true })]
+    ]);
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const page = boot({ data: backup, log: [], storage: IDENTITY, idb: { gate } });
+    await wait(300);
+    trustedKey(page.win, 404, page.win.document.body, 'keydown');
+    trustedKey(page.win, 404, page.win.document.body, 'keyup');
+    await until(() => page.win.document.querySelector('.ytaf-ui-container label'));
+    const input = (text) => {
+      const label = Array.prototype.slice.call(page.win.document.querySelectorAll('label'))
+        .find((l) => l.textContent.trim() === text);
+      return label && label.querySelector('input');
+    };
+    const perAccount = input('Separate Settings for Each Account');
+    t('precondition (on, change, off): separate settings off, the copy not read yet', !!perAccount && perAccount.checked === false &&
+      !!stored(page.win) && stored(page.win).minVideoLength === '0', JSON.stringify(stored(page.win)));
+    perAccount.click();
+    const upscaled = input('Skip AI-Upscaled Qualities');
+    t('...precondition: on, in the account, Skip AI-Upscaled Qualities on', !!upscaled && upscaled.checked === true);
+    upscaled.click();
+    t('...precondition: the account’s record has the change before the read',
+      await until(() => { const r = stored(page.win, PROFILE_KEY); return !!r && r.removeUpscaledFormats === false; }, 2000),
+      JSON.stringify(stored(page.win, PROFILE_KEY)));
+    input('Separate Settings for Each Account').click();
+    t('...precondition: off again before the read', input('Separate Settings for Each Account').checked === false);
+    release();
+    const restored = await until(() => !!stored(page.win) && stored(page.win).minVideoLength === '5', 3000);
+    t('...precondition: the copy was read', restored, JSON.stringify(stored(page.win)));
+    const own = stored(page.win, PROFILE_KEY);
+    t('on, change, off: the account’s record keeps the change, with its other settings from the copy',
+      !!own && own.removeUpscaledFormats === false && own.minVideoLength === '20', JSON.stringify(own));
+    input('Separate Settings for Each Account').click();
+    const back = await until(() => { const i = input('Skip AI-Upscaled Qualities'); return !!i && i.checked === false; }, 2000);
+    t('...and on again, the account has it', back, String(input('Skip AI-Upscaled Qualities') && input('Skip AI-Upscaled Qualities').checked));
+  }
+
   // ---- A change after the restore, then a switch back with localStorage emptied ----
   {
     // The copy read at the start is older than a change made since: switched
@@ -421,10 +464,13 @@ run(async () => {
       page.win.dispatchEvent(new page.win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: false } }));
     };
     identity('xyz');
-    await wait(100);
+    // The other account's own value (on) shows: the switch away happened.
+    const away = await until(() => { const i = input('Skip AI-Upscaled Qualities'); return !!i && i.checked === true; }, 2000);
+    t('precondition (stale copy): switched away, the other account\'s setting (on) shows', away);
     page.win.localStorage.removeItem(PROFILE_KEY);
+    t('...precondition: the account\'s record is gone from localStorage', page.win.localStorage.getItem(PROFILE_KEY) === null);
     identity('abc');
-    await wait(100);
+    await until(() => { const i = input('Skip AI-Upscaled Qualities'); return !!i && i.checked === false; }, 2000);
     const now = input('Skip AI-Upscaled Qualities');
     t('stale copy: back in the account, its change since the restore, not the copy\'s value', !!now && now.checked === false,
       String(now && now.checked));
@@ -1046,15 +1092,19 @@ run(async () => {
       [PROFILE_B]: JSON.stringify({ minVideoLength: '5' })
     });
     const backup = savedCopy([[KEY, JSON.stringify({ perAccountSettings: true, foxThemeApplied: true })]]);
-    // The read's 10 s timeout is held and fired by hand: no real 10 s wait,
-    // and the switch is seen waiting until it fires.
+    // The read's 10 s timeout and the selector's two later looks (1.5 s and
+    // 5 s) are held and run by hand: no real waits, and each is seen leaving
+    // the account alone while the read is pending.
     let timeout = null;
+    let holdLooks = false;
+    const looks = [];
     const page = boot({
       data: backup, log: [], storage, idb: { gate: new Promise(() => {}) },
       setup: (w) => {
         const realTimeout = w.setTimeout.bind(w);
         w.setTimeout = (fn, ms, ...args) => {
-          if (typeof fn === 'function' && String(fn).indexOf('backup read timed out') !== -1) { timeout = fn; return -11; }
+          if (!timeout && ms === 10000 && typeof fn === 'function' && String(fn).indexOf('timed out') !== -1) { timeout = fn; return -11; }
+          if (holdLooks && (ms === 1500 || ms === 5000)) { looks.push({ ms, fn }); return -20 - looks.length; }
           return realTimeout(fn, ms, ...args);
         };
       }
@@ -1064,11 +1114,18 @@ run(async () => {
     await until(() => !!timeout, 3000);
     t('no answer: precondition: the read has its timeout set', !!timeout);
     page.win.localStorage.setItem('yt.leanback.default::last-identity-used', JSON.stringify({ data: { accountId: 'xyz' } }));
+    holdLooks = true;
     page.win.dispatchEvent(new page.win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: true } }));
     page.win.dispatchEvent(new page.win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: false } }));
-    await wait(300);
+    holdLooks = false;
+    t('no answer: precondition: leaving the selector set its two later looks',
+      looks.map((l) => l.ms).join(',') === '1500,5000', looks.map((l) => l.ms).join(','));
     t('no answer: before the timeout, the switch waits for the read', await panelValue(page.win, 'Hide Videos Shorter Than') === '20 min',
       await panelValue(page.win, 'Hide Videos Shorter Than'));
+    for (const look of looks) look.fn();
+    t('...and so do the two later looks, run while the read is pending',
+      await panelValue(page.win, 'Hide Videos Shorter Than') === '20 min', await panelValue(page.win, 'Hide Videos Shorter Than'));
+    // No selector event and no look left: only the timeout can load the account now.
     if (timeout) timeout();
     let switched = false;
     for (let i = 0; i < 40 && !switched; i++) {
@@ -1077,6 +1134,82 @@ run(async () => {
     }
     t('no answer: the read gives up, and a switch of account loads that account', switched);
     t('...the mark stays for the next start', page.win.localStorage.getItem('ytaf-settings-recovering') === '1');
+  }
+
+  // ---- A connection the browser closes: a later write opens again ----
+  // drop: closed with onclose (storage cleared, say); lose: its transactions
+  // just throw (InvalidStateError), with no event.
+  for (const how of ['drop', 'lose']) {
+    const data = new Map();
+    const conns = [];
+    const page = boot({ config: { minVideoLength: '5', foxThemeApplied: true }, data, log: [], idb: { conns } });
+    await until(() => data.has(KEY), 5000);
+    t('closed (' + how + '): precondition: the stored settings were copied over one connection',
+      conns.length === 1 && data.has(KEY) && JSON.parse(data.get(KEY)).minVideoLength === '5', String(conns.length));
+    conns[0][how]();
+    trustedKey(page.win, 404, page.win.document.body, 'keydown');
+    trustedKey(page.win, 404, page.win.document.body, 'keyup');
+    await until(() => page.win.document.querySelector('.ytaf-ui-container label'));
+    const input = (text) => {
+      const label = Array.prototype.slice.call(page.win.document.querySelectorAll('label'))
+        .find((l) => l.textContent.trim() === text);
+      return label && label.querySelector('input');
+    };
+    input('Remove Mixes').click();
+    if (how === 'lose') {
+      // The first write after finds the connection gone, and forgets it.
+      await until(() => stored(page.win).removeMixes === true, 2000);
+      await wait(100);
+      t('closed (lose): precondition: the write on the lost connection did not land', conns.length === 1 &&
+        JSON.parse(data.get(KEY)).removeMixes !== true, data.get(KEY));
+      input('Hide Repeated Videos').click();
+    }
+    const copied = await until(() => JSON.parse(data.get(KEY)).removeMixes === true, 3000);
+    t('closed (' + how + '): the next write opens the database again and is copied', copied && conns.length === 2,
+      conns.length + ' ' + data.get(KEY));
+  }
+
+  // ---- An open that never answers: each write waits for it no longer than the read would ----
+  {
+    const data = new Map();
+    let openRelease;
+    const openGate = new Promise((r) => { openRelease = r; });
+    const deadlines = [];
+    const conns = [];
+    const page = boot({
+      config: { minVideoLength: '5', foxThemeApplied: true }, data, log: [], idb: { openGate, conns },
+      setup: (w) => {
+        const realTimeout = w.setTimeout.bind(w);
+        w.setTimeout = (fn, ms, ...args) => {
+          if (ms === 10000 && typeof fn === 'function' && String(fn).indexOf('timed out') !== -1) {
+            deadlines.push(fn);
+            return -30 - deadlines.length;
+          }
+          return realTimeout(fn, ms, ...args);
+        };
+      }
+    });
+    await until(() => deadlines.length === 1, 4000);
+    t('open with no answer: precondition: the start’s copy waits for it with a deadline', deadlines.length === 1,
+      String(deadlines.length));
+    trustedKey(page.win, 404, page.win.document.body, 'keydown');
+    trustedKey(page.win, 404, page.win.document.body, 'keyup');
+    await until(() => page.win.document.querySelector('.ytaf-ui-container label'));
+    const label = Array.prototype.slice.call(page.win.document.querySelectorAll('label'))
+      .find((l) => l.textContent.trim() === 'Remove Mixes');
+    label.querySelector('input').click();
+    await until(() => deadlines.length === 2, 2000);
+    t('open with no answer: a write meanwhile has its own deadline', deadlines.length === 2, String(deadlines.length));
+    for (const fire of deadlines) fire();
+    openRelease();
+    await until(() => conns.length === 1, 2000);
+    await wait(100);
+    t('open with no answer: the writes it gave up on are not made once the open answers', conns.length === 1 && !data.has(KEY),
+      String(data.get(KEY)));
+    label.querySelector('input').click();
+    const later = await until(() => data.has(KEY) && JSON.parse(data.get(KEY)).removeMixes === false, 3000);
+    t('...and a write after it is copied, the whole record', later && JSON.parse(data.get(KEY)).minVideoLength === '5',
+      String(data.get(KEY)));
   }
 
   // ---- A database that does not open, then the next start ----
@@ -1103,6 +1236,11 @@ run(async () => {
   await wait(1800);
   t('without IndexedDB nothing breaks', none.errors.length === 0 && stored(none.win).minVideoLength === '5', none.errors[0]);
   const noneEmpty = boot({ noIdb: true, data: new Map(), log: [] });
-  await wait(300);
+  await until(() => !!stored(noneEmpty.win), 3000);
   t('...nor with localStorage empty', noneEmpty.errors.length === 0, noneEmpty.errors[0]);
+  t('...precondition: the start wrote its settings', !!stored(noneEmpty.win) && stored(noneEmpty.win).foxThemeApplied === true,
+    JSON.stringify(stored(noneEmpty.win)));
+  // No IndexedDB is no failed read: nothing is left for the next start to recover.
+  t('...and the recovery mark is gone, as after an empty copy', noneEmpty.win.localStorage.getItem('ytaf-settings-recovering') === null,
+    noneEmpty.win.localStorage.getItem('ytaf-settings-recovering'));
 });

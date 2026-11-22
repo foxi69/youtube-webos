@@ -3,9 +3,9 @@ import { installMseHook, isSupportedSpeed, SUPPORTED_SPEEDS } from './speed/mse-
 import { keepStretchableAudio, allowSpeedMenuOnSurround, LEGACY_STRETCHABLE_AUDIO_RE } from './speed/containers.js';
 import { legacyAudioCodecs } from './speed/legacy-decoder.js';
 import { watchPosition } from './speed/position-watch.js';
-import { readCaptions, keepCaptions, readQualityRecord, QUALITY_KEY } from './speed/player-state.js';
+import { readCaptions, keepCaptions, readQualityRecord, QUALITY_KEY, QUALITY_HEIGHTS, levelUpTo } from './speed/player-state.js';
 import { showNotification } from './notifications.js';
-import { configRead, configWrite, configAddChangeListener } from './config.js';
+import { configRead, configWrite, configAddChangeListener, forceQualityLines } from './config.js';
 import { SELECTORS, SYNTHETIC_KEY_FLAG } from './utils.js';
 
 export const SPEED_BUTTON_TYPE = 'TRANSPORT_CONTROLS_BUTTON_TYPE_SPEED_BUTTON';
@@ -209,6 +209,8 @@ const CAP_ABOVE = 1;
 const BELOW_1080 = ['hd720', 'large', 'medium', 'small', 'tiny'];
 const LEVELS_DOWN = ['hd1080', ...BELOW_1080];
 const ABOVE_1080 = ['highres', 'hd2880', 'hd2160', 'hd1440'];
+// A change of Force Max Quality applied above 1x this long after the row last moved.
+const LIMIT_APPLY_MS = 600;
 // YouTube can write our quality range asynchronously, at times more than a
 // second later. A record of a level this controller asked for is ours unless
 // the viewer pressed a key between our last call and the record (a pick in
@@ -437,7 +439,14 @@ export function createSpeedController({
   // Above CAP_ABOVE: 1080p, or the viewer's own pick when it is lower.
   function capQuality() {
     const pick = viewerPick();
-    return pick && BELOW_1080.indexOf(pick) !== -1 ? pick : 'hd1080';
+    if (pick && BELOW_1080.indexOf(pick) !== -1) return pick;
+    // A lower limit of Force Max Quality's own (Up to 480p) holds above 1x too.
+    const lines = forceQualityLines(configRead('forceQuality'));
+    if (lines && lines < QUALITY_HEIGHTS.hd1080) {
+      for (let i = 0; i < BELOW_1080.length; i++) if (QUALITY_HEIGHTS[BELOW_1080[i]] <= lines) return BELOW_1080[i];
+      return BELOW_1080[BELOW_1080.length - 1];
+    }
+    return 'hd1080';
   }
 
   function applyReload({ position: at, fromSpeed }) {
@@ -471,8 +480,12 @@ export function createSpeedController({
       const cap = capQuality();
       setRange(player, cap);
     } else if (fromSpeed > CAP_ABOVE) {
-      // A pick in YouTube's menu wins over Force Max Quality.
-      const quality = viewerPick() || (configRead('forceQuality') !== 'off' ? 'highres' : 'auto');
+      // A pick in YouTube's menu wins over Force Max Quality, whose level is
+      // its limit's (Up to 1080p: the best up to 1080p), as video-quality.js asks.
+      const mode = configRead('forceQuality');
+      let levels = player.getAvailableQualityLevels && player.getAvailableQualityLevels();
+      if (!Array.isArray(levels)) levels = [];
+      const quality = viewerPick() || (mode !== 'off' ? levelUpTo(levels, forceQualityLines(mode)) : 'auto');
       setRange(player, quality);
     }
     if (!videoId) return;
@@ -901,6 +914,23 @@ export function initPlaybackSpeed() {
     });
     configAddChangeListener('enablePlaybackSpeed', ({ detail }) => {
       if (!detail.newValue) speedInstance.controller.stop();
+    });
+    // A lower limit set in Force Max Quality above 1x (Up to 480p at 1.5x):
+    // the video playing above it goes down to it at once, once the row stops
+    // (as video-quality.js does at 1x). Raised again by the next video.
+    let limitTimer = null;
+    configAddChangeListener('forceQuality', () => {
+      clearTimeout(limitTimer);
+      limitTimer = setTimeout(() => {
+        limitTimer = null;
+        if (!speedCapsQuality()) return;
+        const player =
+          document.getElementById(SELECTORS.PLAYER_ID) ||
+          document.querySelector('.html5-video-player');
+        if (!player || typeof player.getPlaybackQuality !== 'function') return;
+        const cap = speedInstance.controller.capQuality();
+        if ((QUALITY_HEIGHTS[player.getPlaybackQuality()] || 0) > QUALITY_HEIGHTS[cap]) speedInstance.controller.setRange(player, cap);
+      }, LIMIT_APPLY_MS);
     });
     // The next video (autoplay, a tile) keeps the speed but starts at the
     // quality YouTube picks: 2160p on a 4K TV, capped once it plays, or one
