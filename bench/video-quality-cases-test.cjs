@@ -316,14 +316,19 @@ run(async () => {
     if (!own) continue;
     let now = own.at;
     win.Date.now = () => now;
-    if (keyAt !== null) {
+    // In the order they happen: a key after the record is pressed once it is
+    // written, one before (or in the same ms) first.
+    const writeRecord = () => win.localStorage.setItem(KEY, JSON.stringify({
+      data: JSON.stringify({ quality: 720, previousQuality: 480 }), creation: own.at + 100, expiration: own.at + YEAR
+    }));
+    const press = () => {
       now = own.at + keyAt;
       if (trusted) trustedKey(win, 65);
       else win.document.body.dispatchEvent(new win.KeyboardEvent('keydown', { bubbles: true, keyCode: 65 }));
-    }
-    win.localStorage.setItem(KEY, JSON.stringify({
-      data: JSON.stringify({ quality: 720, previousQuality: 480 }), creation: own.at + 100, expiration: own.at + YEAR
-    }));
+    };
+    if (keyAt !== null && keyAt > 100) { now = own.at + 100; writeRecord(); press(); }
+    else if (keyAt !== null) { press(); writeRecord(); }
+    else writeRecord();
     now = own.at + 6000;
     toggle('Force Max Quality', false);
     t(`Same level, ${name}: ${kept ? 'kept' : 'removed'} when switched off`,
