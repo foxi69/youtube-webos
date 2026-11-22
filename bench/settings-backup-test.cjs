@@ -67,6 +67,39 @@ const stored = (win, key = KEY) => JSON.parse(win.localStorage.getItem(key) || '
 const { t, run } = createReporter();
 
 run(async () => {
+  // ---- The fixture: a write during a read lands only once the read is done ----
+  {
+    // Both records updated in one write while the cursor is between them: the
+    // cursor gives the old pair, never the old shared record with the new profile.
+    const copy = savedCopy([[KEY, 'old shared'], [PROFILE_KEY, 'old profile']]);
+    const idb = fakeIndexedDB(copy, []);
+    const req = idb.open('ytaf-settings-backup', 1);
+    const conn = await new Promise((resolve) => { req.onsuccess = () => resolve(req.result); });
+    const seen = [];
+    let wrote = false;
+    const done = new Promise((resolve) => {
+      const cursor = conn.transaction('kv').objectStore('kv').openCursor();
+      cursor.onsuccess = () => {
+        const c = cursor.result;
+        if (!c) { resolve(); return; }
+        seen.push(c.value);
+        if (!wrote) {
+          wrote = true;
+          const tx = conn.transaction('kv', 'readwrite');
+          tx.objectStore('kv').put('new shared', KEY);
+          tx.objectStore('kv').put('new profile', PROFILE_KEY);
+        }
+        c.continue();
+      };
+    });
+    await done;
+    t('fixture: a cursor gives the records as they were when it opened, not part of a later write',
+      seen.join() === 'old shared,old profile', seen.join());
+    await until(() => copy.get(PROFILE_KEY) === 'new profile', 1000);
+    t('fixture: ...and the write lands once the read is done', copy.get(KEY) === 'new shared' && copy.get(PROFILE_KEY) === 'new profile',
+      `${copy.get(KEY)} ${copy.get(PROFILE_KEY)}`);
+  }
+
   const data = new Map();
   const log = [];
 
