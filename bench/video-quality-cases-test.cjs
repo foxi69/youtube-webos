@@ -101,6 +101,7 @@ function boot(cfg, { player = true, events = true, record, ua, quality = 'hd720'
     // qualityThrows: the call after the range fails (the player busy), the range already set.
     setPlaybackQuality: qualityThrows ? () => { log.calls.push('quality-threw'); throw new Error('player busy'); } : calls('quality'),
     pauseVideo() { log.calls.push('pause'); },
+    loadVideoById(id, at) { log.calls.push('load:' + id + ',' + at); },
     playVideo() { log.calls.push('play'); },
     isInline: () => false,
     removeEventListener() { log.calls.push('removeListener'); }
@@ -262,6 +263,51 @@ run(async () => {
     const ranges = log.calls.filter((c) => c.startsWith('range:'));
     t('changed mid-video: Up to 1080p, once the last timer runs the video playing goes to 1080p',
       ranges.join() === 'range:hd1080' && s.quality === 'hd1080', log.calls.join() + ' ' + s.quality);
+  }
+  {
+    // Up to 480p when the video was read: its bigger formats were left out.
+    // Raised to Max in the panel while it plays, it has nothing bigger to go
+    // to, so it is loaded again where it is (no speed feature here: the plain
+    // load). Not when it is paused, nor for a video whose formats were whole.
+    const formats = () => [
+      { itag: 401, mimeType: 'video/webm; codecs="vp9"', width: 3840, height: 2160, qualityLabel: '2160p' },
+      { itag: 399, mimeType: 'video/webm; codecs="vp9"', width: 1920, height: 1080, qualityLabel: '1080p' },
+      { itag: 397, mimeType: 'video/webm; codecs="vp9"', width: 854, height: 480, qualityLabel: '480p' },
+      { itag: 251, mimeType: 'audio/webm; codecs="opus"' }
+    ];
+    const read = (win, videoId) => win.JSON.parse(win.JSON.stringify({ responseContext: { _pad: 'z'.repeat(600) },
+      videoDetails: { videoId }, streamingData: { adaptiveFormats: formats() } }));
+    for (const variant of ['cut', 'paused', 'whole']) {
+      const { win, log, emit, applyTimers, video } = boot({ forceQuality: variant === 'whole' ? 'off' : 'up480' },
+        { holdApply: true, quality: 'large', levels: ['large', 'medium', 'auto'] });
+      const r = read(win, 'abcdefghijk');
+      if (variant !== 'whole') {
+        t('raise (' + variant + '): precondition: the read left the bigger formats out',
+          r.streamingData.adaptiveFormats.map((x) => x.itag).join() === '397,251', r.streamingData.adaptiveFormats.map((x) => x.itag).join());
+      }
+      Object.defineProperty(video, 'paused', { configurable: true, get: () => variant === 'paused' });
+      await wait(50);
+      emit(1);
+      log.calls.length = 0;
+      const row = () => Array.from(win.document.querySelectorAll('.ytaf-ui-container .shortcut-control-row'))
+        .find((x) => x.querySelector('.shortcut-label')?.textContent.trim() === 'Force Max Quality');
+      if (!row()) trustedKey(win, GREEN);
+      for (let i = 0; i < 8 && row().querySelector('.current-value').textContent !== 'Max'; i++) {
+        row().focus();
+        trustedKey(win, variant === 'whole' ? 39 : 37, row());
+      }
+      t('raise (' + variant + '): precondition: Max chosen', row().querySelector('.current-value').textContent === 'Max',
+        row().querySelector('.current-value').textContent);
+      for (const h of applyTimers.filter((x) => !x.cleared && !x.ran)) { h.ran = true; h.fn(); }
+      const loads = log.calls.filter((c) => c.startsWith('load:'));
+      if (variant === 'cut') {
+        t('raise (cut): loaded again where it plays, at Max', loads.join() === 'load:abcdefghijk,10' &&
+          log.calls.indexOf('range:highres') !== -1 && log.calls.indexOf('range:highres') < log.calls.indexOf('load:abcdefghijk,10'),
+          log.calls.join());
+      } else {
+        t('raise (' + variant + '): not loaded again', loads.length === 0, log.calls.join());
+      }
+    }
   }
   {
     // A pick of the viewer's in YouTube's menu is not ours to drop.

@@ -553,6 +553,61 @@ run(async () => {
     win.close();
   }
   {
+    // A video read under a lower limit (its bigger formats left out), then a
+    // higher one chosen in the panel: it is loaded again where it is, through
+    // the speed's reload (subtitles and position kept), at 1x and at 1.5x.
+    const formats = () => [
+      { itag: 401, mimeType: 'video/webm; codecs="vp9"', width: 3840, height: 2160, qualityLabel: '2160p' },
+      { itag: 399, mimeType: 'video/webm; codecs="vp9"', width: 1920, height: 1080, qualityLabel: '1080p' },
+      { itag: 398, mimeType: 'video/webm; codecs="vp9"', width: 1280, height: 720, qualityLabel: '720p' },
+      { itag: 397, mimeType: 'video/webm; codecs="vp9"', width: 854, height: 480, qualityLabel: '480p' },
+      { itag: 251, mimeType: 'audio/webm; codecs="opus"' }
+    ];
+    for (const at of [1, 1.5]) {
+      const { win, p, log, speed, emit, pump } = boot(0, { force: at === 1 ? 'up720' : 'up480' });
+      t('raise at ' + at + 'x: precondition: the speed feature is installed', !!speed);
+      if (!speed) { win.close(); continue; }
+      const name = 'raise at ' + at + 'x';
+      Object.defineProperty(p.querySelector('video'), 'paused', { configurable: true, get: () => false });
+      win.dispatchEvent(new win.CustomEvent('yt-navigate-finish', { detail: { pageType: 'watch' } }));
+      await sleep(300);
+      const r = win.JSON.parse(win.JSON.stringify({ responseContext: { _pad: 'z'.repeat(600) },
+        videoDetails: { videoId: p.videoId }, streamingData: { adaptiveFormats: formats() } }));
+      const kept = r.streamingData.adaptiveFormats.map((x) => x.itag).join();
+      t(name + ': precondition: the read left the bigger formats out', kept === (at === 1 ? '398,397,251' : '397,251'), kept);
+      if (at > 1) {
+        speed.setSpeed(at, { immediate: true });
+        await sleep(900);
+      } else {
+        emit(-1); emit(3); emit(1); pump(); pump();
+        await sleep(300);
+      }
+      const before = log.reloads;
+      log.ranges.length = 0;
+      trustedKey(win, 404);
+      await until(() => win.document.querySelector('.ytaf-ui-container .shortcut-control-row'), 2000);
+      const row = Array.from(win.document.querySelectorAll('.ytaf-ui-container .shortcut-control-row'))
+        .find((x) => x.querySelector('.shortcut-label') && x.querySelector('.shortcut-label').textContent.trim() === 'Force Max Quality');
+      const want = at === 1 ? 'Up to 1080p' : 'Up to 720p';
+      for (let i = 0; i < 10; i++) {
+        if (!row || row.querySelector('.current-value').textContent === want) break;
+        row.focus();
+        trustedKey(win, 37, row);
+      }
+      t(name + ': precondition: ' + want + ' chosen', !!row && row.querySelector('.current-value').textContent === want,
+        row ? row.querySelector('.current-value').textContent : 'no row');
+      const reloaded = await until(() => log.reloads > before, 3000);
+      const level = at === 1 ? 'hd1080' : 'hd720';
+      t(name + ': loaded again where it is, at ' + level, reloaded && log.reloads === before + 1 && log.ranges.includes(level),
+        log.reloads - before + ' ' + log.ranges.join());
+      if (at === 1) {
+        const note = JSON.parse(win.localStorage.getItem('ytaf-force-record') || 'null');
+        t(name + ': the record of this range is noted as Force\'s', !!note && note.level === level, JSON.stringify(note));
+      }
+      win.close();
+    }
+  }
+  {
     // Max at 1.5x (capped at 1080p), then Up to 480p chosen in the panel: the
     // video playing goes down to 480p once the row stops.
     const { win, log, speed } = boot(0, { force: true });

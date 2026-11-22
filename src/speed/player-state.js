@@ -30,6 +30,25 @@ export function levelUpTo(levels, lines) {
   return named[named.length - 1] || 'highres';
 }
 
+// The videos whose bigger formats Force Max Quality's limit left out, with
+// that limit (adblock.js notes it): a higher one chosen while such a video
+// plays has nothing above it to pick, so it is loaded again.
+const cutFormats = new Map();
+const CUT_FORMATS_KEPT = 20;
+
+/** Notes the limit (lines) a video's formats were cut at; 0: read whole. */
+export function noteFormatsCut(videoId, lines) {
+  cutFormats.delete(videoId);
+  if (!lines) return;
+  cutFormats.set(videoId, lines);
+  if (cutFormats.size > CUT_FORMATS_KEPT) cutFormats.delete(cutFormats.keys().next().value);
+}
+
+/** The limit (lines) a video's formats were cut at when it was read, 0 if none. */
+export function formatsCutAt(videoId) {
+  return cutFormats.get(videoId) || 0;
+}
+
 // After the reloaded video first plays: the captions module can still drop or
 // change the track on its own within a few seconds.
 export const CAPTION_CHECKS_MS = [1000, 2500, 5000];

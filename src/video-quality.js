@@ -2,8 +2,8 @@ import { configRead, configAddChangeListener, forceQualityLines, forceQualityOn 
 import { showNotification } from './notifications.js';
 import { isWebOS25 } from './webos-utils.js';
 import { sendKey, REMOTE_KEYS, SELECTORS, SYNTHETIC_KEY_FLAG, isWatchPage, getVideo } from './utils.js';
-import { speedCapsQuality, speedKeepsQuality, speedRecordIsPick, clearSpeedQualityPick, noteForcedQuality } from './playback-speed.js';
-import { QUALITY_KEY, QUALITY_HEIGHTS, levelUpTo } from './speed/player-state.js';
+import { speedCapsQuality, speedKeepsQuality, speedRecordIsPick, clearSpeedQualityPick, noteForcedQuality, reloadForQuality } from './playback-speed.js';
+import { QUALITY_KEY, QUALITY_HEIGHTS, levelUpTo, formatsCutAt } from './speed/player-state.js';
 
 const DEBUG = false;
 
@@ -153,6 +153,14 @@ function levelsListed() {
   } catch {
     return false;
   }
+}
+
+// The level named for a limit's size (Up to 1440p: hd1440), 'highres' for Max.
+function levelNamed(lines) {
+  if (!lines) return 'highres';
+  const names = Object.keys(QUALITY_HEIGHTS);
+  for (let i = 0; i < names.length; i++) if (QUALITY_HEIGHTS[names[i]] === lines) return names[i];
+  return levelUpTo(names, lines);
 }
 
 // The level to force: 'highres' for Max; with Up to the best level the video
@@ -848,6 +856,24 @@ function applyToPlayingVideo() {
     const videoId = player.getVideoData?.()?.video_id;
     // Also a pick made while the change waited.
     if (!videoId || keepViewerPick()) return;
+    // Raised above the limit the video's formats were cut at when it was
+    // read: it has nothing bigger to go to, so it is read again where it is.
+    // A paused video is left (a load would start it): the next one has them.
+    const lines = forceQualityLines(configRead('forceQuality'));
+    const cut = formatsCutAt(videoId);
+    const video = getVideo();
+    if (cut && (!lines || lines > cut) && video && !video.paused) {
+      const level = levelNamed(lines);
+      // The record YouTube writes for this range is Force's too.
+      noteForcedRecord(level);
+      // Checked again once it plays, with all its levels listed.
+      qualitySetForVideo.delete(videoId);
+      if (reloadForQuality(level)) return;
+      noteForcedQuality();
+      player.setPlaybackQualityRange(level, level);
+      player.loadVideoById(videoId, player.getCurrentTime());
+      return;
+    }
     const result = isQualityAlreadyMax() ? { success: true } : setQualityOnPlayer();
     if (result.success || result.rangeSet) qualitySetForVideo.add(videoId);
   } catch (e) {
