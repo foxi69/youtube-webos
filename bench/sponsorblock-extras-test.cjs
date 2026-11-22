@@ -482,6 +482,52 @@ run(async () => {
       own().sbSkipCount === want && Math.abs(own().sbTimeSaved - saved) < 1e-9, JSON.stringify(own()));
   }
   {
+    // An earlier run marked the account's record as older than the copy. This
+    // one skips before the read and stores the merge (the copy's 100 s plus
+    // the skip) in localStorage; the shared record is still refused and the
+    // copy's write aborts. The local record is the newest now, so the mark
+    // goes and the next start keeps it, not the copy's older one.
+    const clock = {};
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const PROFILE = 'ytaf-configuration::' + hashString('accountId=abc');
+    const old = JSON.stringify({ sbTimeSaved: 100, sbSkipCount: 4 });
+    const copy = savedCopy([
+      ['ytaf-configuration', JSON.stringify({ perAccountSettings: true, foxThemeApplied: true })],
+      [PROFILE, old]
+    ]);
+    const storage = {
+      'yt.leanback.default::last-identity-used': JSON.stringify({ data: { accountId: 'abc' } }),
+      [PROFILE]: JSON.stringify({ sbTimeSaved: 0, sbSkipCount: 0 }),
+      'ytaf-settings-recovering': '1',
+      'ytaf-settings-seeded': JSON.stringify([PROFILE])
+    };
+    const opts = { clock, copy, storage, idb: { gate, abortWrites: true }, refuse: ['ytaf-configuration'] };
+    const env = await boot({}, [seg('sponsor', 30, 60)], opts);
+    await env.playTo(30.2);
+    t(n('marked, merge stored: precondition: the segment was skipped'), env.state.time === 60, String(env.state.time));
+    release();
+    const merged = await until(() => { try { return JSON.parse(env.win.localStorage.getItem(PROFILE)).sbSkipCount === 5; } catch { return false; } }, 3000);
+    t(n('marked, merge stored: precondition: localStorage has the merge, the copy its older record, the shared record refused'),
+      merged && copy.get(PROFILE) === old && opts.refused > 0 && env.win.localStorage.getItem('ytaf-settings-recovering') === '1',
+      `${env.win.localStorage.getItem(PROFILE)} ${copy.get(PROFILE)} ${opts.refused}`);
+    t(n('marked, merge stored: the mark goes'),
+      (env.win.localStorage.getItem('ytaf-settings-seeded') || '').indexOf(PROFILE) === -1,
+      String(env.win.localStorage.getItem('ytaf-settings-seeded')));
+    await wait(50);
+    const left = {};
+    for (let i = 0; i < env.win.localStorage.length; i++) {
+      const k = env.win.localStorage.key(i);
+      left[k] = env.win.localStorage.getItem(k);
+    }
+    const next = await boot({}, [seg('sponsor', 30, 60)], { copy, storage: left });
+    const own = () => JSON.parse(next.win.localStorage.getItem(PROFILE) || '{}');
+    await until(() => next.win.localStorage.getItem('ytaf-settings-recovering') === null, 3000);
+    await wait(100);
+    t(n('marked, merge stored: the next start keeps the merge, the skip once'),
+      own().sbSkipCount === 5 && Math.abs(own().sbTimeSaved - (100 + 60 - 30.2)) < 1e-9, JSON.stringify(own()));
+  }
+  {
     // The same with Separate Settings for Each Account: the counters are the
     // account's, and the skip before the read adds to the account's totals.
     const clock = {};
