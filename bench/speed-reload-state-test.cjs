@@ -332,6 +332,25 @@ run(async () => {
     win.close();
   }
   {
+    // Its control: the same steps with no pick of the viewer's: the new limit applies.
+    const { win, p, log, speed, emit, setQuality, pump } = boot(0, { force: 'up720' });
+    if (speed) {
+      win.dispatchEvent(new win.CustomEvent('yt-navigate-finish', { detail: { pageType: 'watch' } }));
+      await sleep(300);
+      p.videoId = 'nopick00001';
+      setQuality('hd2160');
+      emit(-1); emit(3); emit(1); pump(); pump();
+      t('no pick, limit moved: precondition: Force set 720p', await until(() => log.ranges.includes('hd720'), 3000), log.ranges.join());
+      log.ranges.length = 0;
+      t('no pick, limit moved: precondition: Up to 1080p chosen', await moveForceRow(win, 'Up to 1080p', 37) === 'Up to 1080p');
+      await sleep(900);
+      emit(3); emit(1); pump(); pump();
+      await sleep(100);
+      t('no pick, limit moved: the new limit applies', log.ranges.includes('hd1080'), log.ranges.join());
+    }
+    win.close();
+  }
+  {
     // The speed reload's own record is no pick: with it the newest record, past
     // Force's window, a new limit still applies.
     const { win, p, log, speed, emit, setQuality, pump } = boot(0, { force: 'up1080' });
