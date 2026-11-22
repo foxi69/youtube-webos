@@ -387,12 +387,14 @@ function bootPage(opts = {}) {
  * A key of the remote, as a trusted event (the app ignores untrusted ones):
  * `code` is the keyCode (404 green, 461 back, 13 OK, 37-40 the arrows).
  * target: document.body by default; type: 'keydown' by default; init: more
- * for the KeyboardEvent ({ repeat: true }). Returns the event.
+ * for the KeyboardEvent ({ repeat: true }), and isTrusted, another value for
+ * the flag (undefined: a press on Chrome 38, which has none). Returns the event.
  */
 function trustedKey(win, code, target, type = 'keydown', init) {
   const event = new win.KeyboardEvent(type, Object.assign({ bubbles: true, cancelable: true }, init));
   Object.defineProperty(event, 'keyCode', { get: () => code, configurable: true });
-  dispatchTrusted(target || win.document.body, event);
+  if (init && 'isTrusted' in init) dispatchTrusted(target || win.document.body, event, init.isTrusted);
+  else dispatchTrusted(target || win.document.body, event);
   return event;
 }
 
