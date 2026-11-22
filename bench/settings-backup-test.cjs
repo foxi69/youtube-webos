@@ -108,6 +108,23 @@ run(async () => {
     !!freshCopy && freshCopy.foxThemeApplied === true, JSON.stringify(freshCopy));
   t('...with the defaults', !!stored(fresh.win) && stored(fresh.win).minVideoLength === '0');
 
+  // ---- No copy, read late: the write made before the read is copied once it is read ----
+  {
+    const backup = new Map();
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const page = boot({ data: backup, log: [], idb: { gate } });
+    // The app writes its settings (foxThemeApplied) 200 ms in, while the read waits.
+    await wait(500);
+    t('precondition (late empty read): written before the read, not copied yet',
+      !!stored(page.win) && stored(page.win).foxThemeApplied === true && !backup.has(KEY), backup.get(KEY));
+    release();
+    await until(() => backup.has(KEY), 2000);
+    const late = backup.has(KEY) ? JSON.parse(backup.get(KEY)) : null;
+    t('late empty read: the write made before it is copied after it', !!late && late.foxThemeApplied === true,
+      JSON.stringify(late));
+  }
+
   // ---- The copy is not written over before it was read ----
   {
     const backup = savedCopy([[KEY, JSON.stringify({ minVideoLength: '5', foxThemeApplied: true })]]);
