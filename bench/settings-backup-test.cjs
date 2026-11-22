@@ -31,6 +31,22 @@ function boot({ config, storage, data, log, noIdb, idb = {}, setup }) {
   return page;
 }
 
+// localStorage refusing the keys `refuse(key)` is true for (quota), by
+// setItem and by assignment alike: the app writes both ways.
+function refuseKeys(w, refuse) {
+  const real = w.localStorage;
+  const check = (key) => { if (refuse(key)) throw new Error('QuotaExceededError'); };
+  const proxy = new Proxy(real, {
+    get(target, prop) {
+      if (prop === 'setItem') return (key, value) => { check(key); target.setItem(key, value); };
+      const value = Reflect.get(target, prop);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+    set(target, prop, value) { check(prop); target.setItem(prop, String(value)); return true; }
+  });
+  Object.defineProperty(w, 'localStorage', { configurable: true, get: () => proxy });
+}
+
 const PROFILE_KEY = KEY + '::' + hashString('accountId=abc');
 const IDENTITY = { 'yt.leanback.default::last-identity-used': JSON.stringify({ data: { accountId: 'abc' } }) };
 
@@ -271,8 +287,10 @@ run(async () => {
     }
     t('per-account during the read: the account gets its settings from the copy, not the defaults written meanwhile',
       restored && stored(page.win, PROFILE_KEY).minVideoLength === '20', JSON.stringify(stored(page.win, PROFILE_KEY)));
-    await until(() => log.some((l) => l === 'put ' + PROFILE_KEY));
-    t('...and its copy keeps them', JSON.parse(backup.get(PROFILE_KEY)).minVideoLength === '20', backup.get(PROFILE_KEY));
+    // Written to the copy by the recovery: the fixture's record has the same value already.
+    const put = await until(() => log.some((l) => l === 'put ' + PROFILE_KEY));
+    t('...and its copy keeps them, written back by the recovery', put && JSON.parse(backup.get(PROFILE_KEY)).minVideoLength === '20',
+      `${put} ${backup.get(PROFILE_KEY)}`);
     t('...with the switch still on', stored(page.win).perAccountSettings === true, JSON.stringify(stored(page.win)));
   }
 
@@ -672,17 +690,14 @@ run(async () => {
       [KEY, JSON.stringify({ perAccountSettings: true, foxThemeApplied: true, minVideoLength: '1' })],
       [PROFILE_KEY, JSON.stringify({ minVideoLength: '20' })]
     ]);
+    const quota = { refused: 0 };
     const page = boot({
       data: backup, log: [], storage: IDENTITY,
-      setup: (w) => {
-        const set = w.Storage.prototype.setItem;
-        w.Storage.prototype.setItem = function (key, value) {
-          if (key === PROFILE_KEY) throw new Error('QuotaExceededError');
-          return set.call(this, key, value);
-        };
-      }
+      setup: (w) => refuseKeys(w, (key) => key === PROFILE_KEY && ++quota.refused > 0)
     });
     await wait(700);
+    t('quota: precondition: the account’s record was refused, none is in localStorage',
+      quota.refused > 0 && page.win.localStorage.getItem(PROFILE_KEY) === null, String(quota.refused));
     t('quota: the restored profile still applies, from memory',
       await panelValue(page.win, 'Hide Videos Shorter Than') === '20 min', await panelValue(page.win, 'Hide Videos Shorter Than'));
     t('quota: ...and its copy is not written over', JSON.parse(backup.get(PROFILE_KEY)).minVideoLength === '20', backup.get(PROFILE_KEY));
@@ -696,19 +711,16 @@ run(async () => {
       [PROFILE_KEY, JSON.stringify({ minVideoLength: '20' })],
       [OTHER_KEY, JSON.stringify({ minVideoLength: '10' })]
     ]);
+    const other = { refusing: true, refused: 0 };
     const page = boot({
       data: backup, log: [], storage: IDENTITY,
-      setup: (w) => {
-        const set = w.Storage.prototype.setItem;
-        // The other account's record is the one that does not fit, until the app writes a smaller one.
-        let refused = false;
-        w.Storage.prototype.setItem = function (key, value) {
-          if (key === OTHER_KEY && !refused) { refused = true; throw new Error('QuotaExceededError'); }
-          return set.call(this, key, value);
-        };
-      }
+      // The other account's record is the one that does not fit: refused
+      // until the switch to it is checked, so it can only come from memory.
+      setup: (w) => refuseKeys(w, (key) => key === OTHER_KEY && other.refusing && ++other.refused > 0)
     });
     await wait(700);
+    t('quota, another account later: precondition: its record was refused, none is in localStorage',
+      other.refused > 0 && page.win.localStorage.getItem(OTHER_KEY) === null, String(other.refused));
     // "Who's watching" picks the other account.
     page.win.localStorage.setItem('yt.leanback.default::last-identity-used', JSON.stringify({ data: { accountId: 'def' } }));
     page.win.dispatchEvent(new page.win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: true } }));
