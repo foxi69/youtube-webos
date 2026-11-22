@@ -117,7 +117,8 @@ run(async () => {
   const box = Array.prototype.slice.call(first.win.document.querySelectorAll('label'))
     .find((l) => l.textContent.trim() === 'Skip AI-Upscaled Qualities');
   if (box) box.querySelector('input').click();
-  await wait(400);
+  // Polled, not sampled once: the local write is debounced, the copy follows it.
+  await until(() => data.has(KEY) && JSON.parse(data.get(KEY)).removeUpscaledFormats === false, 3000);
   const changed = data.has(KEY) ? JSON.parse(data.get(KEY)) : null;
   t('a change in the panel is copied', !!box && !!changed && changed.removeUpscaledFormats === false,
     JSON.stringify(changed && changed.removeUpscaledFormats));
@@ -382,6 +383,17 @@ run(async () => {
     trustedKey(page.win, 39, row);
     const after = row.querySelector('.current-value').textContent;
     t('precondition (two owners): the account\'s change made', after !== before, before + ' -> ' + after);
+    // Two owners in the journal: the change with no account loaded, and the account's.
+    const journal = await until(() => {
+      try {
+        const j = JSON.parse(page.win.localStorage.getItem('ytaf-settings-changed'));
+        const owners = Object.keys(j.own);
+        return owners.indexOf('') !== -1 && j.own[''].values.removeUpscaledFormats === false &&
+          owners.some((o) => o && j.own[o].values.minVideoLength !== undefined);
+      } catch { return false; }
+    }, 2000);
+    t('precondition (two owners): the journal has both owners, each with its change', journal,
+      String(page.win.localStorage.getItem('ytaf-settings-changed')));
     await wait(300);
     t('...precondition: the copy\'s value is not there before the read', (stored(page.win) || {}).sbSkipCount !== 7,
       JSON.stringify(stored(page.win)));
@@ -988,7 +1000,8 @@ run(async () => {
     const backup = savedCopy([[KEY, JSON.stringify({ minVideoLength: '5', removeUpscaledFormats: true, foxThemeApplied: true })]]);
     let release;
     const gate = new Promise((r) => { release = r; });
-    const first = boot({ data: backup, log: [], idb: { gate, failAfter: 0 } });
+    const failing = { gate, failAfter: 0 };
+    const first = boot({ data: backup, log: [], idb: failing });
     await wait(300);
     trustedKey(first.win, 404, first.win.document.body, 'keydown');
     trustedKey(first.win, 404, first.win.document.body, 'keyup');
@@ -1000,7 +1013,10 @@ run(async () => {
     if (input) input.click();
     const written = await until(() => stored(first.win).removeUpscaledFormats === false);
     release();
-    await wait(300);
+    // The snapshot after the read's failure was handled, not merely after a sleep.
+    const failed = await until(() => (failing.cursorFailed || 0) > 0, 3000);
+    await wait(100);
+    t('precondition (failed read): the read failed before the snapshot', failed);
     const left = {};
     for (let i = 0; i < first.win.localStorage.length; i++) {
       const k = first.win.localStorage.key(i);
