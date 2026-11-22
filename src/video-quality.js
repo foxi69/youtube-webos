@@ -229,9 +229,10 @@ function setLocalStorageQuality() {
 }
 
 // The record YouTube writes for a range Force Max Quality set (Up to 720p:
-// 720p; Max: the video's best level) is noted, so switching Force Max Quality off
-// removes it too: left, a later start's speed reload would take it for the
-// viewer's pick. Kept across starts. One written later than this is not ours.
+// 720p; Max: 4320, whatever the video's best level, measured on webOS 25) is
+// noted, so switching Force Max Quality off removes it too: left, a later
+// start's speed reload would take it for the viewer's pick. Kept across
+// starts. One written later than this is not ours.
 const FORCED_RECORD_KEY = 'ytaf-force-record';
 const FORCED_RECORD_MS = 5000;
 
@@ -355,8 +356,7 @@ function setQualityOnPlayer() {
 
     const level = targetLevel();
     noteForcedQuality();
-    // Max is the video's best level: the record YouTube writes says that one.
-    noteForcedRecord(level === 'highres' ? (player.getAvailableQualityLevels?.() || []).find((q) => q !== 'auto') || level : level);
+    noteForcedRecord(level);
     player.setPlaybackQualityRange(level, level);
     rangeSet = true;
     player.setPlaybackQuality?.(level);

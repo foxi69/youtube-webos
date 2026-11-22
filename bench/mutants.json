@@ -196,5 +196,5 @@
   {"id":"force-record-after","file":"src/video-quality.js","from":"created >= own.at && created","to":"created","why":"a record from before the range counts as Force's"},
   {"id":"force-record-window","file":"src/video-quality.js","from":"created <= own.at + FORCED_RECORD_MS","to":"created <= own.at + FORCED_RECORD_MS * 1000","why":"a viewer's later pick of the same size is removed"},
   {"id":"force-record-size","file":"src/video-quality.js","from":"return QUALITY_HEIGHTS[own.level] === data.quality;","to":"return true;","why":"a viewer's pick of another size inside the window is removed"},
-  {"id":"force-record-max-level","file":"src/video-quality.js","from":"noteForcedRecord(level === 'highres' ? (player.getAvailableQualityLevels?.() || []).find((q) => q !== 'auto') || level : level);","to":"noteForcedRecord(level);","why":"with Max the note says highres, so the video's best-level record is never recognised"}
+  {"id":"force-record-max-level","file":"src/video-quality.js","from":"noteForcedRecord(level);","to":"noteForcedRecord(level === 'highres' ? (player.getAvailableQualityLevels?.() || []).find((q) => q !== 'auto') || level : level);","why":"with Max the note names the video's best level, but YouTube records 4320: Force's record stays after Off"}
 ]

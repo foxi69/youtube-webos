@@ -293,13 +293,14 @@ run(async () => {
     t(`Up to 720p, ${name}: the note goes too`, win.localStorage.getItem('ytaf-force-record') === null,
       win.localStorage.getItem('ytaf-force-record'));
   }
-  // Max: YouTube records the video's best level, so that is the one noted.
-  for (const [quality, kept] of [[2160, false], [1080, true]]) {
+  // Max on a 2160p video: YouTube records 4320 with the level it came from
+  // (measured on webOS 25), which is not the 4320/4320 record this module writes.
+  for (const [quality, kept] of [[4320, false], [2160, true], [1080, true]]) {
     const { win, log, stored, toggle } = boot({}, { quality: 'hd720', state: 3 });
     await wait(50);
     const own = JSON.parse(win.localStorage.getItem('ytaf-force-record') || 'null');
-    t(`Max, a ${quality}p record: precondition: the range was set and the best level noted`,
-      log.calls.includes('range:highres') && own?.level === 'hd2160', `${log.calls.join()} ${JSON.stringify(own)}`);
+    t(`Max, a ${quality}p record: precondition: the range was set and noted`,
+      log.calls.includes('range:highres') && own?.level === 'highres', `${log.calls.join()} ${JSON.stringify(own)}`);
     if (!own) continue;
     win.localStorage.setItem(KEY, JSON.stringify({
       data: JSON.stringify({ quality, previousQuality: 720 }), creation: own.at, expiration: own.at + YEAR
