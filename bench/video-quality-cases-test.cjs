@@ -20,6 +20,7 @@ const path = require('path');
 const { JSDOM, VirtualConsole } = require('jsdom');
 const { UA, setUserAgent, applyChrome38Downgrade, applyChrome87Downgrade } = require('./chrome38-env.cjs');
 const { createReporter, trustedKey, wait, until } = require('./harness.cjs');
+const { dispatchTrusted } = require('./chrome38-env.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
@@ -306,7 +307,8 @@ run(async () => {
     ['a key just after the record', 101, true, false],
     ['a key in the same ms as the record', 100, true, true],
     ['a key before the record', 50, true, true],
-    ['a key of the app’s own before the record', 50, false, false]
+    ['a key of the app’s own before the record', 50, false, false],
+    ['a pointer press before the record', 50, 'pointer', true]
   ]) {
     const { win, log, stored, toggle } = boot({ forceQuality: 'up720' }, { quality: 'hd1080', state: 3 });
     await wait(50);
@@ -323,7 +325,8 @@ run(async () => {
     }));
     const press = () => {
       now = own.at + keyAt;
-      if (trusted) trustedKey(win, 65);
+      if (trusted === 'pointer') dispatchTrusted(win.document.body, new win.MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+      else if (trusted) trustedKey(win, 65);
       else win.document.body.dispatchEvent(new win.KeyboardEvent('keydown', { bubbles: true, keyCode: 65 }));
     };
     if (keyAt !== null && keyAt > 100) { now = own.at + 100; writeRecord(); press(); }

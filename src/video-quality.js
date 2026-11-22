@@ -878,8 +878,10 @@ function setupListeners() {
       applyNowTimer = setTimeout(applyToPlayingVideo, APPLY_NOW_MS);
     });
 
-    // Capture: a key the page stops on its way is still the viewer's.
+    // Capture: a key the page stops on its way is still the viewer's. So is a
+    // press of the Magic Remote's pointer, which picks in the menu with no key.
     window.addEventListener('keydown', noteKeyAfterForcedRange, true);
+    window.addEventListener('mousedown', noteKeyAfterForcedRange, true);
 
     // The picture's size changed (a <video> 'resize', caught on its way down).
     document.addEventListener('resize', onVideoResize, true);
