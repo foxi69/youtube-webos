@@ -234,7 +234,8 @@ run(async () => {
       await until(() => win.document.querySelector('.ytaf-ui-container .shortcut-control-row'), 2000);
       const row = Array.from(win.document.querySelectorAll('.ytaf-ui-container .shortcut-control-row'))
         .find((r) => r.querySelector('.shortcut-label') && r.querySelector('.shortcut-label').textContent.trim() === 'Force Max Quality');
-      for (let i = 0; i < 10 && row && row.querySelector('.current-value').textContent !== 'Up to 480p'; i++) {
+      for (let i = 0; i < 10; i++) {
+        if (!row || row.querySelector('.current-value').textContent === 'Up to 480p') break;
         row.focus();
         trustedKey(win, 39, row);
       }
