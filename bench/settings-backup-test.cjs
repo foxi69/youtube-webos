@@ -444,7 +444,27 @@ run(async () => {
     ]);
     let release;
     const gate = new Promise((r) => { release = r; });
-    const page = boot({ data: backup, log: [], storage: IDENTITY, idb: { gate } });
+    // The settings' 200 ms write timer, held once `hold.on`: only a clearTimeout
+    // (the flush) or the test ends it, however long the read takes.
+    const hold = { on: false, timers: [] };
+    const page = boot({
+      data: backup, log: [], storage: IDENTITY, idb: { gate },
+      setup: (w) => {
+        const realSet = w.setTimeout.bind(w);
+        const realClear = w.clearTimeout.bind(w);
+        w.setTimeout = (fn, ms, ...args) => {
+          if (!hold.on || ms !== 200) return realSet(fn, ms, ...args);
+          const held = { id: -1 - hold.timers.length, fn, cleared: false };
+          hold.timers.push(held);
+          return held.id;
+        };
+        w.clearTimeout = (id) => {
+          const held = hold.timers.find((h) => h.id === id);
+          if (held) held.cleared = true;
+          else realClear(id);
+        };
+      }
+    });
     await wait(300);
     trustedKey(page.win, 404, page.win.document.body, 'keydown');
     trustedKey(page.win, 404, page.win.document.body, 'keyup');
@@ -454,21 +474,103 @@ run(async () => {
     perAccount.click();
     t('pending account write: precondition: separate settings on before the read', perAccount.checked === true);
     await until(() => { const r = stored(page.win, PROFILE_KEY); return !!r; }, 2000);
+    // The write of the switch is done, so the next timer is the change's own.
+    await wait(250);
     const row = Array.prototype.slice.call(page.win.document.querySelectorAll('.ytaf-ui-container .shortcut-control-row'))
       .find((r) => r.querySelector('.shortcut-label') && r.querySelector('.shortcut-label').textContent.trim() === 'Force Max Quality');
+    hold.on = true;
     row.focus();
     trustedKey(page.win, 39, row);
+    hold.on = false;
     t('pending account write: precondition: Max chosen in the account', row.querySelector('.current-value').textContent === 'Max',
       row.querySelector('.current-value').textContent);
-    // Read at once: the 200 ms write of the change is still waiting.
+    t('pending account write: precondition: its write is held, not made',
+      hold.timers.length === 1 && !hold.timers[0].cleared && stored(page.win, PROFILE_KEY).forceQuality !== 'max',
+      `${hold.timers.length} ${JSON.stringify(stored(page.win, PROFILE_KEY))}`);
     release();
     const read = await until(() => !!stored(page.win) && stored(page.win).minVideoLength === '5', 3000);
     t('pending account write: precondition: the copy was read', read, JSON.stringify(stored(page.win)));
+    t('pending account write: the read made the waiting write itself', hold.timers[0].cleared === true, String(hold.timers[0].cleared));
+    // Had it not, the write runs now, under whatever is loaded by then.
+    if (!hold.timers[0].cleared) hold.timers[0].fn();
     await wait(300);
     t('pending account write: the shared record does not take the account\u2019s Max',
       stored(page.win).forceQuality !== 'max', JSON.stringify(stored(page.win)));
     t('...the account\u2019s record has it', !!stored(page.win, PROFILE_KEY) && stored(page.win, PROFILE_KEY).forceQuality === 'max',
       JSON.stringify(stored(page.win, PROFILE_KEY)));
+  }
+
+  // ---- A later change while the journal is kept for the next start ----
+  {
+    // The shared record stays refused, so the changes made before the read
+    // are kept for the next start. Max was chosen in the account before the
+    // read; after it, the next step of the row. The next start must have the
+    // later value, not the journal's Max.
+    const backup = savedCopy([
+      [KEY, JSON.stringify({ perAccountSettings: false, foxThemeApplied: true, minVideoLength: '5' })],
+      [PROFILE_KEY, JSON.stringify({ minVideoLength: '20' })]
+    ]);
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const refuseShared = { on: true, refused: 0 };
+    const page = boot({
+      data: backup, log: [], storage: IDENTITY, idb: { gate },
+      setup: (w) => {
+        const real = w.localStorage;
+        const refuse = (key) => {
+          if (refuseShared.on && key === KEY) { refuseShared.refused++; throw new Error('QuotaExceededError'); }
+        };
+        const proxy = new Proxy(real, {
+          get(target, prop) {
+            if (prop === 'setItem') return (key, value) => { refuse(key); target.setItem(key, value); };
+            const value = Reflect.get(target, prop);
+            return typeof value === 'function' ? value.bind(target) : value;
+          },
+          set(target, prop, value) { refuse(prop); target.setItem(prop, String(value)); return true; }
+        });
+        Object.defineProperty(w, 'localStorage', { configurable: true, get: () => proxy });
+      }
+    });
+    await wait(300);
+    trustedKey(page.win, 404, page.win.document.body, 'keydown');
+    trustedKey(page.win, 404, page.win.document.body, 'keyup');
+    await until(() => page.win.document.querySelector('.ytaf-ui-container label'));
+    Array.prototype.slice.call(page.win.document.querySelectorAll('label'))
+      .find((l) => l.textContent.trim() === 'Separate Settings for Each Account').querySelector('input').click();
+    await until(() => !!stored(page.win, PROFILE_KEY), 2000);
+    const row = Array.prototype.slice.call(page.win.document.querySelectorAll('.ytaf-ui-container .shortcut-control-row'))
+      .find((r) => r.querySelector('.shortcut-label') && r.querySelector('.shortcut-label').textContent.trim() === 'Force Max Quality');
+    row.focus();
+    trustedKey(page.win, 39, row);
+    t('kept journal: precondition: Max chosen before the read', row.querySelector('.current-value').textContent === 'Max',
+      row.querySelector('.current-value').textContent);
+    await until(() => (stored(page.win, PROFILE_KEY) || {}).forceQuality === 'max', 2000);
+    release();
+    const journal = () => JSON.parse(page.win.localStorage.getItem('ytaf-settings-changed') || 'null');
+    const kept = await until(() => (stored(page.win, PROFILE_KEY) || {}).minVideoLength === '20' && !!journal(), 3000);
+    t('kept journal: precondition: the copy was read, the shared record refused, the journal kept',
+      kept && refuseShared.refused > 0 && page.win.localStorage.getItem('ytaf-settings-recovering') === '1' &&
+      Object.keys(journal().own).some((owner) => journal().own[owner].values.forceQuality === 'max'),
+      `${kept} ${refuseShared.refused} ${JSON.stringify(journal())}`);
+    await wait(250);
+    row.focus();
+    trustedKey(page.win, 39, row);
+    t('kept journal: precondition: the next step chosen after the read', row.querySelector('.current-value').textContent === 'Up to 2160p (4K)',
+      row.querySelector('.current-value').textContent);
+    const written = await until(() => (stored(page.win, PROFILE_KEY) || {}).forceQuality === 'up2160', 2000);
+    t('kept journal: precondition: the account’s record has the later value', written, JSON.stringify(stored(page.win, PROFILE_KEY)));
+    await wait(50);
+    const left = {};
+    for (let i = 0; i < page.win.localStorage.length; i++) {
+      const k = page.win.localStorage.key(i);
+      left[k] = page.win.localStorage.getItem(k);
+    }
+    const next = boot({ data: backup, log: [], storage: left });
+    const back = await until(() => !!stored(next.win) && stored(next.win).minVideoLength === '5' &&
+      next.win.localStorage.getItem('ytaf-settings-recovering') === null, 3000);
+    t('kept journal: precondition: the next start read the copy', back, JSON.stringify(stored(next.win)));
+    t('kept journal: the next start keeps the later value, not the journal’s older one',
+      (stored(next.win, PROFILE_KEY) || {}).forceQuality === 'up2160', JSON.stringify(stored(next.win, PROFILE_KEY)));
   }
 
   // ---- Reset All Settings while the copy is read ----

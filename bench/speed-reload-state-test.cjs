@@ -290,6 +290,95 @@ run(async () => {
     }
     win.close();
   }
+  // Force Max Quality's panel row, moved to `to` (Left is towards a higher limit).
+  const moveForceRow = async (win, to, key) => {
+    trustedKey(win, 404);
+    await until(() => win.document.querySelector('.ytaf-ui-container .shortcut-control-row'), 2000);
+    const row = Array.from(win.document.querySelectorAll('.ytaf-ui-container .shortcut-control-row'))
+      .find((r) => r.querySelector('.shortcut-label') && r.querySelector('.shortcut-label').textContent.trim() === 'Force Max Quality');
+    if (!row) return 'no row';
+    const shown = () => row.querySelector('.current-value').textContent;
+    for (let i = 0; i < 10; i++) {
+      if (shown() === to) break;
+      row.focus();
+      trustedKey(win, key, row);
+    }
+    return shown();
+  };
+  {
+    // A 480p pick at 1x, with no speed reload: Up to 1080p chosen leaves it.
+    const { win, p, log, speed, emit, setQuality, pump } = boot(0, { force: 'up720' });
+    t('pick at 1x, limit moved: precondition: the speed feature is installed', !!speed);
+    if (speed) {
+      win.dispatchEvent(new win.CustomEvent('yt-navigate-finish', { detail: { pageType: 'watch' } }));
+      await sleep(300);
+      p.videoId = 'pickat1x001';
+      setQuality('hd2160');
+      emit(-1); emit(3); emit(1); pump(); pump();
+      t('pick at 1x, limit moved: precondition: Force set 720p', await until(() => log.ranges.includes('hd720'), 3000), log.ranges.join());
+      await sleep(20);
+      pressKey(win);
+      await sleep(20);
+      writeQuality(win, 480, 720);
+      setQuality('large');
+      log.ranges.length = 0;
+      t('pick at 1x, limit moved: precondition: Up to 1080p chosen', await moveForceRow(win, 'Up to 1080p', 37) === 'Up to 1080p');
+      // Past the 600 ms after which a change is applied.
+      await sleep(900);
+      emit(3); emit(1); pump(); pump();
+      await sleep(100);
+      t('pick at 1x, limit moved: the 480p pick stays', log.ranges.length === 0, log.ranges.join());
+    }
+    win.close();
+  }
+  {
+    // The speed reload's own record is no pick: with it the newest record, past
+    // Force's window, a new limit still applies.
+    const { win, p, log, speed, emit, setQuality, pump } = boot(0, { force: 'up1080' });
+    t('speed’s record, limit moved: precondition: the speed feature is installed', !!speed);
+    if (speed) {
+      win.dispatchEvent(new win.CustomEvent('yt-navigate-finish', { detail: { pageType: 'watch' } }));
+      await sleep(300);
+      p.videoId = 'speedrec001';
+      setQuality('hd2160');
+      emit(-1); emit(3); emit(1); pump(); pump();
+      t('speed’s record, limit moved: precondition: Force set 1080p', await until(() => log.ranges.includes('hd1080'), 3000), log.ranges.join());
+      // The page's clock past Force's 5 s, so the reloads' records are outside its window.
+      const realNow = win.Date.now.bind(win.Date);
+      win.Date.now = () => realNow() + 6000;
+      speed.setSpeed(1.5, { immediate: true });
+      await sleep(900);
+      speed.setSpeed(1, { immediate: true });
+      await sleep(900);
+      log.ranges.length = 0;
+      t('speed’s record, limit moved: precondition: Up to 720p chosen', await moveForceRow(win, 'Up to 720p', 39) === 'Up to 720p');
+      t('speed’s record, limit moved: the new limit applies', await until(() => log.ranges.includes('hd720'), 3000), log.ranges.join());
+    }
+    win.close();
+  }
+  // The reset from 1.5x with a player that fails on the quality: the reload is
+  // still made (the audio sink is gone by then), at the limit's own level.
+  for (const [name, breakIt, range] of [
+    ['the level list throws', (p) => { p.getAvailableQualityLevels = () => { throw new Error('no levels'); }; }, 'hd720'],
+    ['no level list', (p) => { p.getAvailableQualityLevels = undefined; }, 'hd720'],
+    ['the level list is empty', (p) => { p.getAvailableQualityLevels = () => []; }, 'hd720'],
+    ['the range setter throws', (p) => { p.setPlaybackQualityRange = () => { throw new Error('no range'); }; }, null]
+  ]) {
+    const { win, p, log, speed } = boot(0, { force: 'up720' });
+    t(`reset, ${name}: precondition: the speed feature is installed`, !!speed);
+    if (speed) {
+      speed.setSpeed(1.5, { immediate: true });
+      await sleep(900);
+      t(`reset, ${name}: precondition: reloaded at 1.5x`, log.reloads === 1, String(log.reloads));
+      breakIt(p);
+      log.ranges.length = 0;
+      speed.setSpeed(1, { immediate: true });
+      await sleep(900);
+      t(`reset, ${name}: the video is still reloaded`, log.reloads === 2, String(log.reloads));
+      if (range) t(`reset, ${name}: at the limit’s level`, log.ranges.join() === range, log.ranges.join());
+    }
+    win.close();
+  }
   {
     // A replacement player with no setPlaybackQualityRange: Up to 480p chosen
     // at 1.5x does nothing to it and throws nothing (a page error would show).

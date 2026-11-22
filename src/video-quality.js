@@ -1,8 +1,8 @@
 import { configRead, configAddChangeListener, forceQualityLines } from './config.js';
 import { showNotification } from './notifications.js';
 import { isWebOS25 } from './webos-utils.js';
-import { sendKey, REMOTE_KEYS, SELECTORS, isWatchPage, getVideo } from './utils.js';
-import { speedCapsQuality, speedKeepsQuality, clearSpeedQualityPick, noteForcedQuality } from './playback-speed.js';
+import { sendKey, REMOTE_KEYS, SELECTORS, SYNTHETIC_KEY_FLAG, isWatchPage, getVideo } from './utils.js';
+import { speedCapsQuality, speedKeepsQuality, speedRecordIsPick, clearSpeedQualityPick, noteForcedQuality } from './playback-speed.js';
 import { QUALITY_KEY, QUALITY_HEIGHTS, levelUpTo } from './speed/player-state.js';
 
 const DEBUG = false;
@@ -232,12 +232,29 @@ function setLocalStorageQuality() {
 // 720p; Max: 4320, whatever the video's best level, measured on webOS 25) is
 // noted, so switching Force Max Quality off removes it too: left, a later
 // start's speed reload would take it for the viewer's pick. Kept across
-// starts. One written later than this is not ours.
+// starts. One written later than this is not ours, nor one written after the
+// viewer's first key press since the range (keyAt): a pick in YouTube's menu,
+// even of the same level.
 const FORCED_RECORD_KEY = 'ytaf-force-record';
 const FORCED_RECORD_MS = 5000;
+// Until when a key press still counts for the note (no storage read per key after that).
+let forcedNoteOpenUntil = 0;
 
 function noteForcedRecord(level) {
-  try { window.localStorage.setItem(FORCED_RECORD_KEY, JSON.stringify({ level, at: Date.now() })); } catch { /* storage denied */ }
+  const at = Date.now();
+  forcedNoteOpenUntil = at + FORCED_RECORD_MS;
+  try { window.localStorage.setItem(FORCED_RECORD_KEY, JSON.stringify({ level, at })); } catch { /* storage denied */ }
+}
+
+function noteKeyAfterForcedRange(evt) {
+  if (evt.isTrusted === false || evt[SYNTHETIC_KEY_FLAG]) return;
+  const now = Date.now();
+  if (now > forcedNoteOpenUntil) return;
+  forcedNoteOpenUntil = 0;
+  try {
+    const own = JSON.parse(window.localStorage.getItem(FORCED_RECORD_KEY) || 'null');
+    if (own) window.localStorage.setItem(FORCED_RECORD_KEY, JSON.stringify({ ...own, keyAt: now }));
+  } catch { /* storage denied */ }
 }
 
 /** Whether YouTube's quality record `parsed` (with its `data`) is the one a Force Max Quality range wrote. */
@@ -247,7 +264,30 @@ function isForcedRecord(parsed, data) {
   if (!own || typeof own.at !== 'number' || typeof own.level !== 'string') return false;
   const created = Number(parsed.creation);
   if (!(created >= own.at && created <= own.at + FORCED_RECORD_MS)) return false;
+  if (typeof own.keyAt === 'number' && created >= own.keyAt) return false;
   return QUALITY_HEIGHTS[own.level] === data.quality;
+}
+
+// A record older than this is no pick made on the video playing: when it
+// opened, or when Force Max Quality was turned on, which releases a pick.
+let pickSince = 0;
+
+/**
+ * A level the viewer picked in YouTube's menu on the video playing stays when
+ * the mode moves between Max and Up to: the video counts as done. True if so.
+ */
+function keepViewerPick() {
+  try {
+    const videoId = player?.getVideoData?.()?.video_id;
+    const parsed = JSON.parse(window.localStorage.getItem(QUALITY_KEY) || 'null');
+    const data = parsed && parsed.data ? JSON.parse(parsed.data) : null;
+    if (!videoId || !data || data.quality === 4320 || !(Number(parsed.creation) >= pickSince)) return false;
+    if (isForcedRecord(parsed, data) || !speedRecordIsPick()) return false;
+    qualitySetForVideo.add(videoId);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -574,6 +614,7 @@ function handleStateChange(state) {
     
     if (isNewVideo) {
       lastVideoId = videoId;
+      pickSince = Date.now();
       DEBUG && console.info('[VideoQuality] 🎬 New video:', videoId);
       
       if (actualState === STATE_UNSTARTED) {
@@ -818,17 +859,24 @@ function setupListeners() {
         return;
       }
       if (!wasForcing) {
+        pickSince = Date.now();
         clearSpeedQualityPick();
         cachedQualitySettings = null;
         setLocalStorageQuality();
       }
       // A new level to force (on, or from Max to Up to and between them):
       // the video playing now gets it at once, once the row stops moving
-      // (Off steps through Max on the way to an Up to).
+      // (Off steps through Max on the way to an Up to), unless the viewer
+      // picked its quality by hand.
       qualitySetForVideo.clear();
       clearTimeout(applyNowTimer);
+      applyNowTimer = null;
+      if (keepViewerPick()) return;
       applyNowTimer = setTimeout(applyToPlayingVideo, APPLY_NOW_MS);
     });
+
+    // Capture: a key the page stops on its way is still the viewer's.
+    window.addEventListener('keydown', noteKeyAfterForcedRange, true);
 
     // The picture's size changed (a <video> 'resize', caught on its way down).
     document.addEventListener('resize', onVideoResize, true);

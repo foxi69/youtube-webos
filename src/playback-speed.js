@@ -483,18 +483,24 @@ export function createSpeedController({
       keptCaptions = { videoId, captions: readCaptions(player), landed: false, keyAt: userKeyAt() };
     }
     qualityPickVideoId = viewerPick() ? videoId : null;
-    if (currentSpeed > CAP_ABOVE) {
-      const cap = capQuality();
-      setRange(player, cap);
-    } else if (fromSpeed > CAP_ABOVE) {
-      // A pick in YouTube's menu wins over Force Max Quality, whose level is
-      // its limit's (Up to 1080p: the best up to 1080p), as video-quality.js asks.
-      const mode = configRead('forceQuality');
-      let levels = player.getAvailableQualityLevels && player.getAvailableQualityLevels();
-      if (!Array.isArray(levels)) levels = [];
-      const quality = viewerPick() || (mode !== 'off' ? levelUpTo(levels, forceQualityLines(mode)) : 'auto');
-      setRange(player, quality);
-    }
+    // The audio sink is gone already: a player that fails on the quality still
+    // gets the reload below, or the video would go on without sound.
+    try {
+      if (currentSpeed > CAP_ABOVE) {
+        const cap = capQuality();
+        setRange(player, cap);
+      } else if (fromSpeed > CAP_ABOVE) {
+        // A pick in YouTube's menu wins over Force Max Quality, whose level is
+        // its limit's (Up to 1080p: the best up to 1080p), as video-quality.js asks.
+        const mode = configRead('forceQuality');
+        let levels = null;
+        try { levels = player.getAvailableQualityLevels(); } catch { /* none listed */ }
+        // None listed: the level named for the limit, so it still holds.
+        if (!Array.isArray(levels) || !levels.length) levels = Object.keys(QUALITY_HEIGHTS);
+        const quality = viewerPick() || (mode !== 'off' ? levelUpTo(levels, forceQualityLines(mode)) : 'auto');
+        setRange(player, quality);
+      }
+    } catch { /* the reload goes on at the quality it has */ }
     if (!videoId) return;
     lastReloadAt = Date.now();
     player.loadVideoById(videoId, at);
@@ -785,6 +791,7 @@ export function createSpeedController({
     capNext,
     notePlay,
     keepsQuality,
+    viewerPick,
     clearQualityPick,
     noteForcedRange() {
       const now = Date.now();
@@ -805,6 +812,11 @@ export function speedCapsQuality() {
 /** A manual quality retained by a speed reload wins over automatic quality forcing. */
 export function speedKeepsQuality(player) {
   return !!speedInstance && speedInstance.controller.keepsQuality(player);
+}
+
+/** Whether the quality record is no cap of the speed feature's own (with none installed, it wrote none). */
+export function speedRecordIsPick() {
+  return !speedInstance || !!speedInstance.controller.viewerPick();
 }
 
 /** Force Max Quality is about to set a range: the record that follows is not the viewer's pick. */

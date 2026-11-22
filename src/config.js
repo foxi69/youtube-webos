@@ -678,7 +678,7 @@ function writeNow() {
     }
   }
   catch { /* quota / SecurityError on private mode */ }
-  if (!backupChecked && beforeRestoreChanged) saveBeforeRestore();
+  if ((!backupChecked || sharedRestorePending) && beforeRestoreChanged) saveBeforeRestore();
   copyToBackup(written);
 }
 
@@ -883,7 +883,9 @@ export function configWrite(key, value) {
   DEBUG && console.info('Changing key', key, 'from', oldValue, 'to', value);
   if (!backupChecked && COUNTERS.has(key)) {
     countBeforeRestore(key, (Number(value) || 0) - (Number(oldValue) || 0), false);
-  } else if (!backupChecked && !APP_RECORDS.has(key)) {
+  } else if ((!backupChecked || sharedRestorePending) && !APP_RECORDS.has(key)) {
+    // Also while the journal is kept for the next start (the shared record
+    // still refused): its older value must not come back over this one.
     journalBeforeRestore(key, value);
   }
   localConfig[key] = value;

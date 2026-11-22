@@ -585,6 +585,25 @@ run(async () => {
       env.state.seeks.join());
     t(n('report on: a start jump from 0.4 s does not report a segment already behind it'), uuids === 'sponsor-0', uuids);
   }
+  for (const [from, want] of [[0.4, 'selfpromo-0.3'], [0, 'selfpromo-0.3,sponsor-0']]) {
+    // A chain of 0 to 0.2 and 0.3 to 60: its first segment is crossed only by a jump made before 0.2 s.
+    const env = await boot({ sbReportSkips: true }, [seg('sponsor', 0, 0.2), seg('selfpromo', 0.3, 60)], { startAt: from });
+    await wait(50);
+    const uuids = env.reported.map((r) => r.split('UUID=')[1]).sort().join();
+    t(n(`report on: chain from ${from} s: precondition: it jumped to 60`), env.state.seeks.join() === '60', env.state.seeks.join());
+    t(n(`report on: chain from ${from} s: reports what the jump crossed`), uuids === want, uuids);
+  }
+  {
+    // A manual segment at 40 cuts the jump inside both auto segments: both
+    // were skipped up to there, so both are reported, and it stops at 40.
+    const env = await boot({ sbReportSkips: true, sbMode_outro: 'manual_skip' },
+      [seg('sponsor', 0, 60), seg('selfpromo', 10, 50), seg('outro', 40, 70)]);
+    await wait(50);
+    const uuids = env.reported.map((r) => r.split('UUID=')[1]).sort().join();
+    t(n('report on: a manual segment cuts the chain: the jump stops at its start'), env.state.seeks[0] === 40, env.state.seeks.join());
+    t(n('report on: a manual segment cuts the chain: the auto segments it crossed are reported, the manual one is not'),
+      uuids === 'selfpromo-10,sponsor-0', uuids);
+  }
   {
     // A segment nested in the one skipped, already behind the playhead: not
     // crossed by the jump, so not reported.
@@ -671,6 +690,21 @@ run(async () => {
     await env.playTo(30.5);
     await env.playTo(36);
     t(n('two undos: the first undone segment still plays'), env.state.time === 36, String(env.state.time));
+  }
+  {
+    // A combined skip undone; a refresh keeps its first segment and puts a
+    // longer one around it. Past that first segment, it no longer holds the
+    // new one's skip back.
+    const clock = {};
+    const env = await boot({}, [seg('sponsor', 30, 35), seg('selfpromo', 35.1, 60)], { clock });
+    await env.playTo(30.2);
+    t(n('undone, ended segment: precondition: skipped in one jump'), env.state.time === 60, String(env.state.time));
+    await press(env.win, BLUE);
+    t(n('undone, ended segment: precondition: Blue went back'), Math.abs(env.state.time - 30.2) < 0.01, String(env.state.time));
+    env.sb().applyRefreshedSegments([seg('sponsor', 30, 35), seg('selfpromo', 20, 55)], 'refreshed');
+    await wait(50);
+    await env.playTo(36);
+    t(n('undone, ended segment: the new segment around it is skipped to its end'), env.state.time === 55, String(env.state.time));
   }
   {
     // A chain skip at the start undone, then a refresh puts a segment around
@@ -814,14 +848,40 @@ run(async () => {
   }
   {
     // The one before is not on the list, this one is: nothing is skipped, also once the player reports it.
-    const opts = { videoId: 'zzzzzzzzzzz', author: 'Old Channel' };
+    // The retry's timer is taken over: the player's data changes while it
+    // waits, and the test runs it, so the rebuild it makes is seen.
+    const pageTimers = new Map();
+    const opts = {
+      videoId: 'zzzzzzzzzzz', author: 'Old Channel',
+      beforeEvaluate: (w) => {
+        const realSet = w.setTimeout.bind(w);
+        w.setTimeout = (fn, ms, ...args) => {
+          const id = realSet(fn, ms, ...args);
+          pageTimers.set(id, fn);
+          return id;
+        };
+      }
+    };
     const env = await boot({ sbWhitelistChannels: ['New Channel'] }, [seg('sponsor', 30, 60)], opts);
     await env.playTo(30.2);
     t(n('whitelist, the video before reported: its unlisted channel does not make this one skip'),
       env.state.time === 30.2 && env.state.seeks.length === 0, String(env.state.time));
+    const sb = env.sb();
+    const retryId = sb.channelRetryTimer;
+    t(n('whitelist, the video before reported: precondition: the retry is waiting'), pageTimers.has(retryId), String(retryId));
+    env.win.clearTimeout(retryId);
     opts.videoId = VIDEO_ID;
     opts.author = 'New Channel';
-    await wait(1300);
+    let rebuilt = 0;
+    const rebuild = sb.rebuildSkipSegments;
+    sb.rebuildSkipSegments = function counted() {
+      rebuilt++;
+      return rebuild.apply(this, arguments);
+    };
+    pageTimers.get(retryId)();
+    t(n('whitelist, the video before reported: the retry sees this video and builds the list again, with nothing to skip'),
+      rebuilt === 1 && sb.channelRetryTimer === null && sb.skipSegments.length === 0,
+      `${rebuilt} ${sb.channelRetryTimer} ${sb.skipSegments.length}`);
     await env.playTo(30.5);
     t(n('whitelist, the video before reported: once this one is, still not skipped'),
       env.state.time === 30.5 && env.state.seeks.length === 0, String(env.state.time));

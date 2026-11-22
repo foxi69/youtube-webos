@@ -376,9 +376,16 @@ run(async () => {
     t(n('...and that segment keeps its mark on the bar'), env.marks().length === 2, String(env.marks().length));
   }
   {
-    // At the boundary: 3.2 to 8.2 is 5 s and comes off the time; 13.2 to 18.1 does not.
-    const env = await boot({ sbShowTimeWithSkips: true, sbMinSegmentLength: '5' }, [seg('sponsor', 3.2, 8.2), seg('selfpromo', 13.2, 18.1)]);
+    // At the boundary, one segment each (on 600 s, 5 s and 4.9 s off would both
+    // round to 9:55): 3.2 to 8.2 is 5 s and comes off the time.
+    const env = await boot({ sbShowTimeWithSkips: true, sbMinSegmentLength: '5' }, [seg('sponsor', 3.2, 8.2)]);
     t(n('the time with skips removed: a segment of exactly the minimum, in fractions, comes off'), /\(9:55\)/.test(env.labelsCss()), env.labelsCss());
+  }
+  {
+    // 13.2 to 18.1 is a tenth shorter: nothing comes off, so no time is shown.
+    const env = await boot({ sbShowTimeWithSkips: true, sbMinSegmentLength: '5' }, [seg('selfpromo', 13.2, 18.1)]);
+    t(n('the time with skips removed: a segment a tenth under the minimum stays in'), !/\(\d+:\d\d\)/.test(env.labelsCss()), env.labelsCss());
+    t(n('...precondition: its mark is on the bar, so the labels were drawn'), env.marks().length === 1, String(env.marks().length));
   }
   {
     // Never Skip on These Channels: nothing is skipped, so no time comes off.

@@ -936,20 +936,19 @@ class SponsorBlockHandler {
         video.currentTime = chain.endTime;
         this.lastSkipTime = chain.endTime;
         this.hasPerformedChainSkip = true;
-        // The chain's segments, and those nested inside them: the jump covers both.
-        const covered = chain.segments.map(seg => seg.originalIndex);
+        // Reported (noteSkip): every auto segment the jump crossed, in the chain
+        // or nested in it, also one a manual segment cut the jump short inside.
+        // One already behind where it started was played, not skipped.
+        const covered = [];
 
         // Fast chronologically-sorted short-circuit skip mapping
         for (let i = 0; i < this.skipSegments.length; i++) {
             const seg = this.skipSegments[i];
-            if (seg.start > chain.endTime) break;
+            if (seg.start >= chain.endTime) break;
+            if (seg.mode !== 'auto_skip') continue;
 
-           if (seg.mode === 'auto_skip' && seg.start < chain.endTime && seg.end <= chain.endTime + 0.1) {
-                this.skippedSegmentIndices.add(seg.originalIndex);
-                // Reported (noteSkip) only where the jump crossed it: one already
-                // behind where it started was played, not skipped.
-                if (seg.end > chainStart && covered.indexOf(seg.originalIndex) === -1) covered.push(seg.originalIndex);
-            }
+            if (seg.end <= chain.endTime + 0.1) this.skippedSegmentIndices.add(seg.originalIndex);
+            if (seg.end > chainStart) covered.push(seg.originalIndex);
         }
         this.noteSkip(chainStart, chain.endTime, covered);
 
@@ -2054,6 +2053,13 @@ class SponsorBlockHandler {
         for (let i = segmentIdx + 1; i < this.skipSegments.length; i++) {
             const next = this.skipSegments[i];
 
+            // Already behind the playhead: not crossed by the jump, so not
+            // marked or reported as skipped, and no reason to stop it. Stopping
+            // at the start of a manual one sent the skip backwards, into the
+            // outer segment again, and the "Skipped" toast repeated ~4 times a
+            // second while nothing was skipped.
+            if (next.end <= currentTime) continue;
+
             // A segment of an undone skip plays: the jump stops at its start,
             // and is none at all if that start is already behind (a refresh
             // put a segment before it that overlaps it).
@@ -2063,19 +2069,11 @@ class SponsorBlockHandler {
             }
 
             if (next.mode !== 'auto_skip') {
-                // A manual segment already behind the playhead has had its
-                // turn: stopping at its start sent the skip backwards, into
-                // the outer segment again, and the "Skipped" toast repeated
-                // ~4 times a second while nothing was skipped.
-                if (next.end <= currentTime) continue;
                 if (next.start < jumpTarget) {
                     jumpTarget = next.start;
                 }
                 break;
             }
-            // Nested in the one skipped but already behind the playhead: not
-            // crossed by the jump, so not marked or reported as skipped.
-            if (next.end <= currentTime) continue;
             if (next.start > jumpTarget + 0.2) break;
 
             jumpTarget = Math.max(jumpTarget, next.end);
