@@ -64,8 +64,10 @@ export function isChannelWhitelisted(name) {
  */
 export function toggleChannelWhitelist() {
     // The video being watched: while the player still reports the one before
-    // (the next one loading), its channel is not taken for this one's.
-    const name = currentChannelName(videoIdFromHash());
+    // (the next one loading), its channel is not taken for this one's. With no
+    // video in the address (a Short without v=) there is nothing to check it by.
+    const videoID = videoIdFromHash();
+    const name = videoID ? currentChannelName(videoID) : '';
     if (!name) {
         showNotification(currentChannelName() ? 'The channel is not known yet: try again in a moment' : 'No channel to add');
         return;

@@ -2053,9 +2053,8 @@ class SponsorBlockHandler {
         }
 
         let jumpTarget = seg.end;
-		const categoryName = seg.categoryName;
-        const skippedCategories = [categoryName];
-        const segmentsToMark = [seg.originalIndex];
+        // The segments the jump takes in; those it crosses are counted below.
+        const chained = [seg];
 
         for (let i = segmentIdx + 1; i < this.skipSegments.length; i++) {
             const next = this.skipSegments[i];
@@ -2084,8 +2083,7 @@ class SponsorBlockHandler {
             if (next.start > jumpTarget + 0.2) break;
 
             jumpTarget = Math.max(jumpTarget, next.end);
-            skippedCategories.push(next.categoryName);
-            segmentsToMark.push(next.originalIndex);
+            chained.push(next);
         }
 
         if (segmentIdx === this.lastSkippedSegmentIndex && Math.abs(currentTime - this.lastSkipTime) < 0.1) {
@@ -2105,6 +2103,12 @@ class SponsorBlockHandler {
             this.aimPast(jumpTarget);
             return;
         }
+
+        // Only those the final jump crosses: one a later manual segment cut
+        // off at its start is neither marked, reported nor undone.
+        const crossed = chained.filter(s => s.start < jumpTarget);
+        const skippedCategories = crossed.map(s => s.categoryName);
+        const segmentsToMark = crossed.map(s => s.originalIndex);
 
         this.lastSkipTime = currentTime;
         this.lastSkippedSegmentIndex = segmentIdx;

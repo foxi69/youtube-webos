@@ -364,6 +364,23 @@ run(async () => {
       t('pick at 1x: the 480p pick stays, also through the next state events',
         !log.calls.some((c) => c.startsWith('range')) && s.quality === 'large', log.calls.join());
     }
+    // The viewer's 480p, picked while the change waits its 600 ms: the pick stays.
+    {
+      const { win, log, s, applyTimers } = boot({ forceQuality: 'up720' }, { quality: 'hd1080', state: 3, holdApply: true });
+      await wait(50);
+      t('pick in the wait: precondition: Force set 720p', log.calls.includes('range:hd720'), log.calls.join());
+      log.calls.length = 0;
+      t('pick in the wait: precondition: Up to 1080p chosen', stepRow(win, 'Up to 1080p') === 'Up to 1080p');
+      t('pick in the wait: precondition: the change waits on its timer', live(applyTimers).length === 1, String(live(applyTimers).length));
+      await wait(5);
+      trustedKey(win, 65);
+      await wait(5);
+      writeRecord(win, 480, 720, Date.now());
+      s.quality = 'large';
+      runLive(applyTimers);
+      t('pick in the wait: the 480p picked meanwhile stays', !log.calls.some((c) => c.startsWith('range')) && s.quality === 'large',
+        log.calls.join());
+    }
     // Control: the record is Force's own: the new limit applies.
     {
       const { win, log, applyTimers } = boot({ forceQuality: 'up720' }, { quality: 'hd1080', state: 3, holdApply: true });

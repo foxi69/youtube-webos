@@ -837,7 +837,8 @@ function applyToPlayingVideo() {
   if (!player || isDestroyed || !isForceEnabled() || !isWatchPage() || videoBeingProcessed || !levelsListed()) return;
   try {
     const videoId = player.getVideoData?.()?.video_id;
-    if (!videoId) return;
+    // Also a pick made while the change waited.
+    if (!videoId || keepViewerPick()) return;
     const result = isQualityAlreadyMax() ? { success: true } : setQualityOnPlayer();
     if (result.success) qualitySetForVideo.add(videoId);
   } catch (e) {

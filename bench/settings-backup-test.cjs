@@ -1419,6 +1419,63 @@ run(async () => {
       String(data.get(KEY)));
   }
 
+  // ---- An open that never answers: the writes waiting on it add no handler each ----
+  {
+    // The handlers given to the open's promise are counted: each write used to add one.
+    const data = new Map();
+    const openGate = new Promise(() => {});
+    const deadlines = [];
+    const most = { n: 0 }; // handlers given to the open
+    const page = boot({
+      config: { minVideoLength: '5', foxThemeApplied: true }, data, log: [], idb: { openGate },
+      setup: (w) => {
+        const realTimeout = w.setTimeout.bind(w);
+        w.setTimeout = (fn, ms, ...args) => {
+          if (ms === 10000 && typeof fn === 'function' && String(fn).indexOf('timed out') !== -1) {
+            deadlines.push(fn);
+            return -30 - deadlines.length;
+          }
+          return realTimeout(fn, ms, ...args);
+        };
+        // The open's promise: the one whose executor calls indexedDB.open.
+        let opens = 0;
+        const idb = w.indexedDB;
+        const open = idb.open.bind(idb);
+        idb.open = (...args) => { opens++; return open(...args); };
+        const Base = w.Promise;
+        const opening = new WeakSet();
+        w.Promise = class extends Base {
+          constructor(executor) {
+            let calls = 0;
+            super((resolve, reject) => { const before = opens; executor(resolve, reject); calls = opens - before; });
+            if (calls) opening.add(this);
+          }
+        };
+        const then = Base.prototype.then;
+        Base.prototype.then = function (...args) {
+          if (opening.has(this)) most.n++;
+          return then.apply(this, args);
+        };
+      }
+    });
+    await until(() => deadlines.length === 1, 4000);
+    trustedKey(page.win, 404, page.win.document.body, 'keydown');
+    trustedKey(page.win, 404, page.win.document.body, 'keyup');
+    await until(() => page.win.document.querySelector('.ytaf-ui-container label'));
+    const label = Array.prototype.slice.call(page.win.document.querySelectorAll('label'))
+      .find((l) => l.textContent.trim() === 'Remove Mixes');
+    const first = most.n;
+    t('open never answers: precondition: the start’s write waits on the open', first > 0, String(first));
+    for (let i = 0; i < 4; i++) {
+      const before = deadlines.length;
+      label.querySelector('input').click();
+      await until(() => deadlines.length > before, 2000);
+    }
+    t('open never answers: precondition: four writes wait on it, each with its deadline', deadlines.length === 5,
+      String(deadlines.length));
+    t('open never answers: the writes add no handler each to the open', most.n === first, first + ' -> ' + most.n);
+  }
+
   // ---- A database that does not open, then the next start ----
   {
     const backup = savedCopy([[KEY, JSON.stringify({ minVideoLength: '5', foxThemeApplied: true })]]);

@@ -81,9 +81,45 @@ function withDeadline(promise, ms, what) {
   });
 }
 
+// The writes waiting for the open in progress (openWaitersFor): one handler
+// on that open answers them all, so an open that never answers keeps only
+// the writes still within their deadline, not one handler per write made.
+let openWaitersFor = null;
+let openWaiters = null;
+
+/** The database for a write, or a rejection once `ms` pass with no answer. */
+function openForWrite(ms) {
+  return new Promise((resolve, reject) => {
+    const opening = openDb();
+    if (openWaitersFor !== opening) {
+      const waiters = new Set();
+      openWaitersFor = opening;
+      openWaiters = waiters;
+      const answer = (db, error) => {
+        // Answered: a later write adds its own handler (run at once).
+        if (openWaitersFor === opening) openWaitersFor = null;
+        waiters.forEach((waiter) => waiter(db, error));
+        waiters.clear();
+      };
+      opening.then((db) => answer(db, null), (e) => answer(null, e));
+    }
+    const waiters = openWaiters;
+    const waiter = (db, error) => {
+      clearTimeout(timer);
+      if (error) reject(error);
+      else resolve(db);
+    };
+    const timer = setTimeout(() => {
+      waiters.delete(waiter);
+      reject(new Error('backup open timed out'));
+    }, ms);
+    waiters.add(waiter);
+  });
+}
+
 /** Writes each [key, text] pair; a key whose text is null is deleted. False when it could not. */
 export function backupWrite(entries) {
-  return withDeadline(openDb(), READ_TIMEOUT_MS, 'backup open').catch(() => null).then((db) => {
+  return openForWrite(READ_TIMEOUT_MS).catch(() => null).then((db) => {
     if (!db) return false;
     return new Promise((resolve) => {
       try {

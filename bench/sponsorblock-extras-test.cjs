@@ -226,6 +226,17 @@ run(async () => {
       JSON.stringify(stored(env.win).sbWhitelistChannels) === '["New Channel"]', JSON.stringify(stored(env.win).sbWhitelistChannels));
   }
   {
+    // No video in the address (a Short without v=): the player's channel,
+    // perhaps still the video before's, is not added.
+    const env = await boot({ shortcut_key_8: 'sb_whitelist_channel' }, [seg('sponsor', 30, 60)]);
+    env.win.location.hash = '#/shorts';
+    await wait(50);
+    await press(env.win, 56);
+    t(n('whitelist action, no video in the address: no channel is added'),
+      JSON.stringify(stored(env.win).sbWhitelistChannels || []) === '[]' && /not known yet/.test(env.toasts()),
+      `${JSON.stringify(stored(env.win).sbWhitelistChannels)} ${env.toasts()}`);
+  }
+  {
     // webOS 25: the player has no author, the title tray names the channel.
     const tray = '<ytlr-video-title-tray><ytlr-video-metadata-line><yt-formatted-string>Tray Channel' +
       '</yt-formatted-string></ytlr-video-metadata-line></ytlr-video-title-tray>';
@@ -724,6 +735,18 @@ run(async () => {
     const uuids = env.reported.map((r) => r.split('UUID=')[1]).sort().join();
     t(n(`report on: chain from ${from} s: precondition: it jumped to 60`), env.state.seeks.join() === '60', env.state.seeks.join());
     t(n(`report on: chain from ${from} s: reports what the jump crossed`), uuids === want, uuids);
+  }
+  {
+    // 30 to 40 and 40.1 to 60 chain, and a manual segment at 40.1 cuts the
+    // jump at its start: 40.1 to 60 is not crossed, so not reported.
+    const env = await boot({ sbReportSkips: true, sbMode_outro: 'manual_skip' },
+      [seg('sponsor', 30, 40), seg('selfpromo', 40.1, 60), seg('outro', 40.1, 70)]);
+    await env.playTo(31);
+    await wait(50);
+    const uuids = env.reported.map((r) => r.split('UUID=')[1]).sort().join();
+    t(n('report on, cut at a chained start: precondition: the jump stopped at 40.1'), env.state.seeks[0] === 40.1,
+      env.state.seeks.join());
+    t(n('report on, cut at a chained start: only the segment crossed is reported'), uuids === 'sponsor-30', uuids);
   }
   {
     // A manual segment at 40 cuts the jump inside both auto segments: both
