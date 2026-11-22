@@ -402,6 +402,76 @@ run(async () => {
       Math.abs(own().sbTimeSaved - (100 + 60 - 30.2)) < 1e-9 && own().sbSkipCount === 5, JSON.stringify(own()));
   }
   {
+    // Two owners of one account: a skip with no account loaded, then Separate
+    // Settings switched on and a skip in the account, both before the read.
+    // The recovery's first write of the account's record is refused, the
+    // second (with both merged) stored; the shared record stays refused and
+    // the copy aborts. The next start has each skip once.
+    const clock = {};
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const PROFILE = 'ytaf-configuration::' + hashString('accountId=abc');
+    const copy = savedCopy([
+      ['ytaf-configuration', JSON.stringify({ perAccountSettings: true, foxThemeApplied: true })],
+      [PROFILE, JSON.stringify({ sbTimeSaved: 100, sbSkipCount: 4 })]
+    ]);
+    const storage = { 'yt.leanback.default::last-identity-used': JSON.stringify({ data: { accountId: 'abc' } }) };
+    const idb = { gate, abortWrites: true };
+    // After the release, the account's record is written twice: back from the
+    // copy (it was written from the defaults before the read), then with the
+    // first owner's merge. That second write is the one refused.
+    const ctl = { armed: false, writes: 0, refusedProfile: 0 };
+    const beforeEvaluate = (w) => {
+      const real = w.localStorage;
+      const check = (key) => {
+        if (key === 'ytaf-configuration') throw new Error('QuotaExceededError');
+        if (key === PROFILE && ctl.armed && ++ctl.writes === 2) { ctl.refusedProfile++; throw new Error('QuotaExceededError'); }
+      };
+      const proxy = new Proxy(real, {
+        get(target, prop) {
+          if (prop === 'setItem') return (key, value) => { check(key); target.setItem(key, value); };
+          const value = Reflect.get(target, prop);
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+        set(target, prop, value) { check(prop); target.setItem(prop, String(value)); return true; }
+      });
+      Object.defineProperty(w, 'localStorage', { configurable: true, get: () => proxy });
+    };
+    const env = await boot({}, [seg('sponsor', 30, 60), seg('sponsor', 70, 80)], { clock, copy, storage, idb, beforeEvaluate });
+    await env.playTo(30.2);
+    t(n('two owners: precondition: the first segment was skipped with no account loaded'), env.state.time === 60, String(env.state.time));
+    trustedKey(env.win, 404, env.win.document.body, 'keydown');
+    trustedKey(env.win, 404, env.win.document.body, 'keyup');
+    await until(() => env.win.document.querySelector('.ytaf-ui-container label'), 2000);
+    const label = Array.prototype.slice.call(env.win.document.querySelectorAll('label'))
+      .find((l) => l.textContent.trim() === 'Separate Settings for Each Account');
+    if (label) label.querySelector('input').click();
+    t(n('two owners: precondition: Separate Settings switched on before the read'), !!label && label.querySelector('input').checked === true);
+    trustedKey(env.win, 404, env.win.document.body, 'keydown');
+    trustedKey(env.win, 404, env.win.document.body, 'keyup');
+    await wait(100);
+    await env.playTo(70.2);
+    t(n('two owners: precondition: the second segment was skipped in the account'), env.state.time === 80, String(env.state.time));
+    await wait(300);
+    ctl.armed = true;
+    release();
+    const merged = await until(() => { try { return JSON.parse(env.win.localStorage.getItem(PROFILE)).sbSkipCount === 6; } catch { return false; } }, 3000);
+    t(n('two owners: precondition: the first write was refused, the second stored both skips'),
+      merged && ctl.refusedProfile === 1, `${ctl.refusedProfile} ${env.win.localStorage.getItem(PROFILE)}`);
+    await wait(100);
+    const left = {};
+    for (let i = 0; i < env.win.localStorage.length; i++) {
+      const k = env.win.localStorage.key(i);
+      left[k] = env.win.localStorage.getItem(k);
+    }
+    const next = await boot({}, [seg('sponsor', 30, 60)], { copy, storage: left });
+    const own = () => JSON.parse(next.win.localStorage.getItem(PROFILE) || '{}');
+    await until(() => next.win.localStorage.getItem('ytaf-settings-recovering') === null, 3000);
+    await wait(100);
+    t(n('two owners: the next start has each skip once'),
+      own().sbSkipCount === 6 && Math.abs(own().sbTimeSaved - (100 + (60 - 30.2) + (80 - 70.2))) < 1e-9, JSON.stringify(own()));
+  }
+  {
     // Its control: the same, with the copy storing the account's merged
     // record. The journal lets the skip go once it is there, and the next
     // start (the copy's 129.8 s) does not add it again.
