@@ -581,6 +581,39 @@ run(async () => {
       !!drawn && env.doc.getElementById('previewbar') === drawn && env.marks().length === 2, env.marks().map(at).join(' '));
   }
   {
+    // A hidden bar with inline pixel widths: placed by them (110 of 210). A
+    // stylesheet (a min-width) makes the second piece 200 px once laid out:
+    // the first laid-out sync places the marks again by what they measure,
+    // though their signature and the bar's own width did not change.
+    const env = await boot({}, [seg('sponsor', 150, 450)], {
+      bar: '<div class="bar-host"><ytlr-progress-bar><ytlr-multi-markers-player-bar-renderer>' +
+        '<div idomkey="progress-bar"><div idomkey="chapter-0" style="width: 100px; margin-right: 10px"></div>' +
+        '<div idomkey="chapter-1" style="width: 100px"></div><div idomkey="segment"></div></div>' +
+        '</ytlr-multi-markers-player-bar-renderer></ytlr-progress-bar></div>'
+    });
+    const at = (m) => `${parseFloat(m.style.left).toFixed(2)}/${parseFloat(m.style.width).toFixed(2)}`;
+    t(n('hidden inline widths: precondition: placed by the inline widths'),
+      env.marks().length === 2 && near(parseFloat(env.marks()[0].style.left), (50 / 210) * 100) &&
+        near(parseFloat(env.marks()[1].style.left), (110 / 210) * 100) && !env.sb()._chapterUnmeasured,
+      env.marks().map(at).join(' '));
+    const [a, b] = env.doc.querySelectorAll('[idomkey^="chapter-"]');
+    Object.defineProperty(a, 'offsetWidth', { configurable: true, get: () => 100 });
+    Object.defineProperty(b, 'offsetWidth', { configurable: true, get: () => 200 });
+    await wait(600);
+    await env.playTo(10);   // the overlay's own sync, at most every 500 ms
+    const marks = env.marks();
+    // Chapter 0 spans 0-200 s (100 of 300 px), chapter 1 200-600 s.
+    t(n('hidden inline widths: the first laid-out sync places them by the measured widths'),
+      marks.length === 2 && near(parseFloat(marks[0].style.left), (75 / 310) * 100) && near(parseFloat(marks[0].style.width), (25 / 310) * 100) &&
+        near(parseFloat(marks[1].style.left), (110 / 310) * 100) && near(parseFloat(marks[1].style.width), (125 / 310) * 100),
+      marks.map(at).join(' '));
+    const drawn = env.doc.getElementById('previewbar');
+    await wait(600);
+    await env.playTo(15);
+    t(n('hidden inline widths: after the redraw, a sync keeps the overlay'),
+      !!drawn && env.doc.getElementById('previewbar') === drawn && env.marks().length === 2, env.marks().map(at).join(' '));
+  }
+  {
     // Shown on the seek bar only (no skip, so no time listener) and the bar
     // made visible by a parent: no sync comes, yet the marks follow the
     // chapters once the pieces have a width (no playback here). The look is
@@ -700,6 +733,36 @@ run(async () => {
       env.sb().progressBar && env.sb().progressBar.tagName);
     t(n('renderer as the bar: its chapter pieces place the marks'),
       marks.length === 2 && near(parseFloat(marks[1].style.left), (110 / 210) * 100), marks.map(at).join(' '));
+  }
+  {
+    // The renderer as the bar, shown on the seek bar only (no time listener):
+    // YouTube replaces the whole chapter row with an equal one. The renderer
+    // stays, so nothing redraws; the new row's later gap still moves the marks.
+    const env = await boot({ sbMode_sponsor: 'seek_bar' }, [seg('sponsor', 150, 450)], {
+      bar: '<div class="bar-host"><ytlr-progress-bar><ytlr-multi-markers-player-bar-renderer><div class="row">' +
+        '<div idomkey="chapter-0" style="width: 100px; margin-right: 10px"></div><div idomkey="chapter-1" style="width: 100px"></div>' +
+        '</div></ytlr-multi-markers-player-bar-renderer></ytlr-progress-bar></div>'
+    });
+    const at = (m) => `${parseFloat(m.style.left).toFixed(2)}/${parseFloat(m.style.width).toFixed(2)}`;
+    const renderer = env.doc.querySelector('ytlr-multi-markers-player-bar-renderer');
+    t(n('renderer row replaced: precondition: the renderer is the bar, drawn by the chapters'),
+      env.sb().progressBar === renderer && env.marks().length === 2 && near(parseFloat(env.marks()[1].style.left), (110 / 210) * 100),
+      env.marks().map(at).join(' '));
+    const row = env.doc.querySelector('.row');
+    const fresh = row.cloneNode(true);
+    row.parentNode.replaceChild(fresh, row);
+    // The bar's check of the replace (on an animation frame) over before the
+    // gap changes: only an observer on the new row's piece can move the marks.
+    await wait(100);
+    await new Promise((r) => env.win.requestAnimationFrame(() => env.win.requestAnimationFrame(r)));
+    await wait(50);
+    t(n('renderer row replaced: the same pieces, the marks unchanged'),
+      env.sb().progressBar === renderer && !row.isConnected && env.marks().length === 2 &&
+        near(parseFloat(env.marks()[1].style.left), (110 / 210) * 100), env.marks().map(at).join(' '));
+    fresh.querySelector('[idomkey="chapter-0"]').style.marginRight = '30px';
+    await wait(300);
+    t(n('renderer row replaced: the new row is watched, its new gap moves the marks'),
+      env.marks().length === 2 && near(parseFloat(env.marks()[1].style.left), (130 / 230) * 100), env.marks().map(at).join(' '));
   }
   {
     // The same with no chapter-0 among the pieces (keyed from 1): still found.

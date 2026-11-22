@@ -363,7 +363,7 @@ class SponsorBlockHandler {
      * plain line. Null with fewer than two pieces too (no gaps to allow for).
      */
     _chapterLayout(duration) {
-        this._chapterUnmeasured = false;
+        this._chapterUnmeasured = this._chapterInline = false;
         const els = this._chapterElements();
         if (els.length < 2) return null;
         let starts = rendererChapterStarts();
@@ -411,6 +411,10 @@ class SponsorBlockHandler {
         // Laid out, and still no length to place marks in (negative margins
         // taking it all back): the plain line, with nothing to wait for.
         if (!content || !total) return null;
+        // Placed by inline widths on a bar not laid out: a stylesheet (a
+        // min-width) may size the pieces otherwise once it is, so the first
+        // laid-out sync draws again (_chapterNowMeasurable).
+        this._chapterInline = !laidOut;
         for (let i = 0; i < pieces.length; i++) {
             const p = pieces[i];
             if (starts.length) {
@@ -433,12 +437,13 @@ class SponsorBlockHandler {
 
     /**
      * Marks drawn on the plain line because the chapter pieces had no width
-     * to read, which the pieces now have: their signature is the same, so
-     * only this tells that the chapters can place the marks. Reads the layout
-     * only while such a draw is waiting.
+     * to read, or placed by their inline widths on a bar not laid out, and
+     * the pieces now have a width: their signature is the same, so only this
+     * tells that the chapters can place (or place again) the marks. Reads the
+     * layout only while such a draw is waiting.
      */
     _chapterNowMeasurable() {
-        if (!this._chapterUnmeasured) return false;
+        if (!this._chapterUnmeasured && !this._chapterInline) return false;
         return this._chapterElements().some((el) => el.offsetWidth > 0);
     }
 
@@ -491,6 +496,7 @@ class SponsorBlockHandler {
             this._chapterObserver.observe(els[i], { attributes: true, attributeFilter: ['class', 'style'] });
         }
         const track = this._chapterTrack();
+        this._watchedTrack = track;
         if (track) this._chapterObserver.observe(track, { childList: true });
     }
 
@@ -1419,6 +1425,10 @@ class SponsorBlockHandler {
         // used to run the selector list, getComputedStyle and a full overlay
         // rebuild on every mutation. Input changes call drawOverlay() directly.
         if (this.progressBar && this.progressBar.isConnected) {
+            // The chapter row itself replaced under a bar still in place (the
+            // renderer tracked as the bar), by pieces of the same signature:
+            // nothing redraws, so the new row and its pieces are watched here.
+            if (this._chapterObserver && this._chapterTrack() !== this._watchedTrack) this._watchChapters();
             if (this.overlay && this.overlay.isConnected) {
                 // Ensure the sibling overlay syncs visibility when attributes mutate
                 const { container, asSibling } = this._getProgressBarAnchor();
@@ -1504,7 +1514,7 @@ class SponsorBlockHandler {
         // duration, all filtered out) ends the look for a width
         // (_watchChapterMeasure); one unchanged since the last keeps it.
         if (this.isDestroyed || !this._barObserverStarted || !this.segments.length) {
-            this._chapterUnmeasured = false;
+            this._chapterUnmeasured = this._chapterInline = false;
             return;
         }
 
@@ -1517,14 +1527,14 @@ class SponsorBlockHandler {
             this._anchorCache = null;
             this._anchorCacheBar = null;
             this.lastOverlayHash = null;
-            this._chapterUnmeasured = false;
+            this._chapterUnmeasured = this._chapterInline = false;
             this._scheduleBarRetry();
             return;
         }
 
         const duration = this.video ? this.video.duration : 0;
         if (!duration || isNaN(duration)) {
-            this._chapterUnmeasured = false;
+            this._chapterUnmeasured = this._chapterInline = false;
             return;
         }
 
@@ -1585,7 +1595,7 @@ class SponsorBlockHandler {
         // label). Leave the bar clean rather than inserting an empty overlay.
         if (!fragment.childNodes.length) {
             this.overlay = null;
-            this._chapterUnmeasured = false;
+            this._chapterUnmeasured = this._chapterInline = false;
             return;
         }
 
