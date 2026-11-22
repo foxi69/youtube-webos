@@ -1004,17 +1004,24 @@ run(async () => {
   }
   {
     // The one before is not on the list, this one is: nothing is skipped, also once the player reports it.
-    // The retry's timer is taken over: the player's data changes while it
-    // waits, and the test runs it, so the rebuild it makes is seen.
-    const pageTimers = new Map();
+    // The retry's 1 s timer is held, not scheduled: the player's data
+    // changes while it waits, and the test runs it, so the rebuild it makes is
+    // seen, and a slow run cannot let it fire first.
+    const held = [];
     const opts = {
       videoId: 'zzzzzzzzzzz', author: 'Old Channel',
       beforeEvaluate: (w) => {
         const realSet = w.setTimeout.bind(w);
+        const realClear = w.clearTimeout.bind(w);
         w.setTimeout = (fn, ms, ...args) => {
-          const id = realSet(fn, ms, ...args);
-          pageTimers.set(id, fn);
-          return id;
+          if (ms !== 1000) return realSet(fn, ms, ...args);
+          held.push({ id: -800 - held.length, fn, cleared: false });
+          return held[held.length - 1].id;
+        };
+        w.clearTimeout = (id) => {
+          const h = held.find((x) => x.id === id);
+          if (h) h.cleared = true;
+          else realClear(id);
         };
       }
     };
@@ -1023,9 +1030,9 @@ run(async () => {
     t(n('whitelist, the video before reported: its unlisted channel does not make this one skip'),
       env.state.time === 30.2 && env.state.seeks.length === 0, String(env.state.time));
     const sb = env.sb();
-    const retryId = sb.channelRetryTimer;
-    t(n('whitelist, the video before reported: precondition: the retry is waiting'), pageTimers.has(retryId), String(retryId));
-    env.win.clearTimeout(retryId);
+    const retry = held.find((h) => h.id === sb.channelRetryTimer);
+    t(n('whitelist, the video before reported: precondition: the retry is waiting, held'), !!retry && !retry.cleared,
+      String(sb.channelRetryTimer));
     opts.videoId = VIDEO_ID;
     opts.author = 'New Channel';
     let rebuilt = 0;
@@ -1034,7 +1041,7 @@ run(async () => {
       rebuilt++;
       return rebuild.apply(this, arguments);
     };
-    pageTimers.get(retryId)();
+    retry.fn();
     t(n('whitelist, the video before reported: the retry sees this video and builds the list again, with nothing to skip'),
       rebuilt === 1 && sb.channelRetryTimer === null && sb.skipSegments.length === 0,
       `${rebuilt} ${sb.channelRetryTimer} ${sb.skipSegments.length}`);

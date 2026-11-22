@@ -383,9 +383,13 @@ run(async () => {
   }
   {
     // 13.2 to 18.1 is a tenth shorter: nothing comes off, so no time is shown.
-    const env = await boot({ sbShowTimeWithSkips: true, sbMinSegmentLength: '5' }, [seg('selfpromo', 13.2, 18.1)]);
+    // A full-video label with its badge on: the badge shows, so the labels
+    // were drawn for this video, and only the time is left out.
+    const env = await boot({ sbShowTimeWithSkips: true, sbFullVideoLabel: true, sbMinSegmentLength: '5' },
+      [seg('selfpromo', 0, 0, 'full'), seg('selfpromo', 13.2, 18.1)]);
     t(n('the time with skips removed: a segment a tenth under the minimum stays in'), !/\(\d+:\d\d\)/.test(env.labelsCss()), env.labelsCss());
-    t(n('...precondition: its mark is on the bar, so the labels were drawn'), env.marks().length === 1, String(env.marks().length));
+    t(n('...precondition: the labels were drawn (the full-video badge shows)'), /content:"Self Promo"/.test(env.labelsCss()), env.labelsCss());
+    t(n('...and the segment keeps its mark on the bar'), env.marks().length === 1, String(env.marks().length));
   }
   {
     // Never Skip on These Channels: nothing is skipped, so no time comes off.
@@ -393,9 +397,10 @@ run(async () => {
     // labels were drawn, and only the time is left out.
     const listed = await boot({ sbShowTimeWithSkips: true, sbFullVideoLabel: true, sbWhitelistChannels: ['listed channel'] },
       [seg('selfpromo', 0, 0, 'full'), seg('sponsor', 30, 60)], { author: 'Listed Channel' });
-    const other = await boot({ sbShowTimeWithSkips: true, sbWhitelistChannels: ['Other Channel'] },
-      [seg('sponsor', 30, 60)], { author: 'Listed Channel' });
-    t(n('the time with skips removed: control: a channel not on the list gets it'), /\(9:30\)/.test(other.labelsCss()), other.labelsCss());
+    const other = await boot({ sbShowTimeWithSkips: true, sbFullVideoLabel: true, sbWhitelistChannels: ['Other Channel'] },
+      [seg('selfpromo', 0, 0, 'full'), seg('sponsor', 30, 60)], { author: 'Listed Channel' });
+    t(n('the time with skips removed: control: a channel not on the list gets it, beside the same badge'),
+      /\(9:30\)/.test(other.labelsCss()) && /content:"Self Promo"/.test(other.labelsCss()), other.labelsCss());
     t(n('the time with skips removed: precondition: the listed video’s labels are drawn (its full-video badge)'),
       /content:"Self Promo"/.test(listed.labelsCss()), listed.labelsCss());
     t(n('the time with skips removed: a channel on Never Skip gets none'), !/\(\d+:\d\d\)/.test(listed.labelsCss()), listed.labelsCss());
