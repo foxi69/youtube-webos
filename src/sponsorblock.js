@@ -1,5 +1,5 @@
 import sha256 from 'tiny-sha256';
-import { configAddChangeListener, configRemoveChangeListener, segmentTypes, configGetAll, configRead, configWrite } from './config';
+import { configAddChangeListener, configRemoveChangeListener, segmentTypes, configGetAll, configRead, configWrite, configActiveProfile } from './config';
 import { showNotification } from './notifications.js';
 import sponsorBlockUI from './Sponsorblock-UI.js';
 import sponsorBlockLabels, { isFullVideoSegment } from './sponsorblock-labels.js';
@@ -1040,7 +1040,8 @@ class SponsorBlockHandler {
     noteSkip(from, to, indices) {
         const saved = to - from;
         if (!(saved > 0)) return;
-        this.lastAutoSkip = { from, to, keys: indices.map(i => this.segmentKey(i)), at: Date.now() };
+        // The profile whose totals the skip went to (null: none loaded yet).
+        this.lastAutoSkip = { from, to, keys: indices.map(i => this.segmentKey(i)), at: Date.now(), profile: configActiveProfile() };
         try {
             configWrite('sbTimeSaved', (Number(configRead('sbTimeSaved')) || 0) + saved);
             configWrite('sbSkipCount', (Number(configRead('sbSkipCount')) || 0) + 1);
@@ -1064,6 +1065,10 @@ class SponsorBlockHandler {
     undoLastSkip() {
         const last = this.lastAutoSkip;
         if (!last || !this.video || Date.now() - last.at > UNDO_WINDOW_MS) return false;
+        // Taken in one account, another loaded since (a switch that waited for
+        // the copy's read, say): not that one's totals to cut. A skip with no
+        // profile loaded went to the account the restore then loaded.
+        if (last.profile !== null && last.profile !== configActiveProfile()) return false;
         // Moved on since by more than playing (at up to 2x) would have: the
         // viewer seeked elsewhere, and is not sent back.
         const elapsed = (Date.now() - last.at) / 1000;

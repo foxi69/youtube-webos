@@ -85,7 +85,8 @@ function fakeIndexedDB(data, log, opts = {}) {
     open(name, version = 1) {
       const req = { result: undefined, onsuccess: null, onerror: null, onupgradeneeded: null, onblocked: null };
       const fails = name !== DB_NAME || opts.openFails === true || (typeof opts.openFails === 'number' && opens < opts.openFails);
-      const blocked = !!opts.blockFirst && opens === 0;
+      // Another name fails before anything else: a blocked first open too.
+      const blocked = !!opts.blockFirst && opens === 0 && name === DB_NAME;
       opens++;
       opts.opened = opens;
       const answer = () => later(() => {

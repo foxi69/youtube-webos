@@ -1136,6 +1136,31 @@ run(async () => {
     t('...the mark stays for the next start', page.win.localStorage.getItem('ytaf-settings-recovering') === '1');
   }
 
+  // ---- The stand-in itself: another database name never opens, blocked first or not ----
+  for (const blockFirst of [false, true]) {
+    const idb = fakeIndexedDB(savedCopy([[KEY, '{}']]), [], { blockFirst });
+    const req = idb.open('another-database', 1);
+    const outcome = await new Promise((resolve) => {
+      req.onsuccess = () => resolve('success');
+      req.onerror = () => resolve('error');
+      req.onblocked = () => { /* a success may follow: waited for */ };
+      setTimeout(() => resolve('no answer'), 500);
+    });
+    t('the stand-in: another database name fails' + (blockFirst ? ' (first open blocked)' : ''), outcome === 'error', outcome);
+  }
+  {
+    // Its control: the app's own name opens, blocked first or not.
+    const idb = fakeIndexedDB(savedCopy([[KEY, '{}']]), [], { blockFirst: true });
+    const req = idb.open('ytaf-settings-backup', 1);
+    const outcome = await new Promise((resolve) => {
+      req.onsuccess = () => resolve('success');
+      req.onerror = () => resolve('error');
+      req.onblocked = () => { /* the success follows */ };
+      setTimeout(() => resolve('no answer'), 500);
+    });
+    t('the stand-in: the app’s database opens (first open blocked)', outcome === 'success', outcome);
+  }
+
   // ---- A connection the browser closes: a later write opens again ----
   // drop: closed with onclose (storage cleared, say); lose: its transactions
   // just throw (InvalidStateError), with no event.

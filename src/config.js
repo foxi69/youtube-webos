@@ -993,6 +993,11 @@ export function configGetProfileStatus() {
   return { state: 'unknown', fields: unknownIdentityFields.slice() };
 }
 
+/** The account whose settings are loaded: its profile name, 'guest', or null (the shared settings). */
+export function configActiveProfile() {
+  return activeProfile;
+}
+
 function checkAccountChange() {
   if (!localConfig.perAccountSettings || !restoreSettled) return;
   const profile = readAccountProfile();

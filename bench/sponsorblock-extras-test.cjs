@@ -364,6 +364,56 @@ run(async () => {
       Math.abs(rec(A).sbTimeSaved - (100 + 60 - 30.2)) < 1e-9 && rec(A).sbSkipCount === 5, JSON.stringify(rec(A)));
   }
   {
+    // The same while the copy is read: separate settings switched on in abc,
+    // a skip there, then a switch to xyz that waits for the read. The read
+    // loads xyz from none, and Blue still takes nothing back from it.
+    const clock = {};
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const A = 'ytaf-configuration::' + hashString('accountId=abc');
+    const B = 'ytaf-configuration::' + hashString('accountId=xyz');
+    const copy = savedCopy([
+      ['ytaf-configuration', JSON.stringify({ perAccountSettings: false, foxThemeApplied: true, enableSponsorBlock: true })],
+      [A, JSON.stringify({ sbTimeSaved: 100, sbSkipCount: 4 })],
+      [B, JSON.stringify({ sbTimeSaved: 7, sbSkipCount: 1 })]
+    ]);
+    const storage = { 'yt.leanback.default::last-identity-used': JSON.stringify({ data: { accountId: 'abc' } }) };
+    const env = await boot({}, [seg('sponsor', 30, 60)], { clock, copy, storage, idb: { gate } });
+    const rec = (key) => JSON.parse(env.win.localStorage.getItem(key) || '{}');
+    trustedKey(env.win, 404, env.win.document.body, 'keydown');
+    trustedKey(env.win, 404, env.win.document.body, 'keyup');
+    await until(() => env.win.document.querySelector('.ytaf-ui-container label'), 2000);
+    const label = Array.prototype.slice.call(env.win.document.querySelectorAll('label'))
+      .find((l) => l.textContent.trim() === 'Separate Settings for Each Account');
+    const box = label && label.querySelector('input');
+    t(n('switch during the read: precondition: separate settings off before the read'), !!box && box.checked === false);
+    box.click();
+    t(n('switch during the read: precondition: on now'), box.checked === true);
+    trustedKey(env.win, 461, env.win.document.body, 'keydown');
+    trustedKey(env.win, 461, env.win.document.body, 'keyup');
+    await env.playTo(30.2);
+    t(n('switch during the read: precondition: the segment was skipped'), env.state.time === 60, String(env.state.time));
+    const changes = [];
+    env.win.addEventListener('ytaf-profile-change', (e) => changes.push(e.detail));
+    env.win.localStorage.setItem('yt.leanback.default::last-identity-used', JSON.stringify({ data: { accountId: 'xyz' } }));
+    env.win.dispatchEvent(new env.win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: true } }));
+    env.win.dispatchEvent(new env.win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: false } }));
+    t(n('switch during the read: precondition: the switch waits for the read'), changes.length === 0, JSON.stringify(changes));
+    release();
+    const loaded = await until(() => changes.length > 0, 3000);
+    t(n('switch during the read: precondition: the read loads xyz, from none'), loaded && changes[0].from === null &&
+      changes[0].to === hashString('accountId=xyz'), JSON.stringify(changes));
+    t(n('switch during the read: precondition: the skip went to abc’s totals'),
+      await until(() => rec(A).sbSkipCount === 5, 2000), JSON.stringify(rec(A)));
+    await press(env.win, BLUE);
+    t(n('switch during the read: Blue does not go back'), env.state.time === 60, String(env.state.time));
+    await wait(300);
+    t(n('switch during the read: xyz’s totals are untouched'), rec(B).sbTimeSaved === 7 && rec(B).sbSkipCount === 1,
+      JSON.stringify(rec(B)));
+    t(n('switch during the read: abc keeps the skip'),
+      Math.abs(rec(A).sbTimeSaved - (100 + 60 - 30.2)) < 1e-9 && rec(A).sbSkipCount === 5, JSON.stringify(rec(A)));
+  }
+  {
     // Per-account settings in the copy, but no record of this account: it
     // starts from the restored shared totals, which hold the early skip once.
     let release;

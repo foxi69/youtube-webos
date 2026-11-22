@@ -173,5 +173,6 @@
   {"id":"speed-reset-level","file":"src/playback-speed.js","from":"levelUpTo(levels, forceQualityLines(mode))","to":"'highres'","why":"back at 1x with Up to N lines, the reset asks for Max and goes over the limit"},
   {"id":"speed-cap-limit","file":"src/playback-speed.js","from":"    if (lines && lines < QUALITY_HEIGHTS.hd1080) {","to":"    if (lines && lines < 0) {","why":"Up to 480p is not kept above 1x: the speed cap is 1080p"},
   {"id":"speed-limit-change","file":"src/playback-speed.js","from":"        if ((QUALITY_HEIGHTS[player.getPlaybackQuality()] || 0) > QUALITY_HEIGHTS[cap]) speedInstance.controller.setRange(player, cap);","to":"        void cap;","why":"a lower limit chosen above 1x is not applied to the video playing"},
-  {"id":"sb-undo-profile","file":"src/sponsorblock.js","from":"            if (from !== null) this.lastAutoSkip = null;","to":"            void from;","why":"an undo after a switch of account takes the skip off the new account's totals"}
+  {"id":"sb-undo-profile","file":"src/sponsorblock.js","from":"            if (from !== null) this.lastAutoSkip = null;","to":"            void from;","why":"an undo after a switch of account takes the skip off the new account's totals"},
+  {"id":"sb-undo-skip-profile","file":"src/sponsorblock.js","from":"        if (last.profile !== null && last.profile !== configActiveProfile()) return false;","to":"        void last.profile;","why":"a skip taken in one account is undone from another loaded since (a switch that waited for the read)"}
 ]
