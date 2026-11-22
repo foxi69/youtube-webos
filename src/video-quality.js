@@ -464,7 +464,9 @@ function interceptAndUpgradeQuality(videoId) {
     if (player !== owner) return;
     const result = setQualityOnPlayer();
     
-    if (result.success) {
+    // A range that went through counts too: the video reloads at it, and
+    // setting it again on the next state change would reload it again.
+    if (result.success || result.rangeSet) {
       qualitySetForVideo.add(videoId);
     }
     
@@ -635,7 +637,7 @@ function handleStateChange(state) {
             if (levelsListed()) {
                 const result = isQualityAlreadyMax() ? { success: true } : setQualityOnPlayer();
                 notifyIfUpgraded(result);
-                if (result.success) qualitySetForVideo.add(videoId);
+                if (result.success || result.rangeSet) qualitySetForVideo.add(videoId);
             }
             break;
 
@@ -840,7 +842,7 @@ function applyToPlayingVideo() {
     // Also a pick made while the change waited.
     if (!videoId || keepViewerPick()) return;
     const result = isQualityAlreadyMax() ? { success: true } : setQualityOnPlayer();
-    if (result.success) qualitySetForVideo.add(videoId);
+    if (result.success || result.rangeSet) qualitySetForVideo.add(videoId);
   } catch (e) {
     DEBUG && console.warn('[VideoQuality] Could not apply the new level:', e);
   }

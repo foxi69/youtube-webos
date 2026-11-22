@@ -44,7 +44,7 @@ const allErrors = [];
  * whether the player takes state listeners. opts.record: the yt-player-quality
  * record in storage before the app starts.
  */
-function boot(cfg, { player = true, events = true, record, ua, quality = 'hd720', state = 1, levels, holdApply = false } = {}) {
+function boot(cfg, { player = true, events = true, record, ua, quality = 'hd720', state = 1, levels, holdApply = false, qualityThrows = false } = {}) {
   const errors = [];
   const vc = new VirtualConsole();
   vc.on('jsdomError', (e) => { errors.push(e.message); allErrors.push(e.message); });
@@ -102,7 +102,8 @@ function boot(cfg, { player = true, events = true, record, ua, quality = 'hd720'
     getPlaybackQuality: () => s.quality,
     getUserPlaybackQualityPreference: () => 'auto',
     setPlaybackQualityRange(a) { log.calls.push('range:' + a); if (a === 'highres') s.quality = s.levels[0]; else if (s.levels.indexOf(a) !== -1) s.quality = a; },
-    setPlaybackQuality: calls('quality'),
+    // qualityThrows: the call after the range fails (the player busy), the range already set.
+    setPlaybackQuality: qualityThrows ? () => { log.calls.push('quality-threw'); throw new Error('player busy'); } : calls('quality'),
     pauseVideo() { log.calls.push('pause'); },
     playVideo() { log.calls.push('play'); },
     isInline: () => false,
@@ -327,6 +328,22 @@ run(async () => {
     toggle('Force Max Quality', false);
     t(`Same level, ${name}: ${kept ? 'kept' : 'removed'} when switched off`,
       kept ? stored()?.data?.quality === 720 : win.localStorage.getItem(KEY) === null, win.localStorage.getItem(KEY));
+  }
+  // The range set, then the player's next call failing: the video counts as
+  // done, so the next state change does not set the range (and reload) again.
+  {
+    const { log, s, emit } = boot({ forceQuality: 'max' }, { quality: 'hd720', state: 3, qualityThrows: true });
+    await wait(50);
+    t('range set, then a failure: precondition: the range went through, the next call threw',
+      log.calls.includes('range:highres') && log.calls.includes('quality-threw'), log.calls.join());
+    // Still reloading: the player reports the old level for a while.
+    s.quality = 'hd720';
+    log.calls.length = 0;
+    emit(3);
+    emit(3);
+    await wait(50);
+    t('range set, then a failure: the next buffering sets no range again', !log.calls.some((c) => c.startsWith('range')),
+      log.calls.join());
   }
   // A limit moved while a video plays, at 1x with no speed reload: a level the
   // viewer picked on this video stays; Force's own record does not hold it back.
