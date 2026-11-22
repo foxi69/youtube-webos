@@ -1470,15 +1470,21 @@ run(async () => {
     const data = new Map();
     const openGate = new Promise(() => {});
     const deadlines = [];
+    const noAnswer = []; // the open's own deadline
     const most = { n: 0 }; // handlers given to the open
+    const idbOpts = { openGate };
     const page = boot({
-      config: { minVideoLength: '5', foxThemeApplied: true }, data, log: [], idb: { openGate },
+      config: { minVideoLength: '5', foxThemeApplied: true }, data, log: [], idb: idbOpts,
       setup: (w) => {
         const realTimeout = w.setTimeout.bind(w);
         w.setTimeout = (fn, ms, ...args) => {
           if (ms === 10000 && typeof fn === 'function' && String(fn).indexOf('timed out') !== -1) {
             deadlines.push(fn);
             return -30 - deadlines.length;
+          }
+          if (ms === 10000 && typeof fn === 'function' && String(fn).indexOf('gave no answer') !== -1) {
+            noAnswer.push(fn);
+            return -60 - noAnswer.length;
           }
           return realTimeout(fn, ms, ...args);
         };
@@ -1496,10 +1502,15 @@ run(async () => {
             if (calls) opening.add(this);
           }
         };
+        // Counted on the open's promise and on every promise derived from it,
+        // so a cached derived promise that each write hooks onto counts too.
         const then = Base.prototype.then;
         Base.prototype.then = function (...args) {
-          if (opening.has(this)) most.n++;
-          return then.apply(this, args);
+          const derived = opening.has(this);
+          if (derived) most.n++;
+          const result = then.apply(this, args);
+          if (derived) opening.add(result);
+          return result;
         };
       }
     });
@@ -1519,6 +1530,15 @@ run(async () => {
     t('open never answers: precondition: four writes wait on it, each with its deadline', deadlines.length === 5,
       String(deadlines.length));
     t('open never answers: the writes add no handler each to the open', most.n === first, first + ' -> ' + most.n);
+    // The open's own deadline: once it passes, the open is given up, and the
+    // next write opens again instead of waiting on it for the rest of the run.
+    t('open never answers: precondition: the open has its own deadline', noAnswer.length === 1, String(noAnswer.length));
+    const opened = idbOpts.opened;
+    noAnswer[0]();
+    await wait(20);
+    label.querySelector('input').click();
+    const again = await until(() => idbOpts.opened > opened, 2000);
+    t('open never answers: past its deadline, the next write opens again', again, `${opened} -> ${idbOpts.opened}`);
   }
 
   // ---- A database that does not open, then the next start ----

@@ -41,11 +41,14 @@ function openDb() {
     request.onupgradeneeded = () => {
       try { request.result.createObjectStore(STORE); } catch { /* there already */ }
     };
-    // A blocked open is given up (the next read or write opens again); if it
-    // still gets through later, that connection is closed, not left open
-    // beside the next one.
+    // A blocked open is given up (the next read or write opens again), and so
+    // is one with no answer at all after the read's deadline: the writes after
+    // it would otherwise all wait on it for the rest of the run. If it still
+    // gets through later, that connection is closed, not left open beside the next one.
     let gaveUp = false;
+    const noAnswer = setTimeout(() => { gaveUp = true; reject(new Error('backup database gave no answer')); }, READ_TIMEOUT_MS);
     request.onsuccess = () => {
+      clearTimeout(noAnswer);
       const db = request.result;
       if (gaveUp) {
         try { db.close(); } catch { /* gone already */ }
@@ -58,8 +61,8 @@ function openDb() {
       db.onversionchange = () => { try { db.close(); } catch { /* gone already */ } forgetDb(db); };
       resolve(db);
     };
-    request.onerror = () => reject(request.error || new Error('backup database failed to open'));
-    request.onblocked = () => { gaveUp = true; reject(new Error('backup database blocked')); };
+    request.onerror = () => { clearTimeout(noAnswer); reject(request.error || new Error('backup database failed to open')); };
+    request.onblocked = () => { clearTimeout(noAnswer); gaveUp = true; reject(new Error('backup database blocked')); };
   });
   // A failed open is not kept: the next read or write tries again, so one
   // passing error does not leave the rest of the run with no copy.
