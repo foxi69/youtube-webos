@@ -299,6 +299,10 @@ run(async () => {
       speed.setSpeed(1.5, { immediate: true });
       await sleep(900);
       const errorsBefore = errors.length;
+      // A range never set must not be remembered as the controller's own.
+      const ownBefore = win.localStorage.getItem('ytaf-speed-own-range');
+      t('no range setter: precondition: the 1080p cap is noted as its own',
+        !!ownBefore && JSON.parse(ownBefore).level === 'hd1080', String(ownBefore));
       p.setPlaybackQualityRange = undefined;
       log.ranges.length = 0;
       trustedKey(win, 404);
@@ -316,6 +320,8 @@ run(async () => {
       await sleep(900);
       t('no range setter: no page error, no range', errors.length === errorsBefore && log.ranges.length === 0,
         errors.slice(errorsBefore).join(' | ') + ' ' + log.ranges.join());
+      t('no range setter: its own range note is unchanged', win.localStorage.getItem('ytaf-speed-own-range') === ownBefore,
+        String(win.localStorage.getItem('ytaf-speed-own-range')));
     }
     win.close();
   }

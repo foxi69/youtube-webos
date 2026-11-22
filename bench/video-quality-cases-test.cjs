@@ -293,6 +293,21 @@ run(async () => {
     t(`Up to 720p, ${name}: the note goes too`, win.localStorage.getItem('ytaf-force-record') === null,
       win.localStorage.getItem('ytaf-force-record'));
   }
+  // Max: YouTube records the video's best level, so that is the one noted.
+  for (const [quality, kept] of [[2160, false], [1080, true]]) {
+    const { win, log, stored, toggle } = boot({}, { quality: 'hd720', state: 3 });
+    await wait(50);
+    const own = JSON.parse(win.localStorage.getItem('ytaf-force-record') || 'null');
+    t(`Max, a ${quality}p record: precondition: the range was set and the best level noted`,
+      log.calls.includes('range:highres') && own?.level === 'hd2160', `${log.calls.join()} ${JSON.stringify(own)}`);
+    if (!own) continue;
+    win.localStorage.setItem(KEY, JSON.stringify({
+      data: JSON.stringify({ quality, previousQuality: 720 }), creation: own.at, expiration: own.at + YEAR
+    }));
+    toggle('Force Max Quality', false);
+    t(`Max, a ${quality}p record: ${kept ? 'kept' : 'removed'} when switched off`,
+      kept ? stored()?.data?.quality === quality : win.localStorage.getItem(KEY) === null, win.localStorage.getItem(KEY));
+  }
 
   // ---- How the player is found and followed ----
   {

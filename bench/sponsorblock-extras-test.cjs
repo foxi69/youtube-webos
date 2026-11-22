@@ -775,7 +775,13 @@ run(async () => {
     }
     t(n(name + ': precondition: its ten retries ran'), !!env.sb() && env.sb().channelRetries === 10, String(env.sb() && env.sb().channelRetries));
     if (known) opts.author = 'Some Channel';
+    // Built again only once the channel is known, not on every play before that.
+    const handler = env.sb();
+    const rebuild = handler.rebuildSkipSegments;
+    let rebuilds = 0;
+    handler.rebuildSkipSegments = function () { rebuilds++; return rebuild.apply(this, arguments); };
     env.win.dispatchEvent(new env.win.CustomEvent('yt-player-state-change', { detail: { state: 1 } }));
+    t(n(name + ': the play builds the segments again ' + (known ? 'once' : 'not at all')), rebuilds === (known ? 1 : 0), String(rebuilds));
     await env.playTo(30.2);
     if (known) t(n(name + ': known at the next play, listed: nothing is skipped'), env.state.time === 30.2, String(env.state.time));
     else t(n(name + ': control: counted as not listed, skipped'), env.state.time === 60, String(env.state.time));
