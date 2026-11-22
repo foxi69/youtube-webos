@@ -364,8 +364,9 @@ run(async () => {
       t('Max to Up to 480p at 1.5x: precondition: Up to 480p chosen', !!row && row.querySelector('.current-value').textContent === 'Up to 480p',
         row ? row.querySelector('.current-value').textContent : 'no row');
       const live = held.filter((h) => !h.cleared);
-      t('Max to Up to 480p at 1.5x: precondition: each step set the settle timer again, one left', held.length > 1 && live.length > 0,
-        held.length + ' set, ' + live.length + ' left');
+      // Two listeners wait on the row: this one and video-quality.js.
+      t('Max to Up to 480p at 1.5x: precondition: each step set the settle timers again, one left for each listener',
+        held.length > 2 && live.length === 2, held.length + ' set, ' + live.length + ' left');
       await sleep(50);
       t('Max to Up to 480p at 1.5x: nothing before the settle timer runs', log.ranges.length === 0, log.ranges.join());
       for (const h of live) h.fn();
