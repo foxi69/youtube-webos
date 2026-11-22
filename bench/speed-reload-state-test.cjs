@@ -221,6 +221,43 @@ run(async () => {
     win.close();
   }
   {
+    // Up to 720p puts the video at 720p at 1x, and YouTube records 720p for
+    // it: that record is Force Max Quality's, not a pick of the viewer's. So
+    // after 1.5x and back, Up to 1080p chosen at 1x still applies (on a TV the
+    // video stayed at 480p: the record read as a pick held Force back).
+    const { win, p, log, speed, emit, setQuality, pump } = boot(0, { force: 'up720' });
+    if (speed) {
+      // A new video, starting at 2160p as YouTube picks: Up to 720p takes it down.
+      win.dispatchEvent(new win.CustomEvent('yt-navigate-finish', { detail: { pageType: 'watch' } }));
+      await sleep(300);
+      p.videoId = 'upto720vid1';
+      setQuality('hd2160');
+      emit(-1); emit(3); emit(1); pump(); pump();
+      const forced = await until(() => log.ranges.includes('hd720'), 3000);
+      t('Force’s own record: precondition: Up to 720p set 720p at 1x', forced, log.ranges.join());
+      speed.setSpeed(1.5, { immediate: true });
+      await sleep(900);
+      t('Force’s own record: at 1.5x it is no viewer’s pick', speed.keepsQuality(win.document.getElementById('ytlr-player__player-container-player')) === false);
+      speed.setSpeed(1, { immediate: true });
+      await sleep(900);
+      log.ranges.length = 0;
+      trustedKey(win, 404);
+      await until(() => win.document.querySelector('.ytaf-ui-container .shortcut-control-row'), 2000);
+      const row = Array.from(win.document.querySelectorAll('.ytaf-ui-container .shortcut-control-row'))
+        .find((r) => r.querySelector('.shortcut-label') && r.querySelector('.shortcut-label').textContent.trim() === 'Force Max Quality');
+      for (let i = 0; i < 10; i++) {
+        if (!row || row.querySelector('.current-value').textContent === 'Up to 1080p') break;
+        row.focus();
+        trustedKey(win, 37, row);
+      }
+      t('Force’s own record: precondition: Up to 1080p chosen at 1x', !!row && row.querySelector('.current-value').textContent === 'Up to 1080p',
+        row ? row.querySelector('.current-value').textContent : 'no row');
+      const raised = await until(() => log.ranges.includes('hd1080'), 3000);
+      t('Force’s own record: Up to 1080p applies to the video playing', raised, log.ranges.join());
+    }
+    win.close();
+  }
+  {
     // Max at 1.5x (capped at 1080p), then Up to 480p chosen in the panel: the
     // video playing goes down to 480p once the row stops.
     const { win, log, speed } = boot(0, { force: true });

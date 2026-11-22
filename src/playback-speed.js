@@ -256,6 +256,9 @@ export function createSpeedController({
   // from YouTube's record (see viewerPick), with the record it was read from.
   const ownRanges = new Map();
   let ownRangeLevel;
+  // The last range Force Max Quality set (video-quality.js), at any level:
+  // the record YouTube writes for it is no pick of the viewer's either.
+  let forcedRange = null;
   let lastPick = null;
   let seenRaw;
   let seenRecord = null;
@@ -391,7 +394,9 @@ export function createSpeedController({
     const own = ownRanges.get(record.level);
     const ours = !!own && record.at >= own.from &&
       (record.at < own.until || !keyPressedBetween(own.last, record.at));
-    if (!ours) lastPick = record.level;
+    const forced = !!forcedRange && record.at >= forcedRange.from &&
+      (record.at < forcedRange.until || !keyPressedBetween(forcedRange.from, record.at));
+    if (!ours && !forced) lastPick = record.level;
     return lastPick;
   }
 
@@ -779,6 +784,10 @@ export function createSpeedController({
     notePlay,
     keepsQuality,
     clearQualityPick,
+    noteForcedRange() {
+      const now = Date.now();
+      forcedRange = { from: now, until: now + OWN_RECORD_MS };
+    },
     leaveVideo,
     dispose
   };
@@ -794,6 +803,11 @@ export function speedCapsQuality() {
 /** A manual quality retained by a speed reload wins over automatic quality forcing. */
 export function speedKeepsQuality(player) {
   return !!speedInstance && speedInstance.controller.keepsQuality(player);
+}
+
+/** Force Max Quality is about to set a range: the record that follows is not the viewer's pick. */
+export function noteForcedQuality() {
+  if (speedInstance) speedInstance.controller.noteForcedRange();
 }
 
 /** Explicitly enabling Force Max Quality releases the previously retained pick. */

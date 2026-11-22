@@ -2,7 +2,7 @@ import { configRead, configAddChangeListener, forceQualityLines } from './config
 import { showNotification } from './notifications.js';
 import { isWebOS25 } from './webos-utils.js';
 import { sendKey, REMOTE_KEYS, SELECTORS, isWatchPage, getVideo } from './utils.js';
-import { speedCapsQuality, speedKeepsQuality, clearSpeedQualityPick } from './playback-speed.js';
+import { speedCapsQuality, speedKeepsQuality, clearSpeedQualityPick, noteForcedQuality } from './playback-speed.js';
 import { QUALITY_KEY, QUALITY_HEIGHTS, levelUpTo } from './speed/player-state.js';
 
 const DEBUG = false;
@@ -331,6 +331,7 @@ function setQualityOnPlayer() {
     DEBUG && console.log('[VideoQuality] Upgrading quality from:', previousQuality);
 
     const level = targetLevel();
+    noteForcedQuality();
     player.setPlaybackQualityRange(level, level);
     rangeSet = true;
     player.setPlaybackQuality?.(level);
