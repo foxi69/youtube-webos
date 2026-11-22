@@ -240,6 +240,10 @@ const cfgSnapshot = configGetAll();
 // The filters that need a setting on; the rows ahead, the left menu and the
 // preview fix run before them.
 let anyResponseFilterEnabled = false;
+// The filters the fallback walk of an unrecognized response serves: all but
+// the player-format ones (dropUpscaled, maxVideoLines), which act on the
+// player response only.
+let fallbackFiltersEnabled = false;
 let cfgEmojiFixEffective = false;
 
 // Singleton passed to the filters, refreshed by recomputeFilterFlags() rather
@@ -370,7 +374,7 @@ function recomputeFilterFlags() {
   cfgFlags.sidebar = sidebarHookRequired();
   cfgFlags.continuePreviews = !!cfgSnapshot[CONFIG_KEYS.PREVIEW_HANDOVER];
 
-  anyResponseFilterEnabled = !!(
+  fallbackFiltersEnabled = !!(
     cfgFlags.enableAdBlock ||
     cfgFlags.enableTrackingBlock ||
     cfgFlags.removeGlobalShorts ||
@@ -389,11 +393,10 @@ function recomputeFilterFlags() {
     cfgFlags.removeYouThere ||
     cfgFlags.disableAutoCaptions ||
     cfgFlags.forceOriginalAudio ||
-    cfgFlags.dropUpscaled ||
-    cfgFlags.maxVideoLines > 0 ||
     cfgFlags.decorateItems ||
     cfgFlags.deArrow
   );
+  anyResponseFilterEnabled = fallbackFiltersEnabled || cfgFlags.dropUpscaled || cfgFlags.maxVideoLines > 0;
 
   Object.assign(cfgFlagsNoEmoji, cfgFlags);
   cfgFlagsNoEmoji.enableLegacyEmojiFix = false;
@@ -854,7 +857,7 @@ function filterResponse(data, text) {
   } else if (responseType === 'ACTION' || responseType === 'PLAYER') {
     if (DEBUG) debugLog(`Schema Match: [${responseType}]`);
     applySchemaFilters(data, responseType, flags);
-  } else if (text.length > 10000 && !Array.isArray(data)) {
+  } else if (fallbackFiltersEnabled && text.length > 10000 && !Array.isArray(data)) {
     if (DEBUG) logSchemaMiss(data, text.length);
     applyFallbackFilters(data, flags);
   } else if ((flags.removeGlobalShorts || flags.removeLiveVideos) && !Array.isArray(data)) {

@@ -26,6 +26,8 @@ function boot(cfg, opts = {}) {
     setup: (w) => {
       NS = w.JSON.stringify;
       if (opts.mse) w.MediaSource = { isTypeSupported: opts.mse };
+      // opts.setup(w): more of the page set up before the bundle runs.
+      if (opts.setup) opts.setup(w);
     },
     fetch: () => Promise.reject(new Error('offline'))
   });
@@ -86,6 +88,9 @@ run(async () => {
       itags(capped.parse(player([{ itag: 1, mimeType: 'video/mp4', qualityLabel: '1440p60' }, { itag: 2, mimeType: 'video/mp4', qualityLabel: '1080p60' }]))) === '2');
     t('up to 480p: a video with nothing that small keeps its formats',
       itags(boot({ forceQuality: 'up480' }).parse(player([video(399, 1920, 1080), video(398, 1280, 720), audio]))) === '399,398,251');
+    // Its control: with a 480p format there, the cap applies (480p stays, 720p goes).
+    t('up to 480p: with a 480p format, the bigger ones go',
+      itags(boot({ forceQuality: 'up480' }).parse(player([video(398, 1280, 720), video(397, 854, 480), audio]))) === '397,251');
     t('Max: no limit',
       itags(boot({ forceQuality: 'max', removeUpscaledFormats: false }).parse(player(list()))) === '401,400,399,398,251');
     t('Off: no limit',
@@ -166,6 +171,23 @@ run(async () => {
     const capped = boot(Object.assign({}, alone, { forceQuality: 'up1080' })).parse(withAds(list()));
     t('nothing else on: Up to 1080p still drops the formats above it',
       itags(capped) === '399,398,251' && capped.adPlacements.length === 1, itags(capped) + ' ' + capped.adPlacements.length);
+    // A big response of no known kind: the fallback walk serves none of the
+    // format filters, so with only them on it is not walked. Its lookups of
+    // `gridRenderer` are counted (the walk asks each object it meets).
+    const walked = (cfg) => {
+      let looks = 0;
+      const { parse } = boot(cfg, {
+        setup: (w) => {
+          const own = w.Object.prototype.hasOwnProperty;
+          w.Object.prototype.hasOwnProperty = function (key) { if (key === 'gridRenderer') looks++; return own.call(this, key); };
+        }
+      });
+      parse({ responseContext: {}, unknownKind: { _pad: 'z'.repeat(12000), nested: { gridRenderer: { items: [{ a: 1 }] } } } });
+      return looks;
+    };
+    t('unknown response: precondition: walked with a feed filter on', walked(Object.assign({}, alone, { forceQuality: 'up1080', enableAdBlock: true, removeMixes: true })) > 0);
+    t('unknown response: not walked with only Up to on', walked(Object.assign({}, alone, { forceQuality: 'up1080' })) === 0);
+    t('unknown response: not walked with only Skip AI-Upscaled Qualities on', walked(Object.assign({}, alone, { removeUpscaledFormats: true })) === 0);
   }
 
   // ---- The panel row ----
