@@ -1273,6 +1273,32 @@ run(async () => {
     t('read aborted at its end: the next start, with a read that works, restores the copy', back, JSON.stringify(stored(next.win)));
   }
 
+  {
+    // The same abort, seen through what waits for the read: with separate
+    // settings on, a switch of account waits until the read is settled. Once
+    // the abort is handled (the read failed), the switch goes through at once,
+    // not after the read's 10 s timeout.
+    const PROFILE_B = KEY + '::' + hashString('accountId=xyz');
+    const storage = Object.assign({}, IDENTITY, {
+      'ytaf-settings-recovering': '1',
+      [KEY]: JSON.stringify({ perAccountSettings: true, foxThemeApplied: true }),
+      [PROFILE_KEY]: JSON.stringify({ minVideoLength: '20' }),
+      [PROFILE_B]: JSON.stringify({ minVideoLength: '5' })
+    });
+    const backup = savedCopy([[KEY, JSON.stringify({ perAccountSettings: true, foxThemeApplied: true })]]);
+    const idb = { abortReads: true };
+    const page = boot({ data: backup, log: [], storage, idb });
+    t('read aborted, account switch: precondition: the read was aborted', await until(() => (idb.readsAborted || 0) > 0, 3000));
+    const changes = [];
+    page.win.addEventListener('ytaf-profile-change', (e) => changes.push(e.detail.to));
+    page.win.localStorage.setItem('yt.leanback.default::last-identity-used', JSON.stringify({ data: { accountId: 'xyz' } }));
+    page.win.dispatchEvent(new page.win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: true } }));
+    page.win.dispatchEvent(new page.win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: false } }));
+    const switched = await until(() => changes.indexOf(hashString('accountId=xyz')) !== -1, 1000);
+    t('read aborted, account switch: the failed read is handled, the switch goes through at once', switched,
+      JSON.stringify(changes));
+  }
+
   // ---- A Reset after the read, the shared record still refused ----
   {
     // The copy is read (100 s, 4 skips) but localStorage refuses the shared

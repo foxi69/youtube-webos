@@ -258,5 +258,6 @@
   {"id":"backup-blocked-holds-opens","file":"src/config-backup.js","from":"  if (blockedOpen) return Promise.reject(new Error('backup database still blocked'));\n","to":"","why":"Writes queue new opens behind a blocked one"},
   {"id":"vq-frame-levels","file":"src/video-quality.js","from":"const result = levelsListed() ? setQualityOnPlayer() : { success: false, upgraded: false, rangeSet: false };","to":"const result = setQualityOnPlayer();","why":"The frame sets a range with no level listed, and the video counts as done"},
   {"id":"backup-read-abort","file":"src/config-backup.js","from":"        tx.onabort = () => reject(tx.error || new Error('backup read aborted'));\n","to":"","why":"A read aborted at its end is never answered"},
-  {"id":"sb-undo-seeded","file":"src/sponsorblock.js","from":"(detail.from === null && (detail.restored || detail.seeded))","to":"(detail.from === null && detail.restored)","why":"A new account started from the shared counters loses the undo of the skip it holds"}
+  {"id":"sb-undo-seeded","file":"src/sponsorblock.js","from":"(detail.from === null && (detail.restored || detail.seeded))","to":"(detail.from === null && detail.restored)","why":"A new account started from the shared counters loses the undo of the skip it holds"},
+  {"id":"backup-read-abort-noop","file":"src/config-backup.js","from":"tx.onabort = () => reject(tx.error || new Error('backup read aborted'));","to":"tx.onabort = () => {};","why":"An aborted read is never failed, and what waits for the read waits for its timeout"}
 ]
