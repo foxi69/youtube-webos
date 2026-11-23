@@ -263,29 +263,32 @@ run(async () => {
     }
     win.close();
   }
-  {
+  for (const how of ['key', 'pointer']) {
     // Force Max Quality sets 720p, and the viewer picks 480p in YouTube's menu
     // right after (a key, then the record, well within a second): that record
-    // is the viewer's pick, kept at 1.5x.
+    // is the viewer's pick, kept at 1.5x. A Magic Remote pointer press sends
+    // no key: it counts the same.
+    const n = (name) => how === 'key' ? name : name.replace('pick right after Force', 'pointer pick right after Force');
+    const press = how === 'key' ? pressKey : (w) => dispatchTrusted(w.document.body, new w.MouseEvent('mousedown', { bubbles: true }));
     const { win, p, log, speed, emit, setQuality, pump } = boot(0, { force: 'up720' });
-    t('pick right after Force: precondition: the speed feature is installed', !!speed);
+    t(n('pick right after Force: precondition: the speed feature is installed'), !!speed);
     if (speed) {
       win.dispatchEvent(new win.CustomEvent('yt-navigate-finish', { detail: { pageType: 'watch' } }));
       await sleep(300);
       p.videoId = 'pickafter01';
       setQuality('hd2160');
       emit(-1); emit(3); emit(1); pump(); pump();
-      t('pick right after Force: precondition: Force set 720p', await until(() => log.ranges.includes('hd720'), 3000), log.ranges.join());
+      t(n('pick right after Force: precondition: Force set 720p'), await until(() => log.ranges.includes('hd720'), 3000), log.ranges.join());
       // A few ms apart, so the key comes after Force's range and before the
       // record (the times are whole ms): the order is what is tested.
       await sleep(20);
-      pressKey(win);
+      press(win);
       await sleep(20);
       writeQuality(win, 480, 720);
       setQuality('large');
       speed.setSpeed(1.5, { immediate: true });
       await sleep(900);
-      t('pick right after Force: the 480p pick is the viewer\u2019s, kept above 1x',
+      t(n('pick right after Force: the 480p pick is the viewer\u2019s, kept above 1x'),
         speed.keepsQuality(p) === true && log.ranges[log.ranges.length - 1] === 'large', log.ranges.join());
     }
     win.close();

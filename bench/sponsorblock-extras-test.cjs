@@ -232,8 +232,10 @@ run(async () => {
     env.win.location.hash = '#/shorts';
     await wait(50);
     await press(env.win, 56);
-    t(n('whitelist action, no video in the address: no channel is added'),
-      JSON.stringify(stored(env.win).sbWhitelistChannels || []) === '[]' && /not known yet/.test(env.toasts()),
+    // ...and no "try again": with no video to check by, it would not help.
+    t(n('whitelist action, no video in the address: no channel is added, and none to add is said'),
+      JSON.stringify(stored(env.win).sbWhitelistChannels || []) === '[]' && /No channel to add/.test(env.toasts()) &&
+      !/not known yet/.test(env.toasts()),
       `${JSON.stringify(stored(env.win).sbWhitelistChannels)} ${env.toasts()}`);
   }
   {

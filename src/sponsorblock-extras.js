@@ -69,7 +69,8 @@ export function toggleChannelWhitelist() {
     const videoID = videoIdFromHash();
     const name = videoID ? currentChannelName(videoID) : '';
     if (!name) {
-        showNotification(currentChannelName() ? 'The channel is not known yet: try again in a moment' : 'No channel to add');
+        // No video in the address: trying again finds none either.
+        showNotification(videoID && currentChannelName() ? 'The channel is not known yet: try again in a moment' : 'No channel to add');
         return;
     }
     const list = Array.isArray(configRead('sbWhitelistChannels')) ? configRead('sbWhitelistChannels') : [];

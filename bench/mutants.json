@@ -233,5 +233,7 @@
   {"id":"speed-deferred-applied","file":"src/playback-speed.js","from":"    if (!pending) currentSpeed = next;\n","to":"","why":"Another account's speed loaded mid-video is dropped"},
   {"id":"speed-deferred-kept","file":"src/playback-speed.js","from":"deferredSpeed = next === currentSpeed ? null : next;","to":"deferredSpeed = null;","why":"Another account's speed loaded mid-video is not kept for later"},
   {"id":"speed-viewer-clears-deferred","file":"src/playback-speed.js","from":"    deferredSpeed = null;\n    const previousSpeed = currentSpeed;","to":"    const previousSpeed = currentSpeed;","why":"A speed the viewer set is replaced by a deferred one on leaving"},
-  {"id":"speed-limit-missed-retry","file":"src/playback-speed.js","from":"          limitMissed = true;\n","to":"","why":"A lower limit that could not be applied is never retried"}
+  {"id":"speed-limit-missed-retry","file":"src/playback-speed.js","from":"          limitMissed = true;\n","to":"","why":"A lower limit that could not be applied is never retried"},
+  {"id":"speed-pointer-pick","file":"src/playback-speed.js","from":"  win.addEventListener('mousedown', onKey, true);\n","to":"","why":"A Magic Remote pick right after Force is not kept at a speed above 1x"},
+  {"id":"sbx-no-video-message","file":"src/sponsorblock-extras.js","from":"showNotification(videoID && currentChannelName() ?","to":"showNotification(currentChannelName() ?","why":"With no video in the address the shortcut says to try again"}
 ]

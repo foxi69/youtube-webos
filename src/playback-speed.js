@@ -856,8 +856,9 @@ export function installSpeedFeature(win, { notify, configRead: cfgRead, getPlaye
 
   // The keys the viewer pressed: a change of subtitles by hand after a reload
   // ends putting the old ones back (player-state.js), and a quality record
-  // written after a key press is a pick in the menu (viewerPick). The times are
-  // the last few, newest last.
+  // written after a key press is a pick in the menu (viewerPick). A Magic
+  // Remote pointer press counts as one (it sends no key). The times are the
+  // last few, newest last.
   let lastUserKeyAt = 0;
   const keyTimes = [];
   // The time of the newest key press dropped from keyTimes: up to then the
@@ -870,6 +871,7 @@ export function installSpeedFeature(win, { notify, configRead: cfgRead, getPlaye
     if (keyTimes.length > KEY_TIMES) droppedKeyAt = keyTimes.shift();
   };
   win.addEventListener('keydown', onKey, true);
+  win.addEventListener('mousedown', onKey, true);
   const ctrl = createSpeedController({
     win, getPlayer, notify, configRead: cfgRead, codecs, userKeyAt: () => lastUserKeyAt, onSpeed,
     // A span that reaches into the dropped presses may have had one: a record
@@ -930,6 +932,7 @@ export function installSpeedFeature(win, { notify, configRead: cfgRead, getPlaye
       restoreAudioOffer();
       if (bindTimer !== null) win.clearInterval(bindTimer);
       win.removeEventListener('keydown', onKey, true);
+      win.removeEventListener('mousedown', onKey, true);
       if (win.document) win.document.removeEventListener('playing', resume, true);
       win.removeEventListener('ytaf-page-update', onPageUpdate);
       if (resumeTimer !== null) win.clearTimeout(resumeTimer);
