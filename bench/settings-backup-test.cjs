@@ -1195,6 +1195,38 @@ run(async () => {
       JSON.stringify([stored(next.win).sbTimeSaved, stored(next.win).sbSkipCount]));
   }
 
+  // ---- A Reset after the read, the shared record still refused ----
+  {
+    // The copy is read (100 s, 4 skips) but localStorage refuses the shared
+    // record, so the next start reads the copy again. A Reset then: that
+    // start must not bring the old totals back.
+    const backup = savedCopy([[KEY, JSON.stringify({ sbTimeSaved: 100, sbSkipCount: 4, minVideoLength: '5', foxThemeApplied: true })]]);
+    const refused = { n: 0 };
+    const first = boot({ data: backup, log: [], setup: (w) => refuseKeys(w, (key) => key === KEY && ++refused.n > 0) });
+    const read = await until(() => first.win.localStorage.getItem('ytaf-settings-changed') !== null, 3000);
+    t('reset, shared record refused: precondition: the copy was read, its shared record refused, the mark kept',
+      read && refused.n > 0 && first.win.localStorage.getItem('ytaf-settings-recovering') === '1', String(refused.n));
+    trustedKey(first.win, 404, first.win.document.body, 'keydown');
+    trustedKey(first.win, 404, first.win.document.body, 'keyup');
+    await until(() => first.win.document.querySelector('.ytaf-sb-stats .ytaf-list-btn'));
+    const button = first.win.document.querySelector('.ytaf-sb-stats .ytaf-list-btn');
+    t('reset, shared record refused: precondition: the Reset button is there', !!button);
+    if (button) button.click();
+    await wait(400);
+    const left = {};
+    for (let i = 0; i < first.win.localStorage.length; i++) {
+      const k = first.win.localStorage.key(i);
+      left[k] = first.win.localStorage.getItem(k);
+    }
+    const next = boot({ data: backup, log: [], storage: left });
+    const back = await until(() => !!stored(next.win) && stored(next.win).minVideoLength === '5' &&
+      next.win.localStorage.getItem('ytaf-settings-recovering') === null, 3000);
+    t('reset, shared record refused: precondition: the next start read the copy', back, JSON.stringify(stored(next.win)));
+    t('reset, shared record refused: the next start keeps the Reset, not the copy’s totals',
+      stored(next.win).sbTimeSaved === 0 && stored(next.win).sbSkipCount === 0,
+      JSON.stringify([stored(next.win).sbTimeSaved, stored(next.win).sbSkipCount]));
+  }
+
   // ---- The journal refused once (quota), then an app record's write ----
   {
     // A change before the read; localStorage refuses its journal, then has

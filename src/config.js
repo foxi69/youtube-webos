@@ -874,6 +874,14 @@ export function configRestorePending() {
   return !backupChecked;
 }
 
+// The counters go into the journal: before the read, and while the shared
+// record the restore made is still refused with no account loaded (the
+// shared totals then live in no copy yet, so a Reset, or a skip after it,
+// would be lost, and the copy's older totals come back at the next start).
+function countersJournaled() {
+  return !backupChecked || (sharedRestorePending && !activeProfile);
+}
+
 function configExists(key) { return configOptions.has(key); }
 
 export function configGetDesc(key) {
@@ -897,7 +905,7 @@ export function configWrite(key, value) {
   if (oldValue === value) return;
 
   DEBUG && console.info('Changing key', key, 'from', oldValue, 'to', value);
-  if (!backupChecked && COUNTERS.has(key)) {
+  if (countersJournaled() && COUNTERS.has(key)) {
     countBeforeRestore(key, (Number(value) || 0) - (Number(oldValue) || 0), false);
   } else if ((!backupChecked || sharedRestorePending) && !APP_RECORDS.has(key)) {
     // Also while the journal is kept for the next start (the shared record
@@ -917,7 +925,7 @@ export function configWrite(key, value) {
 export function configResetCounters() {
   for (const key of COUNTERS) {
     configWrite(key, 0);
-    if (!backupChecked) {
+    if (countersJournaled()) {
       countBeforeRestore(key, 0, true);
       // Counters already at zero: configWrite scheduled nothing to store this.
       scheduleWrite();
