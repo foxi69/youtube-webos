@@ -22,9 +22,10 @@ const { t, run } = createReporter();
 const seg = (category, start, end, actionType = 'skip') =>
   ({ UUID: `${category}-${start}`, category, actionType, segment: [start, end] });
 
-// A <video> whose time, play state and duration the test sets.
+// A <video> whose time, play state and duration the test sets; state.dropSeeked:
+// that many next seeks send no 'seeked' (lost, as on the TV).
 function fakeVideo(win, video, duration) {
-  const state = { time: 0, paused: false, muted: false, seeks: [], ready: 4 };
+  const state = { time: 0, paused: false, muted: false, seeks: [], ready: 4, dropSeeked: 0 };
   const fire = (type) => video.dispatchEvent(new win.Event(type));
   Object.defineProperties(video, {
     currentTime: {
@@ -34,7 +35,8 @@ function fakeVideo(win, video, duration) {
         state.time = v;
         state.seeks.push(v);
         fire('seeking');
-        setTimeout(() => fire('seeked'), 5);
+        if (state.dropSeeked > 0) state.dropSeeked--;
+        else setTimeout(() => fire('seeked'), 5);
       }
     },
     duration: { configurable: true, get: () => duration },
@@ -288,11 +290,14 @@ run(async () => {
     // undo, though each target is within what playing could have reached.
     const clock = {};
     const env = await boot({ sbTimeSaved: 100, sbSkipCount: 4 }, [seg('sponsor', 30, 60)], { clock });
+    // The skip's own seek sends no 'seeked': the undo is armed all the same,
+    // not landed.
+    if (swallowed) env.state.dropSeeked = 1;
     await env.playTo(30.2);
     t(n(label + ': precondition: the segment was skipped'), env.state.time === 60, String(env.state.time));
     await wait(30);
-    t(n(label + ': precondition: the skip can be undone'), !!env.sb().lastAutoSkip && env.sb().lastAutoSkip.landed === true);
-    if (swallowed) env.sb().lastAutoSkip.landed = false;
+    t(n(label + ': precondition: the skip can be undone'), !!env.sb().lastAutoSkip && !!env.sb().lastAutoSkip.landed === !swallowed,
+      JSON.stringify(env.sb().lastAutoSkip));
     clock.now += 5000;
     if (seekAway) {
       env.video.currentTime = seekAway;
@@ -421,21 +426,23 @@ run(async () => {
     const idb = { gate, abortWrites: true };
     // After the release, the account's record is written twice: back from the
     // copy (it was written from the defaults before the read), then with the
-    // first owner's merge. That second write is the one refused.
-    const ctl = { armed: false, writes: 0, refusedProfile: 0 };
+    // first owner's merge (the copy's 4 skips and its 1). That one is refused,
+    // known by what it holds, not by its place among the writes.
+    const ctl = { armed: false, refusedProfile: 0 };
+    const firstMerge = (value) => { try { return JSON.parse(value).sbSkipCount === 5; } catch { return false; } };
     const beforeEvaluate = (w) => {
       const real = w.localStorage;
-      const check = (key) => {
+      const check = (key, value) => {
         if (key === 'ytaf-configuration') throw new Error('QuotaExceededError');
-        if (key === PROFILE && ctl.armed && ++ctl.writes === 2) { ctl.refusedProfile++; throw new Error('QuotaExceededError'); }
+        if (key === PROFILE && ctl.armed && firstMerge(value)) { ctl.refusedProfile++; throw new Error('QuotaExceededError'); }
       };
       const proxy = new Proxy(real, {
         get(target, prop) {
-          if (prop === 'setItem') return (key, value) => { check(key); target.setItem(key, value); };
+          if (prop === 'setItem') return (key, value) => { check(key, value); target.setItem(key, value); };
           const value = Reflect.get(target, prop);
           return typeof value === 'function' ? value.bind(target) : value;
         },
-        set(target, prop, value) { check(prop); target.setItem(prop, String(value)); return true; }
+        set(target, prop, value) { check(prop, String(value)); target.setItem(prop, String(value)); return true; }
       });
       Object.defineProperty(w, 'localStorage', { configurable: true, get: () => proxy });
     };
@@ -468,7 +475,9 @@ run(async () => {
     }
     const next = await boot({}, [seg('sponsor', 30, 60)], { copy, storage: left });
     const own = () => JSON.parse(next.win.localStorage.getItem(PROFILE) || '{}');
-    await until(() => next.win.localStorage.getItem('ytaf-settings-recovering') === null, 3000);
+    const recovered = await until(() => next.win.localStorage.getItem('ytaf-settings-recovering') === null, 3000);
+    t(n('two owners: precondition: the next start recovered (the mark left, then cleared)'),
+      left['ytaf-settings-recovering'] === '1' && recovered, String(left['ytaf-settings-recovering']));
     await wait(100);
     t(n('two owners: the next start has each skip once'),
       own().sbSkipCount === 6 && Math.abs(own().sbTimeSaved - (100 + (60 - 30.2) + (80 - 70.2))) < 1e-9, JSON.stringify(own()));
@@ -608,7 +617,9 @@ run(async () => {
     }
     const next = await boot({}, [seg('sponsor', 30, 60)], { copy, storage: left });
     const own = () => JSON.parse(next.win.localStorage.getItem(PROFILE) || '{}');
-    await until(() => next.win.localStorage.getItem('ytaf-settings-recovering') === null, 3000);
+    const recovered = await until(() => next.win.localStorage.getItem('ytaf-settings-recovering') === null, 3000);
+    t(n('marked, merge stored: precondition: the next start recovered (the mark left, then cleared)'),
+      left['ytaf-settings-recovering'] === '1' && recovered, String(left['ytaf-settings-recovering']));
     await wait(100);
     t(n('marked, merge stored: the next start keeps the merge, the skip once'),
       own().sbSkipCount === 5 && Math.abs(own().sbTimeSaved - (100 + 60 - 30.2)) < 1e-9, JSON.stringify(own()));
@@ -863,6 +874,8 @@ run(async () => {
     const clock = {};
     const env = await boot({}, [seg('sponsor', 30, 60)], { clock });
     await env.playTo(30.2);
+    t(n('undo after 8 s: precondition: skipped, with an undo armed'), env.state.time === 60 && !!env.sb().lastAutoSkip,
+      String(env.state.time));
     clock.now += 9000;
     await env.playTo(69);
     await press(env.win, BLUE);
