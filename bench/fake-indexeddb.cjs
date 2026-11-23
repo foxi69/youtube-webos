@@ -13,7 +13,8 @@
  * land only once no cursor is reading, so a read never sees part of a write.
  * opts.gate: a promise the cursor waits for before its first record;
  * opts.abortReads: a read transaction aborts once its cursor has given every
- * record (the connection closed at the end);
+ * record (the connection closed at the end); opts.readsAborted counts the
+ * aborts delivered, for a test to wait for;
  * opts.failAfter: the cursor fails after that many records (opts.cursorFailed
  * counts the failures delivered, for a test to wait for); opts.openFails:
  * the database does not open (onerror): true for every open, a number for
@@ -100,7 +101,12 @@ function fakeIndexedDB(data, log, opts = {}) {
           const end = (failed) => {
             ended = true;
             finish(entry);
-            later(() => { const done = failed || opts.abortReads ? tx.onabort : tx.oncomplete; if (done) done(); });
+            later(() => {
+              const aborted = failed || opts.abortReads;
+              const done = aborted ? tx.onabort : tx.oncomplete;
+              if (done) done();
+              if (aborted) opts.readsAborted = (opts.readsAborted || 0) + 1;
+            });
           };
           const step = () => {
             // As the real one: once its transaction is done, the cursor cannot go on.

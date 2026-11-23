@@ -1224,7 +1224,9 @@ run(async () => {
     const backup = savedCopy([[KEY, JSON.stringify({ minVideoLength: '5', foxThemeApplied: true })]]);
     const idb = { abortReads: true };
     const page = boot({ data: backup, log: [], idb });
-    await wait(400);
+    // The abort delivered, and the app's handler of it run, before looking.
+    t('read aborted at its end: precondition: the read was aborted', await until(() => (idb.readsAborted || 0) > 0, 3000));
+    await wait(100);
     t('read aborted at its end: the copy is not taken as read, the mark stays',
       (stored(page.win) || {}).minVideoLength !== '5' && page.win.localStorage.getItem('ytaf-settings-recovering') === '1',
       `${JSON.stringify(stored(page.win))} ${page.win.localStorage.getItem('ytaf-settings-recovering')}`);

@@ -597,10 +597,12 @@ run(async () => {
       if (how === 'throws again') {
         p.setPlaybackQualityRange = function () { threw++; throw new Error('still between two videos'); };
         const errorsBefore = errors.length;
+        const threwBefore = threw;
         emit(1);
         await sleep(50);
         p.setPlaybackQualityRange = setRange;
-        t(n('missed limit at 1.5x: a play whose range call throws again breaks nothing'), errors.length === errorsBefore && log.ranges.length === 0, `${errors.slice(errorsBefore).join()} ${log.ranges.join()}`);
+        t(n('missed limit at 1.5x: a play whose range call throws again breaks nothing'), threw > threwBefore && errors.length === errorsBefore && log.ranges.length === 0,
+          `${threw - threwBefore} ${errors.slice(errorsBefore).join()} ${log.ranges.join()}`);
       }
       emit(1);
       const lowered = await until(() => log.ranges.includes('large'), 2000);

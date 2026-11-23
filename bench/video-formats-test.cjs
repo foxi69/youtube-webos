@@ -110,6 +110,12 @@ run(async () => {
     // Its control: with a 480p format there, the cap applies (480p stays, 720p goes).
     t('up to 480p: with a 480p format, the bigger ones go',
       itags(boot({ forceQuality: 'up480' }).parse(player([video(398, 1280, 720), video(397, 854, 480), audio]))) === '397,251');
+    // Above 2160p too: Max and Off keep a 4320p format, Up to 2160p drops only it.
+    const eightK = () => player([video(402, 7680, 4320), video(401, 3840, 2160), video(399, 1920, 1080), audio]);
+    t('Max and Off keep a 4320p format, Up to 2160p drops only it',
+      itags(boot({ forceQuality: 'max', removeUpscaledFormats: false }).parse(eightK())) === '402,401,399,251' &&
+      itags(boot({ forceQuality: 'off', removeUpscaledFormats: false }).parse(eightK())) === '402,401,399,251' &&
+      itags(boot({ forceQuality: 'up2160', removeUpscaledFormats: false }).parse(eightK())) === '401,399,251');
     t('Max: no limit',
       itags(boot({ forceQuality: 'max', removeUpscaledFormats: false }).parse(player(list()))) === '401,400,399,398,251');
     t('Off: no limit',
