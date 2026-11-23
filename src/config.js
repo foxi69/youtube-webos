@@ -798,10 +798,13 @@ function ownChanges(profile) {
   const owner = profile || '';
   return beforeRestore.own[owner] || (beforeRestore.own[owner] = { values: {}, counted: {} });
 }
-// Written with the settings themselves (writeNow), so the two agree.
+// Written with the settings themselves (writeNow), so the two agree. Refused
+// (quota): still to be written, by the next write of the settings.
 function saveBeforeRestore() {
-  beforeRestoreChanged = false;
-  try { window.localStorage.setItem(CHANGED_KEY, JSON.stringify(beforeRestore)); } catch { /* no storage */ }
+  try {
+    window.localStorage.setItem(CHANGED_KEY, JSON.stringify(beforeRestore));
+    beforeRestoreChanged = false;
+  } catch { beforeRestoreChanged = true; }
 }
 function countBeforeRestore(key, delta, reset) {
   const targets = activeProfile ? [ownChanges(activeProfile).counted] : [ownChanges(null).counted, beforeRestore.sharedCounted];

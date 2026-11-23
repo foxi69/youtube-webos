@@ -1218,6 +1218,59 @@ run(async () => {
       JSON.stringify([stored(next.win).sbTimeSaved, stored(next.win).sbSkipCount]));
   }
 
+  // ---- The journal refused once (quota), then an app record's write ----
+  {
+    // A change before the read; localStorage refuses its journal, then has
+    // room again, and the next write is the app's own (the caption style
+    // copied as the app goes to the background). The read fails: the next
+    // start must keep the change, not the copy's older value.
+    const CAPTION = 'yt-player-caption-display-settings';
+    const backup = savedCopy([[KEY, JSON.stringify({ minVideoLength: '5', foxThemeApplied: true })]]);
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const full = { on: true, refused: 0 };
+    const now = Date.now();
+    const first = boot({
+      data: backup, log: [], idb: { gate, failAfter: 0 },
+      storage: { [CAPTION]: JSON.stringify({ data: 'A', expiration: now + 200 * 86400000, creation: now }) },
+      setup: (w) => refuseKeys(w, (key) => key === 'ytaf-settings-changed' && full.on && ++full.refused > 0)
+    });
+    await wait(1000);
+    trustedKey(first.win, 404, first.win.document.body, 'keydown');
+    trustedKey(first.win, 404, first.win.document.body, 'keyup');
+    const lengthRow = () => Array.prototype.slice.call(first.win.document.querySelectorAll('.shortcut-control-row'))
+      .find((r) => r.querySelector('.shortcut-label').textContent.trim() === 'Hide Videos Shorter Than');
+    await until(lengthRow);
+    const row = lengthRow();
+    row.focus();
+    trustedKey(first.win, 39, row);
+    const changed = await until(() => (stored(first.win) || {}).minVideoLength === '1', 2000);
+    t('refused journal: precondition: 1 min chosen before the read, its journal refused',
+      changed && full.refused > 0 && first.win.localStorage.getItem('ytaf-settings-changed') === null,
+      `${JSON.stringify(stored(first.win))} ${full.refused}`);
+    full.on = false;
+    first.win.localStorage.setItem(CAPTION, JSON.stringify({ data: 'B', expiration: now + 200 * 86400000, creation: now }));
+    Object.defineProperty(first.win.document, 'hidden', { configurable: true, get: () => true });
+    first.win.document.dispatchEvent(new first.win.Event('visibilitychange'));
+    t('refused journal: precondition: the app record was written', ((stored(first.win) || {}).captionStyleBackup || {})[CAPTION] === 'B',
+      JSON.stringify(stored(first.win)));
+    t('refused journal: the app record’s write stores the journal it refused',
+      !!first.win.localStorage.getItem('ytaf-settings-changed'), String(first.win.localStorage.getItem('ytaf-settings-changed')));
+    release();
+    await wait(300);
+    const left = {};
+    for (let i = 0; i < first.win.localStorage.length; i++) {
+      const k = first.win.localStorage.key(i);
+      left[k] = first.win.localStorage.getItem(k);
+    }
+    const next = boot({ data: backup, log: [], storage: left });
+    const read = await until(() => !!stored(next.win) && stored(next.win).foxThemeApplied === true &&
+      next.win.localStorage.getItem('ytaf-settings-recovering') === null, 3000);
+    t('refused journal: precondition: the next start read the copy', read, JSON.stringify(stored(next.win)));
+    t('refused journal: the next start keeps 1 min, not the copy’s 5 min', (stored(next.win) || {}).minVideoLength === '1',
+      JSON.stringify(stored(next.win)));
+  }
+
   // ---- A write of the copy that aborts ----
   {
     const backup = savedCopy([
