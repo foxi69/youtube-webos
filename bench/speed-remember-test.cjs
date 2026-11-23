@@ -147,6 +147,35 @@ run(async () => {
       win.ytafSpeed.getSpeed());
   }
 
+  // ---- Another account's speed while a reload still waits ----
+  {
+    // The viewer sets 1.5x (its reload waits 800 ms), another account (1.75x)
+    // is loaded, and the video is left before the reload: the next video
+    // plays at that account's speed, not the 1.5x of the reload left behind.
+    const KEY = 'ytaf-configuration';
+    const identity = (id) => JSON.stringify({ data: { accountId: id } });
+    const storage = {
+      'yt.leanback.default::last-identity-used': identity('abc'),
+      [KEY + '::' + hashString('accountId=abc')]: JSON.stringify({ rememberPlaybackSpeed: true, savedPlaybackSpeed: 2 }),
+      [KEY + '::' + hashString('accountId=pqr')]: JSON.stringify({ rememberPlaybackSpeed: true, savedPlaybackSpeed: 1.75 })
+    };
+    const { win } = boot({ perAccountSettings: true }, { storage });
+    let changes = 0;
+    win.addEventListener('ytaf-profile-change', () => { changes++; });
+    win.ytafSpeed.setSpeed(1.5);
+    win.localStorage.setItem('yt.leanback.default::last-identity-used', identity('pqr'));
+    win.dispatchEvent(new win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: true } }));
+    win.dispatchEvent(new win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: false } }));
+    await wait(100);
+    t('reload waiting: precondition: the 1.75x account loaded, the video still at the 1.5x set', changes > 0 && win.ytafSpeed.getSpeed() === 1.5,
+      `${changes} ${win.ytafSpeed.getSpeed()}`);
+    win.document.body.className = 'WEB_PAGE_TYPE_BROWSE';
+    win.dispatchEvent(new win.CustomEvent('ytaf-page-update', { detail: { isWatch: false } }));
+    await wait(50);
+    win.document.body.className = 'WEB_PAGE_TYPE_WATCH';
+    t('reload waiting: the next video plays at the account’s 1.75x', win.ytafSpeed.getSpeed() === 1.75, win.ytafSpeed.getSpeed());
+  }
+
   // ---- Remember Playback Speed, back from the copy of the settings ----
   {
     // localStorage emptied: the app starts at 1x, then the copy brings

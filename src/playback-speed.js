@@ -425,7 +425,16 @@ export function createSpeedController({
     if (deferredSpeed === null || onPlaybackPage()) return;
     const next = deferredSpeed;
     deferredSpeed = null;
-    if (!pending) currentSpeed = next;
+    dropStaleReload();
+    currentSpeed = next;
+  }
+
+  // A reload still waiting once the watch page is gone was for the video left:
+  // it would reload nothing of the next one, and must not keep its speed.
+  function dropStaleReload() {
+    if (!pending || onPlaybackPage()) return;
+    win.clearTimeout(pending.timer);
+    pending = null;
   }
 
   function clearQualityPick() {
@@ -682,6 +691,7 @@ export function createSpeedController({
       return false;
     }
     deferredSpeed = null;
+    dropStaleReload();
     if (next === currentSpeed || pending) return false;
     currentSpeed = next;
     return true;
