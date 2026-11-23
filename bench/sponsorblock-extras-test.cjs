@@ -1005,6 +1005,21 @@ run(async () => {
     t(n('undone chain: no chain skip across the undone segment nested in the new one'), !jumped && env.state.time < 20,
       `${jumped} ${env.state.time}`);
   }
+  {
+    // Its control: the same refreshed segments with no undo in force: the
+    // chain skip from the start does go over both, to 60 s.
+    const env = await boot({}, [seg('sponsor', 0.2, 20)]);
+    await wait(100);
+    env.sb().applyRefreshedSegments([seg('selfpromo', 0, 60), seg('sponsor', 0.2, 20)], 'around');
+    await wait(50);
+    env.video.currentTime = 0;
+    await wait(30);
+    env.sb().hasPerformedChainSkip = false;
+    const jumped = env.sb().executeChainSkip(env.video);
+    await wait(30);
+    t(n('undone chain: control: with no undo, the same segments are skipped to 60 s'), env.state.time === 60,
+      `${jumped} ${env.state.time}`);
+  }
 
   // ---- Never Skip on These Channels and the highlight ----
   {
