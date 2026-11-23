@@ -649,7 +649,17 @@ export function createSpeedController({
       refuseLive();
       return;
     }
-    if (speed === currentSpeed || !isSupportedSpeed(speed)) return;
+    if (!isSupportedSpeed(speed)) return;
+    if (speed === currentSpeed) {
+      // The speed it plays at, chosen again (a reset at 1x, say): no reload,
+      // but the viewer's choice still wins over another account's speed
+      // waiting for the next video, and is remembered.
+      if (deferredSpeed !== null) {
+        deferredSpeed = null;
+        try { onSpeed(speed); } catch { /* the choice still holds */ }
+      }
+      return;
+    }
     if (!enabled()) {
       notify('Playback speed is disabled in YTAF settings');
       return;

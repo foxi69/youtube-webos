@@ -1497,7 +1497,9 @@ run(async () => {
     // Blocked for longer: while its request has not answered, a write asks no
     // other open (it would only queue behind it); once it has, one does.
     const data = new Map();
-    const idb = { blockFirst: true, blockMs: 1500 };
+    // Blocked until the test lets it through, after checking the pending state.
+    let letThrough;
+    const idb = { blockFirst: true, blockGate: new Promise((r) => { letThrough = r; }) };
     const page = boot({ config: { minVideoLength: '5', foxThemeApplied: true }, data, log: [], idb });
     await until(() => idb.opened >= 1, 4000);
     trustedKey(page.win, 404, page.win.document.body, 'keydown');
@@ -1508,7 +1510,8 @@ run(async () => {
     box().click();
     await wait(500);
     t('blocked open, still pending: a write asks no other open', idb.opened === 1 && !idb.closed, `${idb.opened} ${idb.closed}`);
-    await until(() => idb.closed === 1, 3000);
+    letThrough();
+    t('blocked open, answered: the late connection is closed', await until(() => idb.closed === 1, 3000), String(idb.closed));
     box().click();
     const copied = await until(() => data.has(KEY) && JSON.parse(data.get(KEY)).removeUpscaledFormats === true, 3000);
     t('blocked open, answered: the next write opens again and is copied', copied && idb.opened === 2, `${idb.opened} ${data.get(KEY)}`);
