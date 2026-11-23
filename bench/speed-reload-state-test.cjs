@@ -535,10 +535,12 @@ run(async () => {
     }
     win.close();
   }
-  {
+  for (const how of ['throws', 'no range call', 'throws again']) {
     // The same, with the player between two videos when the limit is applied
-    // (its range call throws): the next play applies it, once.
-    const { win, p, log, speed, emit } = boot(0, { force: true });
+    // (its range call throws, or it has none yet): the next play applies it,
+    // once. Thrown again at that play, the one after applies it.
+    const n = (name) => how === 'throws' ? name : name.replace('missed limit at 1.5x', 'missed limit at 1.5x (' + how + ')');
+    const { win, p, log, errors, speed, emit } = boot(0, { force: true });
     t('precondition: the speed feature is installed', !!speed);
     if (speed) {
       speed.setSpeed(1.5, { immediate: true });
@@ -568,20 +570,29 @@ run(async () => {
       }
       const setRange = p.setPlaybackQualityRange;
       let threw = 0;
-      p.setPlaybackQualityRange = function () { threw++; throw new Error('between two videos'); };
+      if (how === 'no range call') { delete p.setPlaybackQualityRange; threw++; }
+      else p.setPlaybackQualityRange = function () { threw++; throw new Error('between two videos'); };
       for (const h of held.filter((x) => !x.cleared)) h.fn();
       p.setPlaybackQualityRange = setRange;
       win.setTimeout = realSet;
       win.clearTimeout = realClear;
-      t('missed limit at 1.5x: precondition: the limit’s range call threw', threw > 0 && log.ranges.length === 0,
+      t(n('missed limit at 1.5x: precondition: the limit’s range call threw'), threw > 0 && log.ranges.length === 0,
         `${threw} ${log.ranges.join()}`);
+      if (how === 'throws again') {
+        p.setPlaybackQualityRange = function () { threw++; throw new Error('still between two videos'); };
+        const errorsBefore = errors.length;
+        emit(1);
+        await sleep(50);
+        p.setPlaybackQualityRange = setRange;
+        t(n('missed limit at 1.5x: a play whose range call throws again breaks nothing'), errors.length === errorsBefore && log.ranges.length === 0, `${errors.slice(errorsBefore).join()} ${log.ranges.join()}`);
+      }
       emit(1);
       const lowered = await until(() => log.ranges.includes('large'), 2000);
-      t('missed limit at 1.5x: the next play applies it', lowered, log.ranges.join());
+      t(n('missed limit at 1.5x: the next play applies it'), lowered, log.ranges.join());
       // Once: a later play, the limit already applied, sets it no more.
       emit(1);
       await sleep(300);
-      t('missed limit at 1.5x: ...once, not again at the next play', log.ranges.filter((r) => r === 'large').length === 1,
+      t(n('missed limit at 1.5x: ...once, not again at the next play'), log.ranges.filter((r) => r === 'large').length === 1,
         log.ranges.join());
     }
     win.close();

@@ -983,7 +983,11 @@ export function initPlaybackSpeed() {
         const player =
           document.getElementById(SELECTORS.PLAYER_ID) ||
           document.querySelector('.html5-video-player');
-        if (!player || typeof player.getPlaybackQuality !== 'function' || typeof player.setPlaybackQualityRange !== 'function') return;
+        // No player that can take it now (one being built again): missed too.
+        if (!player || typeof player.getPlaybackQuality !== 'function' || typeof player.setPlaybackQualityRange !== 'function') {
+          limitMissed = true;
+          return;
+        }
         try {
           const cap = speedInstance.controller.capQuality();
           if ((QUALITY_HEIGHTS[player.getPlaybackQuality()] || 0) > QUALITY_HEIGHTS[cap]) speedInstance.controller.setRange(player, cap);
@@ -1005,10 +1009,15 @@ export function initPlaybackSpeed() {
       speedInstance.controller.notePlay(player);
       if (!speedCapsQuality()) { limitMissed = false; return; }
       if (limitMissed) {
-        limitMissed = false;
-        const cap = speedInstance.controller.capQuality();
-        if ((QUALITY_HEIGHTS[player.getPlaybackQuality()] || 0) > QUALITY_HEIGHTS[cap]) {
-          speedInstance.controller.setRange(player, cap);
+        // Kept until the range goes through (or is not needed): a player that
+        // fails again gets it at its next play.
+        try {
+          const cap = speedInstance.controller.capQuality();
+          const above = (QUALITY_HEIGHTS[player.getPlaybackQuality()] || 0) > QUALITY_HEIGHTS[cap];
+          if (above) speedInstance.controller.setRange(player, cap);
+          limitMissed = false;
+          if (above) return;
+        } catch {
           return;
         }
       }
