@@ -955,9 +955,13 @@ export function installSpeedFeature(win, { notify, configRead: cfgRead, getPlaye
 
 export function initPlaybackSpeed() {
   if (speedInstance || typeof window === 'undefined') return speedInstance;
+  // Force Max Quality's mode as it last settled (the panel row stopped for
+  // LIMIT_APPLY_MS): a play meanwhile does not take a step on the way (Up to
+  // 720p while going to Up to 480p) for the limit.
+  let settledQuality = configRead('forceQuality');
   speedInstance = installSpeedFeature(window, {
     notify: showNotification,
-    configRead,
+    configRead: (key) => (key === 'forceQuality' ? settledQuality : configRead(key)),
     onSpeed: rememberSpeed,
     getPlayer: () =>
       document.getElementById(SELECTORS.PLAYER_ID) ||
@@ -991,6 +995,7 @@ export function initPlaybackSpeed() {
       limitMissed = false;
       limitTimer = setTimeout(() => {
         limitTimer = null;
+        settledQuality = configRead('forceQuality');
         if (!speedCapsQuality()) return;
         const player =
           document.getElementById(SELECTORS.PLAYER_ID) ||

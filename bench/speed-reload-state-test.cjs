@@ -353,6 +353,27 @@ run(async () => {
     return shown();
   };
   {
+    // At 1.5x the row stepped from Max to Up to 720p, and a new video plays at
+    // 2160p before the row has settled (600 ms): that play caps at Max's 1080p,
+    // not the step on the way; once settled, 720p applies.
+    const { win, p, log, speed, emit, setQuality, pump } = boot(0, { force: 'max' });
+    t('precondition: the speed feature is installed', !!speed);
+    if (speed) {
+      speed.setSpeed(1.5, { immediate: true });
+      await sleep(900);
+      t('unsettled row: precondition: Up to 720p reached', await moveForceRow(win, 'Up to 720p', 39) === 'Up to 720p');
+      log.ranges.length = 0;
+      p.videoId = 'unsettled01';
+      setQuality('hd2160');
+      emit(1); pump(); pump();
+      await sleep(50);
+      t('unsettled row: the play before it settles caps at 1080p, not the step', log.ranges.join() === 'hd1080', log.ranges.join());
+      await sleep(800);
+      t('unsettled row: settled, Up to 720p applies', log.ranges[log.ranges.length - 1] === 'hd720', log.ranges.join());
+    }
+    win.close();
+  }
+  {
     // A 480p pick at 1x, with no speed reload: Up to 1080p chosen leaves it.
     const { win, p, log, speed, emit, setQuality, pump } = boot(0, { force: 'up720' });
     t('pick at 1x, limit moved: precondition: the speed feature is installed', !!speed);
