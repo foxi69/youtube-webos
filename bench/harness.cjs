@@ -387,15 +387,20 @@ function bootPage(opts = {}) {
  * A key of the remote, as a trusted event (the app ignores untrusted ones):
  * `code` is the keyCode (404 green, 461 back, 13 OK, 37-40 the arrows).
  * target: document.body by default; type: 'keydown' by default; init: more
- * for the KeyboardEvent ({ repeat: true, key: 'a', ctrlKey: true }), and
+ * for the KeyboardEvent ({ repeat: true, key: 'a', ctrlKey: true }),
  * init.props, own properties set on the event before it is sent
- * ({ __ytafSynthetic: true } for a key the app made itself). Returns the
- * event: its defaultPrevented says whether the app took the press.
+ * ({ __ytafSynthetic: true } for a key the app made itself), and
+ * init.isTrusted, another value for the flag (undefined: a press on Chrome 38,
+ * which has none). Returns the event: its defaultPrevented says whether the
+ * app took the press.
  */
 function trustedKey(win, code, target, type = 'keydown', init) {
   const options = Object.assign({ bubbles: true, cancelable: true }, init);
   const props = options.props;
   delete options.props;
+  const hasTrusted = 'isTrusted' in options;
+  const trusted = options.isTrusted;
+  delete options.isTrusted;
   const event = new win.KeyboardEvent(type, options);
   Object.defineProperty(event, 'keyCode', { get: () => code, configurable: true });
   if (props) {
@@ -403,7 +408,9 @@ function trustedKey(win, code, target, type = 'keydown', init) {
   }
   // No target given: the page's body. A target that was looked for and is
   // missing (null) throws, so a test does not carry on with a press nothing took.
-  dispatchTrusted(target === undefined ? win.document.body : target, event);
+  const where = target === undefined ? win.document.body : target;
+  if (hasTrusted) dispatchTrusted(where, event, trusted);
+  else dispatchTrusted(where, event);
   return event;
 }
 

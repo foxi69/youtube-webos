@@ -105,10 +105,92 @@ run(async () => {
     t(n('a max-height: 0 rule two blocks deep is found'), text.indexOf('.xmQAdc .list {') !== -1, text);
     t(n('a width: 0rem rule is found'), text.indexOf('.frHKed .rail {') !== -1, text);
     t(n('a closing-class rule with real sizes is left alone'), text.indexOf('.grow') === -1, text);
-    t(n('every override keeps the element laid out but hidden'),
-      text.split('\n').length === 3 && text.split('\n').every((l) =>
-        /\{ display: block !important; height: auto !important; width: auto !important; max-height: none !important; visibility: hidden !important; \}$/.test(l)),
+    t(n('each override undoes only what its rule collapses, and hides'),
+      text === 'ytlr-animated-overlay.xmQAdc .AmQJbe { display: block !important; visibility: hidden !important; }\n' +
+        '.xmQAdc .list { max-height: none !important; visibility: hidden !important; }\n' +
+        '.frHKed .rail { width: auto !important; visibility: hidden !important; }',
       text);
+  }
+
+  // ---- Selectors read as CSS reads them ----
+  {
+    // A class that only starts like a closing class is another class; an
+    // escaped comma and a trailing U+00A0 are part of a name; any zero length
+    // counts. jsdom reads `\,` back as a bare comma, where Chrome keeps the
+    // escape: that rule comes as Chrome gives it, from an adopted sheet.
+    const h = boot('.frHKed-extra, .frHKed .row { height: 0em; }\n.frHKed .tail\u00a0 { max-height: 0.0vh; }', {
+      before(win) {
+        Object.defineProperty(win.document, 'adoptedStyleSheets', {
+          configurable: true,
+          value: [{ cssRules: [
+            { selectorText: '.zylon-a, .frHKed .esc\\,x', style: { height: '0px' } },
+            { selectorText: '.other\\.frHKed, .pair\\\\.frHKed', style: { height: '0px' } },
+            // An escaped quote in a class name (CSSOM serializes a " so), then a
+            // quoted attribute value: no quoted value starts at the escape.
+            { selectorText: '.lead\\".frHKed .AmQJbe[data-x="yes"]', style: { height: '0px' } },
+            // A closing class only in a quoted value, or only inside :not():
+            // not a rule for the closed state.
+            { selectorText: '.zylon-q[data-label=".frHKed"]', style: { height: '0px' } },
+            { selectorText: '.AmQJbe:not(.frHKed), .frHKed .kept:not(.x)', style: { display: 'none' } },
+            // Twice negated, the closing class is selected again.
+            { selectorText: 'ytlr-animated-overlay:not(:not(.frHKed)) .AmQJbe', style: { height: '0px' } }
+          ] }]
+        });
+      }
+    });
+    const text = h.fixText();
+    t(n('selectors: a longer class name is not a closing class'), text.indexOf('.frHKed-extra') === -1, text);
+    t(n('selectors: 0em is a zero height'),
+      text.indexOf('.frHKed .row { height: auto !important; visibility: hidden !important; }') !== -1, text);
+    t(n('selectors: an escaped comma stays in its selector'),
+      text.indexOf('.frHKed .esc\\,x { height: auto !important; visibility: hidden !important; }') !== -1 &&
+        text.indexOf('zylon-a') === -1, text);
+    t(n('selectors: an escaped dot is part of another class name'), text.indexOf('.other\\.frHKed') === -1, text);
+    t(n('selectors: a closing class in a quoted value is no closing class'), text.indexOf('zylon-q') === -1, text);
+    t(n('selectors: a closing class inside :not() is no closing class; one outside it still is'),
+      text.indexOf('.AmQJbe:not(.frHKed)') === -1 && text.indexOf('.frHKed .kept:not(.x) { display: block') !== -1, text);
+    t(n('selectors: a closing class inside :not(:not()) is one again'),
+      text.indexOf('ytlr-animated-overlay:not(:not(.frHKed)) .AmQJbe { height: auto !important;') !== -1, text);
+    t(n('selectors: an escaped quote starts no quoted value'),
+      text.indexOf('.lead\\".frHKed .AmQJbe[data-x="yes"] { height: auto !important;') !== -1, text);
+    t(n('selectors: a dot after an escaped backslash starts a closing class'),
+      text.indexOf('.pair\\\\.frHKed { height: auto !important;') !== -1, text);
+    t(n('selectors: U+00A0 at the end of a name stays, and 0.0vh is a zero max-height'),
+      text.indexOf('.frHKed .tail\u00a0 { max-height: none !important; visibility: hidden !important; }') !== -1, JSON.stringify(text));
+  }
+
+  // ---- A minified list: rules with the same body merged into one ----
+  {
+    const h = boot(`.zylon-hidden, ${OVERLAY_SEL}, :is(.a, .b).frHKed .x { height: 0px; width: 0px; }
+      .zylon-q[data-label="]"], .frHKed .list, .zylon-other[data-label="("], .frHKed .more { display: none; }`, {
+      before(win) {
+        // YouTube's own inline width on the panel's box.
+        win.document.querySelector('.AmQJbe').style.width = '640px';
+        const z = win.document.createElement('div');
+        z.className = 'zylon-hidden';
+        win.document.body.appendChild(z);
+      }
+    });
+    const text = h.fixText();
+    t(n('merged list: only its closing-class selectors are overridden'),
+      text === `${OVERLAY_SEL} { height: auto !important; width: auto !important; visibility: hidden !important; }\n` +
+        ':is(.a, .b).frHKed .x { height: auto !important; width: auto !important; visibility: hidden !important; }\n' +
+        '.frHKed .list { display: block !important; visibility: hidden !important; }\n' +
+        '.frHKed .more { display: block !important; visibility: hidden !important; }',
+      text);
+    t(n('merged list: an unrelated class in it keeps its own rule'),
+      h.win.getComputedStyle(h.doc.querySelector('.zylon-hidden')).height === '0px' &&
+        h.win.getComputedStyle(h.doc.querySelector('.zylon-hidden')).visibility !== 'hidden',
+      h.win.getComputedStyle(h.doc.querySelector('.zylon-hidden')).height);
+    t(n('merged list: reported per selector'),
+      h.infos.length === 1 && h.infos[0].endsWith(`applied to: ${OVERLAY_SEL} , :is(.a, .b).frHKed .x , .frHKed .list , .frHKed .more`), h.infos.join(' | '));
+  }
+  {
+    // Only height collapses: the panel keeps YouTube's inline width.
+    const h = boot(`${OVERLAY_SEL} { height: 0px; }`, {
+      before(win) { win.document.querySelector('.AmQJbe').style.width = '640px'; }
+    });
+    t(n('a height-only rule: the inline width stays'), h.box().width === '640px' && h.box().height === 'auto', `${h.box().width} ${h.box().height}`);
   }
 
   // ---- A constructed sheet, and a cross-origin one that cannot be read ----

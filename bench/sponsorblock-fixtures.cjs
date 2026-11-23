@@ -33,9 +33,10 @@ const seg = (category, start, end, actionType = 'skip') =>
  * A <video> whose time, play state, duration and readiness the test sets.
  * playTo: playback reaching a time (a 'timeupdate' there); seekTo: a seek, as
  * the remote makes one ('seeking', then 'seeked'); setDuration: a new length.
+ * state.dropSeeked: that many next seeks send no 'seeked' (lost, as on the TV).
  */
 function fakeVideo(win, video, duration) {
-  const state = { time: 0, paused: false, muted: false, seeks: [], ready: 4, duration };
+  const state = { time: 0, paused: false, muted: false, seeks: [], ready: 4, duration, dropSeeked: 0 };
   const fire = (type) => video.dispatchEvent(new win.Event(type));
   Object.defineProperties(video, {
     currentTime: {
@@ -45,7 +46,8 @@ function fakeVideo(win, video, duration) {
         state.time = v;
         state.seeks.push(v);
         fire('seeking');
-        setTimeout(() => fire('seeked'), 5);
+        if (state.dropSeeked > 0) state.dropSeeked--;
+        else setTimeout(() => fire('seeked'), 5);
       }
     },
     duration: { configurable: true, get: () => state.duration },
@@ -98,6 +100,7 @@ function fakeVideo(win, video, duration) {
  *   consoleErrors  false: a console.error is not a page error (true)
  *
  * Resolves once the handler asked for the segments and applied the answer.
+ * Rejects when they are not asked for within 5 s.
  */
 // The bundle, read once for every boot of a test file.
 let bundle = null;
@@ -162,6 +165,8 @@ async function bootSponsorBlock(cfg, segments, opts = {}) {
   // The handler starts a moment after the page (about 0.8 s): wait for its
   // request, then for the answer to be applied.
   for (let i = 0; i < 100 && !net.asked.length; i++) await wait(50);
+  // None in 5 s: the test would check a page that never got its segments.
+  if (!net.asked.length) throw new Error('SponsorBlock fixture: the segments were never asked for');
   await wait(150);
 
   const toasts = () => (doc.querySelector('.ytaf-notification-container') || {}).textContent || '';

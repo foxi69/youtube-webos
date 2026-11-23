@@ -39,7 +39,9 @@ let lastCheck = 0;
 // Records not there at the first look (localStorage emptied). One that shows
 // up before the settings come back from their copy is YouTube's default: it is
 // not copied, and the restored copy is written over it (toWriteBack: until
-// localStorage takes it, before anything is copied from the record).
+// localStorage takes it, before anything is copied from the record). Each
+// with the record it is to replace (over: YouTube's default, or none): once
+// that record changed (a style the viewer picked since), it stays instead.
 const missingAtStart = new Set();
 const toWriteBack = {};
 let firstLook = true;
@@ -67,8 +69,12 @@ export function keepCaptionStyle() {
     try {
       const raw = storage.getItem(key);
       if (firstLook && !raw) missingAtStart.add(key);
-      if (typeof toWriteBack[key] === 'string') {
-        storage.setItem(key, JSON.stringify({ data: toWriteBack[key], expiration: now + ONE_YEAR_MS, creation: now }));
+      const back = toWriteBack[key];
+      if (back && raw !== back.over) {
+        // Changed since the copy came back: the viewer's, not the default.
+        delete toWriteBack[key];
+      } else if (back) {
+        storage.setItem(key, JSON.stringify({ data: back.data, expiration: now + ONE_YEAR_MS, creation: now }));
         delete toWriteBack[key];
         continue;
       }
@@ -174,7 +180,12 @@ if (typeof window !== 'undefined') {
   configAddChangeListener(BACKUP_KEY, (evt) => {
     const copy = evt.detail.newValue;
     if (configRestorePending() && copy && typeof copy === 'object') {
-      for (const key of missingAtStart) if (typeof copy[key] === 'string') toWriteBack[key] = copy[key];
+      for (const key of missingAtStart) {
+        if (typeof copy[key] !== 'string') continue;
+        let over = null;
+        try { over = window.localStorage.getItem(key); } catch { /* no storage */ }
+        toWriteBack[key] = { data: copy[key], over };
+      }
     }
     keepCaptionStyle();
   });
