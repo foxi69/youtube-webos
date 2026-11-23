@@ -414,8 +414,8 @@ run(async () => {
       t('no pick, limit moved: precondition: Up to 1080p chosen', await moveForceRow(win, 'Up to 1080p', 37) === 'Up to 1080p');
       await sleep(900);
       emit(3); emit(1); pump(); pump();
-      await sleep(100);
-      t('no pick, limit moved: the new limit applies', log.ranges.includes('hd1080'), log.ranges.join());
+      // Polled: on a slow run (coverage) the change is applied later than 1 s.
+      t('no pick, limit moved: the new limit applies', await until(() => log.ranges.includes('hd1080'), 3000), log.ranges.join());
     }
     win.close();
   }
