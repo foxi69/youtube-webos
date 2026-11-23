@@ -1,10 +1,10 @@
 import sha256 from 'tiny-sha256';
-import { configAddChangeListener, configRemoveChangeListener, segmentTypes, configGetAll, configRead, configWrite } from './config';
+import { configAddChangeListener, configRemoveChangeListener, segmentTypes, configGetAll, configRead, configWrite, configActiveProfile } from './config';
 import { showNotification } from './notifications.js';
 import sponsorBlockUI from './Sponsorblock-UI.js';
-import sponsorBlockLabels, { isFullVideoSegment } from './sponsorblock-labels.js';
+import sponsorBlockLabels, { isFullVideoSegment, shorterThan } from './sponsorblock-labels.js';
 import { isLegacyWebOS } from './webos-utils.js';
-import { getVideo } from './utils.js';
+import { getVideo, rendererChapterStarts } from './utils.js';
 import { currentChannelName, isChannelWhitelisted, videoIdFromHash } from './sponsorblock-extras.js';
 import { fetchJsonWithTimeout } from './fetch-timeout.js';
 import './sponsorblock.css';
@@ -68,6 +68,8 @@ const FETCH_RETRY_DELAYS = [2000, 4000];
  * From Yasich217's fork.
  */
 const MINUTE_MS = 60 * 1000;
+// How often marks waiting for the chapter pieces' width look again (_watchChapterMeasure).
+const CHAPTER_MEASURE_MS = 1000;
 const REFRESH_POPULATED_MS = 15 * MINUTE_MS;
 const REFRESH_BACKOFF_MS = [5, 10, 20, 30].map(m => m * MINUTE_MS);
 
@@ -127,6 +129,36 @@ const UNDO_WINDOW_MS = 8000;
 // segments; looked for again this often, this many times.
 const CHANNEL_RETRY_MS = 1000;
 const CHANNEL_RETRIES = 10;
+
+/**
+ * Where [start, end] sits on a chaptered bar (see _chapterLayout), as
+ * { left, width } percentages of the bar: one range per chapter it touches.
+ */
+function barRanges(layout, start, end) {
+    const ranges = [];
+    const { pieces, total } = layout;
+    for (let i = 0; i < pieces.length; i++) {
+        const p = pieces[i];
+        const { from, to } = p;
+        const a = Math.max(start, from);
+        const b = Math.min(end, to);
+        if (a >= b) continue;
+        const left = p.x + ((a - from) / (to - from)) * p.width;
+        const right = p.x + ((b - from) / (to - from)) * p.width;
+        ranges.push({ left: (left / total) * 100, width: ((right - left) / total) * 100 });
+    }
+    return ranges;
+}
+
+/** Where the time `t` sits on a chaptered bar, as a percentage of the bar. */
+function barPercentAt(layout, t) {
+    const { pieces, total } = layout;
+    let i = 0;
+    while (i < pieces.length - 1 && t >= pieces[i].to) i++;
+    const p = pieces[i];
+    const x = p.x + Math.min(1, Math.max(0, (t - p.from) / (p.to - p.from))) * p.width;
+    return (x / total) * 100;
+}
 
 class SponsorBlockHandler {
     constructor(videoID) {
@@ -200,6 +232,7 @@ class SponsorBlockHandler {
         this.highlightPending = false;
         this._barObserverStarted = false;
         this._attrObserver = null;
+        this._chapterObserver = null;
         this._lastSyncSig = null;
 
         this._observedRoot = null;
@@ -279,10 +312,218 @@ class SponsorBlockHandler {
         };
     }
 
+    /**
+     * The element holding the bar's chapter pieces: on a chaptered video
+     * YouTube draws one child per chapter (idomkey chapter-N), with a margin
+     * between them, beside the tracked segment element.
+     */
+    _chapterTrack() {
+        const bar = this.progressBar;
+        if (!bar) return null;
+        // Under the bar (at any depth, the renderer tracked itself): the
+        // pieces' own parent; else beside the bar. Any piece, not chapter-0
+        // alone: a first chapter left out may leave no chapter-0.
+        const keyed = bar.querySelectorAll('[idomkey^="chapter-"]');
+        for (let i = 0; i < keyed.length; i++) {
+            if (/^chapter-\d+$/.test(keyed[i].getAttribute('idomkey'))) return keyed[i].parentNode;
+        }
+        return bar.parentNode;
+    }
+
+    _chapterElements() {
+        const track = this._chapterTrack();
+        const out = [];
+        if (!track || !track.children) return out;
+        for (let i = 0; i < track.children.length; i++) {
+            const el = track.children[i];
+            if (/^chapter-\d+$/.test(el.getAttribute('idomkey') || '')) out.push(el);
+        }
+        return out;
+    }
+
+    /**
+     * A cheap signature of the chapter pieces (no layout read): their width,
+     * inline margins and class (the gaps of YouTube's CSS), and the start
+     * times the renderer has; a change redraws the marks. Only these of the
+     * inline style, so a style written on every frame does not.
+     */
+    _chapterSig() {
+        const els = this._chapterElements();
+        // The chapters drawn too: the renderer can leave out another one with
+        // the same pieces in the DOM, and the pieces then mean other chapters.
+        let sig = rendererChapterStarts().join(',') + '|' + rendererChapterStarts(true).join(',') + '|';
+        for (let i = 0; i < els.length; i++) {
+            const st = els[i].style;
+            sig += els[i].className + ':' + st.width + ':' + st.marginLeft + ':' + st.marginRight + ',';
+        }
+        return sig;
+    }
+
+    /**
+     * The chapter pieces as laid out: each one's x and width in the bar, and
+     * the times it spans. The times are the renderer's chapter start times;
+     * without them, the pieces' widths share out the duration. The bar leaves
+     * out a chapter too short to draw (the 7 s introduction of a 2-hour video,
+     * read on the TV), which the renderer gives a width of 0: the pieces are
+     * the other chapters, and a left-out one's time goes to the piece before
+     * it (the first piece starts at 0). When the pieces still do not match
+     * the chapters, which piece is which is not known, and the marks go on a
+     * plain line. Null with fewer than two pieces too (no gaps to allow for).
+     */
+    _chapterLayout(duration) {
+        this._chapterUnmeasured = this._chapterInline = false;
+        const els = this._chapterElements();
+        if (els.length < 2) return null;
+        let starts = rendererChapterStarts();
+        if (starts.length > els.length) starts = rendererChapterStarts(true);
+        if (starts.length && starts.length !== els.length) return null;
+        const pieces = [];
+        let content = 0;
+        let total = 0;
+        let unread = false;
+        // A piece with a width: the bar is laid out, and a piece with none
+        // there (0%, a chapter too short) is 0 px wide. The same test as
+        // _chapterNowMeasurable, so the two never send each other round.
+        const laidOut = els.some((el) => el.offsetWidth > 0);
+        for (let i = 0; i < els.length; i++) {
+            const el = els[i];
+            let width = el.offsetWidth;
+            if (!width && !laidOut) {
+                // Not laid out (a hidden bar): an inline width in pixels is its
+                // width (0px too); a relative one (50%, calc()) or one from a
+                // stylesheet (no inline width) is known only once laid out.
+                const inline = el.style.width;
+                if (/^\d+(?:\.\d+)?px$/.test(inline)) width = parseFloat(inline);
+                else unread = true;
+            }
+            // Margins as laid out; on a bar that is not, only pixel ones (a
+            // hidden subtree gives a relative margin back as it is written).
+            const cs = window.getComputedStyle(el);
+            const margin = (v) => {
+                if (laidOut || !v || v === '0' || /^-?\d+(?:\.\d+)?px$/.test(v)) return parseFloat(v) || 0;
+                unread = true;
+                return 0;
+            };
+            const ml = margin(cs.marginLeft);
+            const mr = margin(cs.marginRight);
+            pieces.push({ x: total + ml, width, from: content, to: content + width });
+            content += width;
+            total += ml + width + mr;
+        }
+        if (unread || (!laidOut && (!content || !total))) {
+            // No width to read yet: see _chapterNowMeasurable.
+            this._chapterUnmeasured = true;
+            this._watchChapterMeasure();
+            return null;
+        }
+        // Laid out, and still no length to place marks in (negative margins
+        // taking it all back): the plain line, with nothing to wait for.
+        if (!content || !total) return null;
+        // Placed by inline widths on a bar not laid out: a stylesheet (a
+        // min-width) may size the pieces otherwise once it is, so the first
+        // laid-out sync draws again (_chapterNowMeasurable).
+        this._chapterInline = !laidOut;
+        for (let i = 0; i < pieces.length; i++) {
+            const p = pieces[i];
+            if (starts.length) {
+                p.from = starts[i];
+                p.to = i + 1 < starts.length ? starts[i + 1] : duration;
+            } else {
+                p.from = (p.from / content) * duration;
+                p.to = (p.to / content) * duration;
+            }
+        }
+        // A chapter with no width or no time adds nothing to place a mark in.
+        const shown = pieces.filter((p) => p.width > 0 && p.to > p.from);
+        if (!shown.length) return null;
+        // The pieces shown cover the whole video: the first from 0, each up to
+        // the next one shown (the time of one left out goes to the piece before).
+        shown[0].from = 0;
+        for (let i = 0; i < shown.length; i++) shown[i].to = i + 1 < shown.length ? shown[i + 1].from : duration;
+        return { pieces: shown, total };
+    }
+
+    /**
+     * Marks drawn on the plain line because the chapter pieces had no width
+     * to read, or placed by their inline widths on a bar not laid out, and
+     * the pieces now have a width: their signature is the same, so only this
+     * tells that the chapters can place (or place again) the marks. Reads the
+     * layout only while such a draw is waiting.
+     */
+    _chapterNowMeasurable() {
+        if (!this._chapterUnmeasured && !this._chapterInline) return false;
+        return this._chapterElements().some((el) => el.offsetWidth > 0);
+    }
+
+    /**
+     * While the marks wait for the pieces' width, a look once a second: the
+     * bar can be shown with no sync coming (a segment shown on the bar only
+     * keeps no time listener, and a parent showing it changes nothing the
+     * observers watch). Stops at the first draw that waits for no width (by
+     * the chapters, or the plain line for another reason), at a draw that
+     * places no marks at all, and with the handler.
+     */
+    _watchChapterMeasure() {
+        if (this._measureTimer || this.isDestroyed) return;
+        this._measureTimer = setInterval(() => {
+            if (this.isDestroyed || !this._chapterUnmeasured) {
+                clearInterval(this._measureTimer);
+                this._measureTimer = null;
+                return;
+            }
+            if (this._chapterNowMeasurable()) {
+                this.lastOverlayHash = null;
+                this.drawOverlay();
+            }
+        }, CHAPTER_MEASURE_MS);
+    }
+
+    /**
+     * Attribute changes on the chapter pieces themselves, not their subtree
+     * (where the playhead writes): a gap or width changed with no other sync
+     * coming (no skip segment left to keep the time listener on) redraws the
+     * marks.
+     */
+    _watchChapters() {
+        if (typeof MutationObserver === 'undefined') return;
+        if (!this._chapterObserver) {
+            this._chapterObserver = new MutationObserver((records) => {
+                if (this.isDestroyed) return;
+                // Pieces replaced, even by ones with the same signature: the new ones are watched.
+                if (records.some((r) => r.type === 'childList')) this._watchChapters();
+                if (this._chapterSig() === this._drawnChapterSig) return;
+                this.requestAF(() => {
+                    if (!this.isDestroyed && this._chapterSig() !== this._drawnChapterSig) this.drawOverlay();
+                });
+            });
+            this.observers.add(this._chapterObserver);
+        }
+        this._chapterObserver.disconnect();
+        const els = this._chapterElements();
+        for (let i = 0; i < els.length; i++) {
+            this._chapterObserver.observe(els[i], { attributes: true, attributeFilter: ['class', 'style'] });
+        }
+        const track = this._chapterTrack();
+        this._watchedTrack = track;
+        if (track) this._chapterObserver.observe(track, { childList: true });
+    }
+
     _syncOverlayPosition(ytPB) {
         if (!this.overlay || !ytPB) return;
         const parent = ytPB.parentNode;
         if (!parent) return;
+
+        // Chapter pieces drawn (or resized) after the marks: drawn again over
+        // them. Not drawn (no duration yet): the overlay still follows the bar.
+        if (this._chapterSig() !== this._drawnChapterSig) {
+            this.drawOverlay();
+            if (this._chapterSig() === this._drawnChapterSig) return;
+        } else if (this._chapterNowMeasurable()) {
+            // Pieces that had no width when the marks were drawn have one now.
+            this.lastOverlayHash = null;
+            this.drawOverlay();
+            if (!this._chapterUnmeasured) return;
+        }
 
         // Use the inner slider element for precise height/position.
         // Fall back to ytPB itself only if progressBar is the same node or unset.
@@ -303,6 +544,18 @@ class SponsorBlockHandler {
         // common case for the 500ms timeupdate sync and mutation-driven syncs).
         const sig = (isHidden ? 'h' : 'v') + '_' + pos.top + '_' + pos.left + '_' + width + '_' + height;
         if (sig === this._lastSyncSig) return;
+        // A chaptered bar of another width: pieces with a relative width
+        // changed with it, and their marks are placed by what they measure.
+        // Not a bar hidden (0 px): its pieces have no width to read then, and
+        // shown again at the width it had, nothing changed.
+        const resized = width > 0 && this._syncWidth !== undefined && width !== this._syncWidth;
+        if (width > 0) this._syncWidth = width;
+        if (resized && this._chapterElements().length > 1) {
+            this.lastOverlayHash = null;
+            this.drawOverlay();
+            // Everything filtered out: no overlay left to place.
+            if (!this.overlay) return;
+        }
         this._lastSyncSig = sig;
 
         const st = this.overlay.style;
@@ -338,17 +591,18 @@ class SponsorBlockHandler {
 
         if (!this.segments || this.segments.length === 0 || this.activeCategories.size === 0) {
             this.skipSegments = [];
+            this.backSegments = [];
             this.resetSegmentTracking();
             return;
         }
 
         this.skipSegments = [];
+        // The ones the backward shortcut seeks to: also those not skipped for
+        // Never Skip on These Channels or Ignore Segments Shorter Than, which
+        // stay marked on the seek bar.
+        this.backSegments = [];
         const config = configGetAll();
-        // Never Skip on These Channels: the segments stay on the seek bar.
-        if (this.channelWhitelisted()) {
-            this.resetSegmentTracking();
-            return;
-        }
+        const whitelisted = this.channelWhitelisted();
         const minLength = Number(config.sbMinSegmentLength) || 0;
 
         const len = this.segments.length;
@@ -360,17 +614,20 @@ class SponsorBlockHandler {
             const mode = config[CONFIG_MAPPING[seg.category]];
             if (!mode || mode === 'disable' || mode === 'seek_bar') continue;
             if (seg.actionType && seg.actionType !== 'skip') continue;
-            // Ignore Segments Shorter Than: too short to be worth a jump.
-            if (minLength && seg.segment[1] - seg.segment[0] < minLength) continue;
 
-            this.skipSegments.push({
+            const entry = {
                 start: seg.segment[0],
                 end: seg.segment[1],
                 category: seg.category,
                 categoryName: this.getCategoryName(seg.category),
                 mode: mode,
                 originalIndex: i
-            });
+            };
+            this.backSegments.push(entry);
+            // Never Skip on These Channels; Ignore Segments Shorter Than: too
+            // short to be worth a jump.
+            if (whitelisted || shorterThan(seg.segment[0], seg.segment[1], minLength)) continue;
+            this.skipSegments.push(entry);
         }
         this.resetSegmentTracking();
     }
@@ -389,7 +646,7 @@ class SponsorBlockHandler {
             for (let i = 0; i < this.segments.length; i++) {
                 const seg = this.segments[i];
                 if (seg.actionType !== 'mute' || seg.category === 'poi_highlight') continue;
-                if (minLength && seg.segment[1] - seg.segment[0] < minLength) continue;
+                if (shorterThan(seg.segment[0], seg.segment[1], minLength)) continue;
                 const mode = config[CONFIG_MAPPING[seg.category]];
                 if (mode !== 'auto_skip' && mode !== 'manual_skip') continue;
                 list.push({ start: seg.segment[0], end: seg.segment[1], categoryName: this.getCategoryName(seg.category) });
@@ -666,7 +923,8 @@ class SponsorBlockHandler {
         if (this.tempWhitelistIndex !== -1 &&
             chain.segments.some(seg => seg.originalIndex === this.tempWhitelistIndex)) return false;
         // A segment of an undone skip anywhere the jump would cross, nested
-        // inside the chain's segments (a refresh) too, plays.
+        // inside the chain's segments (a refresh) too, plays. Where the jump
+        // starts is also what the statistics count it from (noteSkip).
         const chainStart = video.currentTime;
         if (this.skipSegments.some(seg => seg.start < chain.endTime && seg.end > chainStart && this.isUndone(seg))) return false;
         // With "Skip Segments Once", a chain already skipped (the viewer went
@@ -679,24 +937,24 @@ class SponsorBlockHandler {
         // Booked like the other skips, so the highlight's seek guard
         // (autoJumpToHighlight) does not take it for YouTube's resume seek.
         this.ownSkipTarget = chain.endTime;
-        const chainFrom = video.currentTime;
         video.currentTime = chain.endTime;
         this.lastSkipTime = chain.endTime;
         this.hasPerformedChainSkip = true;
-        // The chain's segments, and those nested inside them: the jump covers both.
-        const covered = chain.segments.map(seg => seg.originalIndex);
+        // Reported (noteSkip): every auto segment the jump crossed, in the chain
+        // or nested in it, also one a manual segment cut the jump short inside.
+        // One already behind where it started was played, not skipped.
+        const covered = [];
 
         // Fast chronologically-sorted short-circuit skip mapping
         for (let i = 0; i < this.skipSegments.length; i++) {
             const seg = this.skipSegments[i];
-            if (seg.start > chain.endTime) break;
+            if (seg.start >= chain.endTime) break;
+            if (seg.mode !== 'auto_skip') continue;
 
-           if (seg.mode === 'auto_skip' && seg.start < chain.endTime && seg.end <= chain.endTime + 0.1) {
-                this.skippedSegmentIndices.add(seg.originalIndex);
-                if (covered.indexOf(seg.originalIndex) === -1) covered.push(seg.originalIndex);
-            }
+            if (seg.end <= chain.endTime + 0.1) this.skippedSegmentIndices.add(seg.originalIndex);
+            if (seg.end > chainStart) covered.push(seg.originalIndex);
         }
-        this.noteSkip(chainFrom, chain.endTime, covered);
+        this.noteSkip(chainStart, chain.endTime, covered);
 
         this.requestAF(() => {
             const categories = chain.chainDescription.split(' → ')
@@ -717,15 +975,20 @@ class SponsorBlockHandler {
     /**
      * Whether nothing is to be skipped for Never Skip on These Channels: the
      * video's channel is on the list, or, with a list, its channel is not known
-     * yet (the player still reporting the video before counts as not known). Then the segments are built again once it is (a try a second, ten
-     * at most); a channel still unknown after that counts as not listed.
+     * yet (the player still reporting the video before counts as not known).
+     * Then the segments are built again once it is (a try a second, ten at
+     * most); a channel still unknown after that counts as not listed until it
+     * is known (looked at again as playback starts, see PLAYING below).
      */
     channelWhitelisted() {
         const list = configRead('sbWhitelistChannels');
         if (!Array.isArray(list) || !list.length) return false;
         const name = currentChannelName(this.videoID);
         if (name) return isChannelWhitelisted(name);
-        if ((this.channelRetries || 0) >= CHANNEL_RETRIES) return false;
+        if ((this.channelRetries || 0) >= CHANNEL_RETRIES) {
+            this.channelUnresolved = true;
+            return false;
+        }
         if (!this.channelRetryTimer && !this.isDestroyed) {
             this.channelRetryTimer = setTimeout(() => {
                 this.channelRetryTimer = null;
@@ -757,16 +1020,20 @@ class SponsorBlockHandler {
 
     /**
      * Whether a skip segment belongs to an undone skip: those segments play
-     * until playback passes where the skip had gone.
+     * until playback passes where their skip had gone (each skip's own end).
      */
     isUndone(skipSeg) {
         const undone = this.undone;
         if (!undone || !this.video) return false;
-        if (this.video.currentTime >= undone.until) {
-            this.clearUndone();
+        const key = this.segmentKey(skipSeg.originalIndex);
+        const until = undone.keys.get(key);
+        if (until === undefined) return false;
+        if (this.video.currentTime >= until) {
+            undone.keys.delete(key);
+            if (!undone.keys.size) this.clearUndone();
             return false;
         }
-        return undone.keys.has(this.segmentKey(skipSeg.originalIndex));
+        return true;
     }
 
     /** Ends an undone skip's exemption (playback passed it, or the handler goes). */
@@ -786,7 +1053,8 @@ class SponsorBlockHandler {
     noteSkip(from, to, indices) {
         const saved = to - from;
         if (!(saved > 0)) return;
-        this.lastAutoSkip = { from, to, keys: indices.map(i => this.segmentKey(i)), at: Date.now() };
+        // The profile whose totals the skip went to (null: none loaded yet).
+        this.lastAutoSkip = { from, to, keys: indices.map(i => this.segmentKey(i)), at: Date.now(), profile: configActiveProfile() };
         try {
             configWrite('sbTimeSaved', (Number(configRead('sbTimeSaved')) || 0) + saved);
             configWrite('sbSkipCount', (Number(configRead('sbSkipCount')) || 0) + 1);
@@ -810,25 +1078,32 @@ class SponsorBlockHandler {
     undoLastSkip() {
         const last = this.lastAutoSkip;
         if (!last || !this.video || Date.now() - last.at > UNDO_WINDOW_MS) return false;
+        // Taken in one account, another loaded since (a switch that waited for
+        // the copy's read, say): not that one's totals to cut. A skip with no
+        // profile loaded went to the account the restore then loaded.
+        if (last.profile !== null && last.profile !== configActiveProfile()) return false;
         // Moved on since by more than playing (at up to 2x) would have: the
         // viewer seeked elsewhere, and is not sent back.
         const elapsed = (Date.now() - last.at) / 1000;
         if (Math.abs(this.video.currentTime - last.to) > elapsed * 2 + 2) return false;
         this.lastAutoSkip = null;
-        const keys = new Set(last.keys.filter(Boolean));
+        // Each segment's key, with where its skip had gone: it plays until then.
+        const keys = new Map(last.keys.filter(Boolean).map((key) => [key, last.to]));
         // Its segments gone in a refresh: nothing left to take back.
         if (!this.segments.some((seg, i) => keys.has(this.segmentKey(i)))) return false;
         const video = this.video;
         // An undo still in force on this video keeps its segments playing too
         // (one undone, another skip then undone before passing the first).
         const prior = this.undone && this.undone.video === video ? this.undone : null;
-        if (prior) prior.keys.forEach((key) => { keys.add(key); });
-        const until = prior ? Math.max(prior.until, last.to) : last.to;
+        if (prior) prior.keys.forEach((until, key) => { keys.set(key, Math.max(until, keys.get(key) || 0)); });
         this.clearUndone();
         // Its own timeupdate listener: the skip listener is off once no
-        // segment is ahead, and playback passing the skip must end it.
-        const onTime = () => { if (video.currentTime >= until) this.clearUndone(); };
-        this.undone = { keys, until, video, onTime };
+        // segment is ahead, and playback passing a skip's end must end its part.
+        const onTime = () => {
+            keys.forEach((until, key) => { if (video.currentTime >= until) keys.delete(key); });
+            if (!keys.size) this.clearUndone();
+        };
+        this.undone = { keys, video, onTime };
         video.addEventListener('timeupdate', onTime);
         // Our own seek: the highlight's guard (autoJumpToHighlight) leaves it.
         this.ownSkipTarget = last.from;
@@ -1024,6 +1299,14 @@ class SponsorBlockHandler {
                 // Re-evaluate tracking (re-enables time listener if needed)
                 this.resetSegmentTracking();
                 this.hasPerformedChainSkip = false;
+                // A channel still unknown after its retries, known by now: the
+                // segments are built again for Never Skip on These Channels.
+                // One lookup a play while unresolved, none otherwise.
+                if (this.channelUnresolved && currentChannelName(this.videoID)) {
+                    this.channelUnresolved = false;
+                    this.rebuildSkipSegments();
+                    this.updateLabels();
+                }
                 this.executeChainSkip(this.video);
             } else if (state === 2) { // PAUSED
                 this.stopHighFreqLoop();
@@ -1033,11 +1316,31 @@ class SponsorBlockHandler {
         
         window.addEventListener('yt-player-state-change', this.boundStateChange);
 
+        // The statistics an undo takes back are the profile's that earned them:
+        // switched away from that profile, the skip is not the new one's to take
+        // back. Loaded from none (the restore of the copy loading the account in
+        // use), the skip's totals went to that account, so it stays.
+        if (this.boundProfileChange) window.removeEventListener('ytaf-profile-change', this.boundProfileChange);
+        // A skip counted with no account loaded can be undone in the account
+        // that took those counters: the one the restore loads (its merge), or
+        // one started from the shared settings; any other never had them.
+        this.boundProfileChange = (evt) => {
+            const detail = evt && evt.detail ? evt.detail : {};
+            if (!(detail.from === null && (detail.restored || detail.seeded))) this.lastAutoSkip = null;
+        };
+        window.addEventListener('ytaf-profile-change', this.boundProfileChange);
+
         // Resize forces an immediate overlay re-sync (bypassing the timeupdate throttle).
         if (this.boundResize) window.removeEventListener('resize', this.boundResize);
         this.boundResize = () => {
             this._lastSyncTime = 0;
             if (this.overlay && this.progressBar && !this.isDestroyed) {
+                // Marks on a chaptered bar are placed by its measured width,
+                // which the chapter signature does not track.
+                if (this._chapterElements().length > 1) {
+                    this.lastOverlayHash = null;
+                    this.drawOverlay();
+                }
                 const { container, asSibling } = this._getProgressBarAnchor();
                 if (asSibling && container) this._syncOverlayPosition(container);
             }
@@ -1082,6 +1385,13 @@ class SponsorBlockHandler {
 
         this.addEvent(this.video, 'seeked', () => {
             if (this.isDestroyed) return;
+            // The undo is for the skip's own seek landing and playback from
+            // there: any other seek moved away, and Blue no longer goes back.
+            const skip = this.lastAutoSkip;
+            if (skip) {
+                if (skip.landed || Math.abs(this.video.currentTime - skip.to) > 2) this.lastAutoSkip = null;
+                else skip.landed = true;
+            }
             this.checkMutedSegment();
             this._clearSkipWatchdog();
             this.stopHighFreqLoop();
@@ -1149,7 +1459,10 @@ class SponsorBlockHandler {
         sponsorBlockUI.updateSegments(this.segments.filter(s => !isFullVideoSegment(s) && (muting || s.actionType !== 'mute')));
     }
 
-    /** Whether drawOverlay() would draw a mark for this segment. */
+    /**
+     * Whether drawOverlay() may draw a mark for this segment (on a chaptered
+     * bar one starting at or after the end, or of no length, gets none).
+     */
     _isDrawable(segment, config) {
         // A full-video label spans [0, 0] and would draw a zero-width bar.
         if (isFullVideoSegment(segment)) return false;
@@ -1324,6 +1637,10 @@ class SponsorBlockHandler {
         // used to run the selector list, getComputedStyle and a full overlay
         // rebuild on every mutation. Input changes call drawOverlay() directly.
         if (this.progressBar && this.progressBar.isConnected) {
+            // The chapter row itself replaced under a bar still in place (the
+            // renderer tracked as the bar), by pieces of the same signature:
+            // nothing redraws, so the new row and its pieces are watched here.
+            if (this._chapterObserver && this._chapterTrack() !== this._watchedTrack) this._watchChapters();
             if (this.overlay && this.overlay.isConnected) {
                 // Ensure the sibling overlay syncs visibility when attributes mutate
                 const { container, asSibling } = this._getProgressBarAnchor();
@@ -1405,7 +1722,13 @@ class SponsorBlockHandler {
     }
 
     drawOverlay() {
-        if (this.isDestroyed || !this._barObserverStarted || !this.segments.length) return;
+        // A draw that places no marks at all (no segments, no bar, no
+        // duration, all filtered out) ends the look for a width
+        // (_watchChapterMeasure); one unchanged since the last keeps it.
+        if (this.isDestroyed || !this._barObserverStarted || !this.segments.length) {
+            this._chapterUnmeasured = this._chapterInline = false;
+            return;
+        }
 
         // FIX (replay): a detached progressBar is still truthy. Drawing against
         // it inserted the overlay into an orphaned subtree — which is why the
@@ -1416,19 +1739,25 @@ class SponsorBlockHandler {
             this._anchorCache = null;
             this._anchorCacheBar = null;
             this.lastOverlayHash = null;
+            this._chapterUnmeasured = this._chapterInline = false;
             this._scheduleBarRetry();
             return;
         }
 
         const duration = this.video ? this.video.duration : 0;
-        if (!duration || isNaN(duration)) return;
+        if (!duration || isNaN(duration)) {
+            this._chapterUnmeasured = this._chapterInline = false;
+            return;
+        }
 
         const config = configGetAll();
         // Include a signature of every segment color so changing a color
         // mid-video invalidates the hash and forces a redraw (§5b fix).
         let colorSig = '';
         for (const k in segmentTypes) colorSig += config[`${k}Color`] || '';
-        const overlayHash = `${duration}_${this.activeCategories.size}_${this.segments.length}_${config.sbMode_highlight}_${!!config.enableMutedSegments}_${colorSig}`;
+        this._drawnChapterSig = this._chapterSig();
+        this._watchChapters();
+        const overlayHash = `${duration}_${this.activeCategories.size}_${this.segments.length}_${config.sbMode_highlight}_${!!config.enableMutedSegments}_${colorSig}_${this._drawnChapterSig}`;
         if (overlayHash === this.lastOverlayHash && this.overlay && this.overlay.isConnected) {
             return;
         }
@@ -1437,6 +1766,10 @@ class SponsorBlockHandler {
         if (this.overlay) this.overlay.remove();
 
         const fragment = document.createDocumentFragment();
+        // A chaptered bar has gaps between its chapters: the marks follow the
+        // chapters (one mark per chapter for a segment across a gap), not a
+        // plain time-to-percent line that drifts by the gaps.
+        const layout = this._chapterLayout(duration);
 
         const len = this.segments.length;
         for (let i = 0; i < len; i++) {
@@ -1447,38 +1780,34 @@ class SponsorBlockHandler {
             // Destructuring avoidance for speed, plus batch styling execution
             const start = segment.segment[0];
             const end = segment.segment[1];
-           const div = document.createElement('div');
 
             const colorKey = isHighlight ? 'poi_highlightColor' : `${segment.category}Color`;
             const color = config[colorKey] || segmentTypes[segment.category]?.color || '#00d400';
 
-            div.style.backgroundColor = color;
-            div.style.position = 'absolute';
-            div.style.height = '100%';
-            div.style.top = '0';
-
-            const left = (start / duration) * 100;
-            const zIndex = isHighlight ? '2001' : '2000';
-
-            div.className = isHighlight ? 'previewbar highlight' : 'previewbar';
-            div.style.left = `${left}%`;
-            div.style.zIndex = isHighlight ? '2001' : '2000';
-
             if (isHighlight) {
-                div.style.cssText = `background-color: ${color}; position: absolute; height: 100%; top: 0; left: ${left}%; z-index: ${zIndex};`;
-            } else {
-               const width = ((end - start) / duration) * 100;
-                const opacity = segmentTypes[segment.category]?.opacity || '0.7';
-                div.style.cssText = `background-color: ${color}; position: absolute; height: 100%; top: 0; left: ${left}%; width: ${width}%; opacity: ${opacity}; z-index: ${zIndex};`;
+                const left = layout ? barPercentAt(layout, start) : (start / duration) * 100;
+                const div = document.createElement('div');
+                div.className = 'previewbar highlight';
+                div.style.cssText = `background-color: ${color}; position: absolute; height: 100%; top: 0; left: ${left}%; z-index: 2001;`;
+                fragment.appendChild(div);
+                continue;
             }
-
-            fragment.appendChild(div);
+            const opacity = segmentTypes[segment.category]?.opacity || '0.7';
+            const ranges = layout ? barRanges(layout, start, end) :
+                [{ left: (start / duration) * 100, width: ((end - start) / duration) * 100 }];
+            for (let r = 0; r < ranges.length; r++) {
+                const div = document.createElement('div');
+                div.className = 'previewbar';
+                div.style.cssText = `background-color: ${color}; position: absolute; height: 100%; top: 0; left: ${ranges[r].left}%; width: ${ranges[r].width}%; opacity: ${opacity}; z-index: 2000;`;
+                fragment.appendChild(div);
+            }
         }
 
         // Everything was filtered out (e.g. the only entry was a full-video
         // label). Leave the bar clean rather than inserting an empty overlay.
         if (!fragment.childNodes.length) {
             this.overlay = null;
+            this._chapterUnmeasured = this._chapterInline = false;
             return;
         }
 
@@ -1738,12 +2067,18 @@ class SponsorBlockHandler {
         }
 
         let jumpTarget = seg.end;
-		const categoryName = seg.categoryName;
-        const skippedCategories = [categoryName];
-        const segmentsToMark = [seg.originalIndex];
+        // The segments the jump takes in; those it crosses are counted below.
+        const chained = [seg];
 
         for (let i = segmentIdx + 1; i < this.skipSegments.length; i++) {
             const next = this.skipSegments[i];
+
+            // Already behind the playhead: not crossed by the jump, so not
+            // marked or reported as skipped, and no reason to stop it. Stopping
+            // at the start of a manual one sent the skip backwards, into the
+            // outer segment again, and the "Skipped" toast repeated ~4 times a
+            // second while nothing was skipped.
+            if (next.end <= currentTime) continue;
 
             // A segment of an undone skip plays: the jump stops at its start,
             // and is none at all if that start is already behind (a refresh
@@ -1754,24 +2089,15 @@ class SponsorBlockHandler {
             }
 
             if (next.mode !== 'auto_skip') {
-                // A manual segment already behind the playhead has had its
-                // turn: stopping at its start sent the skip backwards, into
-                // the outer segment again, and the "Skipped" toast repeated
-                // ~4 times a second while nothing was skipped.
-                if (next.end <= currentTime) continue;
                 if (next.start < jumpTarget) {
                     jumpTarget = next.start;
                 }
                 break;
             }
-            // Nested in the one skipped but already behind the playhead: not
-            // crossed by the jump, so not marked or reported as skipped.
-            if (next.end <= currentTime) continue;
             if (next.start > jumpTarget + 0.2) break;
 
             jumpTarget = Math.max(jumpTarget, next.end);
-            skippedCategories.push(next.categoryName);
-            segmentsToMark.push(next.originalIndex);
+            chained.push(next);
         }
 
         if (segmentIdx === this.lastSkippedSegmentIndex && Math.abs(currentTime - this.lastSkipTime) < 0.1) {
@@ -1791,6 +2117,12 @@ class SponsorBlockHandler {
             this.aimPast(jumpTarget);
             return;
         }
+
+        // Only those the final jump crosses: one a later manual segment cut
+        // off at its start is neither marked, reported nor undone.
+        const crossed = chained.filter(s => s.start < jumpTarget);
+        const skippedCategories = crossed.map(s => s.categoryName);
+        const segmentsToMark = crossed.map(s => s.originalIndex);
 
         this.lastSkipTime = currentTime;
         this.lastSkippedSegmentIndex = segmentIdx;
@@ -1895,14 +2227,15 @@ class SponsorBlockHandler {
     }
     
     skipToPreviousSegment() {
-    if (!this.video || !this.skipSegments.length) return false;
+    const list = this.backSegments || this.skipSegments;
+    if (!this.video || !list.length) return false;
 
     const currentTime = this.video.currentTime;
     let targetSeg = null;
 
-    for (let i = this.skipSegments.length - 1; i >= 0; i--) {
-        if (this.skipSegments[i].start < currentTime - 2) {
-            targetSeg = this.skipSegments[i];
+    for (let i = list.length - 1; i >= 0; i--) {
+        if (list[i].start < currentTime - 2) {
+            targetSeg = list[i];
             break;
         }
     }
@@ -1920,6 +2253,15 @@ class SponsorBlockHandler {
     }
 
     handleBlueButton() {
+        // An auto skip that landed where this manual segment starts (a chain
+        // cut at it): Blue takes the skip back first, as the README says it
+        // does within 8 s, and the manual segment is offered again on the way.
+        const last = this.lastAutoSkip;
+        const manual = this.currentManualSegment;
+        if (last && manual && Math.abs(manual.start - last.to) < 0.5 && this.undoLastSkip()) {
+            this.clearManualNotification();
+            return true;
+        }
         if (this.currentManualSegment) {
             if (this.video) {
                 this.isSkipping = true;
@@ -2107,6 +2449,11 @@ class SponsorBlockHandler {
             this.boundStateChange = null;
         }
 
+        if (this.boundProfileChange) {
+            window.removeEventListener('ytaf-profile-change', this.boundProfileChange);
+            this.boundProfileChange = null;
+        }
+
         if (this.boundResize) {
             window.removeEventListener('resize', this.boundResize);
             this.boundResize = null;
@@ -2137,6 +2484,10 @@ class SponsorBlockHandler {
         if (this._barRetryTimer) {
             clearInterval(this._barRetryTimer);
             this._barRetryTimer = null;
+        }
+        if (this._measureTimer) {
+            clearInterval(this._measureTimer);
+            this._measureTimer = null;
         }
         this._observedRoot = null;
         this._stopVideoWait();

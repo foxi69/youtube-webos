@@ -33,9 +33,10 @@ const seg = (category, start, end, actionType = 'skip') =>
  * A <video> whose time, play state, duration and readiness the test sets.
  * playTo: playback reaching a time (a 'timeupdate' there); seekTo: a seek, as
  * the remote makes one ('seeking', then 'seeked'); setDuration: a new length.
+ * state.dropSeeked: that many next seeks send no 'seeked' (lost, as on the TV).
  */
 function fakeVideo(win, video, duration) {
-  const state = { time: 0, paused: false, muted: false, seeks: [], ready: 4, duration };
+  const state = { time: 0, paused: false, muted: false, seeks: [], ready: 4, duration, dropSeeked: 0 };
   const fire = (type) => video.dispatchEvent(new win.Event(type));
   Object.defineProperties(video, {
     currentTime: {
@@ -45,7 +46,8 @@ function fakeVideo(win, video, duration) {
         state.time = v;
         state.seeks.push(v);
         fire('seeking');
-        setTimeout(() => fire('seeked'), 5);
+        if (state.dropSeeked > 0) state.dropSeeked--;
+        else setTimeout(() => fire('seeked'), 5);
       }
     },
     duration: { configurable: true, get: () => state.duration },

@@ -15,6 +15,13 @@ const DB_NAME = 'ytaf-settings-backup';
 const STORE = 'kv';
 
 let dbPromise = null;
+// The connection dbPromise holds once it opened.
+let openedDb = null;
+
+/** Drops the cached connection `db` (closed by the browser, say) so the next read or write opens again. */
+function forgetDb(db) {
+  if (db && db === openedDb) { openedDb = null; dbPromise = null; }
+}
 
 /**
  * The database: null on a TV with no IndexedDB at all (there is no copy
@@ -22,8 +29,14 @@ let dbPromise = null;
  * (an error, blocked, a throw) rejects, so a read of it is not taken for an
  * empty copy.
  */
+// A blocked open whose request has not answered yet: another open would only
+// queue behind it (IndexedDB takes them in order), so none is asked meanwhile;
+// the reads and writes fail at once and the copy waits for the next one after it.
+let blockedOpen = false;
+
 function openDb() {
   if (dbPromise) return dbPromise;
+  if (blockedOpen) return Promise.reject(new Error('backup database still blocked'));
   dbPromise = new Promise((resolve, reject) => {
     let idb;
     try { idb = window.indexedDB || null; } catch { idb = null; }
@@ -34,9 +47,29 @@ function openDb() {
     request.onupgradeneeded = () => {
       try { request.result.createObjectStore(STORE); } catch { /* there already */ }
     };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error || new Error('backup database failed to open'));
-    request.onblocked = () => reject(new Error('backup database blocked'));
+    // A blocked open is given up (the next read or write opens again), and so
+    // is one with no answer at all after the read's deadline: the writes after
+    // it would otherwise all wait on it for the rest of the run. If it still
+    // gets through later, that connection is closed, not left open beside the next one.
+    let gaveUp = false;
+    const noAnswer = setTimeout(() => { gaveUp = true; reject(new Error('backup database gave no answer')); }, READ_TIMEOUT_MS);
+    request.onsuccess = () => {
+      clearTimeout(noAnswer);
+      blockedOpen = false;
+      const db = request.result;
+      if (gaveUp) {
+        try { db.close(); } catch { /* gone already */ }
+        return;
+      }
+      openedDb = db;
+      // Closed by the browser (storage cleared, a newer version opened
+      // elsewhere): later writes must not keep using it.
+      db.onclose = () => forgetDb(db);
+      db.onversionchange = () => { try { db.close(); } catch { /* gone already */ } forgetDb(db); };
+      resolve(db);
+    };
+    request.onerror = () => { clearTimeout(noAnswer); blockedOpen = false; reject(request.error || new Error('backup database failed to open')); };
+    request.onblocked = () => { clearTimeout(noAnswer); gaveUp = true; blockedOpen = true; reject(new Error('backup database blocked')); };
   });
   // A failed open is not kept: the next read or write tries again, so one
   // passing error does not leave the rest of the run with no copy.
@@ -45,9 +78,58 @@ function openDb() {
   return dbPromise;
 }
 
+// Generous: a slow TV's read that does answer must not count as failed (on
+// webOS 25 the read takes well under a second). Writes wait for the open as
+// long, no more: one that never settles would keep each write's entries.
+const READ_TIMEOUT_MS = 10000;
+
+/** `promise`, or a rejection once `ms` pass with no answer. */
+function withDeadline(promise, ms, what) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(what + ' timed out')), ms);
+    promise.then((v) => { clearTimeout(timer); resolve(v); }, (e) => { clearTimeout(timer); reject(e); });
+  });
+}
+
+// The writes waiting for the open in progress (openWaitersFor): one handler
+// on that open answers them all, so an open that never answers keeps only
+// the writes still within their deadline, not one handler per write made.
+let openWaitersFor = null;
+let openWaiters = null;
+
+/** The database for a write, or a rejection once `ms` pass with no answer. */
+function openForWrite(ms) {
+  return new Promise((resolve, reject) => {
+    const opening = openDb();
+    if (openWaitersFor !== opening) {
+      const waiters = new Set();
+      openWaitersFor = opening;
+      openWaiters = waiters;
+      const answer = (db, error) => {
+        // Answered: a later write adds its own handler (run at once).
+        if (openWaitersFor === opening) openWaitersFor = null;
+        waiters.forEach((waiter) => { waiter(db, error); });
+        waiters.clear();
+      };
+      opening.then((db) => answer(db, null), (e) => answer(null, e));
+    }
+    const waiters = openWaiters;
+    const waiter = (db, error) => {
+      clearTimeout(timer);
+      if (error) reject(error);
+      else resolve(db);
+    };
+    const timer = setTimeout(() => {
+      waiters.delete(waiter);
+      reject(new Error('backup open timed out'));
+    }, ms);
+    waiters.add(waiter);
+  });
+}
+
 /** Writes each [key, text] pair; a key whose text is null is deleted. False when it could not. */
 export function backupWrite(entries) {
-  return openDb().catch(() => null).then((db) => {
+  return openForWrite(READ_TIMEOUT_MS).catch(() => null).then((db) => {
     if (!db) return false;
     return new Promise((resolve) => {
       try {
@@ -60,7 +142,11 @@ export function backupWrite(entries) {
         tx.oncomplete = () => resolve(true);
         tx.onerror = () => resolve(false);
         tx.onabort = () => resolve(false);
-      } catch { resolve(false); }
+      } catch {
+        // A connection closed under it (InvalidStateError): the next write opens again.
+        forgetDb(db);
+        resolve(false);
+      }
     });
   });
 }
@@ -71,15 +157,9 @@ export function backupWrite(entries) {
  * a part of the copy is never taken for all of it; so does one with no answer
  * within READ_TIMEOUT_MS (a database that never answers would otherwise keep
  * the restore, and every switch of account waiting for it, for the whole run).
- * Generous: a slow TV's read that does answer must not count as failed (on
- * webOS 25 the read takes well under a second).
  */
-const READ_TIMEOUT_MS = 10000;
 export function backupReadAll(prefix) {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('backup read timed out')), READ_TIMEOUT_MS);
-    readAll(prefix).then((out) => { clearTimeout(timer); resolve(out); }, (e) => { clearTimeout(timer); reject(e); });
-  });
+  return withDeadline(readAll(prefix), READ_TIMEOUT_MS, 'backup read');
 }
 
 function readAll(prefix) {
@@ -88,16 +168,24 @@ function readAll(prefix) {
     return new Promise((resolve, reject) => {
       const out = [];
       try {
-        const request = db.transaction(STORE, 'readonly').objectStore(STORE).openCursor();
+        const tx = db.transaction(STORE, 'readonly');
+        const request = tx.objectStore(STORE).openCursor();
+        // The last record read is not the read done: a transaction that then
+        // aborts (the connection closed) is a failed read, retried next start.
+        tx.oncomplete = () => resolve(out);
+        tx.onabort = () => reject(tx.error || new Error('backup read aborted'));
         request.onsuccess = () => {
           const cursor = request.result;
-          if (!cursor) { resolve(out); return; }
+          if (!cursor) return;
           const key = String(cursor.key);
           if (key.indexOf(prefix) === 0 && typeof cursor.value === 'string') out.push([key, cursor.value]);
           cursor.continue();
         };
         request.onerror = () => reject(request.error || new Error('backup read failed'));
-      } catch (e) { reject(e); }
+      } catch (e) {
+        forgetDb(db);
+        reject(e);
+      }
     });
   });
 }

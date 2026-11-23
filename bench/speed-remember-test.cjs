@@ -16,16 +16,19 @@ function boot(config, opts = {}) {
   if (opts.live === undefined) opts.live = false;
   if (opts.id === undefined) opts.id = 'aaaaaaaaaaa';
   const page = bootPage({
-    bodyClass: 'WEB_PAGE_TYPE_WATCH',
+    bodyClass: opts.bodyClass || 'WEB_PAGE_TYPE_WATCH',
     url: 'https://www.youtube.com/tv#/watch?v=aaaaaaaaaaa',
     consoleErrors: false,
     storage: opts.storage,
-    config: Object.assign({
+    // opts.idb: an IndexedDB with the settings' copy, and no settings in
+    // localStorage (as after YouTube emptied it), so the copy is restored.
+    config: opts.idb ? undefined : Object.assign({
       enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
       thumbnailQuality: 'off', enableAutoLogin: false, checkForUpdates: false, showWhatsNew: false
     }, config),
     fetch: 'pending',
     beforeEval(win) {
+      if (opts.idb) win.indexedDB = opts.idb;
       win.requestAnimationFrame = (cb) => setTimeout(cb, 0);
       win.cancelAnimationFrame = () => {};
       win.AudioDecoder = class { configure() {} decode() {} flush() { return Promise.resolve(); } close() {} };
@@ -50,7 +53,8 @@ function boot(config, opts = {}) {
       el.getPlayerState = () => 1;
       el.getPlaybackQuality = () => 'hd1080';
       el.getAvailableQualityLevels = () => ['hd1080', 'auto'];
-      el.loadVideoById = () => {};
+      // opts.reloads: each reload's arguments, for a test that counts them.
+      el.loadVideoById = (...args) => { if (opts.reloads) opts.reloads.push(args); };
       el.setPlaybackQualityRange = () => {};
       el.appendChild(win.document.createElement('video'));
       win.document.body.appendChild(el);
@@ -105,6 +109,117 @@ run(async () => {
       win.ytafSpeed.getSpeed());
     await pick('abc');
     t('per account: back to the first account, its remembered speed again', win.ytafSpeed.getSpeed() === 2, win.ytafSpeed.getSpeed());
+    // The account changes while a video plays (the watch page stays): the
+    // video keeps its speed; the account's own comes with the next pick.
+    let changes = 0;
+    win.addEventListener('ytaf-profile-change', () => { changes++; });
+    win.document.body.className = 'WEB_PAGE_TYPE_WATCH';
+    win.localStorage.setItem('yt.leanback.default::last-identity-used', identity('xyz'));
+    win.dispatchEvent(new win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: true } }));
+    win.dispatchEvent(new win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: false } }));
+    await wait(200);
+    t('per account: precondition: the account in use changed', changes > 0, String(changes));
+    t('per account: a change of account while a video plays leaves its speed alone', win.ytafSpeed.getSpeed() === 2,
+      win.ytafSpeed.getSpeed());
+    // That video left, with no other change of account: the next video
+    // plays at the account's own speed (xyz remembers none: 1x).
+    win.document.body.className = 'WEB_PAGE_TYPE_BROWSE';
+    win.dispatchEvent(new win.CustomEvent('ytaf-page-update', { detail: { isWatch: false } }));
+    await wait(50);
+    win.document.body.className = 'WEB_PAGE_TYPE_WATCH';
+    t('per account: the video left, the next one plays at the account’s own speed', win.ytafSpeed.getSpeed() === 1,
+      win.ytafSpeed.getSpeed());
+    // Again while a video plays, to the 2x account, and the viewer then sets
+    // 1.25x on that video: leaving it keeps the viewer's speed, not the 2x
+    // that was waiting for the next video.
+    const changesBefore = changes;
+    win.localStorage.setItem('yt.leanback.default::last-identity-used', identity('abc'));
+    win.dispatchEvent(new win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: true } }));
+    win.dispatchEvent(new win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: false } }));
+    await wait(200);
+    t('per account: precondition: the 2x account loaded mid-video, the video keeps 1x',
+      changes > changesBefore && win.ytafSpeed.getSpeed() === 1, `${changes - changesBefore} ${win.ytafSpeed.getSpeed()}`);
+    win.ytafSpeed.setSpeed(1.25, { immediate: true });
+    win.document.body.className = 'WEB_PAGE_TYPE_BROWSE';
+    win.dispatchEvent(new win.CustomEvent('ytaf-page-update', { detail: { isWatch: false } }));
+    await wait(50);
+    win.document.body.className = 'WEB_PAGE_TYPE_WATCH';
+    t('per account: a speed the viewer set after the change stays when the video is left', win.ytafSpeed.getSpeed() === 1.25,
+      win.ytafSpeed.getSpeed());
+  }
+  {
+    // The same, but the viewer sets 1x, the speed the video already plays at
+    // (a reset): no reload, yet that choice wins over the 2x waiting.
+    const KEY = 'ytaf-configuration';
+    const identity = (id) => JSON.stringify({ data: { accountId: id } });
+    const storage = {
+      'yt.leanback.default::last-identity-used': identity('xyz'),
+      [KEY + '::' + hashString('accountId=abc')]: JSON.stringify({ rememberPlaybackSpeed: true, savedPlaybackSpeed: 2 }),
+      [KEY + '::' + hashString('accountId=xyz')]: JSON.stringify({ rememberPlaybackSpeed: false, savedPlaybackSpeed: 1.5 })
+    };
+    const { win } = boot({ perAccountSettings: true }, { storage });
+    let changes = 0;
+    win.addEventListener('ytaf-profile-change', () => { changes++; });
+    win.localStorage.setItem('yt.leanback.default::last-identity-used', identity('abc'));
+    win.dispatchEvent(new win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: true } }));
+    win.dispatchEvent(new win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: false } }));
+    await wait(200);
+    t('reset at 1x: precondition: the 2x account loaded mid-video, the video keeps 1x', changes > 0 && win.ytafSpeed.getSpeed() === 1,
+      `${changes} ${win.ytafSpeed.getSpeed()}`);
+    win.ytafSpeed.setSpeed(1, { immediate: true });
+    win.document.body.className = 'WEB_PAGE_TYPE_BROWSE';
+    win.dispatchEvent(new win.CustomEvent('ytaf-page-update', { detail: { isWatch: false } }));
+    await wait(50);
+    win.document.body.className = 'WEB_PAGE_TYPE_WATCH';
+    t('reset at 1x: the next video plays at the 1x the viewer chose, not the waiting 2x', win.ytafSpeed.getSpeed() === 1,
+      win.ytafSpeed.getSpeed());
+  }
+
+  // ---- Another account's speed while a reload still waits ----
+  {
+    // The viewer sets 1.5x (its reload waits 800 ms), another account (1.75x)
+    // is loaded, and the video is left before the reload: the next video
+    // plays at that account's speed, not the 1.5x of the reload left behind.
+    const KEY = 'ytaf-configuration';
+    const identity = (id) => JSON.stringify({ data: { accountId: id } });
+    const storage = {
+      'yt.leanback.default::last-identity-used': identity('abc'),
+      [KEY + '::' + hashString('accountId=abc')]: JSON.stringify({ rememberPlaybackSpeed: true, savedPlaybackSpeed: 2 }),
+      [KEY + '::' + hashString('accountId=pqr')]: JSON.stringify({ rememberPlaybackSpeed: true, savedPlaybackSpeed: 1.75 })
+    };
+    const opts = { storage, reloads: [] };
+    const { win } = boot({ perAccountSettings: true }, opts);
+    let changes = 0;
+    win.addEventListener('ytaf-profile-change', () => { changes++; });
+    win.ytafSpeed.setSpeed(1.5);
+    win.localStorage.setItem('yt.leanback.default::last-identity-used', identity('pqr'));
+    win.dispatchEvent(new win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: true } }));
+    win.dispatchEvent(new win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: false } }));
+    await wait(100);
+    t('reload waiting: precondition: the 1.75x account loaded, the video still at the 1.5x set', changes > 0 && win.ytafSpeed.getSpeed() === 1.5,
+      `${changes} ${win.ytafSpeed.getSpeed()}`);
+    win.document.body.className = 'WEB_PAGE_TYPE_BROWSE';
+    win.dispatchEvent(new win.CustomEvent('ytaf-page-update', { detail: { isWatch: false } }));
+    await wait(50);
+    win.document.body.className = 'WEB_PAGE_TYPE_WATCH';
+    t('reload waiting: the next video plays at the account’s 1.75x', win.ytafSpeed.getSpeed() === 1.75, win.ytafSpeed.getSpeed());
+    // The next video, and past the 800 ms the left one's reload waited: it never comes.
+    opts.id = 'bbbbbbbbbbb';
+    await wait(1000);
+    t('reload waiting: the left video’s reload is dropped, not made on the next one', opts.reloads.length === 0, JSON.stringify(opts.reloads));
+  }
+
+  // ---- Remember Playback Speed, back from the copy of the settings ----
+  {
+    // localStorage emptied: the app starts at 1x, then the copy brings
+    // Remember on at 1.5x; the next video plays at 1.5x.
+    const { fakeIndexedDB, savedCopy } = require('./fake-indexeddb.cjs');
+    const copy = savedCopy([['ytaf-configuration', JSON.stringify({ rememberPlaybackSpeed: true, savedPlaybackSpeed: 1.5, foxThemeApplied: true })]]);
+    const { win } = boot({}, { idb: fakeIndexedDB(copy, []), bodyClass: 'WEB_PAGE_TYPE_BROWSE' });
+    const back = await until(() => stored(win).rememberPlaybackSpeed === true && stored(win).savedPlaybackSpeed === 1.5, 3000);
+    t('restored: precondition: the copy brought Remember on at 1.5x', back, JSON.stringify(stored(win)));
+    win.document.body.className = 'WEB_PAGE_TYPE_WATCH';
+    t('restored: the next video plays at the remembered 1.5x', win.ytafSpeed.getSpeed() === 1.5, win.ytafSpeed.getSpeed());
   }
 
   // ---- Remember Playback Speed ----
@@ -178,13 +293,13 @@ run(async () => {
   // ---- Toggle Speed on a live stream ----
   {
     const opts = { live: true };
-    const { win } = boot({ shortcut_key_7: 'speed_toggle', rememberPlaybackSpeed: true, savedPlaybackSpeed: 1.5 }, opts);
+    const { win } = boot({ shortcut_key_7: 'speed_toggle', rememberPlaybackSpeed: true, savedPlaybackSpeed: 1.75, toggleSpeed: 2 }, opts);
     await wait(300);
     const before = stored(win).savedPlaybackSpeed;
     trustedKey(win, 55, win.document.body, 'keydown');
     trustedKey(win, 55, win.document.body, 'keyup');
     await wait(400);
-    t('toggle on a live stream: the speed kept for the next video stays', stored(win).savedPlaybackSpeed === before && before === 1.5,
+    t('toggle on a live stream: the speed kept for the next video stays', stored(win).savedPlaybackSpeed === before && before === 1.75 && stored(win).toggleSpeed === 2,
       JSON.stringify([before, stored(win).savedPlaybackSpeed]));
     t('...and it still plays at 1x', win.ytafSpeed.getSpeed() === 1);
     t('...with the notice that there is no speed on a live stream',
@@ -192,6 +307,6 @@ run(async () => {
     // The next video, another one and not live: it plays at the speed kept.
     opts.live = false;
     opts.id = 'bbbbbbbbbbb';
-    t('...and the next video that is not live plays at it', win.ytafSpeed.getSpeed() === 1.5, win.ytafSpeed.getSpeed());
+    t('...and the next video that is not live plays at it', win.ytafSpeed.getSpeed() === 1.75, win.ytafSpeed.getSpeed());
   }
 });

@@ -87,5 +87,17 @@ const context = { client: { clientName: 'TVHTML5', clientVersion: '7.20250101.00
   const own = send({ context, query: 'nasa', params: 'EgZzZWFyY2g=' });
   t('...a request with params of its own is still left alone', own.params === 'EgZzZWFyY2g=');
 }
+{
+  // Stored values that are names on Object.prototype are no modes: each is
+  // left out, and a real one beside them keeps its encoding.
+  for (const name of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
+    const { send } = boot(name, true, { searchType: name, searchDuration: name, searchFeature: name });
+    t('a stored "' + name + '" in all four: no params', !('params' in send({ context, query: 'nasa' })),
+      JSON.stringify(send({ context, query: 'nasa' })));
+  }
+  const { send } = boot('week', true, { searchFeature: 'constructor' });
+  t('...beside This Week, "constructor" as Only: the week filter alone', send({ context, query: 'nasa' }).params === 'EgIIAw==',
+    send({ context, query: 'nasa' }).params);
+}
 
 done();

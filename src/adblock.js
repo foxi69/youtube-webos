@@ -240,6 +240,10 @@ const cfgSnapshot = configGetAll();
 // The filters that need a setting on; the rows ahead, the left menu and the
 // preview fix run before them.
 let anyResponseFilterEnabled = false;
+// The filters the fallback walk of an unrecognized response serves: all but
+// the player-format ones (dropUpscaled, maxVideoLines), which act on the
+// player response only.
+let fallbackFiltersEnabled = false;
 let cfgEmojiFixEffective = false;
 
 // Singleton passed to the filters, refreshed by recomputeFilterFlags() rather
@@ -370,7 +374,7 @@ function recomputeFilterFlags() {
   cfgFlags.sidebar = sidebarHookRequired();
   cfgFlags.continuePreviews = !!cfgSnapshot[CONFIG_KEYS.PREVIEW_HANDOVER];
 
-  anyResponseFilterEnabled = !!(
+  fallbackFiltersEnabled = !!(
     cfgFlags.enableAdBlock ||
     cfgFlags.enableTrackingBlock ||
     cfgFlags.removeGlobalShorts ||
@@ -389,11 +393,10 @@ function recomputeFilterFlags() {
     cfgFlags.removeYouThere ||
     cfgFlags.disableAutoCaptions ||
     cfgFlags.forceOriginalAudio ||
-    cfgFlags.dropUpscaled ||
-    cfgFlags.maxVideoLines > 0 ||
     cfgFlags.decorateItems ||
     cfgFlags.deArrow
   );
+  anyResponseFilterEnabled = fallbackFiltersEnabled || cfgFlags.dropUpscaled || cfgFlags.maxVideoLines > 0;
 
   Object.assign(cfgFlagsNoEmoji, cfgFlags);
   cfgFlagsNoEmoji.enableLegacyEmojiFix = false;
@@ -854,7 +857,7 @@ function filterResponse(data, text) {
   } else if (responseType === 'ACTION' || responseType === 'PLAYER') {
     if (DEBUG) debugLog(`Schema Match: [${responseType}]`);
     applySchemaFilters(data, responseType, flags);
-  } else if (text.length > 10000 && !Array.isArray(data)) {
+  } else if (fallbackFiltersEnabled && text.length > 10000 && !Array.isArray(data)) {
     if (DEBUG) logSchemaMiss(data, text.length);
     applyFallbackFilters(data, flags);
   } else if ((flags.removeGlobalShorts || flags.removeLiveVideos) && !Array.isArray(data)) {
@@ -1799,14 +1802,19 @@ function isUpscaledFormat(format) {
   return typeof format.xtags === 'string' && decodeBase64Url(format.xtags).indexOf(SUPER_RESOLUTION_PAIR) !== -1;
 }
 
-/** A video format's height in lines (the short side, so a vertical 1080x1920 is 1080p), or 0. */
+/**
+ * A video format's size in lines, as YouTube labels it, or 0: a landscape one
+ * by its 16:9 height (a 21:9 2560x1072 is 1440p, a 4:3 1440x1080 is 1080p),
+ * a vertical one by its short side (1080x1920 and 1080x2400 are 1080p).
+ * A size or label of another shape counts as not known (0), not an error
+ * that would stop the response's other filters.
+ */
+const sizeOf = (v) => (typeof v === 'number' || typeof v === 'string' ? Number(v) || 0 : 0);
 function formatLines(format) {
-  const w = Number(format.width) || 0;
-  const h = Number(format.height) || 0;
-  // The 16:9 height of its size, as YouTube labels it: a 21:9 2560x1072 is
-  // 1440p, not 1072 lines; the short side keeps 4:3 and vertical ones right.
-  if (w > 0 && h > 0) return Math.max(Math.min(w, h), Math.round((Math.max(w, h) * 9) / 16));
-  const match = /(\d{3,4})p/.exec(format.qualityLabel || '');
+  const w = sizeOf(format.width);
+  const h = sizeOf(format.height);
+  if (w > 0 && h > 0) return h > w ? w : Math.max(h, Math.round((w * 9) / 16));
+  const match = /(\d{3,4})p/.exec(typeof format.qualityLabel === 'string' ? format.qualityLabel : '');
   return match ? Number(match[1]) : 0;
 }
 
@@ -1819,13 +1827,19 @@ const isVideoFormat = (format) => !!format && typeof format.mimeType === 'string
  * Force Max Quality (which asks for the best level left) can pick them. Audio
  * formats are left alone. A video with nothing the TV can play left after a
  * step keeps its formats for that step: a picture the setting did not want
- * beats no picture.
+ * beats no picture. Both on, the limit wins: when the only formats that fit
+ * it are upscaled ones, they stay (and the bigger native ones go); with none
+ * that fits, the upscaled ones go as before.
  */
 function filterVideoFormats(holder, dropUpscaled, maxLines) {
   const formats = holder && holder.streamingData && holder.streamingData.adaptiveFormats;
   if (!Array.isArray(formats)) return;
-  if (dropUpscaled) dropFormats(formats, isUpscaledFormat);
-  if (maxLines > 0) dropFormats(formats, (format) => formatLines(format) > maxLines);
+  // A format of no known size is kept, and is no reason to drop the others:
+  // only one known to fit lets the bigger ones go.
+  const fitsCap = (format) => formatLines(format) > 0 && formatLines(format) <= maxLines;
+  const capFits = maxLines > 0 && formats.some((format) => isVideoFormat(format) && fitsCap(format) && canPlayFormat(format));
+  if (dropUpscaled) dropFormats(formats, isUpscaledFormat, capFits ? fitsCap : undefined);
+  if (maxLines > 0) dropFormats(formats, (format) => formatLines(format) > maxLines, fitsCap);
 }
 
 /**
@@ -1841,15 +1855,16 @@ function canPlayFormat(format) {
 }
 
 // A step drops its formats only when one the TV can play is left: an AV1
-// format kept on a TV without AV1 is no picture either.
-function dropFormats(formats, shouldDrop) {
+// format kept on a TV without AV1 is no picture either. `fits`: which of
+// the formats left count as that one (all of them by default).
+function dropFormats(formats, shouldDrop, fits) {
   let kept = 0;
   let dropped = 0;
   for (let i = 0; i < formats.length; i++) {
     const format = formats[i];
     if (!isVideoFormat(format)) continue;
     if (shouldDrop(format)) dropped++;
-    else if (canPlayFormat(format)) kept++;
+    else if ((!fits || fits(format)) && canPlayFormat(format)) kept++;
   }
   if (!dropped || !kept) return;
   let w = 0;

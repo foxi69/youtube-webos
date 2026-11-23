@@ -2299,7 +2299,8 @@ export {};
 
     {
       key: 'forceQuality',
-      enabledWhen: function (v) { return !!v && v !== 'off'; },
+      // The modes config.js knows (forceQualityModes) other than Off: an unknown one is Off there too.
+      enabledWhen: function (v) { return ['max', 'up2160', 'up1440', 'up1080', 'up720', 'up480'].indexOf(v) !== -1; },
       label: 'Force Max Quality',
       lamp: 'QUALT',
       module: 'video-quality.js',

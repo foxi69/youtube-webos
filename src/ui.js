@@ -9,14 +9,14 @@ import { initMathLetters } from './math-letters.js';
 import { initPlaybackSpeed, stepSpeed, resetSpeed, toggleSpeed } from './playback-speed.js';
 import { toggleChannelWhitelist, formatTimeSaved, titleTrayChannel } from './sponsorblock-extras.js';
 import sponsorBlockUI from './Sponsorblock-UI.js';
-import { sendKey, REMOTE_KEYS, COLOR_CODE_MAP, isGuestMode, invalidateGuestModeCache, isWatchPage, isShortsPage, isSearchPage, SELECTORS, getVideo, SYNTHETIC_KEY_FLAG, isAutoplayOn, isLiveStream } from './utils.js';
+import { sendKey, REMOTE_KEYS, COLOR_CODE_MAP, isGuestMode, invalidateGuestModeCache, isWatchPage, isShortsPage, isSearchPage, SELECTORS, getVideo, SYNTHETIC_KEY_FLAG, isSyntheticKeyEcho, isAutoplayOn, isLiveStream, rendererChapterStarts } from './utils.js';
 import { initTrackingBlock, destroyTrackingBlock } from './adblock.js';
 import logoOrangeUrl from './icons/logo-orange.png';
 import logoBlueUrl from './icons/logo-blue.png';
 import logoRedUrl from './icons/logo-red.png';
 import logoDarkUrl from './icons/logo-dark.png';
 import { isWebOS25, isLegacyWebOS } from './webos-utils.js';
-import { subtitleTranslateLanguages } from './subtitle-translate.js';
+import { subtitleTranslateLanguages, pickTrack, currentTarget } from './subtitle-translate.js';
 import { showNotification, setNotificationOled, setNotificationTheme } from './notifications.js';
 import { blockChannel, openFocusedLongPressMenu } from './long-press-menu.js';
 import { VERSION_LABEL } from './version.js';
@@ -1107,7 +1107,7 @@ function createOptionsPanel() {
   // --- Page 2: Player ---
   makePage(1).appendChild(createSection('Video Player',
   [createAlignedCycleControl('forceQuality', forceQualityModes),
-  createElement('div', { text: 'Up to: the best quality the video has up to that size; a change applies from the next video', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
+  createElement('div', { text: 'Up to: the best quality up to that size; lower applies at once, higher from the next video', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   createConfigCheckbox('removeUpscaledFormats'),
   createElement('div', { text: 'YouTube\'s "Super resolution" levels are upscaled from a smaller video by AI; the real ones play instead', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   createAlignedCycleControl('showVideoQuality', videoQualityDisplayModes),
@@ -1180,7 +1180,6 @@ function createOptionsPanel() {
       createAlignedCycleControl('sbMinSegmentLength', sbMinSegmentLengthModes),
       createConfigCheckbox('sbReportSkips'),
       createElement('div', { text: 'Tells sponsor.ajay.app which segments were skipped (their ids only), for the counts SponsorBlock shows their submitters', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
-      createElement('div', { class: 'ytaf-sb-whitelist-title', text: configGetDesc('sbWhitelistChannels'), style: { padding: '8px 4px 4px 4.3vh' } }),
       createListEditor('sbWhitelistChannels', {
         placeholder: 'Channel name, then OK',
         emptyText: 'None. A key set to "SponsorBlock: Never Skip on This Channel" adds the channel playing.'
@@ -1502,11 +1501,7 @@ window.addEventListener('ytaf-page-update', cancelDelayedPlaybackActions);
  * video, read on the TV), which put the skip minutes off.
  */
 function chapterStarts(chapterEls, duration) {
-  const host = document.querySelector('ytlr-multi-markers-player-bar-renderer');
-  const props = host && host.__instance && host.__instance.props;
-  const own = props && props.data && Array.isArray(props.data.chapters) ? props.data.chapters : [];
-  // A number only: Number(null) is 0, a chapter at the start that is not there.
-  const starts = own.map((chapter) => chapter && chapter.start).filter((s) => typeof s === 'number' && isFinite(s));
+  const starts = rendererChapterStarts();
   if (starts.length) return starts;
   const widths = [];
   let total = 0;
@@ -1777,6 +1772,81 @@ function triggerInternal(element, name) {
 // --- Shortcut Helper Functions (Static Logic) ---
 // Extracted to prevent object allocation inside handlers
 
+// A name's text: a string, { simpleText } or { runs }, as YouTube gives it
+// (subtitle-translate.js's own tracks too); '' when it has none.
+function nameText(name) {
+    if (typeof name === 'string') return name;
+    if (name && typeof name.simpleText === 'string') return name.simpleText;
+    if (name && Array.isArray(name.runs)) return name.runs.map((run) => (run && typeof run.text === 'string' ? run.text : '')).join('');
+    return '';
+}
+
+// The notice for a track switched on: its first name with text, else its
+// language code, else no name at all.
+function subtitlesOnNotice(track) {
+    const names = [track.languageName, track.name, track.trackName, track.languageCode];
+    for (let i = 0; i < names.length; i++) {
+        const text = nameText(names[i]);
+        if (text) return `Subtitles: ON (${text})`;
+    }
+    return 'Subtitles: ON';
+}
+
+// A list entry that can be switched on as it is: a track that names itself
+// (a language code or a vss id), not a translation entry (as pickTrack takes
+// them). An empty object is what switches the subtitles off.
+function usableTrack(track) {
+    if (!track || typeof track !== 'object' || Array.isArray(track) || track.translationLanguage) return false;
+    const ids = [track.languageCode, track.vssId, track.vss_id];
+    return ids.some((id) => typeof id === 'string' && id !== '');
+}
+
+// The video's own caption tracks that can be switched on (the player's list
+// can lack one, such as the auto-translated copy subtitle-translate.js adds).
+function videoCaptionTracks(player) {
+    // A player still starting can throw here: no tracks then, and the
+    // player's own choice (toggleSubtitlesOn) is still tried.
+    let videoData = null;
+    try { videoData = typeof player.getVideoData === 'function' ? player.getVideoData() : null; } catch { /* not ready */ }
+    return videoData && Array.isArray(videoData.captionTracks) ? videoData.captionTracks.filter(usableTrack) : [];
+}
+
+// The tracks to choose from, only those that can be switched on: the
+// player's list, else the video's caption tracks (the captions API can answer
+// before it has a list, or one with no track in it that can be switched on).
+function captionTracks(player, trackList) {
+    if (Array.isArray(trackList) && trackList.some(usableTrack)) return trackList.filter(usableTrack);
+    return videoCaptionTracks(player);
+}
+
+// A track to switch on when the player cannot choose one itself: in the TV's
+// language, picked as Subtitles When a Video Starts picks (pickTrack: its own
+// words before speech recognition), its region or script first (zh-TW, then
+// zh); else the video's default; else the first. No translation entry in any
+// of the three. The first alone is no choice: the list is in alphabetical
+// order (Afrikaans first on a TED talk with many translations, measured on
+// the TV).
+function pickCaptionTrack(tracks) {
+    if (!tracks || !tracks.length) return null;
+    const tag = String((typeof navigator !== 'undefined' && navigator.language) || '').toLowerCase();
+    const base = tag.split('-')[0];
+    const inTvLanguage = (tag ? pickTrack(tracks, tag) : null) || (base && base !== tag ? pickTrack(tracks, base) : null);
+    if (inTvLanguage) return inTvLanguage;
+    for (let i = 0; i < tracks.length; i++) if (usableTrack(tracks[i]) && (tracks[i].is_default || tracks[i].isDefault)) return tracks[i];
+    for (let i = 0; i < tracks.length; i++) if (usableTrack(tracks[i])) return tracks[i];
+    return null;
+}
+
+// The track in the viewer's subtitle language (Auto-Translate Subtitles), or
+// null: the same language and the same pick as Subtitles When a Video Starts
+// (currentTarget, pickTrack), so both turn on the same one: its own words,
+// else speech recognition, else the auto-translated copy subtitle-translate.js
+// adds to a video with no track in that language.
+function preferredCaptionTrack(tracks) {
+    const lang = currentTarget();
+    return lang ? pickTrack(tracks, lang) : null;
+}
+
 function toggleSubtitlesLogic(player) {
     let toggledViaApi = false;
     if (player) {
@@ -1785,13 +1855,42 @@ function toggleSubtitlesLogic(player) {
         if (typeof player.getOption === 'function' && typeof player.setOption === 'function') {
           try {
             const currentTrack = player.getOption('captions', 'track');
-            const isEnabled = currentTrack && (currentTrack.languageCode || currentTrack.vssId);
-            if (isEnabled) { player.setOption('captions', 'track', {}); showNotification('Subtitles: OFF'); toggledViaApi = true; }
+            // The player's own track objects name it vss_id, ours vssId.
+            const isOn = (track) => !!track && !!(track.languageCode || track.vssId || track.vss_id);
+            if (isOn(currentTrack)) { player.setOption('captions', 'track', {}); showNotification('Subtitles: OFF'); toggledViaApi = true; }
             else {
-              const trackList = player.getOption('captions', 'tracklist');
-              const videoData = player.getVideoData ? player.getVideoData() : null;
-              const targetTrack = (trackList && trackList[0]) || (videoData && videoData.captionTracks && videoData.captionTracks[0]);
-              if (targetTrack) { player.setOption('captions', 'track', targetTrack); showNotification(`Subtitles: ON (${targetTrack.languageName || targetTrack.name || targetTrack.languageCode})`); toggledViaApi = true; }
+              const list = player.getOption('captions', 'tracklist');
+              const tracks = captionTracks(player, list);
+              const switchOn = (track) => {
+                player.setOption('captions', 'track', track);
+                showNotification(subtitlesOnNotice(track));
+                toggledViaApi = true;
+              };
+              // The viewer's subtitle language, when one is set.
+              // Also among the video's own tracks, before the player's choice:
+              // the list can lack the one in that language.
+              const preferred = preferredCaptionTrack(tracks) || preferredCaptionTrack(videoCaptionTracks(player));
+              if (preferred) switchOn(preferred);
+              // Else the player's own choice, as its captions button makes it:
+              // the viewer's last language, else the video's (English on that
+              // TED talk, webOS 25). It only switches on, and has set the track
+              // when it returns (measured on the TV).
+              if (!toggledViaApi && typeof player.toggleSubtitlesOn === 'function') {
+                // A player still starting can throw here: the track is read
+                // again (it may have been set), else the list below is tried.
+                try { player.toggleSubtitlesOn(); } catch { /* not ready */ }
+                const chosen = player.getOption('captions', 'track');
+                if (isOn(chosen)) {
+                  showNotification(subtitlesOnNotice(chosen));
+                  toggledViaApi = true;
+                }
+              }
+              // Else from the tracks (captionTracks already gave the video's
+              // own when the list had none to use).
+              if (!toggledViaApi) {
+                const target = pickCaptionTrack(tracks);
+                if (target) switchOn(target);
+              }
             }
           } catch (e) { console.warn('[Shortcut] Subtitle API Error:', e); }
         }
@@ -2269,7 +2368,7 @@ function isTextBox(el) {
   return el.tagName === 'INPUT' && el.type !== 'checkbox' && el.type !== 'color';
 }
 
-const isSyntheticKey = (evt) => !!evt[SYNTHETIC_KEY_FLAG] || evt.isTrusted === false;
+const isSyntheticKey = (evt) => !!evt[SYNTHETIC_KEY_FLAG] || evt.isTrusted === false || isSyntheticKeyEcho(evt);
 
 // The key that closed the settings panel (Back, Escape, an Enter, the menu
 // key) is swallowed until it is released: a held Back keeps repeating, and

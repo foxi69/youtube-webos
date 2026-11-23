@@ -11,8 +11,9 @@ const KEY = 'yt-player-caption-display-settings';
 const DAY = 24 * 60 * 60 * 1000;
 const STYLE = JSON.stringify({ fontSizeIncrement: 2, color: '#ffff00', background: '#000000' });
 
-function boot(config, storage) {
+function boot(config, storage, setup) {
   return bootPage({
+    setup,
     bodyClass: 'WEB_PAGE_TYPE_BROWSE',
     userAgent: UA.webos23,
     launchParams: '{}',
@@ -48,8 +49,12 @@ run(async () => {
   {
     const now = Date.now();
     const raw = JSON.stringify({ data: STYLE, expiration: now + 200 * DAY, creation: now });
-    const { win } = boot({ captionStyleBackup: { [KEY]: STYLE } }, { [KEY]: raw });
+    // An older style in the copy: the look takes the record's, which shows it ran.
+    const OLD = JSON.stringify({ fontSizeIncrement: 0 });
+    const { win } = boot({ captionStyleBackup: { [KEY]: OLD } }, { [KEY]: raw });
     await wait(400);
+    t('a record with long to go: precondition: looked at, its style copied', !!settings(win).captionStyleBackup &&
+      settings(win).captionStyleBackup[KEY] === STYLE, JSON.stringify(settings(win).captionStyleBackup));
     t('a record with long to go is not rewritten', win.localStorage.getItem(KEY) === raw);
   }
 
@@ -64,8 +69,14 @@ run(async () => {
 
   // ---- Nothing to keep, and a record that is not YouTube's ----
   {
-    const { win, errors } = boot({});
+    // The look is seen asking for the record, so "nothing" is its answer.
+    let asked = 0;
+    const { win, errors } = boot({}, undefined, (w) => {
+      const get = w.Storage.prototype.getItem;
+      w.Storage.prototype.getItem = function (key) { if (key === KEY) asked++; return get.call(this, key); };
+    });
     await wait(50);
+    t('no record and no copy: precondition: the record was looked for', asked > 0, String(asked));
     t('no record and no copy: nothing written', win.localStorage.getItem(KEY) === null && errors.length === 0);
     const odd = boot({}, { [KEY]: 'not json' });
     await wait(50);

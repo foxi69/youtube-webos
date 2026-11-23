@@ -26,6 +26,8 @@ function boot(cfg, opts = {}) {
     setup: (w) => {
       NS = w.JSON.stringify;
       if (opts.mse) w.MediaSource = { isTypeSupported: opts.mse };
+      // opts.setup(w): more of the page set up before the bundle runs.
+      if (opts.setup) opts.setup(w);
     },
     fetch: () => Promise.reject(new Error('offline'))
   });
@@ -84,8 +86,36 @@ run(async () => {
       itags(vertical) === '299,298,398,251', itags(vertical));
     t('up to 1080p: only the label to go by',
       itags(capped.parse(player([{ itag: 1, mimeType: 'video/mp4', qualityLabel: '1440p60' }, { itag: 2, mimeType: 'video/mp4', qualityLabel: '1080p60' }]))) === '2');
+    // A limit not in the list (up360, from a later build or a damaged copy)
+    // caps nothing; a listed one (up480) and Max are the controls.
+    const formats360 = () => player([video(398, 1280, 720), video(397, 854, 480), video(396, 640, 360), audio]);
+    t('an unknown limit (up360) caps nothing', itags(boot({ forceQuality: 'up360' }).parse(formats360())) === '398,397,396,251');
+    t('...a listed one (up480) does', itags(boot({ forceQuality: 'up480' }).parse(formats360())) === '397,396,251');
+    t('...and Max caps nothing either', itags(boot({ forceQuality: 'max' }).parse(formats360())) === '398,397,396,251');
+    // Both on, the limit wins: the only 720p is upscaled, beside a native
+    // 1440p. It stays and the 1440p goes, or the video would play above the
+    // limit. With nothing under the limit at all, the upscaled one still goes.
+    const onlyUpscaledFits = boot({ forceQuality: 'up720', removeUpscaledFormats: true }).parse(player([video(400, 2560, 1440), video(398, 1280, 720, SR), audio]));
+    t('up to 720p and upscaled: the upscaled 720p stays, the 1440p goes', itags(onlyUpscaledFits) === '398,251', itags(onlyUpscaledFits));
+    const noneFits = boot({ forceQuality: 'up480', removeUpscaledFormats: true })
+      .parse(player([video(401, 3840, 2160, SR), video(399, 1920, 1080), audio]));
+    t('up to 480p and upscaled, nothing that small: the upscaled one still goes', itags(noneFits) === '399,251', itags(noneFits));
+    // A label of an unknown shape (one that cannot even be made a string): that
+    // format counts as of unknown size, and the cap still applies to the rest.
+    const odd = boot({ forceQuality: 'up720' }).parse(player([{ itag: 5, mimeType: 'video/mp4', qualityLabel: { toString: null } },
+      video(400, 2560, 1440), video(398, 1280, 720), audio]));
+    t('up to 720p: a label of another shape is not known, the cap still drops 1440p', itags(odd) === '5,398,251', itags(odd));
     t('up to 480p: a video with nothing that small keeps its formats',
       itags(boot({ forceQuality: 'up480' }).parse(player([video(399, 1920, 1080), video(398, 1280, 720), audio]))) === '399,398,251');
+    // Its control: with a 480p format there, the cap applies (480p stays, 720p goes).
+    t('up to 480p: with a 480p format, the bigger ones go',
+      itags(boot({ forceQuality: 'up480' }).parse(player([video(398, 1280, 720), video(397, 854, 480), audio]))) === '397,251');
+    // Above 2160p too: Max and Off keep a 4320p format, Up to 2160p drops only it.
+    const eightK = () => player([video(402, 7680, 4320), video(401, 3840, 2160), video(399, 1920, 1080), audio]);
+    t('Max and Off keep a 4320p format, Up to 2160p drops only it',
+      itags(boot({ forceQuality: 'max', removeUpscaledFormats: false }).parse(eightK())) === '402,401,399,251' &&
+      itags(boot({ forceQuality: 'off', removeUpscaledFormats: false }).parse(eightK())) === '402,401,399,251' &&
+      itags(boot({ forceQuality: 'up2160', removeUpscaledFormats: false }).parse(eightK())) === '401,399,251');
     t('Max: no limit',
       itags(boot({ forceQuality: 'max', removeUpscaledFormats: false }).parse(player(list()))) === '401,400,399,398,251');
     t('Off: no limit',
@@ -118,14 +148,35 @@ run(async () => {
     const throws = boot({ forceQuality: 'up720', removeUpscaledFormats: false }, { mse: () => { throw new Error('probe'); } })
       .parse(player([av1(398, 1280, 720), avc(137, 1920, 1080), audio]));
     t('playable: a probe that throws counts as no: the formats stay', itags(throws) === '398,137,251', itags(throws));
+    // The probe throws for AV1 only, and an AVC 720p is there to play: handled
+    // as a no, the cap still applies (1080p goes); an exception that escaped
+    // would leave the whole response as it came (1080p stays).
+    const avcOnly = (type) => { if (String(type).indexOf('av01') !== -1) throw new Error('probe'); return true; };
+    const contained = boot({ forceQuality: 'up720', removeUpscaledFormats: false }, { mse: avcOnly })
+      .parse(player([av1(398, 1280, 720), avc(136, 1280, 720), avc(137, 1920, 1080), audio]));
+    t('playable: a probe that throws is contained: the cap still applies with a playable AVC left',
+      itags(contained) === '398,136,251', itags(contained));
+  }
+
+  // ---- A format of no known size: kept, and no reason to drop the bigger ones ----
+  {
+    const avc = (itag, w, h) => Object.assign(video(itag, w, h), { mimeType: 'video/mp4; codecs="avc1.640028"' });
+    const unknown = (itag) => ({ itag, mimeType: 'video/mp4; codecs="avc1.640033"' });
+    const only = boot({ forceQuality: 'up1080', removeUpscaledFormats: false })
+      .parse(player([avc(264, 2560, 1440), unknown(266), audio]));
+    t('no known size: with nothing known to fit, the 1440p stays beside it', itags(only) === '264,266,251', itags(only));
+    const fits = boot({ forceQuality: 'up1080', removeUpscaledFormats: false })
+      .parse(player([avc(264, 2560, 1440), unknown(266), avc(136, 1280, 720), audio]));
+    t('no known size: control: with a 720p known to fit, the 1440p goes and the unknown one stays',
+      itags(fits) === '266,136,251', itags(fits));
   }
 
   // ---- A wide or vertical size counts by its 16:9 height, as YouTube labels it ----
   {
     const wide = boot({ forceQuality: 'up1080', removeUpscaledFormats: false })
-      .parse(player([video(400, 2560, 1072), video(399, 1920, 800), video(398, 1080, 1920), video(397, 640, 480), audio]));
-    t('Up to 1080p: a 21:9 2560x1072 (1440p) goes; 1920x800, a vertical 1080x1920 and 640x480 stay',
-      itags(wide) === '399,398,397,251', itags(wide));
+      .parse(player([video(400, 2560, 1072), video(399, 1920, 800), video(398, 1080, 1920), video(396, 1080, 2400), video(397, 640, 480), audio]));
+    t('Up to 1080p: a 21:9 2560x1072 (1440p) goes; 1920x800, vertical 1080x1920 and 1080x2400 (20:9, a phone size) and 640x480 stay',
+      itags(wide) === '399,398,396,397,251', itags(wide));
   }
 
   // ---- Up to as the only filter on ----
@@ -145,6 +196,23 @@ run(async () => {
     const capped = boot(Object.assign({}, alone, { forceQuality: 'up1080' })).parse(withAds(list()));
     t('nothing else on: Up to 1080p still drops the formats above it',
       itags(capped) === '399,398,251' && capped.adPlacements.length === 1, itags(capped) + ' ' + capped.adPlacements.length);
+    // A big response of no known kind: the fallback walk serves none of the
+    // format filters, so with only them on it is not walked. Its lookups of
+    // `gridRenderer` are counted (the walk asks each object it meets).
+    const walked = (cfg) => {
+      let looks = 0;
+      const { parse } = boot(cfg, {
+        setup: (w) => {
+          const own = w.Object.prototype.hasOwnProperty;
+          w.Object.prototype.hasOwnProperty = function (key) { if (key === 'gridRenderer') looks++; return own.call(this, key); };
+        }
+      });
+      parse({ responseContext: {}, unknownKind: { _pad: 'z'.repeat(12000), nested: { gridRenderer: { items: [{ a: 1 }] } } } });
+      return looks;
+    };
+    t('unknown response: precondition: walked with a feed filter on', walked(Object.assign({}, alone, { forceQuality: 'up1080', enableAdBlock: true, removeMixes: true })) > 0);
+    t('unknown response: not walked with only Up to on', walked(Object.assign({}, alone, { forceQuality: 'up1080' })) === 0);
+    t('unknown response: not walked with only Skip AI-Upscaled Qualities on', walked(Object.assign({}, alone, { removeUpscaledFormats: true })) === 0);
   }
 
   // ---- The panel row ----

@@ -4,7 +4,8 @@
  * kept as a snapshot, so that a change on YouTube's side shows at once.
  *
  *   node tools/yt-tv-snapshot.cjs build <dir> [out.json]
- *       <dir> holds a capture from the TV: the main bundle (`*main.js`) and
+ *       <dir> holds a capture from the TV: the code bundles (`*main.js`; of
+ *       several, the one that names the most anchors is kept) and
  *       InnerTube responses (`*.json`, browse and player). Writes the snapshot
  *       (default: stdout). Nothing that identifies a viewer is kept: no
  *       tracking params, tokens, visitor data, titles or ids, only field
@@ -123,13 +124,26 @@ function fromCode(file) {
   return { bundle: path.basename(file).replace(/^\d+_/, ''), bytes: code.length, anchors: codeAnchors(code) };
 }
 
+// The TV loads its code in several bundles (base and its modules, saved as
+// b0-main.js, b1-main.js...): the one that names the most anchors is the main
+// one; with none named anywhere, the first, so the diff shows them gone.
+function pickBundle(dir, names) {
+  let best = null;
+  let bestNamed = -1;
+  for (const n of names.filter((x) => /main\.js$/.test(x)).sort()) {
+    const code = fromCode(path.join(dir, n));
+    const named = Object.values(code.anchors).filter((a) => a.count > 0).length;
+    if (named > bestNamed) { best = code; bestNamed = named; }
+  }
+  return best;
+}
+
 function build(dir) {
   const names = fs.readdirSync(dir);
-  const bundle = names.find((n) => /main\.js$/.test(n));
   const jsons = names.filter((n) => n.endsWith('.json')).map((n) => path.join(dir, n));
   return {
     taken: new Date().toISOString().slice(0, 10),
-    code: bundle ? fromCode(path.join(dir, bundle)) : null,
+    code: pickBundle(dir, names),
     ...fromResponses(jsons)
   };
 }
