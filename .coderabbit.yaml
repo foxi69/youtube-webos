@@ -1,17 +1,22 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
-#
-# CodeRabbit reviews every pull request, strictly, and only comments: it does
-# not write into the PR description, commit to the branch or label the PR.
+
 language: en-US
+
 tone_instructions: >-
-  Be direct and specific. Point out real defects and risks with the failing
-  case; skip praise and restating the diff.
+  Be direct, concise, and evidence-driven.
+  Report only actionable issues grounded in the changed code.
+  Prioritize correctness, security, compatibility, performance,
+  resource lifecycle, and regressions.
+  Explain the concrete failure scenario and its impact.
+  Distinguish confirmed defects from potential risks.
+  Do not report stylistic preferences, speculative issues,
+  praise, or problems unrelated to the current changes.
+  Do not suggest changes that break existing webOS compatibility.
 
 reviews:
   profile: assertive
   request_changes_workflow: false
 
-  # Comments only: nothing in the PR description, no labels, no reviewers.
   high_level_summary: false
   auto_title_placeholder: ""
   suggested_labels: false
@@ -22,6 +27,7 @@ reviews:
   in_progress_fortune: false
   sequence_diagrams: false
   enable_prompt_for_ai_agents: false
+
   slop_detection:
     enabled: false
 
@@ -30,7 +36,6 @@ reviews:
     drafts: false
     auto_incremental_review: true
 
-  # Nothing that pushes commits to the PR branch.
   finishing_touches:
     docstrings:
       enabled: false
@@ -64,35 +69,72 @@ reviews:
   path_instructions:
     - path: "src/**"
       instructions: >-
-        This code is injected into YouTube's TV web app (youtube.com/tv) on LG
-        webOS TVs, from webOS 3 (Chrome 38, through the Babel-built legacy
-        package) to webOS 25. Flag browser APIs that Chrome 38 lacks unless
-        they are polyfilled in src/polyfills.js or transpiled. YouTube's own
-        markup, data shapes and globals change without notice: flag code that
-        breaks the page or throws when they are missing instead of degrading.
-        Flag work done on every frame or every DOM mutation that a TV CPU
-        would feel, and timers or listeners that are never removed. Do not
-        flag failure modes of the settings backup and recovery (config.js,
-        config-backup.js) that need two or more storage failures at once (for
-        example localStorage refusing one record while taking another, and the
-        IndexedDB write failing too): these are documented limitations, kept
-        on purpose.
+        This code is injected into YouTube's TV web app (youtube.com/tv)
+        on LG webOS TVs, from webOS 3 (Chrome 38, through the Babel-built
+        legacy package) to webOS 25.
+
+        COMPATIBILITY:
+        Flag browser APIs unavailable in Chrome 38 or other supported
+        webOS versions unless correctly polyfilled in src/polyfills.js.
+        Check syntax compatibility, not only API compatibility.
+        Do not suggest modern APIs without checking the actual runtime.
+
+        YOUTUBE INTEGRATION:
+        YouTube's markup, data structures, internal globals and navigation
+        behavior change without notice. Handle missing elements, undefined
+        data, unexpected page states and navigation transitions gracefully.
+        Avoid brittle selectors and assumptions about internal YouTube APIs.
+
+        LIFECYCLE:
+        Check SPA navigation, repeated initialization, event listeners,
+        MutationObservers, intervals, timeouts and cleanup.
+        Flag duplicate handlers, stale references, memory leaks and
+        operations that continue after the relevant page or component
+        is no longer active.
+
+        PERFORMANCE:
+        Prioritize TV hardware constraints.
+        Flag unnecessary DOM queries, repeated full DOM scans, expensive
+        work in mutation callbacks, excessive timers, layout thrashing,
+        synchronous work and expensive operations on every frame.
+        Prefer debouncing, throttling, caching and limiting DOM operations
+        where appropriate.
+
+        WEBOS:
+        Verify webOS-specific APIs are available and guarded.
+        Handle missing APIs, delayed initialization and device differences.
+        Do not assume behavior is identical across webOS versions.
+
+        NETWORK AND ERROR HANDLING:
+        Handle failed requests, timeouts, missing responses and malformed
+        data without breaking YouTube's normal functionality.
+        Check that injected code does not interfere with unrelated
+        YouTube functionality.
+
+        REGRESSION:
+        Preserve existing functionality and compatibility.
+        Do not recommend broad refactors unrelated to the change.
+        Pay attention to side effects on other parts of the injected app.
+
     - path: "bench/**"
       instructions: >-
-        Behaviour tests run by bench/ci.sh in CI. Flag a test only when the
-        logic it covers could break in a realistic way while the test still
-        passes, or when real timing (not a contrived scheduler order) can make
-        it pass by luck. Do not ask for extra preconditions, controls or
-        fixture modelling for failure modes that need an unlikely combination
-        of events.
+        Behaviour tests run by bench/ci.sh in CI.
+        Verify that assertions fail when the tested logic is broken.
+        Check boundary conditions, invalid inputs, missing values,
+        regressions and asynchronous behavior.
+        Ensure timing does not make a test pass by luck.
+        Avoid tests that only verify implementation details.
+
     - path: ".github/workflows/**"
       instructions: >-
-        Check permissions, that actions stay pinned to commits, and that
-        nothing can publish a release, change repo.json or push to main
-        outside the event meant for it.
+        Check workflow permissions and least privilege.
+        Ensure third-party actions are pinned to immutable commit SHAs.
+        Check fork pull request security and untrusted input handling.
+        Verify that release publishing, repo.json modification and
+        pushes to main only happen in explicitly intended workflows.
+        Flag unsafe secrets exposure and excessive token permissions.
 
   tools:
-    # The repo's ESLint baseline is not clean yet: it would bury the review.
     eslint:
       enabled: false
     biome:
