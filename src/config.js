@@ -1006,6 +1006,7 @@ function switchProfile(profile, restored = false) {
   activeProfile = profile;
 
   let incoming = null;
+  let seeded = false;
   if (storesProfile(profile)) {
     // Restored from the backup copy: its record, also when localStorage
     // refused to take it back (quota), so the account is not seeded afresh.
@@ -1016,6 +1017,7 @@ function switchProfile(profile, restored = false) {
     // An account seen for the first time (and every guest session) starts
     // from the shared settings.
     incoming = pickAccountValues(Object.assign({}, defaultConfig, sharedConfig));
+    seeded = true;
     if (storesProfile(profile)) scheduleWrite();
   }
   incoming = pickAccountValues(Object.assign(pickAccountValues(defaultConfig), incoming));
@@ -1030,8 +1032,9 @@ function switchProfile(profile, restored = false) {
   }
   // detail.from: the profile loaded before (null: none, as at the start or
   // while the copy was read), detail.to: this one; detail.restored: loaded by
-  // the restore, whose merge took what was counted with none loaded.
-  window.dispatchEvent(new CustomEvent('ytaf-profile-change', { detail: { from: previous, to: profile, restored } }));
+  // the restore, whose merge took what was counted with none loaded;
+  // detail.seeded: started from the shared settings, their counters included.
+  window.dispatchEvent(new CustomEvent('ytaf-profile-change', { detail: { from: previous, to: profile, restored, seeded } }));
 }
 
 /**

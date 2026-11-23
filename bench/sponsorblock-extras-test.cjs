@@ -809,6 +809,30 @@ run(async () => {
       JSON.stringify(rec(A)));
   }
   {
+    // The same, but the account has no record yet: it starts from the shared
+    // settings, the skip's counters included, so Blue still takes it back there.
+    const A = 'ytaf-configuration::' + hashString('accountId=new');
+    const clock = {};
+    const env = await boot({ perAccountSettings: true, sbTimeSaved: 100, sbSkipCount: 4 }, [seg('sponsor', 30, 60)], { clock });
+    const rec = (key) => JSON.parse(env.win.localStorage.getItem(key) || '{}');
+    await env.playTo(30.2);
+    t(n('new account after a skip: precondition: skipped with no account loaded'), env.state.time === 60, String(env.state.time));
+    const changes = [];
+    env.win.addEventListener('ytaf-profile-change', (e) => changes.push(e.detail));
+    env.win.localStorage.setItem('yt.leanback.default::last-identity-used', JSON.stringify({ data: { accountId: 'new' } }));
+    env.win.dispatchEvent(new env.win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: true } }));
+    env.win.dispatchEvent(new env.win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: false } }));
+    await wait(50);
+    t(n('new account after a skip: precondition: started from the shared settings, from none'),
+      changes.length === 1 && changes[0].from === null && changes[0].seeded === true, JSON.stringify(changes));
+    clock.now += 500;
+    await press(env.win, BLUE);
+    t(n('new account after a skip: Blue takes the skip back'), Math.abs(env.state.time - 30.2) < 0.01, String(env.state.time));
+    await wait(300);
+    t(n('new account after a skip: its totals lose the skip they started with'), rec(A).sbSkipCount === 4 && Math.abs(rec(A).sbTimeSaved - 100) < 1e-9,
+      JSON.stringify([rec(A).sbTimeSaved, rec(A).sbSkipCount]));
+  }
+  {
     // Per-account settings in the copy, but no record of this account: it
     // starts from the restored shared totals, which hold the early skip once.
     let release;
