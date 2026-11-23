@@ -1827,18 +1827,19 @@ const isVideoFormat = (format) => !!format && typeof format.mimeType === 'string
  * Force Max Quality (which asks for the best level left) can pick them. Audio
  * formats are left alone. A video with nothing the TV can play left after a
  * step keeps its formats for that step: a picture the setting did not want
- * beats no picture.
+ * beats no picture. Both on, the limit wins: when the only formats that fit
+ * it are upscaled ones, they stay (and the bigger native ones go); with none
+ * that fits, the upscaled ones go as before.
  */
 function filterVideoFormats(holder, dropUpscaled, maxLines) {
   const formats = holder && holder.streamingData && holder.streamingData.adaptiveFormats;
   if (!Array.isArray(formats)) return;
-  if (dropUpscaled) dropFormats(formats, isUpscaledFormat);
   // A format of no known size is kept, and is no reason to drop the others:
   // only one known to fit lets the bigger ones go.
-  if (maxLines > 0) {
-    dropFormats(formats, (format) => formatLines(format) > maxLines,
-      (format) => formatLines(format) > 0 && formatLines(format) <= maxLines);
-  }
+  const fitsCap = (format) => formatLines(format) > 0 && formatLines(format) <= maxLines;
+  const capFits = maxLines > 0 && formats.some((format) => isVideoFormat(format) && fitsCap(format) && canPlayFormat(format));
+  if (dropUpscaled) dropFormats(formats, isUpscaledFormat, capFits ? fitsCap : undefined);
+  if (maxLines > 0) dropFormats(formats, (format) => formatLines(format) > maxLines, fitsCap);
 }
 
 /**

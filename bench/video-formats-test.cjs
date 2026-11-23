@@ -86,6 +86,14 @@ run(async () => {
       itags(vertical) === '299,298,398,251', itags(vertical));
     t('up to 1080p: only the label to go by',
       itags(capped.parse(player([{ itag: 1, mimeType: 'video/mp4', qualityLabel: '1440p60' }, { itag: 2, mimeType: 'video/mp4', qualityLabel: '1080p60' }]))) === '2');
+    // Both on, the limit wins: the only 720p is upscaled, beside a native
+    // 1440p. It stays and the 1440p goes, or the video would play above the
+    // limit. With nothing under the limit at all, the upscaled one still goes.
+    const onlyUpscaledFits = boot({ forceQuality: 'up720', removeUpscaledFormats: true }).parse(player([video(400, 2560, 1440), video(398, 1280, 720, SR), audio]));
+    t('up to 720p and upscaled: the upscaled 720p stays, the 1440p goes', itags(onlyUpscaledFits) === '398,251', itags(onlyUpscaledFits));
+    const noneFits = boot({ forceQuality: 'up480', removeUpscaledFormats: true })
+      .parse(player([video(401, 3840, 2160, SR), video(399, 1920, 1080), audio]));
+    t('up to 480p and upscaled, nothing that small: the upscaled one still goes', itags(noneFits) === '399,251', itags(noneFits));
     // A label of an unknown shape (one that cannot even be made a string): that
     // format counts as of unknown size, and the cap still applies to the rest.
     const odd = boot({ forceQuality: 'up720' }).parse(player([{ itag: 5, mimeType: 'video/mp4', qualityLabel: { toString: null } },
