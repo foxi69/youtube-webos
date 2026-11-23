@@ -418,6 +418,33 @@ run(async () => {
       track.languageCode === 'en' && /Subtitles: ON \(English\)/.test(env.toasts()), env.toasts());
   }
   {
+    // A translation entry of another shape (its language a plain string): not
+    // taken by the TV's language either, as the fallback would not take it.
+    const env = await boot();
+    const player = env.doc.getElementById('ytlr-player__player-container-player');
+    const set = [];
+    player.getOption = (m, k) => (k === 'track' ? {} : [{ languageCode: 'en', translationLanguage: 'de' }, { languageCode: 'fr', name: 'Français' }]);
+    player.setOption = (m, k, v) => set.push(v);
+    await env.press(D(K.subs));
+    t(n('subtitles: a translation entry is not picked by the TV\'s language, the usable track is'),
+      set.length === 1 && set[0].languageCode === 'fr', JSON.stringify(set));
+  }
+  {
+    // The player's list lacks the set language, the video's tracks have it
+    // (the auto-translated copy): that one, not the player's own choice.
+    const env = await boot({ subtitleTranslateLang: 'hu' });
+    const player = env.doc.getElementById('ytlr-player__player-container-player');
+    let track = {};
+    const set = [];
+    player.getOption = (m, k) => (k === 'track' ? track : [{ languageCode: 'en', name: 'English' }]);
+    player.setOption = (m, k, v) => { set.push(v); track = v; };
+    player.getVideoData = () => ({ captionTracks: [{ languageCode: 'en', name: 'English' }, { languageCode: 'hu', name: 'Magyar (auto-translated)' }] });
+    player.toggleSubtitlesOn = () => { track = { languageCode: 'en', name: 'English' }; };
+    await env.press(D(K.subs));
+    t(n('subtitles: the set language from the video\'s tracks when the list lacks it, before the player\'s choice'),
+      set.length === 1 && set[0].languageCode === 'hu', `${JSON.stringify(set)} ${env.toasts()}`);
+  }
+  {
     // The player's own choice throwing (a player still starting): the list's
     // track is switched on instead of giving up.
     const env = await boot();

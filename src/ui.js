@@ -1760,16 +1760,22 @@ function usableTrack(track) {
     return ids.some((id) => typeof id === 'string' && id !== '');
 }
 
-// The tracks to choose from: the player's list, else the video's caption
-// tracks (the captions API can answer before it has a list, or one with no
-// track in it that can be switched on).
-function captionTracks(player, trackList) {
-    if (Array.isArray(trackList) && trackList.some(usableTrack)) return trackList;
+// The video's own caption tracks that can be switched on (the player's list
+// can lack one, such as the auto-translated copy subtitle-translate.js adds).
+function videoCaptionTracks(player) {
     // A player still starting can throw here: no tracks then, and the
     // player's own choice (toggleSubtitlesOn) is still tried.
     let videoData = null;
     try { videoData = typeof player.getVideoData === 'function' ? player.getVideoData() : null; } catch { /* not ready */ }
-    return videoData && Array.isArray(videoData.captionTracks) ? videoData.captionTracks : [];
+    return videoData && Array.isArray(videoData.captionTracks) ? videoData.captionTracks.filter(usableTrack) : [];
+}
+
+// The tracks to choose from, only those that can be switched on: the
+// player's list, else the video's caption tracks (the captions API can answer
+// before it has a list, or one with no track in it that can be switched on).
+function captionTracks(player, trackList) {
+    if (Array.isArray(trackList) && trackList.some(usableTrack)) return trackList.filter(usableTrack);
+    return videoCaptionTracks(player);
 }
 
 // A track to switch on when the player cannot choose one itself: in the TV's
@@ -1820,7 +1826,9 @@ function toggleSubtitlesLogic(player) {
                 toggledViaApi = true;
               };
               // The viewer's subtitle language, when one is set.
-              const preferred = preferredCaptionTrack(tracks);
+              // Also among the video's own tracks, before the player's choice:
+              // the list can lack the one in that language.
+              const preferred = preferredCaptionTrack(tracks) || preferredCaptionTrack(videoCaptionTracks(player));
               if (preferred) switchOn(preferred);
               // Else the player's own choice, as its captions button makes it:
               // the viewer's last language, else the video's (English on that
