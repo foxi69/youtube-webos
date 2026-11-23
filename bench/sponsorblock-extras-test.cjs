@@ -1011,7 +1011,14 @@ run(async () => {
     const env = await boot({ sbWhitelistChannels: ['Some Channel'], sbMode_highlight: 'auto_skip' },
       [seg('poi_highlight', 90, 91, 'poi')]);
     await wait(200);
+    // The highlight loaded on this very video: its jump was decided, not missing.
+    t(n('whitelist: precondition: the listed video has its highlight'),
+      !!env.sb().highlightSegment && env.sb().highlightSegment.segment[0] === 90);
     t(n('whitelist: no jump to the highlight on a listed channel'), env.state.seeks.length === 0, env.state.seeks.join());
+    // ...and asked for, it still jumps there.
+    const jumped = env.sb().jumpToNextHighlight();
+    t(n('whitelist: the highlight shortcut still jumps there on a listed channel'), jumped === true && env.state.time === 90,
+      String(env.state.time));
   }
   {
     const env = await boot({ sbWhitelistChannels: ['Other Channel'], sbMode_highlight: 'auto_skip' },

@@ -117,10 +117,12 @@ run(async () => {
   const log = [];
 
   // ---- The settings stored are copied a little after the start ----
-  const first = boot({ config: { minVideoLength: '5', blockedChannels: ['Some Channel'], foxThemeApplied: true }, data, log });
+  // Skip AI-Upscaled Qualities on, stated: the click below must be what turns it off in the copy.
+  const first = boot({ config: { minVideoLength: '5', blockedChannels: ['Some Channel'], removeUpscaledFormats: true, foxThemeApplied: true }, data, log });
   await until(() => data.has(KEY), 5000);
   const copy = data.has(KEY) ? JSON.parse(data.get(KEY)) : null;
-  t('the stored settings are copied', !!copy && copy.minVideoLength === '5' && copy.blockedChannels[0] === 'Some Channel',
+  t('the stored settings are copied', !!copy && copy.minVideoLength === '5' && copy.blockedChannels[0] === 'Some Channel' &&
+    copy.removeUpscaledFormats === true,
     JSON.stringify(copy));
 
   // ---- A change is copied ----
@@ -129,6 +131,7 @@ run(async () => {
   await wait(300);
   const box = Array.prototype.slice.call(first.win.document.querySelectorAll('label'))
     .find((l) => l.textContent.trim() === 'Skip AI-Upscaled Qualities');
+  t('precondition: Skip AI-Upscaled Qualities is on in the panel', !!box && box.querySelector('input').checked === true);
   if (box) box.querySelector('input').click();
   // Polled, not sampled once: the local write is debounced, the copy follows it.
   await until(() => data.has(KEY) && JSON.parse(data.get(KEY)).removeUpscaledFormats === false, 3000);
