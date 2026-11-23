@@ -161,10 +161,15 @@ function readAll(prefix) {
     return new Promise((resolve, reject) => {
       const out = [];
       try {
-        const request = db.transaction(STORE, 'readonly').objectStore(STORE).openCursor();
+        const tx = db.transaction(STORE, 'readonly');
+        const request = tx.objectStore(STORE).openCursor();
+        // The last record read is not the read done: a transaction that then
+        // aborts (the connection closed) is a failed read, retried next start.
+        tx.oncomplete = () => resolve(out);
+        tx.onabort = () => reject(tx.error || new Error('backup read aborted'));
         request.onsuccess = () => {
           const cursor = request.result;
-          if (!cursor) { resolve(out); return; }
+          if (!cursor) return;
           const key = String(cursor.key);
           if (key.indexOf(prefix) === 0 && typeof cursor.value === 'string') out.push([key, cursor.value]);
           cursor.continue();

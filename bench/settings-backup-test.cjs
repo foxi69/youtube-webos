@@ -103,6 +103,14 @@ run(async () => {
     await until(() => copy.get(PROFILE_KEY) === 'new profile', 1000);
     t('fixture: ...and the write lands once the read is done', copy.get(KEY) === 'new shared' && copy.get(PROFILE_KEY) === 'new profile',
       `${copy.get(KEY)} ${copy.get(PROFILE_KEY)}`);
+    // The other order: a write made first, then a read: the read sees it.
+    const tx = conn.transaction('kv', 'readwrite');
+    tx.objectStore('kv').put('newer shared', KEY);
+    const firstSeen = await new Promise((resolve) => {
+      const cursor = conn.transaction('kv').objectStore('kv').openCursor();
+      cursor.onsuccess = () => resolve(cursor.result && cursor.result.value);
+    });
+    t('fixture: a read made after a write sees that write', firstSeen === 'newer shared', String(firstSeen));
   }
 
   const data = new Map();
@@ -1193,6 +1201,23 @@ run(async () => {
     t('a Reset of counters already at zero survives a failed read',
       stored(next.win).sbTimeSaved === 0 && stored(next.win).sbSkipCount === 0,
       JSON.stringify([stored(next.win).sbTimeSaved, stored(next.win).sbSkipCount]));
+  }
+
+  // ---- A read whose transaction aborts after its last record ----
+  {
+    // Every record came, then the transaction aborted (the connection
+    // closed): not a read that worked. The copy is not applied, and the mark
+    // stays, so the next start reads it again.
+    const backup = savedCopy([[KEY, JSON.stringify({ minVideoLength: '5', foxThemeApplied: true })]]);
+    const idb = { abortReads: true };
+    const page = boot({ data: backup, log: [], idb });
+    await wait(400);
+    t('read aborted at its end: the copy is not taken as read, the mark stays',
+      (stored(page.win) || {}).minVideoLength !== '5' && page.win.localStorage.getItem('ytaf-settings-recovering') === '1',
+      `${JSON.stringify(stored(page.win))} ${page.win.localStorage.getItem('ytaf-settings-recovering')}`);
+    const next = boot({ data: backup, log: [], storage: Object.fromEntries(Object.keys(page.win.localStorage).map((k) => [k, page.win.localStorage.getItem(k)])) });
+    const back = await until(() => (stored(next.win) || {}).minVideoLength === '5', 3000);
+    t('read aborted at its end: the next start, with a read that works, restores the copy', back, JSON.stringify(stored(next.win)));
   }
 
   // ---- A Reset after the read, the shared record still refused ----

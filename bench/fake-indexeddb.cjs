@@ -12,6 +12,8 @@
  * ReadOnlyError, and its cursor still reads. A write transaction's records
  * land only once no cursor is reading, so a read never sees part of a write.
  * opts.gate: a promise the cursor waits for before its first record;
+ * opts.abortReads: a read transaction aborts once its cursor has given every
+ * record (the connection closed at the end);
  * opts.failAfter: the cursor fails after that many records (opts.cursorFailed
  * counts the failures delivered, for a test to wait for); opts.openFails:
  * the database does not open (onerror): true for every open, a number for
@@ -45,6 +47,14 @@ function fakeIndexedDB(data, log, opts = {}) {
   const readDone = () => {
     if (--activeReads === 0) for (const fn of waitingCommits.splice(0)) later(fn);
   };
+  // Writes made before a read opens land before it reads, as transactions
+  // are ordered by when they were made: such a read waits for them.
+  let pendingWrites = 0;
+  const waitingReads = [];
+  const afterWrites = (fn) => { if (pendingWrites) waitingReads.push(fn); else fn(); };
+  const writeDone = () => {
+    if (--pendingWrites === 0) for (const fn of waitingReads.splice(0)) later(fn);
+  };
   const transaction = (name, mode = 'readonly') => {
     if (!data.stores.has(name)) throw notFound(name);
     const writable = () => {
@@ -57,6 +67,7 @@ function fakeIndexedDB(data, log, opts = {}) {
     const stage = (apply, note) => {
       staged.push({ apply, note });
       if (staged.length > 1) return;
+      pendingWrites++;
       later(() => whenNoReads(() => {
         const aborted = !!opts.abortWrites;
         // Logged once done: a test that waits for the log finds the data there.
@@ -67,6 +78,7 @@ function fakeIndexedDB(data, log, opts = {}) {
         }
         const finished = aborted ? tx.onabort : tx.oncomplete;
         if (finished) finished();
+        writeDone();
       }));
     };
     tx.objectStore = (storeName) => {
@@ -75,13 +87,17 @@ function fakeIndexedDB(data, log, opts = {}) {
         put(value, key) { writable(); stage(() => data.set(key, value), 'put ' + key); },
         delete(key) { writable(); stage(() => data.delete(key)); },
         openCursor() {
-          const keys = Array.from(data.keys()).sort();
+          let keys = [];
           let i = 0;
           const req = { result: null, onsuccess: null, onerror: null };
-          activeReads++;
           let continued = false;
           let ended = false;
-          const end = () => { ended = true; readDone(); };
+          // The transaction ends with its cursor: complete, or aborted by a failure.
+          const end = (failed) => {
+            ended = true;
+            readDone();
+            later(() => { const done = failed || opts.abortReads ? tx.onabort : tx.oncomplete; if (done) done(); });
+          };
           const step = () => {
             // As the real one: once its transaction is done, the cursor cannot go on.
             if (ended) throw Object.assign(new Error('The transaction has finished.'), { name: 'TransactionInactiveError' });
@@ -92,7 +108,7 @@ function fakeIndexedDB(data, log, opts = {}) {
               req.error = new Error('read failed');
               if (req.onerror) req.onerror();
               opts.cursorFailed = (opts.cursorFailed || 0) + 1;
-              end();
+              end(true);
               return;
             }
             const key = keys[i++];
@@ -101,8 +117,13 @@ function fakeIndexedDB(data, log, opts = {}) {
             if (key === undefined || !continued) end();
             });
           };
-          if (opts.gate) opts.gate.then(step);
-          else step();
+          const begin = () => {
+            activeReads++;
+            keys = Array.from(data.keys()).sort();
+            if (opts.gate) opts.gate.then(step);
+            else step();
+          };
+          afterWrites(begin);
           return req;
         }
       };
