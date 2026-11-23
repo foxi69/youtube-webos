@@ -207,6 +207,18 @@ run(async () => {
     const r = stored();
     t('a record of ours about to expire is renewed for a year', r && r.expiration > now + YEAR - 60000, JSON.stringify(r));
   }
+  for (const [name, data, kept] of [['ours (left by an older build)', { quality: 4320, previousQuality: 4320 }, false],
+    ['the viewer’s', { quality: 720, previousQuality: 1080 }, true]]) {
+    // A start with Force Max Quality off: a 4320p record of ours left from
+    // before (the old on/off switch) goes, or YouTube keeps forcing with the
+    // panel at Off; one of the viewer's stays.
+    const now = Date.now();
+    const record = { data: JSON.stringify(data), creation: now - 86400000, expiration: now + 200 * 86400000 };
+    const { stored } = boot({ forceQuality: 'off' }, { record });
+    await wait(50);
+    t(`start with Force off: ${name} record ${kept ? 'stays' : 'goes'}`, kept ? !!stored() && stored().data.quality === data.quality : stored() === null,
+      JSON.stringify(stored()));
+  }
   {
     // Switched off: ours goes; on again: back.
     const { stored, toggle } = boot({});

@@ -729,6 +729,9 @@ export function initVideoQuality() {
   _isWatchPageCached = true;
   
   _shouldForce = forceQualityOn(configRead('forceQuality'));
+  // Off at the start: a record of ours left from before (the old on/off
+  // switch, or a run that ended forcing) goes, or YouTube keeps forcing it.
+  if (!_shouldForce) clearLocalStorageQuality();
   
   setLocalStorageQuality();
   
