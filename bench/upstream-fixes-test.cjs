@@ -164,13 +164,13 @@ setTimeout(async () => {
       env.win.addEventListener('yt-player-state-change', (e) => seen.push(e.detail.videoId));
       return { env, seen, fire: (state) => onState && onState(state), next: (v) => { id = v; } };
     };
-    const off = await setup({ forceHighResVideo: false });
+    const off = await setup({ forceQuality: 'off' });
     off.fire(1);
     off.next('otherother1');
     off.fire(-1);
     t('state event: the video playing, with Force Max Quality off, a new one too', off.seen.join() === 'abcdefghijk,otherother1', off.seen.join());
     off.env.win.close();
-    const on = await setup({ forceHighResVideo: true });
+    const on = await setup({ forceQuality: 'max' });
     on.fire(1);
     on.next('otherother1');
     on.fire(-1);
@@ -180,7 +180,7 @@ setTimeout(async () => {
 
   // ---- Force Max Quality off and on again at once ----
   {
-    const { win, key, clock } = boot({ forceHighResVideo: false });
+    const { win, key, clock } = boot({ forceQuality: 'off' });
     await wait(300);
     // All three clicks at one instant, well inside the 2 s throttle.
     clock.frozenAt = win.Date.now();
@@ -188,16 +188,18 @@ setTimeout(async () => {
     await wait(20);
     win.document.querySelectorAll('.ytaf-tab-btn')[1].click();
     await wait(20);
-    const box = Array.from(win.document.querySelectorAll('#ytaf-page-player label'))
-      .find((l) => l.textContent.trim() === 'Force Max Quality').querySelector('input');
+    // A choice row: Right from Off is Max, Left from Max is Off.
+    const row = Array.from(win.document.querySelectorAll('#ytaf-page-player .shortcut-control-row'))
+      .find((r) => r.querySelector('.shortcut-label').textContent.trim() === 'Force Max Quality');
+    const flip = (on) => { row.focus(); trustedKey(win, on ? 39 : 37, row); };
     const stored = () => win.localStorage.getItem('yt-player-quality');
-    box.click();
+    flip(true);
     await wait(20);
     const first = !!stored();
-    box.click();
+    flip(false);
     await wait(20);
     const cleared = !stored();
-    box.click();
+    flip(true);
     await wait(20);
     const again = !!stored();
     clock.frozenAt = null;

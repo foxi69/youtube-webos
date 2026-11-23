@@ -1,9 +1,9 @@
-import { configRead, configAddChangeListener } from './config.js';
+import { configRead, configAddChangeListener, forceQualityLines, forceQualityOn } from './config.js';
 import { showNotification } from './notifications.js';
 import { isWebOS25 } from './webos-utils.js';
-import { sendKey, REMOTE_KEYS, SELECTORS, isWatchPage, getVideo } from './utils.js';
-import { speedCapsQuality, speedKeepsQuality, clearSpeedQualityPick } from './playback-speed.js';
-import { QUALITY_KEY, QUALITY_HEIGHTS } from './speed/player-state.js';
+import { sendKey, REMOTE_KEYS, SELECTORS, SYNTHETIC_KEY_FLAG, isWatchPage, getVideo } from './utils.js';
+import { speedCapsQuality, speedKeepsQuality, speedRecordIsPick, clearSpeedQualityPick, noteForcedQuality } from './playback-speed.js';
+import { QUALITY_KEY, QUALITY_HEIGHTS, levelUpTo } from './speed/player-state.js';
 
 const DEBUG = false;
 
@@ -155,12 +155,22 @@ function levelsListed() {
   }
 }
 
-// Max means the best level this video offers (the list is best first), not
-// any named level: a 1440p video playing in 720p still needs the upgrade.
+// The level to force: 'highres' for Max; with Up to the best level the video
+// lists up to that size, else its smallest (no hard limit, as with the
+// formats). A video read before Up to was set lists them all; one read with
+// it lists only those, so its best is that level.
+function targetLevel() {
+  return levelUpTo(player.getAvailableQualityLevels?.() || [], forceQualityLines(configRead('forceQuality')));
+}
+
+// At the level forced already. Max means the best level this video offers
+// (the list is best first), not any named level: a 1440p video playing in
+// 720p still needs the upgrade.
 function isQualityAlreadyMax() {
   if (!player) return false;
   try {
-    const best = (player.getAvailableQualityLevels?.() || []).find((q) => q !== 'auto');
+    const target = targetLevel();
+    const best = target === 'highres' ? (player.getAvailableQualityLevels?.() || []).find((q) => q !== 'auto') : target;
     return !!best && player.getPlaybackQuality?.() === best;
   } catch {
     return false;
@@ -218,9 +228,72 @@ function setLocalStorageQuality() {
   }
 }
 
+// The record YouTube writes for a range Force Max Quality set (Up to 720p:
+// 720p; Max: 4320, whatever the video's best level, measured on webOS 25) is
+// noted, so switching Force Max Quality off removes it too: left, a later
+// start's speed reload would take it for the viewer's pick. Kept across
+// starts. One written later than this is not ours, nor one written after the
+// viewer's first key press since the range (keyAt): a pick in YouTube's menu,
+// even of the same level.
+const FORCED_RECORD_KEY = 'ytaf-force-record';
+const FORCED_RECORD_MS = 5000;
+// Until when a key press still counts for the note (no storage read per key after that).
+let forcedNoteOpenUntil = 0;
+
+function noteForcedRecord(level) {
+  const at = Date.now();
+  forcedNoteOpenUntil = at + FORCED_RECORD_MS;
+  try { window.localStorage.setItem(FORCED_RECORD_KEY, JSON.stringify({ level, at })); } catch { /* storage denied */ }
+}
+
+function noteKeyAfterForcedRange(evt) {
+  if (evt.isTrusted === false || evt[SYNTHETIC_KEY_FLAG]) return;
+  const now = Date.now();
+  if (now > forcedNoteOpenUntil) return;
+  forcedNoteOpenUntil = 0;
+  try {
+    const own = JSON.parse(window.localStorage.getItem(FORCED_RECORD_KEY) || 'null');
+    if (own) window.localStorage.setItem(FORCED_RECORD_KEY, JSON.stringify({ ...own, keyAt: now }));
+  } catch { /* storage denied */ }
+}
+
+/** Whether YouTube's quality record `parsed` (with its `data`) is the one a Force Max Quality range wrote. */
+function isForcedRecord(parsed, data) {
+  let own;
+  try { own = JSON.parse(window.localStorage.getItem(FORCED_RECORD_KEY) || 'null'); } catch { return false; }
+  if (!own || typeof own.at !== 'number' || typeof own.level !== 'string') return false;
+  const created = Number(parsed.creation);
+  if (!(created >= own.at && created <= own.at + FORCED_RECORD_MS)) return false;
+  if (typeof own.keyAt === 'number' && created >= own.keyAt) return false;
+  return QUALITY_HEIGHTS[own.level] === data.quality;
+}
+
+// A record older than this is no pick made on the video playing: when it
+// opened, or when Force Max Quality was turned on, which releases a pick.
+let pickSince = 0;
+
 /**
- * Switching the option off drops the 4320p record this module wrote, so the
- * app goes back to choosing the quality itself instead of staying pinned.
+ * A level the viewer picked in YouTube's menu on the video playing stays when
+ * the mode moves between Max and Up to: the video counts as done. True if so.
+ */
+function keepViewerPick() {
+  try {
+    const videoId = player?.getVideoData?.()?.video_id;
+    const parsed = JSON.parse(window.localStorage.getItem(QUALITY_KEY) || 'null');
+    const data = parsed && parsed.data ? JSON.parse(parsed.data) : null;
+    if (!videoId || !data || data.quality === 4320 || !(Number(parsed.creation) >= pickSince)) return false;
+    if (isForcedRecord(parsed, data) || !speedRecordIsPick()) return false;
+    qualitySetForVideo.add(videoId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Switching the option off drops the 4320p record this module wrote and the
+ * one YouTube wrote for its range, so the app goes back to choosing the
+ * quality itself instead of staying pinned.
  * A record the viewer set through YouTube's own menu is left alone.
  */
 function clearLocalStorageQuality() {
@@ -229,11 +302,12 @@ function clearLocalStorageQuality() {
     if (stored) {
       const parsed = JSON.parse(stored);
       const data = parsed && parsed.data ? JSON.parse(parsed.data) : null;
-      if (data && data.quality === 4320 && data.previousQuality === 4320) {
+      if (data && ((data.quality === 4320 && data.previousQuality === 4320) || isForcedRecord(parsed, data))) {
         window.localStorage.removeItem(QUALITY_KEY);
       }
     }
   } catch { /* ignore */ }
+  try { window.localStorage.removeItem(FORCED_RECORD_KEY); } catch { /* storage denied */ }
   cachedQualitySettings = null;
   cachedQualityExpiration = 0;
   // Switched back on at once, the record must be written again, not throttled.
@@ -320,9 +394,12 @@ function setQualityOnPlayer() {
     const previousQuality = player.getPlaybackQuality?.();
     DEBUG && console.log('[VideoQuality] Upgrading quality from:', previousQuality);
 
-    player.setPlaybackQualityRange('highres', 'highres');
+    const level = targetLevel();
+    noteForcedQuality();
+    noteForcedRecord(level);
+    player.setPlaybackQualityRange(level, level);
     rangeSet = true;
-    player.setPlaybackQuality?.('highres');
+    player.setPlaybackQuality?.(level);
     restorePositionAfterReload();
     
     const afterQuality = player.getPlaybackQuality?.();
@@ -385,9 +462,15 @@ function interceptAndUpgradeQuality(videoId) {
   
   requestAnimationFrame(() => {
     if (player !== owner) return;
-    const result = setQualityOnPlayer();
+    // The levels gone by now (a list being rebuilt): no range, as an Up to
+    // limit would ask for a level the player may not list and ignore, and the
+    // video would count as done. Playback goes on; the next state event, with
+    // the levels listed, tries again.
+    const result = levelsListed() ? setQualityOnPlayer() : { success: false, upgraded: false, rangeSet: false };
     
-    if (result.success) {
+    // A range that went through counts too: the video reloads at it, and
+    // setting it again on the next state change would reload it again.
+    if (result.success || result.rangeSet) {
       qualitySetForVideo.add(videoId);
     }
     
@@ -491,6 +574,16 @@ function scheduleQualityToast(actualState) {
   }, QUALITY_TOAST_DELAY_MS);
 }
 
+// Registered on YouTube's own player: an error of ours must not reach its
+// event dispatch, where it would stop the player's other listeners.
+function onPlayerStateChange(state) {
+  try {
+    handleStateChange(state);
+  } catch (e) {
+    console.warn('[VideoQuality] State change handler failed:', e);
+  }
+}
+
 function handleStateChange(state) {
   if (isDestroyed || !player) return;
 
@@ -513,6 +606,9 @@ function handleStateChange(state) {
 
   // Everything below is quality forcing only.
   if (!_shouldForce) return;
+  // The panel row still moving (applyToPlayingVideo pending): a state event
+  // meanwhile (buffering) must not force a mode stepped through on the way.
+  if (applyNowTimer !== null) return;
 
   try {
     const videoData = player.getVideoData?.();
@@ -524,6 +620,7 @@ function handleStateChange(state) {
     
     if (isNewVideo) {
       lastVideoId = videoId;
+      pickSince = Date.now();
       DEBUG && console.info('[VideoQuality] 🎬 New video:', videoId);
       
       if (actualState === STATE_UNSTARTED) {
@@ -544,7 +641,7 @@ function handleStateChange(state) {
             if (levelsListed()) {
                 const result = isQualityAlreadyMax() ? { success: true } : setQualityOnPlayer();
                 notifyIfUpgraded(result);
-                if (result.success) qualitySetForVideo.add(videoId);
+                if (result.success || result.rangeSet) qualitySetForVideo.add(videoId);
             }
             break;
 
@@ -612,7 +709,7 @@ export function destroyVideoQuality() {
 
   if (player) {
     try {
-      player.removeEventListener?.('onStateChange', handleStateChange);
+      player.removeEventListener?.('onStateChange', onPlayerStateChange);
     } catch { /* ignore */ }
   }
   
@@ -635,7 +732,10 @@ export function initVideoQuality() {
   isDestroyed = false;
   _isWatchPageCached = true;
   
-  _shouldForce = configRead('forceHighResVideo');
+  _shouldForce = forceQualityOn(configRead('forceQuality'));
+  // Off at the start: a record of ours left from before (the old on/off
+  // switch, or a run that ended forcing) goes, or YouTube keeps forcing it.
+  if (!_shouldForce) clearLocalStorageQuality();
   
   setLocalStorageQuality();
   
@@ -653,7 +753,7 @@ export function initVideoQuality() {
       
       try {
         if (player.addEventListener) {
-            player.addEventListener('onStateChange', handleStateChange);
+            player.addEventListener('onStateChange', onPlayerStateChange);
             listenerAttached = true;
             DEBUG && console.log('[VideoQuality] Native listener attached');
         }
@@ -737,21 +837,58 @@ function handleNavigation(event) {
   }
 }
 
+// A change of Force Max Quality in the panel, applied to the video playing
+// (setupListeners) this long after the row last moved.
+const APPLY_NOW_MS = 600;
+let applyNowTimer = null;
+function applyToPlayingVideo() {
+  applyNowTimer = null;
+  if (!player || isDestroyed || !isForceEnabled() || !isWatchPage() || videoBeingProcessed || !levelsListed()) return;
+  try {
+    const videoId = player.getVideoData?.()?.video_id;
+    // Also a pick made while the change waited.
+    if (!videoId || keepViewerPick()) return;
+    const result = isQualityAlreadyMax() ? { success: true } : setQualityOnPlayer();
+    if (result.success || result.rangeSet) qualitySetForVideo.add(videoId);
+  } catch (e) {
+    DEBUG && console.warn('[VideoQuality] Could not apply the new level:', e);
+  }
+}
+
 function setupListeners() {
     // Registered once for the session, not per attach: the option is also
     // switched off from the home screen, where the module is detached, and the
     // 4320p record it wrote must go then too.
-    configAddChangeListener('forceHighResVideo', (evt) => {
-      _shouldForce = !!evt.detail.newValue;
-      if (_shouldForce) {
+    configAddChangeListener('forceQuality', (evt) => {
+      const wasForcing = _shouldForce;
+      _shouldForce = forceQualityOn(evt.detail.newValue);
+      if (!_shouldForce) {
+        clearTimeout(applyNowTimer);
+        applyNowTimer = null;
+        if (wasForcing) clearLocalStorageQuality();
+        return;
+      }
+      if (!wasForcing) {
+        pickSince = Date.now();
         clearSpeedQualityPick();
         cachedQualitySettings = null;
         setLocalStorageQuality();
-        qualitySetForVideo.clear();
-      } else {
-        clearLocalStorageQuality();
       }
+      // A new level to force (on, or from Max to Up to and between them):
+      // the video playing now gets it at once, once the row stops moving
+      // (Off steps through Max on the way to an Up to), unless the viewer
+      // picked its quality by hand.
+      qualitySetForVideo.clear();
+      clearTimeout(applyNowTimer);
+      applyNowTimer = null;
+      if (keepViewerPick()) return;
+      applyNowTimer = setTimeout(applyToPlayingVideo, APPLY_NOW_MS);
     });
+
+    // Capture: a key the page stops on its way is still the viewer's. So is a
+    // press of the Magic Remote's pointer, which picks in the menu with no key.
+    window.addEventListener('keydown', noteKeyAfterForcedRange, true);
+    window.addEventListener('mousedown', noteKeyAfterForcedRange, true);
 
     // The picture's size changed (a <video> 'resize', caught on its way down).
     document.addEventListener('resize', onVideoResize, true);

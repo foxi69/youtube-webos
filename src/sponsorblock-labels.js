@@ -164,6 +164,15 @@ export function categoryColor(category) {
   return '#00d400';
 }
 
+/**
+ * Ignore Segments Shorter Than: whether [start, end] is shorter than `min`
+ * seconds (0: off). Compared with a millisecond to spare, so a segment of
+ * exactly that length counts (8.2 - 3.2 is 4.999999999999999).
+ */
+export function shorterThan(start, end, min) {
+  return min > 0 && end - start < min - 0.001;
+}
+
 /** A segment the API returned as a whole-video label. */
 export function isFullVideoSegment(segment) {
   return !!segment && segment.actionType === 'full';
@@ -204,6 +213,8 @@ export function skippableSeconds(segments, duration) {
     let start = Number(seg.segment[0]);
     let end = Number(seg.segment[1]);
     if (isNaN(start) || isNaN(end) || end <= start) continue;
+    // Ignore Segments Shorter Than: these play in full.
+    if (shorterThan(start, end, Number(configRead('sbMinSegmentLength')) || 0)) continue;
 
     if (duration > 0) {
       start = Math.max(0, Math.min(start, duration));
@@ -270,7 +281,9 @@ export function pickFullLabel(segments) {
  *
  * Exported so the tests can assert on the generated CSS directly.
  */
-export function buildCss(segments, duration) {
+// noSkips: nothing is skipped on this video (Never Skip on These Channels),
+// so no time is taken off; the full-video label still says what it is.
+export function buildCss(segments, duration, noSkips = false) {
   let css = '';
 
   if (configRead('sbFullVideoLabel')) {
@@ -284,7 +297,7 @@ export function buildCss(segments, duration) {
     }
   }
 
-  if (configRead('sbShowTimeWithSkips') && duration > 0 && !isNaN(duration)) {
+  if (configRead('sbShowTimeWithSkips') && !noSkips && duration > 0 && !isNaN(duration)) {
     const skipped = skippableSeconds(segments, duration);
     // Nothing to remove means nothing worth saying - the bracketed figure would
     // just repeat the duration already next to it.
@@ -327,8 +340,8 @@ class SponsorBlockLabels {
    * Called whenever an input can have moved: after the fetch, on
    * durationchange, and when a SponsorBlock setting changes.
    */
-  update(segments, duration) {
-    this.write(buildCss(segments, duration));
+  update(segments, duration, { noSkips = false } = {}) {
+    this.write(buildCss(segments, duration, noSkips));
   }
 
   clear() {

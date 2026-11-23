@@ -131,6 +131,10 @@ async function boot(cfg, segments, opts = {}) {
     const body = [{ videoID: VIDEO_ID, segments: JSON.parse(JSON.stringify(net.segments)) }];
     return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) });
   };
+  // opts.author: the channel the player names for the video.
+  if ('author' in opts) {
+    win.document.getElementById('ytlr-player__player-container-player').getVideoData = () => ({ video_id: VIDEO_ID, author: opts.author });
+  }
   const video = win.document.querySelector('video');
   const v = fakeVideo(win, video, opts.duration || 600);
   evaluate();
@@ -315,6 +319,9 @@ run(async () => {
     t(n('the list is not shown with the panel closed'), !env.popupShown());
     await env.openPanel();
     t(n('the SponsorBlock tab on a watch page shows the list'), env.popupShown());
+    const titles = Array.prototype.filter.call(env.doc.querySelectorAll('.ytaf-ui-container div'),
+      (el) => el.childElementCount === 0 && el.textContent.trim() === 'Never Skip on These Channels');
+    t(n('the SponsorBlock tab names Never Skip on These Channels once'), titles.length === 1, String(titles.length));
     const r = env.rows();
     t(n('one row per segment, in time order, no full-video label, no mute segment while muting is off'),
       r.map((x) => x.name).join() === 'Sponsor,Intermission/Intro,Highlight,Unpaid/Self Promotion', JSON.stringify(r));
@@ -361,6 +368,42 @@ run(async () => {
     await env.cycle('Preview/Recap', true);   // Manual Skip -> Auto Skip
     await env.cycle('Preview/Recap', true);   // Auto Skip -> Disable
     t(n('...a category switched off plays, and is not taken off'), /\(9:00\)/.test(env.labelsCss()), env.labelsCss());
+  }
+  {
+    // Ignore Segments Shorter Than 5 s: the 3 s one plays, only the 20 s one comes off.
+    const env = await boot({ sbShowTimeWithSkips: true, sbMinSegmentLength: '5' }, [seg('sponsor', 30, 33), seg('selfpromo', 100, 120)]);
+    t(n('the time with skips removed leaves in a segment too short to skip'), /\(9:40\)/.test(env.labelsCss()), env.labelsCss());
+    t(n('...and that segment keeps its mark on the bar'), env.marks().length === 2, String(env.marks().length));
+  }
+  {
+    // At the boundary, one segment each (on 600 s, 5 s and 4.9 s off would both
+    // round to 9:55): 3.2 to 8.2 is 5 s and comes off the time.
+    const env = await boot({ sbShowTimeWithSkips: true, sbMinSegmentLength: '5' }, [seg('sponsor', 3.2, 8.2)]);
+    t(n('the time with skips removed: a segment of exactly the minimum, in fractions, comes off'), /\(9:55\)/.test(env.labelsCss()), env.labelsCss());
+  }
+  {
+    // 13.2 to 18.1 is a tenth shorter: nothing comes off, so no time is shown.
+    // A full-video label with its badge on: the badge shows, so the labels
+    // were drawn for this video, and only the time is left out.
+    const env = await boot({ sbShowTimeWithSkips: true, sbFullVideoLabel: true, sbMinSegmentLength: '5' },
+      [seg('selfpromo', 0, 0, 'full'), seg('selfpromo', 13.2, 18.1)]);
+    t(n('the time with skips removed: a segment a tenth under the minimum stays in'), !/\(\d+:\d\d\)/.test(env.labelsCss()), env.labelsCss());
+    t(n('...precondition: the labels were drawn (the full-video badge shows)'), /content:"Self Promo"/.test(env.labelsCss()), env.labelsCss());
+    t(n('...and the segment keeps its mark on the bar'), env.marks().length === 1, String(env.marks().length));
+  }
+  {
+    // Never Skip on These Channels: nothing is skipped, so no time comes off.
+    // The listed video has a full-video label too: its badge shows, so the
+    // labels were drawn, and only the time is left out.
+    const listed = await boot({ sbShowTimeWithSkips: true, sbFullVideoLabel: true, sbWhitelistChannels: ['listed channel'] },
+      [seg('selfpromo', 0, 0, 'full'), seg('sponsor', 30, 60)], { author: 'Listed Channel' });
+    const other = await boot({ sbShowTimeWithSkips: true, sbFullVideoLabel: true, sbWhitelistChannels: ['Other Channel'] },
+      [seg('selfpromo', 0, 0, 'full'), seg('sponsor', 30, 60)], { author: 'Listed Channel' });
+    t(n('the time with skips removed: control: a channel not on the list gets it, beside the same badge'),
+      /\(9:30\)/.test(other.labelsCss()) && /content:"Self Promo"/.test(other.labelsCss()), other.labelsCss());
+    t(n('the time with skips removed: precondition: the listed video’s labels are drawn (its full-video badge)'),
+      /content:"Self Promo"/.test(listed.labelsCss()), listed.labelsCss());
+    t(n('the time with skips removed: a channel on Never Skip gets none'), !/\(\d+:\d\d\)/.test(listed.labelsCss()), listed.labelsCss());
   }
   {
     const env = await boot({ sbFullVideoLabel: true }, [seg('sponsor', 0, 0, 'full')]);

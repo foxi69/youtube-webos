@@ -1,10 +1,11 @@
 import sha256 from 'tiny-sha256';
-import { configAddChangeListener, configRemoveChangeListener, segmentTypes, configGetAll } from './config';
+import { configAddChangeListener, configRemoveChangeListener, segmentTypes, configGetAll, configRead, configWrite, configActiveProfile } from './config';
 import { showNotification } from './notifications.js';
 import sponsorBlockUI from './Sponsorblock-UI.js';
-import sponsorBlockLabels, { isFullVideoSegment } from './sponsorblock-labels.js';
+import sponsorBlockLabels, { isFullVideoSegment, shorterThan } from './sponsorblock-labels.js';
 import { isLegacyWebOS } from './webos-utils.js';
 import { getVideo, rendererChapterStarts } from './utils.js';
+import { currentChannelName, isChannelWhitelisted, videoIdFromHash } from './sponsorblock-extras.js';
 import { fetchJsonWithTimeout } from './fetch-timeout.js';
 import './sponsorblock.css';
 
@@ -30,7 +31,7 @@ const CONFIG_MAPPING = {
 
 const EXTRA_CONFIG_KEYS = [
     'enableMutedSegments', 'sbMode_highlight', 'skipSegmentsOnce',
-    'sbFullVideoLabel', 'sbShowTimeWithSkips',
+    'sbFullVideoLabel', 'sbShowTimeWithSkips', 'sbMinSegmentLength', 'sbWhitelistChannels',
     // Color keys so the overlay redraws when the user changes a segment color
     ...Object.keys(segmentTypes).map(k => `${k}Color`)
 ];
@@ -121,6 +122,13 @@ function normalizeSegments(segments) {
 const FETCH_ACTION_TYPES = encodeURIComponent(JSON.stringify(['skip', 'mute', 'full']));
 
 const HAS_ABORT_CONTROLLER = typeof AbortController !== 'undefined';
+
+// An auto skip can be taken back this long after it (handleBlueButton).
+const UNDO_WINDOW_MS = 8000;
+// Never Skip on These Channels: the channel's name may come a moment after the
+// segments; looked for again this often, this many times.
+const CHANNEL_RETRY_MS = 1000;
+const CHANNEL_RETRIES = 10;
 
 /**
  * Where [start, end] sits on a chaptered bar (see _chapterLayout), as
@@ -583,12 +591,19 @@ class SponsorBlockHandler {
 
         if (!this.segments || this.segments.length === 0 || this.activeCategories.size === 0) {
             this.skipSegments = [];
+            this.backSegments = [];
             this.resetSegmentTracking();
             return;
         }
 
         this.skipSegments = [];
+        // The ones the backward shortcut seeks to: also those not skipped for
+        // Never Skip on These Channels or Ignore Segments Shorter Than, which
+        // stay marked on the seek bar.
+        this.backSegments = [];
         const config = configGetAll();
+        const whitelisted = this.channelWhitelisted();
+        const minLength = Number(config.sbMinSegmentLength) || 0;
 
         const len = this.segments.length;
         for (let i = 0; i < len; i++) {
@@ -600,14 +615,19 @@ class SponsorBlockHandler {
             if (!mode || mode === 'disable' || mode === 'seek_bar') continue;
             if (seg.actionType && seg.actionType !== 'skip') continue;
 
-            this.skipSegments.push({
+            const entry = {
                 start: seg.segment[0],
                 end: seg.segment[1],
                 category: seg.category,
                 categoryName: this.getCategoryName(seg.category),
                 mode: mode,
                 originalIndex: i
-            });
+            };
+            this.backSegments.push(entry);
+            // Never Skip on These Channels; Ignore Segments Shorter Than: too
+            // short to be worth a jump.
+            if (whitelisted || shorterThan(seg.segment[0], seg.segment[1], minLength)) continue;
+            this.skipSegments.push(entry);
         }
         this.resetSegmentTracking();
     }
@@ -621,10 +641,12 @@ class SponsorBlockHandler {
     rebuildMuteSegments() {
         const config = configGetAll();
         const list = [];
-        if (config.enableMutedSegments && this.segments) {
+        const minLength = Number(config.sbMinSegmentLength) || 0;
+        if (config.enableMutedSegments && this.segments && !this.channelWhitelisted()) {
             for (let i = 0; i < this.segments.length; i++) {
                 const seg = this.segments[i];
                 if (seg.actionType !== 'mute' || seg.category === 'poi_highlight') continue;
+                if (shorterThan(seg.segment[0], seg.segment[1], minLength)) continue;
                 const mode = config[CONFIG_MAPPING[seg.category]];
                 if (mode !== 'auto_skip' && mode !== 'manual_skip') continue;
                 list.push({ start: seg.segment[0], end: seg.segment[1], categoryName: this.getCategoryName(seg.category) });
@@ -784,6 +806,9 @@ class SponsorBlockHandler {
             this._startBarWatch();
             this.drawOverlay();
             this.updateLabels();
+            // An Auto Skip to Start that waited for the channel, with Never
+            // Skip on These Channels changed meanwhile (emptied, say).
+            this._jumpIfPending();
         };
         
         const configKeys = [...Object.values(CONFIG_MAPPING), ...EXTRA_CONFIG_KEYS];
@@ -897,6 +922,11 @@ class SponsorBlockHandler {
         // as it does everywhere else.
         if (this.tempWhitelistIndex !== -1 &&
             chain.segments.some(seg => seg.originalIndex === this.tempWhitelistIndex)) return false;
+        // A segment of an undone skip anywhere the jump would cross, nested
+        // inside the chain's segments (a refresh) too, plays. Where the jump
+        // starts is also what the statistics count it from (noteSkip).
+        const chainStart = video.currentTime;
+        if (this.skipSegments.some(seg => seg.start < chain.endTime && seg.end > chainStart && this.isUndone(seg))) return false;
         // With "Skip Segments Once", a chain already skipped (the viewer went
         // back to the start) plays through like any other skipped segment.
         if (configGetAll().skipSegmentsOnce && this.skippedSegmentIndices &&
@@ -910,16 +940,21 @@ class SponsorBlockHandler {
         video.currentTime = chain.endTime;
         this.lastSkipTime = chain.endTime;
         this.hasPerformedChainSkip = true;
-        
+        // Reported (noteSkip): every auto segment the jump crossed, in the chain
+        // or nested in it, also one a manual segment cut the jump short inside.
+        // One already behind where it started was played, not skipped.
+        const covered = [];
+
         // Fast chronologically-sorted short-circuit skip mapping
         for (let i = 0; i < this.skipSegments.length; i++) {
             const seg = this.skipSegments[i];
-            if (seg.start > chain.endTime) break; 
-            
-           if (seg.mode === 'auto_skip' && seg.start < chain.endTime && seg.end <= chain.endTime + 0.1) {
-                this.skippedSegmentIndices.add(seg.originalIndex);
-            }
+            if (seg.start >= chain.endTime) break;
+            if (seg.mode !== 'auto_skip') continue;
+
+            if (seg.end <= chain.endTime + 0.1) this.skippedSegmentIndices.add(seg.originalIndex);
+            if (seg.end > chainStart) covered.push(seg.originalIndex);
         }
+        this.noteSkip(chainStart, chain.endTime, covered);
 
         this.requestAF(() => {
             const categories = chain.chainDescription.split(' → ')
@@ -935,6 +970,151 @@ class SponsorBlockHandler {
 
     getCategoryName(category) {
         return segmentTypes[category]?.name || category;
+    }
+
+    /**
+     * Whether nothing is to be skipped for Never Skip on These Channels: the
+     * video's channel is on the list, or, with a list, its channel is not known
+     * yet (the player still reporting the video before counts as not known).
+     * Then the segments are built again once it is (a try a second, ten at
+     * most); a channel still unknown after that counts as not listed until it
+     * is known (looked at again as playback starts, see PLAYING below).
+     */
+    channelWhitelisted() {
+        const list = configRead('sbWhitelistChannels');
+        if (!Array.isArray(list) || !list.length) return false;
+        const name = currentChannelName(this.videoID);
+        if (name) return isChannelWhitelisted(name);
+        if ((this.channelRetries || 0) >= CHANNEL_RETRIES) {
+            this.channelUnresolved = true;
+            return false;
+        }
+        if (!this.channelRetryTimer && !this.isDestroyed) {
+            this.channelRetryTimer = setTimeout(() => {
+                this.channelRetryTimer = null;
+                if (this.isDestroyed) return;
+                this.channelRetries = (this.channelRetries || 0) + 1;
+                if (currentChannelName(this.videoID) || this.channelRetries >= CHANNEL_RETRIES) {
+                    this.rebuildSkipSegments();
+                    // An Auto Skip to Start that waited for the channel.
+                    this._jumpIfPending();
+                    // The time with skips removed, now that the channel is known.
+                    this.updateLabels();
+                } else if (!this.channelWhitelisted()) {
+                    // The list was emptied meanwhile: nothing to wait for.
+                    this.rebuildSkipSegments();
+                    this._jumpIfPending();
+                    this.updateLabels();
+                }
+            }, CHANNEL_RETRY_MS);
+        }
+        return true;
+    }
+
+    /** A segment's identity across refreshes: its UUID, or its category and times. */
+    segmentKey(index) {
+        const seg = this.segments && this.segments[index];
+        if (!seg) return '';
+        return seg.UUID || `${seg.category}@${seg.segment[0]}-${seg.segment[1]}`;
+    }
+
+    /**
+     * Whether a skip segment belongs to an undone skip: those segments play
+     * until playback passes where their skip had gone (each skip's own end).
+     */
+    isUndone(skipSeg) {
+        const undone = this.undone;
+        if (!undone || !this.video) return false;
+        const key = this.segmentKey(skipSeg.originalIndex);
+        const until = undone.keys.get(key);
+        if (until === undefined) return false;
+        if (this.video.currentTime >= until) {
+            undone.keys.delete(key);
+            if (!undone.keys.size) this.clearUndone();
+            return false;
+        }
+        return true;
+    }
+
+    /** Ends an undone skip's exemption (playback passed it, or the handler goes). */
+    clearUndone() {
+        const undone = this.undone;
+        if (!undone) return;
+        this.undone = null;
+        undone.video.removeEventListener('timeupdate', undone.onTime);
+    }
+
+    /**
+     * A skip made: the time it saved goes into the statistics on the
+     * SponsorBlock tab, it can be taken back for a while (handleBlueButton),
+     * and, with Count My Skips on SponsorBlock on, each segment is reported
+     * as viewed, as SponsorBlock's own extension does.
+     */
+    noteSkip(from, to, indices) {
+        const saved = to - from;
+        if (!(saved > 0)) return;
+        // The profile whose totals the skip went to (null: none loaded yet).
+        this.lastAutoSkip = { from, to, keys: indices.map(i => this.segmentKey(i)), at: Date.now(), profile: configActiveProfile() };
+        try {
+            configWrite('sbTimeSaved', (Number(configRead('sbTimeSaved')) || 0) + saved);
+            configWrite('sbSkipCount', (Number(configRead('sbSkipCount')) || 0) + 1);
+        } catch { /* statistics are best effort */ }
+        if (!configRead('sbReportSkips')) return;
+        for (const idx of indices) {
+            const uuid = this.segments[idx] && this.segments[idx].UUID;
+            if (typeof uuid !== 'string' || !uuid) continue;
+            try {
+                fetch(`${SPONSORBLOCK_CONFIG.primaryAPI}/viewedVideoSponsorTime?UUID=${encodeURIComponent(uuid)}`, { method: 'POST' })
+                    .catch(() => { /* not counted */ });
+            } catch { /* not counted */ }
+        }
+    }
+
+    /**
+     * The last auto skip, taken back: back to where it started, and every
+     * segment it jumped over plays (isUndone). Kept by the segments' identity,
+     * so a refresh of the list meanwhile does not point it at another one.
+     */
+    undoLastSkip() {
+        const last = this.lastAutoSkip;
+        if (!last || !this.video || Date.now() - last.at > UNDO_WINDOW_MS) return false;
+        // Taken in one account, another loaded since (a switch that waited for
+        // the copy's read, say): not that one's totals to cut. A skip with no
+        // profile loaded went to the account the restore then loaded.
+        if (last.profile !== null && last.profile !== configActiveProfile()) return false;
+        // Moved on since by more than playing (at up to 2x) would have: the
+        // viewer seeked elsewhere, and is not sent back.
+        const elapsed = (Date.now() - last.at) / 1000;
+        if (Math.abs(this.video.currentTime - last.to) > elapsed * 2 + 2) return false;
+        this.lastAutoSkip = null;
+        // Each segment's key, with where its skip had gone: it plays until then.
+        const keys = new Map(last.keys.filter(Boolean).map((key) => [key, last.to]));
+        // Its segments gone in a refresh: nothing left to take back.
+        if (!this.segments.some((seg, i) => keys.has(this.segmentKey(i)))) return false;
+        const video = this.video;
+        // An undo still in force on this video keeps its segments playing too
+        // (one undone, another skip then undone before passing the first).
+        const prior = this.undone && this.undone.video === video ? this.undone : null;
+        if (prior) prior.keys.forEach((until, key) => { keys.set(key, Math.max(until, keys.get(key) || 0)); });
+        this.clearUndone();
+        // Its own timeupdate listener: the skip listener is off once no
+        // segment is ahead, and playback passing a skip's end must end its part.
+        const onTime = () => {
+            keys.forEach((until, key) => { if (video.currentTime >= until) keys.delete(key); });
+            if (!keys.size) this.clearUndone();
+        };
+        this.undone = { keys, video, onTime };
+        video.addEventListener('timeupdate', onTime);
+        // Our own seek: the highlight's guard (autoJumpToHighlight) leaves it.
+        this.ownSkipTarget = last.from;
+        video.currentTime = last.from;
+        // Its time was not saved after all: taken off the statistics again.
+        try {
+            configWrite('sbTimeSaved', Math.max(0, (Number(configRead('sbTimeSaved')) || 0) - (last.to - last.from)));
+            configWrite('sbSkipCount', Math.max(0, (Number(configRead('sbSkipCount')) || 0) - 1));
+        } catch { /* statistics are best effort */ }
+        this.requestAF(() => showNotification('Skip undone'));
+        return true;
     }
 
     async init() {
@@ -1119,6 +1299,14 @@ class SponsorBlockHandler {
                 // Re-evaluate tracking (re-enables time listener if needed)
                 this.resetSegmentTracking();
                 this.hasPerformedChainSkip = false;
+                // A channel still unknown after its retries, known by now: the
+                // segments are built again for Never Skip on These Channels.
+                // One lookup a play while unresolved, none otherwise.
+                if (this.channelUnresolved && currentChannelName(this.videoID)) {
+                    this.channelUnresolved = false;
+                    this.rebuildSkipSegments();
+                    this.updateLabels();
+                }
                 this.executeChainSkip(this.video);
             } else if (state === 2) { // PAUSED
                 this.stopHighFreqLoop();
@@ -1127,6 +1315,20 @@ class SponsorBlockHandler {
         };
         
         window.addEventListener('yt-player-state-change', this.boundStateChange);
+
+        // The statistics an undo takes back are the profile's that earned them:
+        // switched away from that profile, the skip is not the new one's to take
+        // back. Loaded from none (the restore of the copy loading the account in
+        // use), the skip's totals went to that account, so it stays.
+        if (this.boundProfileChange) window.removeEventListener('ytaf-profile-change', this.boundProfileChange);
+        // A skip counted with no account loaded can be undone in the account
+        // that took those counters: the one the restore loads (its merge), or
+        // one started from the shared settings; any other never had them.
+        this.boundProfileChange = (evt) => {
+            const detail = evt && evt.detail ? evt.detail : {};
+            if (!(detail.from === null && (detail.restored || detail.seeded))) this.lastAutoSkip = null;
+        };
+        window.addEventListener('ytaf-profile-change', this.boundProfileChange);
 
         // Resize forces an immediate overlay re-sync (bypassing the timeupdate throttle).
         if (this.boundResize) window.removeEventListener('resize', this.boundResize);
@@ -1151,6 +1353,9 @@ class SponsorBlockHandler {
         const old = this.video;
         if (!old) return;
         this._endHighlightGuard();
+        // An undone skip belongs to the <video> it was undone on.
+        this.clearUndone();
+        this.lastAutoSkip = null;
         this.leaveMutedSegment();
         this.stopHighFreqLoop();
         if (this.isTimeListenerActive) {
@@ -1180,6 +1385,13 @@ class SponsorBlockHandler {
 
         this.addEvent(this.video, 'seeked', () => {
             if (this.isDestroyed) return;
+            // The undo is for the skip's own seek landing and playback from
+            // there: any other seek moved away, and Blue no longer goes back.
+            const skip = this.lastAutoSkip;
+            if (skip) {
+                if (skip.landed || Math.abs(this.video.currentTime - skip.to) > 2) this.lastAutoSkip = null;
+                else skip.landed = true;
+            }
             this.checkMutedSegment();
             this._clearSkipWatchdog();
             this.stopHighFreqLoop();
@@ -1639,7 +1851,7 @@ class SponsorBlockHandler {
         if (this.isDestroyed) return;
         const video = this.video || getVideo();
         const duration = video && !isNaN(video.duration) ? video.duration : 0;
-        sponsorBlockLabels.update(this.segments, duration);
+        sponsorBlockLabels.update(this.segments, duration, { noSkips: this.channelWhitelisted() });
     }
 
     processSegments(duration) {
@@ -1841,6 +2053,7 @@ class SponsorBlockHandler {
         if (seg.originalIndex === this.tempWhitelistIndex) {
             return;
         }
+        if (this.isUndone(seg)) return;
 
         const config = configGetAll();
         if (config.skipSegmentsOnce && this.skippedSegmentIndices.has(seg.originalIndex)) {
@@ -1854,19 +2067,28 @@ class SponsorBlockHandler {
         }
 
         let jumpTarget = seg.end;
-		const categoryName = seg.categoryName;
-        const skippedCategories = [categoryName];
-        const segmentsToMark = [seg.originalIndex];
+        // The segments the jump takes in; those it crosses are counted below.
+        const chained = [seg];
 
         for (let i = segmentIdx + 1; i < this.skipSegments.length; i++) {
             const next = this.skipSegments[i];
 
+            // Already behind the playhead: not crossed by the jump, so not
+            // marked or reported as skipped, and no reason to stop it. Stopping
+            // at the start of a manual one sent the skip backwards, into the
+            // outer segment again, and the "Skipped" toast repeated ~4 times a
+            // second while nothing was skipped.
+            if (next.end <= currentTime) continue;
+
+            // A segment of an undone skip plays: the jump stops at its start,
+            // and is none at all if that start is already behind (a refresh
+            // put a segment before it that overlaps it).
+            if (this.isUndone(next)) {
+                if (next.start < jumpTarget) jumpTarget = next.start;
+                break;
+            }
+
             if (next.mode !== 'auto_skip') {
-                // A manual segment already behind the playhead has had its
-                // turn: stopping at its start sent the skip backwards, into
-                // the outer segment again, and the "Skipped" toast repeated
-                // ~4 times a second while nothing was skipped.
-                if (next.end <= currentTime) continue;
                 if (next.start < jumpTarget) {
                     jumpTarget = next.start;
                 }
@@ -1875,8 +2097,7 @@ class SponsorBlockHandler {
             if (next.start > jumpTarget + 0.2) break;
 
             jumpTarget = Math.max(jumpTarget, next.end);
-            skippedCategories.push(next.categoryName);
-            segmentsToMark.push(next.originalIndex);
+            chained.push(next);
         }
 
         if (segmentIdx === this.lastSkippedSegmentIndex && Math.abs(currentTime - this.lastSkipTime) < 0.1) {
@@ -1897,6 +2118,12 @@ class SponsorBlockHandler {
             return;
         }
 
+        // Only those the final jump crosses: one a later manual segment cut
+        // off at its start is neither marked, reported nor undone.
+        const crossed = chained.filter(s => s.start < jumpTarget);
+        const skippedCategories = crossed.map(s => s.categoryName);
+        const segmentsToMark = crossed.map(s => s.originalIndex);
+
         this.lastSkipTime = currentTime;
         this.lastSkippedSegmentIndex = segmentIdx;
         
@@ -1906,6 +2133,7 @@ class SponsorBlockHandler {
         this._armSkipWatchdog();
         this.ownSkipTarget = jumpTarget;
         this.video.currentTime = jumpTarget;
+        this.noteSkip(currentTime, jumpTarget, segmentsToMark);
 
         if (!this.isLegacyWebOSVer) {
             const timeRemaining = this.video.duration - this.video.currentTime;
@@ -1936,6 +2164,12 @@ class SponsorBlockHandler {
     // highlight in the first few seconds is answered with one re-jump. A
     // segment skipped meanwhile (one right after the highlight) is no such seek.
     autoJumpToHighlight() {
+        // Never Skip on These Channels: no jump by itself there either (Blue
+        // still jumps). A channel not known yet: the jump waits for it.
+        if (this.channelWhitelisted()) {
+            if (!currentChannelName(this.videoID)) this.highlightPending = true;
+            return;
+        }
         if (!this.jumpToNextHighlight()) return;
         const video = this.video;
         const target = this.highlightSegment.segment[0];
@@ -1943,7 +2177,8 @@ class SponsorBlockHandler {
         this.ownSkipTarget = null;
         this._endHighlightGuard();
         const onSeeked = () => {
-            if (Date.now() > until || this.video !== video || this.isDestroyed) {
+            // Ended too by the channel put on Never Skip on These Channels meanwhile.
+            if (Date.now() > until || this.video !== video || this.isDestroyed || this.channelWhitelisted()) {
                 this._endHighlightGuard();
             } else if (this.ownSkipTarget !== null && Math.abs(video.currentTime - this.ownSkipTarget) < 0.5) {
                 // A skip of SponsorBlock's own. Kept, not used up: the skip
@@ -1992,14 +2227,15 @@ class SponsorBlockHandler {
     }
     
     skipToPreviousSegment() {
-    if (!this.video || !this.skipSegments.length) return false;
+    const list = this.backSegments || this.skipSegments;
+    if (!this.video || !list.length) return false;
 
     const currentTime = this.video.currentTime;
     let targetSeg = null;
 
-    for (let i = this.skipSegments.length - 1; i >= 0; i--) {
-        if (this.skipSegments[i].start < currentTime - 2) {
-            targetSeg = this.skipSegments[i];
+    for (let i = list.length - 1; i >= 0; i--) {
+        if (list[i].start < currentTime - 2) {
+            targetSeg = list[i];
             break;
         }
     }
@@ -2017,12 +2253,26 @@ class SponsorBlockHandler {
     }
 
     handleBlueButton() {
+        // An auto skip that landed where this manual segment starts (a chain
+        // cut at it): Blue takes the skip back first, as the README says it
+        // does within 8 s, and the manual segment is offered again on the way.
+        const last = this.lastAutoSkip;
+        const manual = this.currentManualSegment;
+        if (last && manual && Math.abs(manual.start - last.to) < 0.5 && this.undoLastSkip()) {
+            this.clearManualNotification();
+            return true;
+        }
         if (this.currentManualSegment) {
             if (this.video) {
                 this.isSkipping = true;
                 this.lastSkipTime = this.video.currentTime;
                 this.ownSkipTarget = this.currentManualSegment.end;
-                this.video.currentTime = this.currentManualSegment.end;
+                const manualFrom = this.video.currentTime;
+                const manualSeg = this.currentManualSegment;
+                this.video.currentTime = manualSeg.end;
+                this.noteSkip(manualFrom, manualSeg.end, [manualSeg.originalIndex]);
+                // A skip asked for by hand is not taken back by the same key.
+                this.lastAutoSkip = null;
 
                 this.clearManualNotification();
 
@@ -2033,6 +2283,8 @@ class SponsorBlockHandler {
             }
         }
 
+        // Pressed just after an auto skip: the skip is taken back.
+        if (this.undoLastSkip()) return true;
         return this.jumpToNextHighlight();
     }
 
@@ -2184,12 +2436,22 @@ class SponsorBlockHandler {
         this.log('info', 'Destroying instance.');
         this.clearRefresh();
         this._endHighlightGuard();
+        if (this.channelRetryTimer) {
+            clearTimeout(this.channelRetryTimer);
+            this.channelRetryTimer = null;
+        }
+        this.clearUndone();
 
         this.toggleTimeListener(false);
         
         if (this.boundStateChange) {
             window.removeEventListener('yt-player-state-change', this.boundStateChange);
             this.boundStateChange = null;
+        }
+
+        if (this.boundProfileChange) {
+            window.removeEventListener('ytaf-profile-change', this.boundProfileChange);
+            this.boundProfileChange = null;
         }
 
         if (this.boundResize) {
@@ -2275,20 +2537,6 @@ if (typeof window !== 'undefined') {
 
     window.sponsorblock = null;
     let initTimeout = null;
-
-    const videoIdFromHash = () => {
-        try {
-            const hash = window.location.hash;
-            if (!hash.startsWith('#')) return null;
-            const parts = hash.split('?');
-            if (parts.length < 2) return null;
-            if (typeof URLSearchParams !== 'undefined') return new URLSearchParams(parts[1]).get('v');
-            const match = parts[1].match(/(?:[?&]|^)v=([^&]+)/);
-            return match ? match[1] : null;
-        } catch {
-            return null;
-        }
-    };
 
     const initSB = () => {
         // A hash change within the same video keeps the handler: its segments

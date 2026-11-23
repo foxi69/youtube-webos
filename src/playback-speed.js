@@ -3,9 +3,9 @@ import { installMseHook, isSupportedSpeed, SUPPORTED_SPEEDS } from './speed/mse-
 import { keepStretchableAudio, allowSpeedMenuOnSurround, LEGACY_STRETCHABLE_AUDIO_RE } from './speed/containers.js';
 import { legacyAudioCodecs } from './speed/legacy-decoder.js';
 import { watchPosition } from './speed/position-watch.js';
-import { readCaptions, keepCaptions, readQualityRecord, QUALITY_KEY } from './speed/player-state.js';
+import { readCaptions, keepCaptions, readQualityRecord, QUALITY_KEY, QUALITY_HEIGHTS, levelUpTo } from './speed/player-state.js';
 import { showNotification } from './notifications.js';
-import { configRead, configAddChangeListener } from './config.js';
+import { configRead, configWrite, configAddChangeListener, forceQualityLines, forceQualityOn } from './config.js';
 import { SELECTORS, SYNTHETIC_KEY_FLAG } from './utils.js';
 
 export const SPEED_BUTTON_TYPE = 'TRANSPORT_CONTROLS_BUTTON_TYPE_SPEED_BUTTON';
@@ -209,6 +209,8 @@ const CAP_ABOVE = 1;
 const BELOW_1080 = ['hd720', 'large', 'medium', 'small', 'tiny'];
 const LEVELS_DOWN = ['hd1080', ...BELOW_1080];
 const ABOVE_1080 = ['highres', 'hd2880', 'hd2160', 'hd1440'];
+// A change of Force Max Quality applied above 1x this long after the row last moved.
+const LIMIT_APPLY_MS = 600;
 // YouTube can write our quality range asynchronously, at times more than a
 // second later. A record of a level this controller asked for is ours unless
 // the viewer pressed a key between our last call and the record (a pick in
@@ -230,9 +232,12 @@ const KEY_TIMES = 16;
  * (Date.now() times). Without it only the time window tells our records.
  */
 export function createSpeedController({
-  win, getPlayer, notify, configRead, codecs, userKeyAt = () => 0, keyPressedBetween = () => true
+  win, getPlayer, notify, configRead, codecs, userKeyAt = () => 0, keyPressedBetween = () => true,
+  onSpeed = () => {}
 }) {
   let currentSpeed = 1;
+  // Another account's speed, loaded while a video played: set once it is left.
+  let deferredSpeed = null;
   let activeSink = null;
   let pending = null;
   let lastReloadAt = 0;
@@ -253,6 +258,9 @@ export function createSpeedController({
   // from YouTube's record (see viewerPick), with the record it was read from.
   const ownRanges = new Map();
   let ownRangeLevel;
+  // The last range Force Max Quality set (video-quality.js), at any level:
+  // the record YouTube writes for it is no pick of the viewer's either.
+  let forcedRange = null;
   let lastPick = null;
   let seenRaw;
   let seenRecord = null;
@@ -388,7 +396,12 @@ export function createSpeedController({
     const own = ownRanges.get(record.level);
     const ours = !!own && record.at >= own.from &&
       (record.at < own.until || !keyPressedBetween(own.last, record.at));
-    if (!ours) lastPick = record.level;
+    // Force Max Quality's: written after its range with no key pressed since.
+    // A key in between (a pick in YouTube's menu, even within a second) makes
+    // the record the viewer's.
+    const forced = !!forcedRange && record.at >= forcedRange.from && !keyPressedBetween(forcedRange.from, record.at);
+    // Force's record replaced whatever was picked before it (on another video, say).
+    if (!ours) lastPick = forced ? null : record.level;
     return lastPick;
   }
 
@@ -407,6 +420,21 @@ export function createSpeedController({
   /** The video was left (another page than the watch page or Shorts). */
   function leaveVideo() {
     qualityPickVideoId = null;
+    // Also called with the watch page still there (a page update of the
+    // account selector over it): the video plays on, and so does its speed.
+    if (deferredSpeed === null || onPlaybackPage()) return;
+    const next = deferredSpeed;
+    deferredSpeed = null;
+    dropStaleReload();
+    currentSpeed = next;
+  }
+
+  // A reload still waiting once the watch page is gone was for the video left:
+  // it would reload nothing of the next one, and must not keep its speed.
+  function dropStaleReload() {
+    if (!pending || onPlaybackPage()) return;
+    win.clearTimeout(pending.timer);
+    pending = null;
   }
 
   function clearQualityPick() {
@@ -422,6 +450,9 @@ export function createSpeedController({
     const now = Date.now();
     const own = level === ownRangeLevel ? ownRanges.get(level) : null;
     const from = own ? own.from : now;
+    // Ours only once the player took it (times from before the call, which
+    // writes the record): a call that throws leaves a later record the viewer's.
+    player.setPlaybackQualityRange(quality, quality);
     ownRanges.set(level, { from, last: now, until: now + OWN_RECORD_MS });
     ownRangeLevel = level;
     // Kept for the next run only when it is a cap of the controller's own: a
@@ -430,13 +461,19 @@ export function createSpeedController({
     if (level && level !== lastPick) {
       try { win.localStorage.setItem(OWN_RANGE_KEY, JSON.stringify({ level, from, last: now })); } catch { /* storage denied */ }
     }
-    player.setPlaybackQualityRange(quality, quality);
   }
 
   // Above CAP_ABOVE: 1080p, or the viewer's own pick when it is lower.
   function capQuality() {
     const pick = viewerPick();
-    return pick && BELOW_1080.indexOf(pick) !== -1 ? pick : 'hd1080';
+    if (pick && BELOW_1080.indexOf(pick) !== -1) return pick;
+    // A lower limit of Force Max Quality's own (Up to 480p) holds above 1x too.
+    const lines = forceQualityLines(configRead('forceQuality'));
+    if (lines && lines < QUALITY_HEIGHTS.hd1080) {
+      for (let i = 0; i < BELOW_1080.length; i++) if (QUALITY_HEIGHTS[BELOW_1080[i]] <= lines) return BELOW_1080[i];
+      return BELOW_1080[BELOW_1080.length - 1];
+    }
+    return 'hd1080';
   }
 
   function applyReload({ position: at, fromSpeed }) {
@@ -466,14 +503,24 @@ export function createSpeedController({
       keptCaptions = { videoId, captions: readCaptions(player), landed: false, keyAt: userKeyAt() };
     }
     qualityPickVideoId = viewerPick() ? videoId : null;
-    if (currentSpeed > CAP_ABOVE) {
-      const cap = capQuality();
-      setRange(player, cap);
-    } else if (fromSpeed > CAP_ABOVE) {
-      // A pick in YouTube's menu wins over Force Max Quality.
-      const quality = viewerPick() || (configRead('forceHighResVideo') ? 'highres' : 'auto');
-      setRange(player, quality);
-    }
+    // The audio sink is gone already: a player that fails on the quality still
+    // gets the reload below, or the video would go on without sound.
+    try {
+      if (currentSpeed > CAP_ABOVE) {
+        const cap = capQuality();
+        setRange(player, cap);
+      } else if (fromSpeed > CAP_ABOVE) {
+        // A pick in YouTube's menu wins over Force Max Quality, whose level is
+        // its limit's (Up to 1080p: the best up to 1080p), as video-quality.js asks.
+        const mode = configRead('forceQuality');
+        let levels = null;
+        try { levels = player.getAvailableQualityLevels(); } catch { /* none listed */ }
+        // None listed: the level named for the limit, so it still holds.
+        if (!Array.isArray(levels) || !levels.length) levels = Object.keys(QUALITY_HEIGHTS);
+        const quality = viewerPick() || (forceQualityOn(mode) ? levelUpTo(levels, forceQualityLines(mode)) : 'auto');
+        setRange(player, quality);
+      }
+    } catch { /* the reload goes on at the quality it has */ }
     if (!videoId) return;
     lastReloadAt = Date.now();
     player.loadVideoById(videoId, at);
@@ -602,7 +649,17 @@ export function createSpeedController({
       refuseLive();
       return;
     }
-    if (speed === currentSpeed || !isSupportedSpeed(speed)) return;
+    if (!isSupportedSpeed(speed)) return;
+    if (speed === currentSpeed) {
+      // The speed it plays at, chosen again (a reset at 1x, say): no reload,
+      // but the viewer's choice still wins over another account's speed
+      // waiting for the next video, and is remembered.
+      if (deferredSpeed !== null) {
+        deferredSpeed = null;
+        try { onSpeed(speed); } catch { /* the choice still holds */ }
+      }
+      return;
+    }
     if (!enabled()) {
       notify('Playback speed is disabled in YTAF settings');
       return;
@@ -611,10 +668,56 @@ export function createSpeedController({
       notify('Playback speed is not supported on this TV');
       return;
     }
+    // The viewer's choice wins over another account's speed still waiting.
+    deferredSpeed = null;
     const previousSpeed = currentSpeed;
     currentSpeed = speed;
     notify(`Playback speed ${speed}×`);
+    // The viewer's choice (a key, YouTube's menu): remembered (initPlaybackSpeed).
+    try { onSpeed(speed); } catch { /* the speed still applies */ }
     scheduleReload(pending ? pending.fromSpeed : previousSpeed, immediate);
+  }
+
+  /**
+   * Remember Playback Speed: the speed of the last run, set as the app starts,
+   * before any video plays, so the first one opens at it with no reload, as
+   * the next video after a speed change does. Nothing is shown; a live stream
+   * or a preview still plays at 1x (getSpeed).
+   */
+  function restoreSpeed(speed) {
+    if (speed === 1 || currentSpeed !== 1 || !isSupportedSpeed(speed) || !enabled() || !isSupported()) return false;
+    currentSpeed = speed;
+    return true;
+  }
+
+  /**
+   * Another account's settings loaded (Separate Settings for Each Account):
+   * its remembered speed, or 1x when it remembers none, for the next video it
+   * opens, set with no reload as at the start. Not while a video plays: then
+   * once that video is left (leaveVideo), unless the viewer set a speed meanwhile.
+   */
+  function rememberedSpeed(speed) {
+    const next = speed !== 1 && isSupportedSpeed(speed) && enabled() && isSupported() ? speed : 1;
+    if (onPlaybackPage()) {
+      deferredSpeed = next === currentSpeed ? null : next;
+      return false;
+    }
+    deferredSpeed = null;
+    dropStaleReload();
+    if (next === currentSpeed || pending) return false;
+    currentSpeed = next;
+    return true;
+  }
+
+  // Toggle Speed (1x / Last): from 1x to `other`, from any other speed to 1x.
+  // Not on a live stream, which plays at 1x whatever is set: the speed set
+  // stays for the next video that is not live.
+  function toggle(other) {
+    if (isLive()) {
+      refuseLive();
+      return;
+    }
+    setSpeed(currentSpeed === 1 ? other : 1);
   }
 
   function cycle() {
@@ -714,6 +817,9 @@ export function createSpeedController({
     cycle,
     step,
     reset,
+    restoreSpeed,
+    rememberedSpeed,
+    toggle,
     stop,
     onRateRequest,
     onError,
@@ -724,7 +830,12 @@ export function createSpeedController({
     capNext,
     notePlay,
     keepsQuality,
+    viewerPick,
     clearQualityPick,
+    noteForcedRange() {
+      const now = Date.now();
+      forcedRange = { from: now };
+    },
     leaveVideo,
     dispose
   };
@@ -742,12 +853,22 @@ export function speedKeepsQuality(player) {
   return !!speedInstance && speedInstance.controller.keepsQuality(player);
 }
 
+/** Whether the quality record is no cap of the speed feature's own (with none installed, it wrote none). */
+export function speedRecordIsPick() {
+  return !speedInstance || !!speedInstance.controller.viewerPick();
+}
+
+/** Force Max Quality is about to set a range: the record that follows is not the viewer's pick. */
+export function noteForcedQuality() {
+  if (speedInstance) speedInstance.controller.noteForcedRange();
+}
+
 /** Explicitly enabling Force Max Quality releases the previously retained pick. */
 export function clearSpeedQualityPick() {
   if (speedInstance) speedInstance.controller.clearQualityPick();
 }
 
-export function installSpeedFeature(win, { notify, configRead: cfgRead, getPlayer }) {
+export function installSpeedFeature(win, { notify, configRead: cfgRead, getPlayer, onSpeed }) {
   if (typeof win.AudioContext === 'undefined' || typeof win.MediaSource === 'undefined') {
     return null;
   }
@@ -757,8 +878,9 @@ export function installSpeedFeature(win, { notify, configRead: cfgRead, getPlaye
 
   // The keys the viewer pressed: a change of subtitles by hand after a reload
   // ends putting the old ones back (player-state.js), and a quality record
-  // written after a key press is a pick in the menu (viewerPick). The times are
-  // the last few, newest last.
+  // written after a key press is a pick in the menu (viewerPick). A Magic
+  // Remote pointer press counts as one (it sends no key). The times are the
+  // last few, newest last.
   let lastUserKeyAt = 0;
   const keyTimes = [];
   // The time of the newest key press dropped from keyTimes: up to then the
@@ -771,8 +893,9 @@ export function installSpeedFeature(win, { notify, configRead: cfgRead, getPlaye
     if (keyTimes.length > KEY_TIMES) droppedKeyAt = keyTimes.shift();
   };
   win.addEventListener('keydown', onKey, true);
+  win.addEventListener('mousedown', onKey, true);
   const ctrl = createSpeedController({
-    win, getPlayer, notify, configRead: cfgRead, codecs, userKeyAt: () => lastUserKeyAt,
+    win, getPlayer, notify, configRead: cfgRead, codecs, userKeyAt: () => lastUserKeyAt, onSpeed,
     // A span that reaches into the dropped presses may have had one: a record
     // there counts as the viewer's, not as ours for want of a known key.
     keyPressedBetween: (from, to) => droppedKeyAt > from || keyTimes.some((at) => at > from && at <= to)
@@ -831,6 +954,7 @@ export function installSpeedFeature(win, { notify, configRead: cfgRead, getPlaye
       restoreAudioOffer();
       if (bindTimer !== null) win.clearInterval(bindTimer);
       win.removeEventListener('keydown', onKey, true);
+      win.removeEventListener('mousedown', onKey, true);
       if (win.document) win.document.removeEventListener('playing', resume, true);
       win.removeEventListener('ytaf-page-update', onPageUpdate);
       if (resumeTimer !== null) win.clearTimeout(resumeTimer);
@@ -841,17 +965,64 @@ export function installSpeedFeature(win, { notify, configRead: cfgRead, getPlaye
 
 export function initPlaybackSpeed() {
   if (speedInstance || typeof window === 'undefined') return speedInstance;
+  // Force Max Quality's mode as it last settled (the panel row stopped for
+  // LIMIT_APPLY_MS): a play meanwhile does not take a step on the way (Up to
+  // 720p while going to Up to 480p) for the limit.
+  let settledQuality = configRead('forceQuality');
   speedInstance = installSpeedFeature(window, {
     notify: showNotification,
-    configRead,
+    configRead: (key) => (key === 'forceQuality' ? settledQuality : configRead(key)),
+    onSpeed: rememberSpeed,
     getPlayer: () =>
       document.getElementById(SELECTORS.PLAYER_ID) ||
       document.querySelector('.html5-video-player')
   });
   window.ytafSpeed = speedInstance ? speedInstance.controller : null;
   if (speedInstance) {
+    if (configRead('rememberPlaybackSpeed')) speedInstance.controller.restoreSpeed(Number(configRead('savedPlaybackSpeed')));
+    // Separate Settings for Each Account: the account picked in Who's watching
+    // brings its own Remember Playback Speed, not the one the app started with.
+    const remembered = () => (configRead('rememberPlaybackSpeed') ? Number(configRead('savedPlaybackSpeed')) : 1);
+    window.addEventListener('ytaf-profile-change', () => speedInstance.controller.rememberedSpeed(remembered()));
+    // The settings back from their copy after the start (localStorage was
+    // emptied, config-backup.js): the speed they remember, as an account's
+    // comes. Only the restore's own change: one in the panel is no new video.
+    const onRestored = ({ detail }) => { if (detail.restored) speedInstance.controller.rememberedSpeed(remembered()); };
+    configAddChangeListener('rememberPlaybackSpeed', onRestored);
+    configAddChangeListener('savedPlaybackSpeed', onRestored);
     configAddChangeListener('enablePlaybackSpeed', ({ detail }) => {
       if (!detail.newValue) speedInstance.controller.stop();
+    });
+    // A lower limit set in Force Max Quality above 1x (Up to 480p at 1.5x):
+    // the video playing above it goes down to it at once, once the row stops
+    // (as video-quality.js does at 1x). Raised again by the next video.
+    let limitTimer = null;
+    // A lower limit that could not be applied (a player between two videos):
+    // the next play applies it once, as the change would have.
+    let limitMissed = false;
+    configAddChangeListener('forceQuality', () => {
+      clearTimeout(limitTimer);
+      limitMissed = false;
+      limitTimer = setTimeout(() => {
+        limitTimer = null;
+        settledQuality = configRead('forceQuality');
+        if (!speedCapsQuality()) return;
+        const player =
+          document.getElementById(SELECTORS.PLAYER_ID) ||
+          document.querySelector('.html5-video-player');
+        // No player that can take it now (one being built again): missed too.
+        if (!player || typeof player.getPlaybackQuality !== 'function' || typeof player.setPlaybackQualityRange !== 'function') {
+          limitMissed = true;
+          return;
+        }
+        try {
+          const cap = speedInstance.controller.capQuality();
+          if ((QUALITY_HEIGHTS[player.getPlaybackQuality()] || 0) > QUALITY_HEIGHTS[cap]) speedInstance.controller.setRange(player, cap);
+        } catch {
+          // A player between two videos: applied when it plays.
+          limitMissed = true;
+        }
+      }, LIMIT_APPLY_MS);
     });
     // The next video (autoplay, a tile) keeps the speed but starts at the
     // quality YouTube picks: 2160p on a 4K TV, capped once it plays, or one
@@ -863,7 +1034,20 @@ export function initPlaybackSpeed() {
         document.querySelector('.html5-video-player');
       if (!player) return;
       speedInstance.controller.notePlay(player);
-      if (!speedCapsQuality()) return;
+      if (!speedCapsQuality()) { limitMissed = false; return; }
+      if (limitMissed) {
+        // Kept until the range goes through (or is not needed): a player that
+        // fails again gets it at its next play.
+        try {
+          const cap = speedInstance.controller.capQuality();
+          const above = (QUALITY_HEIGHTS[player.getPlaybackQuality()] || 0) > QUALITY_HEIGHTS[cap];
+          if (above) speedInstance.controller.setRange(player, cap);
+          limitMissed = false;
+          if (above) return;
+        } catch {
+          return;
+        }
+      }
       if (ABOVE_1080.includes(player.getPlaybackQuality())) {
         speedInstance.controller.setRange(player, speedInstance.controller.capQuality());
       } else {
@@ -872,6 +1056,23 @@ export function initPlaybackSpeed() {
     });
   }
   return speedInstance;
+}
+
+/**
+ * Each speed the viewer sets is kept: savedPlaybackSpeed for Remember Playback
+ * Speed, and the last one other than 1x for Toggle Speed (1x / Last).
+ */
+function rememberSpeed(speed) {
+  configWrite('savedPlaybackSpeed', speed);
+  if (speed !== 1) configWrite('toggleSpeed', speed);
+}
+
+// The speed Toggle Speed goes to before any other was set.
+const DEFAULT_TOGGLE_SPEED = 1.5;
+
+export function toggleSpeed() {
+  const other = Number(configRead('toggleSpeed'));
+  initPlaybackSpeed()?.controller?.toggle(isSupportedSpeed(other) && other !== 1 ? other : DEFAULT_TOGGLE_SPEED);
 }
 
 export function stepSpeed(direction) {

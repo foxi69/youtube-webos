@@ -171,6 +171,33 @@ run(async () => {
       later.dispatchCommand({ test: 'plain' }) === 'plain', startup);
   }
   {
+    // A hook that throws: before it hands the command on, YouTube's resolver
+    // gets it once instead; after, the error is passed on and nothing runs twice.
+    const env = resolver();
+    env.ready();
+    const ran = [];
+    env.ctx.window._yttv.Ready.instance = { resolveCommand(command) {
+      ran.push(command.test || Object.keys(command)[0]);
+      if (command.boom) throw new Error('resolver failed');
+      return 'ran';
+    } };
+    const setting = env.Registry.setHooks({
+      early: () => { throw new Error('hook failed'); },
+      late: (original) => { original({ test: 'part one' }); return original({ boom: 1 }); }
+    });
+    env.drain();
+    await setting;
+    const resolve = env.ctx.window._yttv.Ready.instance.resolveCommand;
+    const early = resolve({ early: 1 });
+    t('resolver: a hook that throws before handing on: the command goes to the resolver once',
+      early === 'ran' && ran.join() === 'early', ran.join());
+    ran.length = 0;
+    let threw = null;
+    try { resolve({ late: 1 }); } catch (e) { threw = e.message; }
+    t('resolver: a throw after the hook handed on is passed on, and nothing runs again',
+      threw === 'resolver failed' && ran.join() === 'part one,boom', `${threw} ${ran.join()}`);
+  }
+  {
     // A caller that joined a lookup started long before it gets a fresh one
     // when that lookup runs out; the caller that started it does not.
     const env = resolver();

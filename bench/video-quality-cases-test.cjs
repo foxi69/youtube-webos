@@ -20,6 +20,7 @@ const path = require('path');
 const { JSDOM, VirtualConsole } = require('jsdom');
 const { UA, setUserAgent, applyChrome38Downgrade, applyChrome87Downgrade } = require('./chrome38-env.cjs');
 const { createReporter, trustedKey, wait, until } = require('./harness.cjs');
+const { dispatchTrusted } = require('./chrome38-env.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
@@ -44,7 +45,7 @@ const allErrors = [];
  * whether the player takes state listeners. opts.record: the yt-player-quality
  * record in storage before the app starts.
  */
-function boot(cfg, { player = true, events = true, record, ua, quality = 'hd720', state = 1, levels } = {}) {
+function boot(cfg, { player = true, events = true, record, ua, quality = 'hd720', state = 1, levels, holdApply = false, qualityThrows = false, rafHook } = {}) {
   const errors = [];
   const vc = new VirtualConsole();
   vc.on('jsdomError', (e) => { errors.push(e.message); allErrors.push(e.message); });
@@ -63,10 +64,34 @@ function boot(cfg, { player = true, events = true, record, ua, quality = 'hd720'
   };
   win.requestAnimationFrame = (cb) => setTimeout(() => cb(Date.now()), 0);
   win.cancelAnimationFrame = () => {};
+  // holdApply: the page's 600 ms timers (the panel change applied to the video
+  // playing) are held, to be run by hand; cleared ones are noted.
+  const applyTimers = [];
+  if (holdApply) {
+    const realSet = win.setTimeout.bind(win);
+    const realClear = win.clearTimeout.bind(win);
+    win.setTimeout = (fn, ms, ...args) => {
+      if (ms !== 600) return realSet(fn, ms, ...args);
+      const held = { id: -100 - applyTimers.length, fn, cleared: false };
+      applyTimers.push(held);
+      return held.id;
+    };
+    win.clearTimeout = (id) => {
+      const held = applyTimers.find((h) => h.id === id);
+      if (held) held.cleared = true;
+      else realClear(id);
+    };
+  }
+  // rafHook(s): run before each animation frame callback, with the player's state (set before the bundle runs).
+  let rafState = null;
+  if (rafHook) {
+    const raf = win.requestAnimationFrame.bind(win);
+    win.requestAnimationFrame = (cb) => raf((ts) => { if (rafState) rafHook(rafState); cb(ts); });
+  }
   if (record) win.localStorage.setItem(KEY, JSON.stringify(record));
   win.localStorage.setItem('ytaf-configuration', JSON.stringify(Object.assign({
     enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-    thumbnailQuality: 'off', enableAutoLogin: false, enablePlaybackSpeed: false, forceHighResVideo: true
+    thumbnailQuality: 'off', enableAutoLogin: false, enablePlaybackSpeed: false, forceQuality: 'max'
   }, cfg)));
 
   const log = { calls: [], listeners: 0 };
@@ -74,6 +99,7 @@ function boot(cfg, { player = true, events = true, record, ua, quality = 'hd720'
   p.id = 'ytlr-player__player-container-player';
   p.innerHTML = '<video></video>';
   const s = { state, quality, levels: levels || ['hd2160', 'hd1080', 'hd720', 'auto'], label: true, videoId: 'abcdefghijk' };
+  rafState = s;
   let onStateChange = null;
   const calls = (name) => (...args) => { log.calls.push(name + (args.length ? ':' + args.join(',') : '')); };
   Object.assign(p, {
@@ -83,8 +109,9 @@ function boot(cfg, { player = true, events = true, record, ua, quality = 'hd720'
     getAvailableQualityLevels: () => s.levels,
     getPlaybackQuality: () => s.quality,
     getUserPlaybackQualityPreference: () => 'auto',
-    setPlaybackQualityRange(a) { log.calls.push('range:' + a); if (a === 'highres') s.quality = s.levels[0]; },
-    setPlaybackQuality: calls('quality'),
+    setPlaybackQualityRange(a) { log.calls.push('range:' + a); if (a === 'highres') s.quality = s.levels[0]; else if (s.levels.indexOf(a) !== -1) s.quality = a; },
+    // qualityThrows: the call after the range fails (the player busy), the range already set.
+    setPlaybackQuality: qualityThrows ? () => { log.calls.push('quality-threw'); throw new Error('player busy'); } : calls('quality'),
     pauseVideo() { log.calls.push('pause'); },
     playVideo() { log.calls.push('play'); },
     isInline: () => false,
@@ -114,13 +141,26 @@ function boot(cfg, { player = true, events = true, record, ua, quality = 'hd720'
     if (!win.document.querySelector('.ytaf-ui-container')) {
       trustedKey(win, GREEN);
     }
+    // Force Max Quality is a choice row (Off, Max, Up to ...): Right from Off
+    // is Max, Left from Max is Off, one step with no limit between.
+    const row = Array.from(win.document.querySelectorAll('.ytaf-ui-container .shortcut-control-row'))
+      .find((r) => r.querySelector('.shortcut-label')?.textContent.trim() === label);
+    if (row) {
+      const want = on ? 'Max' : 'Off';
+      for (let i = 0; i < 8 && row.querySelector('.current-value').textContent !== want; i++) {
+        row.focus();
+        trustedKey(win, on ? 39 : 37, row);
+      }
+      if (row.querySelector('.current-value').textContent !== want) throw new Error(label + ' did not reach ' + want);
+      return;
+    }
     const input = Array.from(win.document.querySelectorAll('.ytaf-ui-container label'))
       .find((l) => l.querySelector('.label-text')?.textContent === label)?.querySelector('input');
     if (!input) throw new Error(label + ' switch missing');
     input.checked = on;
     input.dispatchEvent(new win.Event('change'));
   };
-  return { win, p, s, log, errors, emit, toasts, stored, toggle, video: p.querySelector('video') };
+  return { win, p, s, log, errors, emit, toasts, stored, toggle, applyTimers, video: p.querySelector('video') };
 }
 
 run(async () => {
@@ -174,6 +214,18 @@ run(async () => {
     const r = stored();
     t('a record of ours about to expire is renewed for a year', r && r.expiration > now + YEAR - 60000, JSON.stringify(r));
   }
+  for (const [name, data, kept] of [['ours (left by an older build)', { quality: 4320, previousQuality: 4320 }, false],
+    ['the viewer’s', { quality: 720, previousQuality: 1080 }, true]]) {
+    // A start with Force Max Quality off: a 4320p record of ours left from
+    // before (the old on/off switch) goes, or YouTube keeps forcing with the
+    // panel at Off; one of the viewer's stays.
+    const now = Date.now();
+    const record = { data: JSON.stringify(data), creation: now - 86400000, expiration: now + 200 * 86400000 };
+    const { stored } = boot({ forceQuality: 'off' }, { record });
+    await wait(50);
+    t(`start with Force off: ${name} record ${kept ? 'stays' : 'goes'}`, kept ? !!stored() && stored().data.quality === data.quality : stored() === null,
+      JSON.stringify(stored()));
+  }
   {
     // Switched off: ours goes; on again: back.
     const { stored, toggle } = boot({});
@@ -182,6 +234,46 @@ run(async () => {
     t('switched off: the 4320p record is dropped', stored() === null, JSON.stringify(stored()));
     toggle('Force Max Quality', true);
     t('switched on again: written again at once', stored()?.data?.quality === 4320, JSON.stringify(stored()));
+  }
+  {
+    // Changed in the panel while a video plays: the video playing gets the
+    // new level at once, once the row stops (Off steps through Max on the way
+    // to an Up to). Its formats were read with the option off, so it lists
+    // them all: Up to picks the best level up to its size.
+    // The 600 ms settle timer is held: each step of the row starts it again,
+    // and only the one after the last step applies the level.
+    const { win, log, s, emit, toggle, applyTimers } = boot({ forceQuality: 'off' }, { holdApply: true });
+    await wait(50);
+    emit(1);
+    t('changed mid-video: precondition: off, nothing set', !log.calls.some((c) => c.startsWith('range')), log.calls.join());
+    const live = () => applyTimers.filter((h) => !h.cleared && !h.ran);
+    const runLive = () => { for (const h of live()) { h.ran = true; h.fn(); } };
+    toggle('Force Max Quality', true);
+    t('changed mid-video: precondition: the change set a 600 ms settle timer', live().length === 1, String(live().length));
+    t('changed mid-video: nothing applied before it runs', !log.calls.some((c) => c.startsWith('range')), log.calls.join());
+    runLive();
+    t('changed mid-video: Max, once it runs the video playing goes to its best', log.calls.some((c) => c === 'range:highres'), log.calls.join());
+    log.calls.length = 0;
+    const row = Array.from(win.document.querySelectorAll('.ytaf-ui-container .shortcut-control-row'))
+      .find((r) => r.querySelector('.shortcut-label')?.textContent.trim() === 'Force Max Quality');
+    const before = applyTimers.length;
+    let steps = 0;
+    for (let i = 0; i < 12 && row.querySelector('.current-value').textContent !== 'Up to 1080p'; i++) {
+      row.focus();
+      trustedKey(win, 39, row);
+      steps++;
+    }
+    t('changed mid-video: precondition: Up to 1080p chosen, more than one step', steps > 1 &&
+      row.querySelector('.current-value').textContent === 'Up to 1080p', steps + ' ' + row.querySelector('.current-value').textContent);
+    const stepped = applyTimers.slice(before);
+    t('changed mid-video: each step starts the timer again, the earlier ones cleared', stepped.length === steps &&
+      stepped.slice(0, -1).every((h) => h.cleared) && live().length === 1, stepped.map((h) => h.cleared).join());
+    t('changed mid-video: nothing applied while the row moves', !log.calls.some((c) => c.startsWith('range')), log.calls.join());
+    runLive();
+    // One range, 1080p, and the player ends there.
+    const ranges = log.calls.filter((c) => c.startsWith('range:'));
+    t('changed mid-video: Up to 1080p, once the last timer runs the video playing goes to 1080p',
+      ranges.join() === 'range:hd1080' && s.quality === 'hd1080', log.calls.join() + ' ' + s.quality);
   }
   {
     // A pick of the viewer's in YouTube's menu is not ours to drop.
@@ -198,6 +290,259 @@ run(async () => {
     toggle('Force Max Quality', false);
     t('switched off over a broken record: left, no error', win.localStorage.getItem(KEY) === '{broken' && errors.length === 0,
       errors[0]);
+  }
+  // Up to 720p makes YouTube record 720p. Switched off, that record goes with
+  // Force Max Quality; a viewer's own, told apart by its time or size, stays.
+  for (const [name, offset, quality, kept] of [
+    ['its own 720p record, as the range was set', 0, 720, false],
+    ['its own 720p record, at the end of the window', 5000, 720, false],
+    ['a 720p pick just after the window', 5001, 720, true],
+    ['a 720p record from just before the range', -1, 720, true],
+    ['a 1080p pick inside the window', 100, 1080, true]
+  ]) {
+    const { win, log, stored, toggle } = boot({ forceQuality: 'up720' }, { quality: 'hd1080', state: 3 });
+    await wait(50);
+    const own = JSON.parse(win.localStorage.getItem('ytaf-force-record') || 'null');
+    t(`Up to 720p, ${name}: precondition: the range was set and noted`,
+      log.calls.includes('range:hd720') && own?.level === 'hd720' && typeof own?.at === 'number',
+      `${log.calls.join()} ${JSON.stringify(own)}`);
+    if (!own) continue;
+    win.localStorage.setItem(KEY, JSON.stringify({
+      data: JSON.stringify({ quality, previousQuality: 1080 }), creation: own.at + offset, expiration: own.at + YEAR
+    }));
+    // Switched off after the window, so the press that does it is no key inside it.
+    win.Date.now = () => own.at + 6000;
+    toggle('Force Max Quality', false);
+    t(`Up to 720p, ${name}: ${kept ? 'kept' : 'removed'} when switched off`,
+      kept ? stored()?.data?.quality === quality : win.localStorage.getItem(KEY) === null, win.localStorage.getItem(KEY));
+    t(`Up to 720p, ${name}: the note goes too`, win.localStorage.getItem('ytaf-force-record') === null,
+      win.localStorage.getItem('ytaf-force-record'));
+  }
+  // A 720p record 100 ms after the range: a key press before it (480p, then
+  // 720p picked in the menu) makes it the viewer's; one after it, or a key the
+  // app sent itself, does not.
+  for (const [name, keyAt, trusted, kept] of [
+    ['no key', null, true, false],
+    ['a key just after the record', 101, true, false],
+    ['a key in the same ms as the record', 100, true, true],
+    ['a key before the record', 50, true, true],
+    ['a key of the app’s own before the record', 50, false, false],
+    ['a pointer press before the record', 50, 'pointer', true]
+  ]) {
+    const { win, log, stored, toggle } = boot({ forceQuality: 'up720' }, { quality: 'hd1080', state: 3 });
+    await wait(50);
+    const own = JSON.parse(win.localStorage.getItem('ytaf-force-record') || 'null');
+    t(`Same level, ${name}: precondition: the range was set and noted`,
+      log.calls.includes('range:hd720') && own?.level === 'hd720', `${log.calls.join()} ${JSON.stringify(own)}`);
+    if (!own) continue;
+    let now = own.at;
+    win.Date.now = () => now;
+    // In the order they happen: a key after the record is pressed once it is
+    // written, one before (or in the same ms) first.
+    const writeRecord = () => win.localStorage.setItem(KEY, JSON.stringify({
+      data: JSON.stringify({ quality: 720, previousQuality: 480 }), creation: own.at + 100, expiration: own.at + YEAR
+    }));
+    const press = () => {
+      now = own.at + keyAt;
+      if (trusted === 'pointer') dispatchTrusted(win.document.body, new win.MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+      else if (trusted) trustedKey(win, 65);
+      else win.document.body.dispatchEvent(new win.KeyboardEvent('keydown', { bubbles: true, keyCode: 65 }));
+    };
+    if (keyAt !== null && keyAt > 100) { now = own.at + 100; writeRecord(); press(); }
+    else if (keyAt !== null) { press(); writeRecord(); }
+    else writeRecord();
+    now = own.at + 6000;
+    toggle('Force Max Quality', false);
+    t(`Same level, ${name}: ${kept ? 'kept' : 'removed'} when switched off`,
+      kept ? stored()?.data?.quality === 720 : win.localStorage.getItem(KEY) === null, win.localStorage.getItem(KEY));
+  }
+  // Paused to raise the quality, and the levels gone by the frame that sets
+  // the range (a list being rebuilt): no range then, which a player could
+  // ignore for a level it does not list, leaving the video taken as done;
+  // playback resumes, and once listed again the limit's level is set.
+  {
+    let emptied = false;
+    const { log, s, emit } = boot({ forceQuality: 'up1080' }, { quality: 'hd720', state: 1, levels: ['hd2160', 'hd1080', 'hd720', 'auto'],
+      rafHook: (st) => { if (!emptied && log.calls.includes('pause')) { emptied = true; st.levels = ['auto']; } } });
+    await wait(100);
+    t('levels gone in the frame: precondition: paused to raise it, then the list emptied', emptied && log.calls.includes('pause'), log.calls.join());
+    t('levels gone in the frame: no range then, and playback goes on', !log.calls.some((c) => c.startsWith('range')) && log.calls.includes('play'),
+      log.calls.join());
+    s.levels = ['hd2160', 'hd1080', 'hd720', 'auto'];
+    log.calls.length = 0;
+    emit(1);
+    await wait(100);
+    t('levels gone in the frame: listed again, the next play sets the limit’s level', log.calls.includes('range:hd1080'), log.calls.join());
+  }
+  // A mode this build does not know (stored by a later one, say) is Off: no
+  // range at all, where Max would set highres; Max itself is the control.
+  for (const [mode, forced] of [['futureMode', false], ['max', true]]) {
+    const { log } = boot({ forceQuality: mode }, { quality: 'hd720', state: 3 });
+    await wait(50);
+    const ranged = log.calls.some((c) => c.startsWith('range'));
+    t(`unknown mode: ${mode} ${forced ? 'forces (the control)' : 'forces nothing, as Off'}`, ranged === forced, log.calls.join());
+  }
+  // The range set, then the player's next call failing: the video counts as
+  // done, so the next state change does not set the range (and reload) again.
+  {
+    const { log, s, emit } = boot({ forceQuality: 'max' }, { quality: 'hd720', state: 3, qualityThrows: true });
+    await wait(50);
+    t('range set, then a failure: precondition: the range went through, the next call threw',
+      log.calls.includes('range:highres') && log.calls.includes('quality-threw'), log.calls.join());
+    // Still reloading: the player reports the old level for a while.
+    s.quality = 'hd720';
+    log.calls.length = 0;
+    emit(3);
+    emit(3);
+    await wait(50);
+    t('range set, then a failure: the next buffering sets no range again', !log.calls.some((c) => c.startsWith('range')),
+      log.calls.join());
+  }
+  // The same while playing: the video is paused, the range set, the next call
+  // fails; the next playing state does not pause and set it again.
+  {
+    const { log, s, emit } = boot({ forceQuality: 'max' }, { quality: 'hd720', state: 1, qualityThrows: true });
+    await wait(80);
+    t('playing, range set, then a failure: precondition: paused, the range went through, the next call threw',
+      log.calls.includes('pause') && log.calls.includes('range:highres') && log.calls.includes('quality-threw'), log.calls.join());
+    t('playing, range set, then a failure: playback goes on after the failed call',
+      log.calls.lastIndexOf('play') > log.calls.indexOf('quality-threw'), log.calls.join());
+    s.quality = 'hd720';
+    log.calls.length = 0;
+    emit(1);
+    await wait(50);
+    emit(1);
+    await wait(50);
+    t('playing, range set, then a failure: the next playing state sets no range again', !log.calls.some((c) => c.startsWith('range')),
+      log.calls.join());
+  }
+  // A limit moved while a video plays, at 1x with no speed reload: a level the
+  // viewer picked on this video stays; Force's own record does not hold it back.
+  {
+    const stepRow = (win, to) => {
+      if (!win.document.querySelector('.ytaf-ui-container')) trustedKey(win, GREEN);
+      const row = Array.from(win.document.querySelectorAll('.ytaf-ui-container .shortcut-control-row'))
+        .find((r) => r.querySelector('.shortcut-label')?.textContent.trim() === 'Force Max Quality');
+      for (let i = 0; i < 8 && row.querySelector('.current-value').textContent !== to; i++) {
+        row.focus();
+        trustedKey(win, 37, row);
+      }
+      return row.querySelector('.current-value').textContent;
+    };
+    const writeRecord = (win, quality, previousQuality, creation) => win.localStorage.setItem(KEY, JSON.stringify({
+      data: JSON.stringify({ quality, previousQuality }), creation, expiration: creation + YEAR
+    }));
+    const live = (timers) => timers.filter((h) => !h.cleared && !h.ran);
+    const runLive = (timers) => { for (const h of live(timers)) { h.ran = true; h.fn(); } };
+
+    // The viewer's 480p, picked with a key after Force's 720p.
+    {
+      const { win, log, s, emit, applyTimers } = boot({ forceQuality: 'up720' }, { quality: 'hd1080', state: 3, holdApply: true });
+      await wait(50);
+      t('pick at 1x: precondition: Force set 720p', log.calls.includes('range:hd720'), log.calls.join());
+      await wait(5);
+      trustedKey(win, 65);
+      await wait(5);
+      writeRecord(win, 480, 720, Date.now());
+      s.quality = 'large';
+      log.calls.length = 0;
+      t('pick at 1x: precondition: Up to 1080p chosen', stepRow(win, 'Up to 1080p') === 'Up to 1080p');
+      t('pick at 1x: the change sets no timer to apply it', live(applyTimers).length === 0, String(live(applyTimers).length));
+      runLive(applyTimers);
+      emit(3); emit(1);
+      await wait(50);
+      t('pick at 1x: the 480p pick stays, also through the next state events',
+        !log.calls.some((c) => c.startsWith('range')) && s.quality === 'large', log.calls.join());
+    }
+    // The viewer's 480p, picked while the change waits its 600 ms: the pick stays.
+    {
+      const { win, log, s, applyTimers } = boot({ forceQuality: 'up720' }, { quality: 'hd1080', state: 3, holdApply: true });
+      await wait(50);
+      t('pick in the wait: precondition: Force set 720p', log.calls.includes('range:hd720'), log.calls.join());
+      log.calls.length = 0;
+      t('pick in the wait: precondition: Up to 1080p chosen', stepRow(win, 'Up to 1080p') === 'Up to 1080p');
+      t('pick in the wait: precondition: the change waits on its timer', live(applyTimers).length === 1, String(live(applyTimers).length));
+      await wait(5);
+      trustedKey(win, 65);
+      await wait(5);
+      writeRecord(win, 480, 720, Date.now());
+      s.quality = 'large';
+      runLive(applyTimers);
+      t('pick in the wait: the 480p picked meanwhile stays', !log.calls.some((c) => c.startsWith('range')) && s.quality === 'large',
+        log.calls.join());
+    }
+    // Control: the record is Force's own: the new limit applies.
+    {
+      const { win, log, applyTimers } = boot({ forceQuality: 'up720' }, { quality: 'hd1080', state: 3, holdApply: true });
+      await wait(50);
+      const own = JSON.parse(win.localStorage.getItem('ytaf-force-record') || 'null');
+      t('Force’s record at 1x: precondition: noted', own?.level === 'hd720', JSON.stringify(own));
+      writeRecord(win, 720, 1080, own.at);
+      log.calls.length = 0;
+      t('Force’s record at 1x: precondition: Up to 1080p chosen', stepRow(win, 'Up to 1080p') === 'Up to 1080p');
+      runLive(applyTimers);
+      t('Force’s record at 1x: the new limit applies', log.calls.includes('range:hd1080'), log.calls.join());
+    }
+    // A pick on the video before: this one takes the new limit.
+    {
+      const { win, log, s, emit, applyTimers } = boot({ forceQuality: 'up720' }, { quality: 'hd1080', state: 3, holdApply: true });
+      await wait(50);
+      await wait(5);
+      trustedKey(win, 65);
+      await wait(5);
+      writeRecord(win, 480, 720, Date.now());
+      await wait(5);
+      // The next video starts at its limit already, so no range replaces the record.
+      s.videoId = 'nextvideo02';
+      s.quality = 'hd720';
+      emit(-1); emit(1);
+      await wait(20);
+      log.calls.length = 0;
+      t('pick on the video before: precondition: Up to 1080p chosen', stepRow(win, 'Up to 1080p') === 'Up to 1080p');
+      runLive(applyTimers);
+      t('pick on the video before: this video takes the new limit', log.calls.includes('range:hd1080'), log.calls.join());
+    }
+    // Off and on again releases a pick, also when its record could not be replaced.
+    {
+      const { win, log, s, toggle, applyTimers } = boot({ forceQuality: 'up720' }, { quality: 'hd1080', state: 3, holdApply: true });
+      await wait(50);
+      await wait(5);
+      trustedKey(win, 65);
+      await wait(5);
+      writeRecord(win, 480, 720, Date.now());
+      s.quality = 'large';
+      const setItem = win.Storage.prototype.setItem;
+      win.Storage.prototype.setItem = function refused(k, v) {
+        if (k === KEY) throw new Error('QuotaExceededError');
+        return setItem.call(this, k, v);
+      };
+      await wait(5);
+      toggle('Force Max Quality', false);
+      t('off and on: precondition: the pick’s record is still there', JSON.parse(win.localStorage.getItem(KEY)).creation > 0 &&
+        JSON.parse(JSON.parse(win.localStorage.getItem(KEY)).data).quality === 480, win.localStorage.getItem(KEY));
+      await wait(5);
+      log.calls.length = 0;
+      toggle('Force Max Quality', true);
+      t('off and on: it applies again, the pick released', live(applyTimers).length === 1, String(live(applyTimers).length));
+      runLive(applyTimers);
+      t('off and on: the video goes to Max', log.calls.includes('range:highres'), log.calls.join());
+    }
+  }
+  // Max on a 2160p video: YouTube records 4320 with the level it came from
+  // (measured on webOS 25), which is not the 4320/4320 record this module writes.
+  for (const [quality, kept] of [[4320, false], [2160, true], [1080, true]]) {
+    const { win, log, stored, toggle } = boot({}, { quality: 'hd720', state: 3 });
+    await wait(50);
+    const own = JSON.parse(win.localStorage.getItem('ytaf-force-record') || 'null');
+    t(`Max, a ${quality}p record: precondition: the range was set and noted`,
+      log.calls.includes('range:highres') && own?.level === 'highres', `${log.calls.join()} ${JSON.stringify(own)}`);
+    if (!own) continue;
+    win.localStorage.setItem(KEY, JSON.stringify({
+      data: JSON.stringify({ quality, previousQuality: 720 }), creation: own.at, expiration: own.at + YEAR
+    }));
+    toggle('Force Max Quality', false);
+    t(`Max, a ${quality}p record: ${kept ? 'kept' : 'removed'} when switched off`,
+      kept ? stored()?.data?.quality === quality : win.localStorage.getItem(KEY) === null, win.localStorage.getItem(KEY));
   }
 
   // ---- How the player is found and followed ----
@@ -238,12 +583,15 @@ run(async () => {
   {
     // Storage refused: Force Max Quality still sets the range. Switched off
     // first, so its cached record is gone and switching on really writes.
-    const { win, log, s, emit, toggle, errors } = boot({}, { levels: ['auto'] });
+    // The panel's settle timer is held and run before the video's events: a
+    // state event while the row may still move forces nothing.
+    const { win, log, s, emit, toggle, errors, applyTimers } = boot({}, { levels: ['auto'], holdApply: true });
     await wait(50);
     toggle('Force Max Quality', false);
     let refused = 0;
     win.Storage.prototype.setItem = () => { refused++; throw new Error('quota'); };
     toggle('Force Max Quality', true);
+    for (const h of applyTimers.filter((x) => !x.cleared && !x.ran)) { h.ran = true; h.fn(); }
     log.calls.length = 0;
     s.videoId = 'quotavideo1';
     s.levels = ['hd2160', 'hd1080', 'hd720', 'auto'];
@@ -340,7 +688,7 @@ run(async () => {
 
   // ---- "Playing in": the label, or the picture's own size ----
   {
-    const { s, video, toasts } = boot({ forceHighResVideo: false, showVideoQuality: 'start' });
+    const { s, video, toasts } = boot({ forceQuality: 'off', showVideoQuality: 'start' });
     s.label = false;
     Object.defineProperty(video, 'videoHeight', { configurable: true, get: () => 1080 });
     Object.defineProperty(video, 'videoWidth', { configurable: true, get: () => 1920 });
@@ -348,7 +696,7 @@ run(async () => {
     t('no label from the player: the picture\'s height', toasts().includes('Playing in 1080p'), toasts().join(' | '));
   }
   {
-    const { s, toasts } = boot({ forceHighResVideo: false, showVideoQuality: 'start' });
+    const { s, toasts } = boot({ forceQuality: 'off', showVideoQuality: 'start' });
     s.label = false;
     s.quality = 'hd1440';
     await wait(4300);
@@ -356,7 +704,7 @@ run(async () => {
   }
   // Under Title is the tag alone (quality-tag-test); Both is the tag and the notice.
   for (const [mode, notice] of [['title', false], ['both', true]]) {
-    const { toasts } = boot({ forceHighResVideo: false, showVideoQuality: mode });
+    const { toasts } = boot({ forceQuality: 'off', showVideoQuality: mode });
     await wait(4300);
     const playingIn = toasts().filter((x) => /^Playing in/.test(x));
     t(`Show Video Quality ${mode === 'title' ? 'Under Title: no notice' : 'Both: the notice'}`,
@@ -364,7 +712,7 @@ run(async () => {
   }
   {
     // Paused before the notice is due: none; the next time it plays, the notice.
-    const { s, emit, toasts } = boot({ forceHighResVideo: false, showVideoQuality: 'start' });
+    const { s, emit, toasts } = boot({ forceQuality: 'off', showVideoQuality: 'start' });
     const playingIn = () => toasts().filter((x) => /^Playing in/.test(x));
     await wait(1000);
     emit(2);
@@ -488,11 +836,11 @@ run(async () => {
     await wait(50);
     toggle('Force Max Quality', false);
     const before = JSON.parse(win.localStorage.getItem('ytaf-configuration') || '{}');
-    t('hidden: the change is still waiting before the app is hidden', before.forceHighResVideo === true, String(before.forceHighResVideo));
+    t('hidden: the change is still waiting before the app is hidden', before.forceQuality === 'max', String(before.forceQuality));
     Object.defineProperty(win.document, 'hidden', { configurable: true, get: () => true });
     win.document.dispatchEvent(new win.Event('visibilitychange'));
     const saved = JSON.parse(win.localStorage.getItem('ytaf-configuration') || '{}');
-    t('hidden: a change still waiting is written at once', saved.forceHighResVideo === false, String(saved.forceHighResVideo));
+    t('hidden: a change still waiting is written at once', saved.forceQuality === 'off', String(saved.forceQuality));
   }
 
   t('no jsdomError in any case', allErrors.length === 0, allErrors[0]);

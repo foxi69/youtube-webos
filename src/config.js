@@ -1,3 +1,5 @@
+import { backupWrite, backupReadAll } from './config-backup.js';
+
 const CONFIG_KEY = 'ytaf-configuration';
 
 export const segmentTypes = {
@@ -37,6 +39,28 @@ export const searchUploadDateModes = {
   week: 'This Week',
   month: 'This Month',
   year: 'This Year'
+};
+
+/** Search: Duration, Type and Only (hooks/json-stringify.ts). */
+export const searchDurationModes = {
+  any: 'Any',
+  short: 'Under 4 min',
+  medium: '4-20 min',
+  long: 'Over 20 min'
+};
+export const searchTypeModes = {
+  any: 'Any',
+  video: 'Videos',
+  channel: 'Channels',
+  playlist: 'Playlists',
+  movie: 'Movies'
+};
+export const searchFeatureModes = {
+  any: 'Any',
+  '4k': '4K',
+  hdr: 'HDR',
+  live: 'Live',
+  subtitles: 'Subtitles'
 };
 
 /** What the clock in the corner shows (NicholasBly/youtube-webos#126). */
@@ -109,11 +133,13 @@ export const shortcutActions = {
   audio_only: 'Toggle Audio-Only Mode',
   repeat_video: 'Repeat Video (on/off)',
   sb_manual_skip: 'Manual Skip / Jump to Highlight',
+  sb_whitelist_channel: 'SponsorBlock: Never Skip on This Channel (on/off)',
   jump_to_live: 'Jump to Live',
   config_menu: 'Open/Close Settings',
   speed_up: 'Playback Speed +',
   speed_down: 'Playback Speed -',
   speed_reset: 'Playback Speed Reset (1x)',
+  speed_toggle: 'Toggle Speed (1x / Last)',
   queue_next: 'Play Next in Queue',
   queue_clear: 'Clear Queue',
   long_press_menu: 'Open Long-Press Menu'
@@ -203,6 +229,51 @@ export const maxVideoAgeModes = {
   180: '6 months',
   365: '1 year',
   730: '2 years'
+};
+
+/**
+ * Force Max Quality: Off (YouTube picks), Max (the best level the video has)
+ * or the best level up to a number of lines (adblock.js drops the formats
+ * above it). The keys are not bare numbers, which an object lists first.
+ */
+export const forceQualityModes = {
+  off: 'Off',
+  max: 'Max',
+  up2160: 'Up to 2160p (4K)',
+  up1440: 'Up to 1440p',
+  up1080: 'Up to 1080p',
+  up720: 'Up to 720p',
+  up480: 'Up to 480p'
+};
+
+/** The lines a Force Max Quality mode stops at: 0 for Off and Max. */
+/** Force Max Quality on: a mode of forceQualityModes other than Off (an unknown one stored, say by a later build, is Off). */
+export function forceQualityOn(mode) {
+  return mode !== 'off' && Object.prototype.hasOwnProperty.call(forceQualityModes, mode);
+}
+
+export function forceQualityLines(mode) {
+  // Only a limit of the list: an unknown one (up360, say) caps nothing.
+  if (!Object.prototype.hasOwnProperty.call(forceQualityModes, mode)) return 0;
+  const match = /^up(\d+)$/.exec(String(mode));
+  return match ? Number(match[1]) : 0;
+}
+
+/** Ignore Segments Shorter Than, in seconds ('0': off). */
+export const sbMinSegmentLengthModes = {
+  0: 'Off',
+  1: '1 s',
+  2: '2 s',
+  3: '3 s',
+  5: '5 s',
+  10: '10 s'
+};
+
+/** Subtitle Position (caption-style.js). */
+export const subtitlePositionModes = {
+  default: 'Default',
+  raised: 'Higher',
+  high: 'Highest'
 };
 
 /** Left/Right Seek Step, in seconds while the player controls are hidden. '0': YouTube's own. */
@@ -296,6 +367,15 @@ const configOptions = new Map([
   ['skipSegmentsOnce', { default: false, desc: 'Skip Segments Once' }],
   ['sbFullVideoLabel', { default: false, desc: 'Show an icon when a video is entirely an advertisement' }],
   ['sbShowTimeWithSkips', { default: false, desc: 'Show time with skips removed' }],
+  // Segments shorter than this, in seconds, are not skipped or muted ('0': all are).
+  ['sbMinSegmentLength', { default: '0', desc: 'Ignore Segments Shorter Than' }],
+  // Channel names, compared without case: nothing is skipped on their videos.
+  ['sbWhitelistChannels', { default: [], desc: 'Never Skip on These Channels' }],
+  // Off until switched on: a third party learns which segments were skipped.
+  ['sbReportSkips', { default: false, desc: 'Count My Skips on SponsorBlock' }],
+  // The time skipping saved, in seconds, and the number of skips. Not shown as settings.
+  ['sbTimeSaved', { default: 0, desc: 'SponsorBlock time saved' }],
+  ['sbSkipCount', { default: 0, desc: 'SponsorBlock skips' }],
   ['sbMode_sponsor', { default: 'auto_skip', desc: 'Sponsor' }],
   ['sbMode_intro', { default: 'auto_skip', desc: 'Intermission/Intro' }],
   ['sbMode_outro', { default: 'auto_skip', desc: 'Endcards/Credits' }],
@@ -313,6 +393,10 @@ const configOptions = new Map([
   ['subtitlesAtStart', { default: 'youtube', desc: 'Subtitles When a Video Starts' }],
   // Drops the dubbed audio tracks from the player response, so the original plays.
   ['forceOriginalAudio', { default: false, desc: 'Prefer Original Audio over Dubbed' }],
+  // caption-style.js: the subtitles lifted above where YouTube puts them.
+  ['subtitlePosition', { default: 'default', desc: 'Subtitle Position' }],
+  // caption-style.js: YouTube's own caption style record, kept. Not shown in the panel.
+  ['captionStyleBackup', { default: {}, desc: 'Subtitle style kept' }],
   ['seekStep', { default: '0', desc: 'Left/Right Seek Step (Controls Hidden)' }],
   // Remaining time and/or the wall-clock end time beside the duration.
   ['timeRemainingMode', { default: 'off', desc: 'Show Remaining Time / End Time' }],
@@ -332,6 +416,9 @@ const configOptions = new Map([
   ['removeLowMemoryStyle', { default: true, desc: 'Remove Black Text Boxes' }],
   ['keyboardSearch', { default: true, desc: 'Type in Search with a Keyboard' }],
   ['searchUploadDate', { default: 'any', desc: 'Search: Upload Date' }],
+  ['searchDuration', { default: 'any', desc: 'Search: Duration' }],
+  ['searchType', { default: 'any', desc: 'Search: Type' }],
+  ['searchFeature', { default: 'any', desc: 'Search: Only' }],
   ['removeBlackBorders', { default: false, desc: 'New Liquid Glass UI' }],
   ['videoPreviews', { default: 'default', desc: 'Video Previews' }],
   // OK on a playing preview carries it on instead of loading the video again (adblock.js).
@@ -348,11 +435,19 @@ const configOptions = new Map([
   // by default, and nothing is gained by turning it off.
   ['enableLegacyEmojiFix', { default: true, desc: 'Emoji + Characters Fix' }],
   ['hideGuestSignInPrompts', { default: false, desc: 'Guest Mode: Hide Sign-in Buttons' }],
-  ['forceHighResVideo', { default: false, desc: 'Force Max Quality' }],
+  // forceQualityModes: Off, Max or the best level up to a number of lines.
+  ['forceQuality', { default: 'off', desc: 'Force Max Quality' }],
+  // Drops the formats YouTube upscaled with AI from player responses (adblock.js).
+  ['removeUpscaledFormats', { default: true, desc: 'Skip AI-Upscaled Qualities' }],
   ['showVideoQuality', { default: 'off', desc: 'Show Video Quality' }],
   ['forceVideoCodec', { default: 'auto', desc: 'Force Video Codec' }],
   ['subtitleTranslateLang', { default: 'off', desc: 'Auto-Translate Subtitles' }],
   ['enablePlaybackSpeed', { default: true, desc: 'Playback Speed Control' }],
+  // playback-speed.js: the speed of the last run, set again at the start.
+  ['rememberPlaybackSpeed', { default: false, desc: 'Remember Playback Speed' }],
+  // The last speed set, and the last one other than 1x (Toggle Speed). Not shown in the panel.
+  ['savedPlaybackSpeed', { default: 1, desc: 'Last playback speed' }],
+  ['toggleSpeed', { default: 1.5, desc: 'Speed for Toggle Speed' }],
   ['blockWebosCast', { default: true, desc: 'Block webOS Cast Service (webOS 25)' }],
   ['disableNotifications', { default: false, desc: 'Disable Notifications' }],
   // A fox button in the top-right corner that the Magic Remote pointer can
@@ -437,6 +532,8 @@ const DEVICE_KEYS = new Set([
   'keyboardSearch',
   'disableAnimations',
   'keepAppOpenWhenPaused',
+  // YouTube keeps its caption style once for the TV, not per account.
+  'captionStyleBackup',
   // Read when the app starts, before "Who's watching" picks an account.
   'startPage'
 ]);
@@ -525,7 +622,8 @@ function pickAccountValues(source) {
 // those holders. Use Object.assign(localConfig, defaultConfig) to reset.
 // sharedConfig is what CONFIG_KEY holds: everything with per-account settings
 // off, and the device settings plus the shared profile with them on.
-const sharedConfig = loadStored(CONFIG_KEY) || {};
+const sharedConfigStored = loadStored(CONFIG_KEY);
+const sharedConfig = sharedConfigStored || {};
 // The account profile in use, or null while the shared settings are.
 let activeProfile = null;
 let profileSeeded = false;
@@ -544,22 +642,216 @@ if (sharedConfig.perAccountSettings) {
 // Debounce localStorage writes — rapid input (e.g. color picker drag) was
 // stringifying the entire ~50-key config object on every event.
 let pendingWriteTimer = null;
+// An account record localStorage refused to take (quota), by its key: the
+// account's settings as they are now, which win over the older record still
+// there when the account is loaded again (after a restore that changed it, or
+// a switch to another account and back).
+const unwrittenRecords = {};
+
 function writeNow() {
   pendingWriteTimer = null;
+  const written = [];
   try {
     if (activeProfile) {
       for (const key of DEVICE_KEYS) sharedConfig[key] = localConfig[key];
-      window.localStorage[CONFIG_KEY] = JSON.stringify(sharedConfig);
+      const shared = JSON.stringify(sharedConfig);
+      // Each record on its own: a shared record refused (quota) does not keep
+      // the account's from being written, or kept in memory.
+      try {
+        window.localStorage[CONFIG_KEY] = shared;
+        written.push([CONFIG_KEY, shared]);
+      } catch { /* the account's record is still written below */ }
       if (storesProfile(activeProfile)) {
-        window.localStorage[profileStorageKey(activeProfile)] = JSON.stringify(pickAccountValues(localConfig));
+        const key = profileStorageKey(activeProfile);
+        const values = pickAccountValues(localConfig);
+        const own = JSON.stringify(values);
+        // The restored copy of this account is older now: a switch back to it
+        // with localStorage emptied meanwhile must not bring the old values.
+        if (restoredRecords) restoredRecords[key] = values;
+        try {
+          window.localStorage[key] = own;
+          if (!backupChecked) noteWrittenBeforeRead(key);
+          else forgetWrittenBeforeRead(key);
+          delete unwrittenRecords[key];
+          written.push([key, own]);
+        } catch {
+          unwrittenRecords[key] = values;
+        }
       }
     } else {
       Object.assign(sharedConfig, localConfig);
-      window.localStorage[CONFIG_KEY] = JSON.stringify(localConfig);
+      const shared = JSON.stringify(localConfig);
+      window.localStorage[CONFIG_KEY] = shared;
+      written.push([CONFIG_KEY, shared]);
     }
   }
   catch { /* quota / SecurityError on private mode */ }
+  if ((!backupChecked || sharedRestorePending) && beforeRestoreChanged) saveBeforeRestore();
+  copyToBackup(written);
 }
+
+/*
+ * The copy of the settings in IndexedDB (config-backup.js), for when YouTube
+ * TV empties localStorage. Each write is copied there. An app that starts with
+ * no settings in localStorage reads the copy first, and copies nothing until
+ * then: the defaults it starts with would replace the copy it is about to read.
+ */
+// Set in localStorage while the copy has not been read back: a run whose read
+// failed leaves it, so the next start tries again instead of taking the
+// settings that run stored (its defaults) for the real ones and copying them
+// over the copy.
+const RECOVERING_KEY = 'ytaf-settings-recovering';
+let recovering = false;
+try { recovering = window.localStorage.getItem(RECOVERING_KEY) === '1'; } catch { /* no storage */ }
+let backupChecked = !!sharedConfigStored && !recovering;
+// The copy was read, but localStorage refused its shared record: the mark
+// stays until a write stores the shared record, or the next start would take
+// the record left there (the failed run's defaults) for the real one.
+let sharedRestorePending = false;
+// The accounts' records this run wrote before the copy was read (Separate
+// Settings for Each Account switched on meanwhile): written from the defaults,
+// so they are not newer than their copies, which take their place. Kept in
+// localStorage (SEEDED_KEY) until a read has worked: after a failed one the
+// next start still knows them for what they are.
+const SEEDED_KEY = 'ytaf-settings-seeded';
+function readSeeded() {
+  try {
+    const keys = JSON.parse(window.localStorage.getItem(SEEDED_KEY) || '[]');
+    return Array.isArray(keys) ? keys.filter((key) => typeof key === 'string') : [];
+  } catch { return []; }
+}
+const writtenBeforeRead = new Set(recovering ? readSeeded() : []);
+function saveSeeded() {
+  try {
+    window.localStorage.setItem(SEEDED_KEY, JSON.stringify(Array.from(writtenBeforeRead)));
+    return true;
+  } catch { return false; }
+}
+function noteWrittenBeforeRead(key) {
+  writtenBeforeRead.add(key);
+  return saveSeeded();
+}
+// Stored in localStorage after the read: that record is the newest again.
+function forgetWrittenBeforeRead(key) {
+  if (writtenBeforeRead.delete(key)) saveSeeded();
+}
+// The settings changed before the copy was read (CHANGED_KEY, below).
+const CHANGED_KEY = 'ytaf-settings-changed';
+// The copy read back and the shared record stored: the next start has nothing to recover.
+function endRecovery() {
+  try {
+    window.localStorage.removeItem(RECOVERING_KEY);
+    window.localStorage.removeItem(SEEDED_KEY);
+    window.localStorage.removeItem(CHANGED_KEY);
+  } catch { /* no storage */ }
+  writtenBeforeRead.clear();
+}
+// A write made before the copy was read: copied once it has been.
+let backupMissed = false;
+// The settings changed before the copy was read (in the panel, say): the
+// restore leaves them as they are now. The app's own records are not among
+// them: what it wrote meanwhile was the defaults' (foxThemeApplied), and the
+// copy's take their place.
+const APP_RECORDS = new Set(['foxThemeApplied', 'captionStyleBackup', 'sbTimeSaved', 'sbSkipCount']);
+// SponsorBlock's counters before the read: what a skip (or its undo) added,
+// added to the copy's totals; after a Reset (configResetCounters), only what
+// came after it.
+const COUNTERS = new Set(['sbTimeSaved', 'sbSkipCount']);
+/*
+ * What changed before the read:
+ *  shared, sharedCounted: the values made in the shared settings (no account
+ *    loaded, or a device setting), and the counters counted with no account
+ *    loaded. Only these go into the shared record.
+ *  own: by the account they were made in ('' for none loaded: then the
+ *    account in use once the copy is read), its settings' values and counters.
+ * Kept in localStorage (CHANGED_KEY) while the copy has not been read: a run
+ * whose read failed leaves them, so the next start restores the copy under
+ * the changes that run stored, instead of the copy's older values over them.
+ */
+const beforeRestore = { shared: {}, sharedCounted: {}, own: {} };
+let beforeRestoreChanged = false;
+const isRecord = (value) => !!value && typeof value === 'object' && !Array.isArray(value);
+function pickOptions(source) {
+  const out = {};
+  if (isRecord(source)) for (const key of Object.keys(source)) if (configOptions.has(key)) out[key] = source[key];
+  return out;
+}
+function pickCounted(source) {
+  const out = {};
+  if (isRecord(source)) {
+    for (const key of Object.keys(source)) {
+      const c = source[key];
+      if (COUNTERS.has(key) && isRecord(c)) out[key] = { reset: c.reset === true, delta: Number(c.delta) || 0 };
+    }
+  }
+  return out;
+}
+if (recovering) {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(CHANGED_KEY) || 'null');
+    if (isRecord(saved)) {
+      beforeRestore.shared = pickOptions(saved.shared);
+      beforeRestore.sharedCounted = pickCounted(saved.sharedCounted);
+      if (isRecord(saved.own)) {
+        for (const owner of Object.keys(saved.own)) {
+          const changes = saved.own[owner];
+          if (isRecord(changes)) beforeRestore.own[owner] = { values: pickOptions(changes.values), counted: pickCounted(changes.counted) };
+        }
+      }
+    }
+  } catch { /* none kept, or not readable */ }
+}
+function ownChanges(profile) {
+  const owner = profile || '';
+  return beforeRestore.own[owner] || (beforeRestore.own[owner] = { values: {}, counted: {} });
+}
+// Written with the settings themselves (writeNow), so the two agree. Refused
+// (quota): still to be written, by the next write of the settings.
+function saveBeforeRestore() {
+  try {
+    window.localStorage.setItem(CHANGED_KEY, JSON.stringify(beforeRestore));
+    beforeRestoreChanged = false;
+  } catch { beforeRestoreChanged = true; }
+}
+function countBeforeRestore(key, delta, reset) {
+  const targets = activeProfile ? [ownChanges(activeProfile).counted] : [ownChanges(null).counted, beforeRestore.sharedCounted];
+  for (const counted of targets) {
+    const c = counted[key] || (counted[key] = { reset: false, delta: 0 });
+    if (reset) { c.reset = true; c.delta = 0; }
+    else c.delta += delta;
+  }
+  beforeRestoreChanged = true;
+}
+function applyCounted(record, counted) {
+  for (const key of Object.keys(counted)) {
+    const c = counted[key];
+    record[key] = Math.max(0, (c.reset ? 0 : Number(record[key]) || 0) + c.delta);
+  }
+}
+// The account records the restore merged changes into: copied once the copy
+// has been read, as they need not be the account in use (whose writes copy it).
+let ownerRecordsToCopy = [];
+// The owners (journal keys) whose merged record localStorage refused: their
+// counters' additions stay in the journal until the copy has the record.
+let ownersAwaitingCopy = [];
+// Those records' keys: localStorage still holds an older record for each.
+let recordsAwaitingCopy = [];
+// The restore put changes made before the read into the shared record.
+let sharedChangedByRestore = false;
+// No switch of account before the copy was read (or its read failed): the
+// changes made before it stay with the one account they were made in.
+let restoreSettled = backupChecked;
+/** Copies `written` to IndexedDB; `onStored(true)` once the copy has them, (false) when it could not. */
+function copyToBackup(written, onStored) {
+  if (!written.length) return;
+  if (!backupChecked) { backupMissed = true; return; }
+  if (sharedRestorePending && written.some(([key]) => key === CONFIG_KEY)) {
+    sharedRestorePending = false;
+    endRecovery();
+  }
+  backupWrite(written).then((ok) => { if (onStored) onStored(ok); }, () => { if (onStored) onStored(false); });
+}
+
 const flushPendingWrite = () => {
   if (pendingWriteTimer !== null) { clearTimeout(pendingWriteTimer); writeNow(); }
 };
@@ -574,6 +866,28 @@ if (typeof window !== 'undefined') {
   document.addEventListener('visibilitychange', () => { if (document.hidden) flushPendingWrite(); });
 }
 if (profileSeeded) scheduleWrite();
+
+/** Writes a change still waiting now (a module that changes a setting as the app goes to the background). */
+export function configFlush() {
+  flushPendingWrite();
+}
+
+/**
+ * True until the copy in IndexedDB was looked at: at a start with no settings,
+ * or a recovering one (its values may still come back); after a read that
+ * failed or timed out, for the rest of the run.
+ */
+export function configRestorePending() {
+  return !backupChecked;
+}
+
+// The counters go into the journal: before the read, and while the shared
+// record the restore made is still refused with no account loaded (the
+// shared totals then live in no copy yet, so a Reset, or a skip after it,
+// would be lost, and the copy's older totals come back at the next start).
+function countersJournaled() {
+  return !backupChecked || (sharedRestorePending && !activeProfile);
+}
 
 function configExists(key) { return configOptions.has(key); }
 
@@ -598,14 +912,38 @@ export function configWrite(key, value) {
   if (oldValue === value) return;
 
   DEBUG && console.info('Changing key', key, 'from', oldValue, 'to', value);
+  if (countersJournaled() && COUNTERS.has(key)) {
+    countBeforeRestore(key, (Number(value) || 0) - (Number(oldValue) || 0), false);
+  } else if ((!backupChecked || sharedRestorePending) && !APP_RECORDS.has(key)) {
+    // Also while the journal is kept for the next start (the shared record
+    // still refused): its older value must not come back over this one.
+    journalBeforeRestore(key, value);
+  }
   localConfig[key] = value;
   scheduleWrite();
   notifyChange(key, value, oldValue);
 }
 
+/**
+ * SponsorBlock's statistics back to nothing (the Reset button). Before the
+ * copy of the settings is read, the reset is kept too: the restored totals
+ * do not bring back what it cleared, even when they were nothing already.
+ */
+export function configResetCounters() {
+  for (const key of COUNTERS) {
+    configWrite(key, 0);
+    if (countersJournaled()) {
+      countBeforeRestore(key, 0, true);
+      // Counters already at zero: configWrite scheduled nothing to store this.
+      scheduleWrite();
+    }
+  }
+}
+
 // Left alone by a reset: where the settings are kept (a reset must not merge
-// or drop the accounts' profiles), and a flag that is not a setting.
-const RESET_KEEPS = new Set(['perAccountSettings', 'foxThemeApplied']);
+// or drop the accounts' profiles), and the records that are not settings
+// (a flag, YouTube's own caption style, SponsorBlock's time saved).
+const RESET_KEEPS = new Set(['perAccountSettings', 'foxThemeApplied', 'captionStyleBackup', 'sbTimeSaved', 'sbSkipCount']);
 
 /**
  * Every setting back to its default, told to its listeners as if changed in
@@ -615,14 +953,31 @@ const RESET_KEEPS = new Set(['perAccountSettings', 'foxThemeApplied']);
 export function configResetAll() {
   for (const [key, option] of configOptions) {
     if (RESET_KEEPS.has(key)) continue;
-    configWrite(key, Array.isArray(option.default) ? option.default.slice() : option.default);
+    const value = Array.isArray(option.default) ? option.default.slice() : option.default;
+    // Before the copy is read, a setting showing its default already is reset
+    // too: the copy's value (Up to 480p, say) must not come back over it.
+    // configWrite records only a change.
+    if (!backupChecked && !COUNTERS.has(key) && !APP_RECORDS.has(key) && localConfig[key] === value) {
+      journalBeforeRestore(key, value);
+      scheduleWrite();
+      continue;
+    }
+    configWrite(key, value);
   }
 }
 
-function notifyChange(key, newValue, oldValue) {
+/** A change made before the copy was read, kept over the copy's value (restoreFromBackup). */
+function journalBeforeRestore(key, value) {
+  if (!activeProfile || DEVICE_KEYS.has(key)) beforeRestore.shared[key] = value;
+  if (!DEVICE_KEYS.has(key)) ownChanges(activeProfile).values[key] = value;
+  beforeRestoreChanged = true;
+}
+
+// restored: the change came back with the copy of the settings (restoreFromBackup).
+function notifyChange(key, newValue, oldValue, restored) {
   const listeners = changeListeners.get(key);
   if (listeners) {
-    const syntheticEvent = { detail: { key, newValue, oldValue } };
+    const syntheticEvent = { detail: { key, newValue, oldValue, restored: !!restored } };
     for (const callback of listeners) {
       try { callback(syntheticEvent); }
       catch (err) { console.warn('[Config] change listener failed for', key, err); }
@@ -630,24 +985,39 @@ function notifyChange(key, newValue, oldValue) {
   }
 }
 
+// The records restoreFromBackup took from the copy, kept for the session: a
+// profile localStorage refused to take back (quota) is loaded from here, for
+// the account in use and for one switched to later. Without it that account
+// was seeded afresh, and the smaller record, written, replaced its copy. An
+// account's own write since replaces its entry (writeNow).
+let restoredRecords = null;
+
 /**
  * Loads `profile`'s settings (null: the shared ones) in place of the current
  * account's, telling every listener of a value that changed - the same as if
  * each had been changed in the panel. The outgoing account's pending write is
  * flushed to its own profile first.
  */
-function switchProfile(profile) {
+// restored: the account the copy of the settings was restored into (restoreFromBackup).
+function switchProfile(profile, restored = false) {
   if (profile === activeProfile) return;
   flushPendingWrite();
   const previous = activeProfile;
   activeProfile = profile;
 
   let incoming = null;
-  if (storesProfile(profile)) incoming = loadStored(profileStorageKey(profile));
+  let seeded = false;
+  if (storesProfile(profile)) {
+    // Restored from the backup copy: its record, also when localStorage
+    // refused to take it back (quota), so the account is not seeded afresh.
+    const key = profileStorageKey(profile);
+    incoming = unwrittenRecords[key] || loadStored(key) || (restoredRecords && restoredRecords[key]) || null;
+  }
   if (!incoming) {
     // An account seen for the first time (and every guest session) starts
     // from the shared settings.
     incoming = pickAccountValues(Object.assign({}, defaultConfig, sharedConfig));
+    seeded = true;
     if (storesProfile(profile)) scheduleWrite();
   }
   incoming = pickAccountValues(Object.assign(pickAccountValues(defaultConfig), incoming));
@@ -660,7 +1030,11 @@ function switchProfile(profile) {
     localConfig[key] = newValue;
     notifyChange(key, newValue, oldValue);
   }
-  window.dispatchEvent(new CustomEvent('ytaf-profile-change'));
+  // detail.from: the profile loaded before (null: none, as at the start or
+  // while the copy was read), detail.to: this one; detail.restored: loaded by
+  // the restore, whose merge took what was counted with none loaded;
+  // detail.seeded: started from the shared settings, their counters included.
+  window.dispatchEvent(new CustomEvent('ytaf-profile-change', { detail: { from: previous, to: profile, restored, seeded } }));
 }
 
 /**
@@ -676,15 +1050,24 @@ export function configGetProfileStatus() {
   return { state: 'unknown', fields: unknownIdentityFields.slice() };
 }
 
+/** The account whose settings are loaded: its profile name, 'guest', or null (the shared settings). */
+export function configActiveProfile() {
+  return activeProfile;
+}
+
 function checkAccountChange() {
-  if (!localConfig.perAccountSettings) return;
+  if (!localConfig.perAccountSettings || !restoreSettled) return;
   const profile = readAccountProfile();
   // No readable identity (e.g. mid sign-out): keep what is loaded.
   if (profile === null) return;
   switchProfile(profile);
 }
 
+// Set while restoreFromBackup applies the copy, which loads the profile itself.
+let restoringBackup = false;
+
 configAddChangeListener('perAccountSettings', ({ detail }) => {
+  if (restoringBackup) return;
   if (detail.newValue) {
     // The account carries on with exactly the settings it has now.
     activeProfile = readAccountProfile();
@@ -714,6 +1097,208 @@ if (typeof window !== 'undefined') {
     checkAccountChange();
     recheckTimers = [setTimeout(checkAccountChange, 1500), setTimeout(checkAccountChange, 5000)];
   });
+}
+
+/**
+ * Started with no settings in localStorage: the copy in IndexedDB, if there is
+ * one, is written back to localStorage and its values take the place of the
+ * defaults, told to every listener as if changed in the panel. The settings of
+ * each account go back too, and the account in use gets its own. A setting read
+ * only once at start (a codec, say) takes the restored value from the next
+ * start.
+ */
+function restoreFromBackup() {
+  backupReadAll(CONFIG_KEY).then((entries) => {
+    const records = {};
+    for (const [key, text] of entries) {
+      try {
+        const value = JSON.parse(text);
+        if (value && typeof value === 'object') records[key] = value;
+      } catch { /* not a settings record */ }
+    }
+    const shared = records[CONFIG_KEY];
+    if (!shared) return false;
+    // A write still waiting is made now, by the profile it belongs to: below,
+    // with no profile loaded while the copy is applied, switchProfile would
+    // flush it into the shared record (an account's change, say, of a key the
+    // older copy lacks). Its change is in the journal either way.
+    flushPendingWrite();
+    // A setting changed before the read keeps its new value, in the record
+    // written back and in use: one changed in the shared settings in the
+    // shared record, one changed in an account's in that account's (below).
+    for (const key of Object.keys(beforeRestore.shared)) shared[key] = beforeRestore.shared[key];
+    // What skips before the read saved, on top of the copy's totals.
+    applyCounted(shared, beforeRestore.sharedCounted);
+    // The shared record is then newer than its copy (also when the changes
+    // were kept from a run whose read failed, and none was written in this one).
+    sharedChangedByRestore = Object.keys(beforeRestore.shared).length > 0 || Object.keys(beforeRestore.sharedCounted).length > 0;
+    const sharedText = JSON.stringify(shared);
+    restoredRecords = records;
+    // What the app wrote meanwhile (foxThemeApplied, say) was the defaults'
+    // and is replaced. One record at a time: one too big for the quota does
+    // not keep the others out.
+    // An account's record still in localStorage is newer than its copy (a
+    // copy can lag: a write that failed, a change before the copy was read)
+    // and stays. Written back: the shared record (gone at the start, or the
+    // defaults a run whose read failed left), the missing ones, and those
+    // written from the defaults before the read (writtenBeforeRead).
+    for (const [key, text] of entries) {
+      try {
+        if (key !== CONFIG_KEY && !writtenBeforeRead.has(key) && window.localStorage.getItem(key) !== null) {
+          delete records[key];
+          continue;
+        }
+        window.localStorage.setItem(key, key === CONFIG_KEY ? sharedText : text);
+      } catch {
+        // Applied from memory below.
+        if (key === CONFIG_KEY) sharedRestorePending = true;
+        // Over the record this run wrote from the defaults: the copy's, from memory.
+        else if (writtenBeforeRead.has(key) && records[key]) unwrittenRecords[key] = records[key];
+      }
+    }
+    console.info('[Config] Settings restored from the backup copy:', entries.length, 'record(s)');
+    // The account's profile is loaded below, once the shared values are in:
+    // the perAccountSettings listener, told of the change, would make it the
+    // active one with the shared values and write those over it.
+    restoringBackup = true;
+    try {
+      for (const key of Object.keys(shared)) {
+        if (!configOptions.has(key)) continue;
+        sharedConfig[key] = shared[key];
+        const oldValue = localConfig[key];
+        if (oldValue === shared[key]) continue;
+        localConfig[key] = shared[key];
+        notifyChange(key, shared[key], oldValue, true);
+      }
+    } finally {
+      restoringBackup = false;
+    }
+    activeProfile = null;
+    const perAccount = !!localConfig.perAccountSettings;
+    const profile = readAccountProfile();
+    // The accounts' own settings changed before the read keep their change
+    // too: each record, from localStorage or the copy, takes them before
+    // the account loads it. The account they were made in, else (made in
+    // the shared settings: first, as before the switch was turned on) the
+    // one in use. Separate settings switched off before the read: an
+    // account's changes made while they were on still go to its record (it
+    // has them when they are on again); those made in the shared settings
+    // are in the shared record already.
+    const owners = Object.keys(beforeRestore.own).filter(Boolean);
+    if (perAccount && beforeRestore.own['']) owners.unshift('');
+    // Two owners can be one account (changes made with per-account off,
+    // then on in it): the second starts from the first's merge, which a
+    // refused write keeps out of localStorage.
+    const merged = {};
+    for (const owner of owners) {
+      const changes = beforeRestore.own[owner];
+      const account = owner || profile;
+      const changed = Object.keys(changes.values);
+      if (!storesProfile(account) || (!changed.length && !Object.keys(changes.counted).length)) continue;
+      const key = profileStorageKey(account);
+      // No record of the account to go by (none in the copy, and the one in
+      // localStorage, if any, written from the defaults this run): one from
+      // the restored shared settings, as the account would start from.
+      let record = merged[key] || (!writtenBeforeRead.has(key) && loadStored(key)) || records[key];
+      const seeded = !record;
+      if (seeded) record = pickAccountValues(Object.assign({}, defaultConfig, sharedConfig));
+      for (const k of changed) record[k] = changes.values[k];
+      // Counted with no account loaded, these are in the shared totals
+      // the seed was just taken from.
+      if (!(seeded && owner === '')) applyCounted(record, changes.counted);
+      records[key] = record;
+      merged[key] = record;
+      const text = JSON.stringify(record);
+      ownerRecordsToCopy = ownerRecordsToCopy.filter(([k]) => k !== key).concat([[key, text]]);
+      try {
+        window.localStorage.setItem(key, text);
+        forgetWrittenBeforeRead(key);
+        delete unwrittenRecords[key];
+        // Stored merged with what an earlier owner of this account added (its
+        // own write refused): that owner's additions are in it now too.
+        ownersAwaitingCopy = ownersAwaitingCopy.filter((o) => profileStorageKey(o || profile) !== key);
+      } catch {
+        // Refused (quota): applied from memory, over the older record still in localStorage.
+        unwrittenRecords[key] = record;
+        ownersAwaitingCopy.push(owner);
+        recordsAwaitingCopy.push(key);
+      }
+    }
+    if (perAccount && profile !== null) switchProfile(profile, true);
+    return true;
+  }).then((restored) => {
+    restoreSettled = true;
+    if (!sharedRestorePending) {
+      endRecovery();
+    } else if (restored) {
+      // The shared record is still to be stored, so the next start reads the
+      // copy again: the changes are kept for it. What the counters added in
+      // an account is in that account's record, copied with it, so it goes;
+      // what they added to the shared totals is in no copy until the shared
+      // record is stored (endRecovery clears it then), so it stays. An
+      // account whose record localStorage refused too has it only once the
+      // copy does: its additions go then (below), not before.
+      for (const owner of Object.keys(beforeRestore.own)) {
+        if (ownersAwaitingCopy.indexOf(owner) === -1) beforeRestore.own[owner].counted = {};
+      }
+      saveBeforeRestore();
+    }
+    backupChecked = true;
+    // No copy, while localStorage has settings (a run after a failed read
+    // whose copy turned out empty): those are copied.
+    if (!restored && sharedConfigStored) copyStoredToBackup();
+    // Copied only if something was written meanwhile, or the restore kept
+    // changes in the shared record: with nothing changed there is nothing to keep.
+    if (backupMissed || sharedChangedByRestore) scheduleWrite();
+    const awaiting = sharedRestorePending ? ownersAwaitingCopy : [];
+    const awaitingRecords = recordsAwaitingCopy;
+    if (ownerRecordsToCopy.length) {
+      copyToBackup(ownerRecordsToCopy, awaiting.length ? (ok) => {
+        // Not stored: the next start applies them to the copy's older record, once.
+        if (!ok || !sharedRestorePending) return;
+        // The copy is now ahead of the record localStorage kept, so the next
+        // start takes the copy's. Unmarked, the additions stay in the journal.
+        if (!awaitingRecords.filter((key) => unwrittenRecords[key]).every(noteWrittenBeforeRead)) return;
+        for (const owner of awaiting) if (beforeRestore.own[owner]) beforeRestore.own[owner].counted = {};
+        saveBeforeRestore();
+      } : undefined);
+    }
+    ownerRecordsToCopy = [];
+    ownersAwaitingCopy = [];
+    recordsAwaitingCopy = [];
+    // A switch of account that waited for the read.
+    checkAccountChange();
+  }, () => {
+    // The copy could not be read: it is left as it is, nothing is copied over
+    // it this run, and the next start reads it again (RECOVERING_KEY stays).
+    restoreSettled = true;
+    checkAccountChange();
+  });
+}
+/**
+ * Settings that were in localStorage at the start are copied as they are, a
+ * little after the start, so the copy is there before anything is changed
+ * (settings stored by a version without the copy included).
+ */
+const BACKUP_COPY_DELAY_MS = 1500;
+function copyStoredToBackup() {
+  const entries = [];
+  try {
+    const storage = window.localStorage;
+    for (let i = 0; i < storage.length; i++) {
+      const key = storage.key(i);
+      if (key === CONFIG_KEY || (key && key.indexOf(CONFIG_KEY + '::') === 0)) entries.push([key, storage.getItem(key)]);
+    }
+  } catch { return; }
+  copyToBackup(entries);
+}
+if (typeof window !== 'undefined') {
+  if (sharedConfigStored && !recovering) {
+    setTimeout(copyStoredToBackup, BACKUP_COPY_DELAY_MS);
+  } else {
+    try { window.localStorage.setItem(RECOVERING_KEY, '1'); } catch { /* no storage */ }
+    restoreFromBackup();
+  }
 }
 
 export function configAddChangeListener(key, callback) {
