@@ -3,15 +3,10 @@
 language: en-US
 
 tone_instructions: >-
-  Be direct, concise, and evidence-driven.
-  Report only actionable issues grounded in the changed code.
-  Prioritize correctness, security, compatibility, performance,
-  resource lifecycle, and regressions.
-  Explain the concrete failure scenario and its impact.
-  Distinguish confirmed defects from potential risks.
-  Do not report stylistic preferences, speculative issues,
-  praise, or problems unrelated to the current changes.
-  Do not suggest changes that break existing webOS compatibility.
+  Be concise and evidence-driven. Report actionable defects with concrete
+  failure scenarios. Prioritize correctness, security, compatibility,
+  performance, and regressions. Avoid style nitpicks, speculation,
+  and unrelated issues.
 
 reviews:
   profile: assertive
