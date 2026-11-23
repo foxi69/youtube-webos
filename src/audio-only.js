@@ -115,8 +115,10 @@ export function toggleAudioOnly() {
   const before = streamsAudioOnly();
   streaming = on && !!configRead('audioOnlyStream');
   // Above 1x the picture is only hidden: no reload, the stream stays as it is.
-  if (streamsAudioOnly() !== before) reloadCurrentVideo();
-  showNotification(`Audio-Only Mode ${on ? 'Enabled' : 'Disabled'}`);
+  // No video to load again now (none playing, or the player names none for a
+  // moment): the stream changes with the next video, and the notice says so.
+  const reloaded = streamsAudioOnly() === before || reloadCurrentVideo();
+  showNotification(`Audio-Only Mode ${on ? 'Enabled' : 'Disabled'}${reloaded ? '' : ' from the next video'}`);
   return on;
 }
 

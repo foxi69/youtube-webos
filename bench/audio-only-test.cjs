@@ -15,6 +15,8 @@ const pad = 'z'.repeat(600);
 function boot(cfg) {
   let NS;
   const loads = [];
+  // The video the player reports; null: none for now (between two loads, say).
+  const playing = { id: 'aaaaaaaaaaa' };
   const page = bootPage({
     bodyClass: 'WEB_PAGE_TYPE_WATCH',
     url: 'https://www.youtube.com/tv#/watch?v=aaaaaaaaaaa',
@@ -31,7 +33,7 @@ function boot(cfg) {
     beforeEval: (w) => {
       const player = w.document.getElementById('ytlr-player__player-container-player');
       Object.assign(player, {
-        getVideoData: () => ({ video_id: 'aaaaaaaaaaa' }),
+        getVideoData: () => (playing.id ? { video_id: playing.id } : {}),
         getCurrentTime: () => 42.5,
         getPlayerState: () => 1,
         loadVideoById: (id, at) => loads.push(id + '@' + at),
@@ -46,7 +48,8 @@ function boot(cfg) {
     await wait(200);
   };
   const on = () => page.win.document.documentElement.classList.contains('ytaf-audio-only');
-  return Object.assign(page, { loads, parse, press, on });
+  const notice = () => (page.win.document.querySelector('.ytaf-notification-container') || {}).textContent || '';
+  return Object.assign(page, { loads, parse, press, on, playing, notice });
 }
 
 const response = () => ({
@@ -76,6 +79,19 @@ run(async () => {
     t('off: the picture comes back, and the video is loaded again with it',
       !env.on() && env.loads.length === 2 && untouched(env.parse(response())), env.loads.join());
     t('no page error', env.errors.length === 0, env.errors[0]);
+  }
+  {
+    // Switched off while the player names no video for a moment: the video
+    // cannot be loaded again with its picture now, and the notice says so
+    // instead of a plain Disabled.
+    const env = boot({ audioOnlyStream: true });
+    await wait(100);
+    await env.press();
+    t('off, no reload: precondition: on, loaded again', env.on() && env.loads.length === 1, env.loads.join());
+    env.playing.id = null;
+    await env.press();
+    t('off, no reload: the notice says the picture comes with the next video',
+      !env.on() && env.loads.length === 1 && /next video/.test(env.notice()), env.notice());
   }
   {
     // Subtitles on: the reload drops them (as the TV player's does), and they come back.
