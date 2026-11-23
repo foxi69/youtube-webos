@@ -1827,17 +1827,19 @@ function toggleSubtitlesLogic(player) {
               // TED talk, webOS 25). It only switches on, and has set the track
               // when it returns (measured on the TV).
               if (!toggledViaApi && typeof player.toggleSubtitlesOn === 'function') {
-                player.toggleSubtitlesOn();
+                // A player still starting can throw here: the track is read
+                // again (it may have been set), else the list below is tried.
+                try { player.toggleSubtitlesOn(); } catch { /* not ready */ }
                 const chosen = player.getOption('captions', 'track');
                 if (isOn(chosen)) {
                   showNotification(subtitlesOnNotice(chosen));
                   toggledViaApi = true;
                 }
               }
-              // Else from the list, or the video's own tracks when the list
-              // has none to use (they are the tracks already when it had none).
+              // Else from the tracks (captionTracks already gave the video's
+              // own when the list had none to use).
               if (!toggledViaApi) {
-                const target = pickCaptionTrack(tracks) || (tracks === list ? pickCaptionTrack(captionTracks(player, [])) : null);
+                const target = pickCaptionTrack(tracks);
                 if (target) switchOn(target);
               }
             }
