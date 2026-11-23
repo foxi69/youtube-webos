@@ -1123,6 +1123,35 @@ run(async () => {
     t('...and stays the style kept in the settings', stored(page.win).captionStyleBackup[CAPTION] === STYLE,
       JSON.stringify(stored(page.win).captionStyleBackup));
   }
+  {
+    // The copy's style comes back, but localStorage refuses its write-back once;
+    // the viewer then picks a style of their own: the retry leaves it.
+    const CAPTION = 'yt-player-caption-display-settings';
+    const STYLE = JSON.stringify({ color: '#ffff00' });
+    const DEFAULT = JSON.stringify({ color: '#ffffff' });
+    const PICKED = JSON.stringify({ color: '#00ff00' });
+    const backup = savedCopy([[KEY, JSON.stringify({ captionStyleBackup: { [CAPTION]: STYLE }, foxThemeApplied: true })]]);
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const quota = { on: false, refused: 0 };
+    const page = boot({ data: backup, log: [], idb: { gate }, setup: (w) => refuseKeys(w, (key) => key === CAPTION && quota.on && ++quota.refused > 0) });
+    await wait(100);
+    const now = Date.now();
+    page.win.localStorage.setItem(CAPTION, JSON.stringify({ data: DEFAULT, expiration: now + 1000, creation: now }));
+    quota.on = true;
+    release();
+    await until(() => quota.refused > 0, 3000);
+    quota.on = false;
+    t('refused write-back: precondition: the copy came back and its write-back was refused',
+      quota.refused > 0 && JSON.parse(page.win.localStorage.getItem(CAPTION)).data === DEFAULT, String(quota.refused));
+    page.win.localStorage.setItem(CAPTION, JSON.stringify({ data: PICKED, expiration: now + 200 * 86400000, creation: now }));
+    Object.defineProperty(page.win.document, 'hidden', { value: true, configurable: true });
+    page.win.document.dispatchEvent(new page.win.Event('visibilitychange'));
+    Object.defineProperty(page.win.document, 'hidden', { value: false, configurable: true });
+    await wait(100);
+    t('refused write-back: the retry leaves the style the viewer picked since', JSON.parse(page.win.localStorage.getItem(CAPTION)).data === PICKED,
+      page.win.localStorage.getItem(CAPTION));
+  }
 
   // ---- The caption style is written back once localStorage takes it ----
   {
