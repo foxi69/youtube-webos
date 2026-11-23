@@ -253,6 +253,8 @@ export function forceQualityOn(mode) {
 }
 
 export function forceQualityLines(mode) {
+  // Only a limit of the list: an unknown one (up360, say) caps nothing.
+  if (!Object.prototype.hasOwnProperty.call(forceQualityModes, mode)) return 0;
   const match = /^up(\d+)$/.exec(String(mode));
   return match ? Number(match[1]) : 0;
 }

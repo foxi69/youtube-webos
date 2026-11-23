@@ -86,6 +86,12 @@ run(async () => {
       itags(vertical) === '299,298,398,251', itags(vertical));
     t('up to 1080p: only the label to go by',
       itags(capped.parse(player([{ itag: 1, mimeType: 'video/mp4', qualityLabel: '1440p60' }, { itag: 2, mimeType: 'video/mp4', qualityLabel: '1080p60' }]))) === '2');
+    // A limit not in the list (up360, from a later build or a damaged copy)
+    // caps nothing; a listed one (up480) and Max are the controls.
+    const formats360 = () => player([video(398, 1280, 720), video(397, 854, 480), video(396, 640, 360), audio]);
+    t('an unknown limit (up360) caps nothing', itags(boot({ forceQuality: 'up360' }).parse(formats360())) === '398,397,396,251');
+    t('...a listed one (up480) does', itags(boot({ forceQuality: 'up480' }).parse(formats360())) === '397,396,251');
+    t('...and Max caps nothing either', itags(boot({ forceQuality: 'max' }).parse(formats360())) === '398,397,396,251');
     // Both on, the limit wins: the only 720p is upscaled, beside a native
     // 1440p. It stays and the 1440p goes, or the video would play above the
     // limit. With nothing under the limit at all, the upscaled one still goes.

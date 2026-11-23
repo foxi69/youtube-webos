@@ -247,5 +247,6 @@
   {"id":"counters-pending-journal","file":"src/config.js","from":"return !backupChecked || (sharedRestorePending && !activeProfile);","to":"return !backupChecked;","why":"A Reset while the shared record is refused is lost at the next start"},
   {"id":"force-unknown-off","file":"src/config.js","from":"return mode !== 'off' && Object.prototype.hasOwnProperty.call(forceQualityModes, mode);","to":"return mode !== 'off';","why":"An unknown stored mode forces Max"},
   {"id":"force-off-start-clears","file":"src/video-quality.js","from":"  if (!_shouldForce) clearLocalStorageQuality();\n","to":"","why":"An old 4320p record keeps forcing with the panel at Off"},
-  {"id":"backup-read-complete","file":"src/config-backup.js","from":"          if (!cursor) return;","to":"          if (!cursor) { resolve(out); return; }","why":"A read whose transaction aborts at its end counts as read"}
+  {"id":"backup-read-complete","file":"src/config-backup.js","from":"          if (!cursor) return;","to":"          if (!cursor) { resolve(out); return; }","why":"A read whose transaction aborts at its end counts as read"},
+  {"id":"force-lines-known-only","file":"src/config.js","from":"  if (!Object.prototype.hasOwnProperty.call(forceQualityModes, mode)) return 0;\n","to":"","why":"An unknown numeric limit (up360) caps the formats"}
 ]
