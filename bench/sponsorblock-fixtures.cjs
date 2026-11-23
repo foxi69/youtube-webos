@@ -100,6 +100,7 @@ function fakeVideo(win, video, duration) {
  *   consoleErrors  false: a console.error is not a page error (true)
  *
  * Resolves once the handler asked for the segments and applied the answer.
+ * Rejects when they are not asked for within 5 s.
  */
 // The bundle, read once for every boot of a test file.
 let bundle = null;
@@ -164,6 +165,8 @@ async function bootSponsorBlock(cfg, segments, opts = {}) {
   // The handler starts a moment after the page (about 0.8 s): wait for its
   // request, then for the answer to be applied.
   for (let i = 0; i < 100 && !net.asked.length; i++) await wait(50);
+  // None in 5 s: the test would check a page that never got its segments.
+  if (!net.asked.length) throw new Error('SponsorBlock fixture: the segments were never asked for');
   await wait(150);
 
   const toasts = () => (doc.querySelector('.ytaf-notification-container') || {}).textContent || '';
