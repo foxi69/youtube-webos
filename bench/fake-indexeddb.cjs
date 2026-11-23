@@ -21,7 +21,7 @@
  * that many first opens; opts.abortWrites: a write transaction
  * aborts (onabort) with none of its records changed; opts.txIds: an array
  * each write's [note, transaction number] is pushed to; opts.opened: set
- * to the number of opens asked for so far; opts.blockFirst: the first open
+ * to the number of opens asked for so far; opts.blockFirst: the first open (opts.blockMs: blocked that long, 20 ms by default)
  * is blocked (onblocked), then gets through 20 ms later, and opts.closed
  * counts the closes of that late connection. opts.conns: an array each
  * opened connection is pushed to; conn.drop() closes it as the browser does
@@ -155,7 +155,7 @@ function fakeIndexedDB(data, log, opts = {}) {
           setTimeout(() => {
             req.result = Object.assign({}, db, { close() { opts.closed = (opts.closed || 0) + 1; } });
             if (req.onsuccess) req.onsuccess();
-          }, 20);
+          }, opts.blockMs || 20);
           return;
         }
         if (fails) {

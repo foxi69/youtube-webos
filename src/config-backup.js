@@ -29,8 +29,14 @@ function forgetDb(db) {
  * (an error, blocked, a throw) rejects, so a read of it is not taken for an
  * empty copy.
  */
+// A blocked open whose request has not answered yet: another open would only
+// queue behind it (IndexedDB takes them in order), so none is asked meanwhile;
+// the reads and writes fail at once and the copy waits for the next one after it.
+let blockedOpen = false;
+
 function openDb() {
   if (dbPromise) return dbPromise;
+  if (blockedOpen) return Promise.reject(new Error('backup database still blocked'));
   dbPromise = new Promise((resolve, reject) => {
     let idb;
     try { idb = window.indexedDB || null; } catch { idb = null; }
@@ -49,6 +55,7 @@ function openDb() {
     const noAnswer = setTimeout(() => { gaveUp = true; reject(new Error('backup database gave no answer')); }, READ_TIMEOUT_MS);
     request.onsuccess = () => {
       clearTimeout(noAnswer);
+      blockedOpen = false;
       const db = request.result;
       if (gaveUp) {
         try { db.close(); } catch { /* gone already */ }
@@ -61,8 +68,8 @@ function openDb() {
       db.onversionchange = () => { try { db.close(); } catch { /* gone already */ } forgetDb(db); };
       resolve(db);
     };
-    request.onerror = () => { clearTimeout(noAnswer); reject(request.error || new Error('backup database failed to open')); };
-    request.onblocked = () => { clearTimeout(noAnswer); gaveUp = true; reject(new Error('backup database blocked')); };
+    request.onerror = () => { clearTimeout(noAnswer); blockedOpen = false; reject(request.error || new Error('backup database failed to open')); };
+    request.onblocked = () => { clearTimeout(noAnswer); gaveUp = true; blockedOpen = true; reject(new Error('backup database blocked')); };
   });
   // A failed open is not kept: the next read or write tries again, so one
   // passing error does not leave the rest of the run with no copy.

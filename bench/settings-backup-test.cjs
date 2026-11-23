@@ -1458,6 +1458,27 @@ run(async () => {
     t('...and a later write opens again and is copied', copied && idb.opened >= 2, `${idb.opened} ${data.get(KEY)}`);
   }
 
+  {
+    // Blocked for longer: while its request has not answered, a write asks no
+    // other open (it would only queue behind it); once it has, one does.
+    const data = new Map();
+    const idb = { blockFirst: true, blockMs: 1500 };
+    const page = boot({ config: { minVideoLength: '5', foxThemeApplied: true }, data, log: [], idb });
+    await until(() => idb.opened >= 1, 4000);
+    trustedKey(page.win, 404, page.win.document.body, 'keydown');
+    trustedKey(page.win, 404, page.win.document.body, 'keyup');
+    await until(() => page.win.document.querySelector('.ytaf-ui-container label'));
+    const box = () => Array.prototype.slice.call(page.win.document.querySelectorAll('label'))
+      .find((l) => l.textContent.trim() === 'Skip AI-Upscaled Qualities').querySelector('input');
+    box().click();
+    await wait(500);
+    t('blocked open, still pending: a write asks no other open', idb.opened === 1 && !idb.closed, `${idb.opened} ${idb.closed}`);
+    await until(() => idb.closed === 1, 3000);
+    box().click();
+    const copied = await until(() => data.has(KEY) && JSON.parse(data.get(KEY)).removeUpscaledFormats === true, 3000);
+    t('blocked open, answered: the next write opens again and is copied', copied && idb.opened === 2, `${idb.opened} ${data.get(KEY)}`);
+  }
+
   // ---- A read of the copy with no answer: the restore gives up, a switch of account works ----
   {
     // A recovery start (the mark left by a run whose read failed) with
