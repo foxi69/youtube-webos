@@ -111,6 +111,16 @@ run(async () => {
       cursor.onsuccess = () => resolve(cursor.result && cursor.result.value);
     });
     t('fixture: a read made after a write sees that write', firstSeen === 'newer shared', String(firstSeen));
+    // A read between two writes: it sees the first, not the one made after it.
+    conn.transaction('kv', 'readwrite').objectStore('kv').put('first', KEY);
+    const between = await new Promise((resolve) => {
+      const cursor = conn.transaction('kv').objectStore('kv').openCursor();
+      conn.transaction('kv', 'readwrite').objectStore('kv').put('last', KEY);
+      cursor.onsuccess = () => resolve(cursor.result && cursor.result.value);
+    });
+    t('fixture: a read between two writes sees the first, not the later one', between === 'first', String(between));
+    await until(() => copy.get(KEY) === 'last', 1000);
+    t('fixture: ...and the later write lands after it', copy.get(KEY) === 'last', String(copy.get(KEY)));
   }
 
   const data = new Map();

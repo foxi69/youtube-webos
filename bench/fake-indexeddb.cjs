@@ -37,23 +37,26 @@ function fakeIndexedDB(data, log, opts = {}) {
   if (!data.stores) data.stores = new Set();
   const notFound = (name) => Object.assign(new Error(`No objectStore named ${name}`), { name: 'NotFoundError' });
   let txCount = 0;
-  // As the real one: a readwrite transaction on the store waits for the read
-  // transactions in progress on it, so a cursor never sees a write land part
-  // way. A read is in progress from openCursor until its cursor ends, fails,
-  // or a record is delivered without continue() being called.
-  let activeReads = 0;
-  const waitingCommits = [];
-  const whenNoReads = (fn) => { if (activeReads) waitingCommits.push(fn); else fn(); };
-  const readDone = () => {
-    if (--activeReads === 0) for (const fn of waitingCommits.splice(0)) later(fn);
-  };
-  // Writes made before a read opens land before it reads, as transactions
-  // are ordered by when they were made: such a read waits for them.
-  let pendingWrites = 0;
-  const waitingReads = [];
-  const afterWrites = (fn) => { if (pendingWrites) waitingReads.push(fn); else fn(); };
-  const writeDone = () => {
-    if (--pendingWrites === 0) for (const fn of waitingReads.splice(0)) later(fn);
+  // As the real one, transactions on the store run in the order they were
+  // made: a write lands only once every transaction made before it is done
+  // (so a cursor never sees a write land part way), and a read starts only
+  // once the writes made before it have landed (so it sees them, and not a
+  // write made after it). Reads run side by side. A read is done when its
+  // cursor ends, fails, or delivers a record without continue() being called.
+  const order = [];
+  let seq = 0;
+  let waiters = [];
+  const earlierDone = (entry) => order.every((e) => e.id >= entry.id || e.done || (!entry.write && !e.write));
+  const enqueue = (write) => { const entry = { id: ++seq, write, done: false }; order.push(entry); return entry; };
+  const whenReady = (entry, fn) => { if (earlierDone(entry)) fn(); else waiters.push({ entry, fn }); };
+  const finish = (entry) => {
+    entry.done = true;
+    const waiting = waiters;
+    waiters = [];
+    for (const w of waiting) {
+      if (earlierDone(w.entry)) later(w.fn);
+      else waiters.push(w);
+    }
   };
   const transaction = (name, mode = 'readonly') => {
     if (!data.stores.has(name)) throw notFound(name);
@@ -67,8 +70,8 @@ function fakeIndexedDB(data, log, opts = {}) {
     const stage = (apply, note) => {
       staged.push({ apply, note });
       if (staged.length > 1) return;
-      pendingWrites++;
-      later(() => whenNoReads(() => {
+      const entry = enqueue(true);
+      later(() => whenReady(entry, () => {
         const aborted = !!opts.abortWrites;
         // Logged once done: a test that waits for the log finds the data there.
         for (const write of staged) {
@@ -78,7 +81,7 @@ function fakeIndexedDB(data, log, opts = {}) {
         }
         const finished = aborted ? tx.onabort : tx.oncomplete;
         if (finished) finished();
-        writeDone();
+        finish(entry);
       }));
     };
     tx.objectStore = (storeName) => {
@@ -87,6 +90,7 @@ function fakeIndexedDB(data, log, opts = {}) {
         put(value, key) { writable(); stage(() => data.set(key, value), 'put ' + key); },
         delete(key) { writable(); stage(() => data.delete(key)); },
         openCursor() {
+          const entry = enqueue(false);
           let keys = [];
           let i = 0;
           const req = { result: null, onsuccess: null, onerror: null };
@@ -95,7 +99,7 @@ function fakeIndexedDB(data, log, opts = {}) {
           // The transaction ends with its cursor: complete, or aborted by a failure.
           const end = (failed) => {
             ended = true;
-            readDone();
+            finish(entry);
             later(() => { const done = failed || opts.abortReads ? tx.onabort : tx.oncomplete; if (done) done(); });
           };
           const step = () => {
@@ -118,12 +122,11 @@ function fakeIndexedDB(data, log, opts = {}) {
             });
           };
           const begin = () => {
-            activeReads++;
             keys = Array.from(data.keys()).sort();
             if (opts.gate) opts.gate.then(step);
             else step();
           };
-          afterWrites(begin);
+          whenReady(entry, begin);
           return req;
         }
       };
