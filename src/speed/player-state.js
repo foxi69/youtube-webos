@@ -17,10 +17,13 @@ export const QUALITY_HEIGHTS = {
  * The level Force Max Quality asks for: 'highres' with no limit (Max); with
  * Up to `lines`, the best of `levels` (best first, as the player lists them)
  * up to that size, else the smallest (no hard limit, as with the formats).
+ * None named yet (only auto, a list being rebuilt): the limit's own level,
+ * never highres, which would be Max.
  */
 export function levelUpTo(levels, lines) {
   if (!lines) return 'highres';
   const named = (levels || []).filter((q) => q !== 'auto');
+  if (!named.length) return Object.keys(QUALITY_HEIGHTS).find((q) => q !== 'highres' && QUALITY_HEIGHTS[q] === lines) || 'highres';
   for (let i = 0; i < named.length; i++) {
     if (QUALITY_HEIGHTS[named[i]] && QUALITY_HEIGHTS[named[i]] <= lines) return named[i];
   }

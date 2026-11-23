@@ -181,6 +181,22 @@ run(async () => {
     }
     win.close();
   }
+  for (const [mode, want] of [['up480', 'large'], ['max', 'highres']]) {
+    // The player lists only auto (its list being rebuilt): back at 1x, Up to
+    // 480p asks for its own level, not highres (Max); Max is the control.
+    const { win, p, log, speed } = boot(0, { force: mode });
+    t('precondition: the speed feature is installed', !!speed);
+    if (speed) {
+      p.getAvailableQualityLevels = () => ['auto'];
+      speed.setSpeed(1.5, { immediate: true });
+      await sleep(900);
+      log.ranges.length = 0;
+      speed.setSpeed(1, { immediate: true });
+      await sleep(900);
+      t(`only auto listed, ${mode}: back at 1x the range is ${want}`, log.ranges[log.ranges.length - 1] === want, log.ranges.join());
+    }
+    win.close();
+  }
   {
     // Force Max Quality on, no pick: Max back at 1x, even after the 1080p cap was recorded.
     const { win, log, speed } = boot(0, { force: true });
