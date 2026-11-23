@@ -7,6 +7,7 @@ import { isLegacyWebOS } from './webos-utils.js';
 import { getVideo, rendererChapterStarts } from './utils.js';
 import { currentChannelName, isChannelWhitelisted, videoIdFromHash } from './sponsorblock-extras.js';
 import { fetchJsonWithTimeout } from './fetch-timeout.js';
+import { showSkipButton } from './sponsorblock-skip-button.js';
 import './sponsorblock.css';
 
 // The official server first. The community mirror is only asked when the
@@ -119,7 +120,13 @@ function normalizeSegments(segments) {
  * happens anyway is a much smaller cost than a setting that silently does not
  * apply.
  */
-const FETCH_ACTION_TYPES = encodeURIComponent(JSON.stringify(['skip', 'mute', 'full']));
+/*
+ * Chapters too: the community's chapters (category and actionType 'chapter',
+ * with a name in `description`) come only when asked for by their action type.
+ * They are never skipped, muted or drawn; Skip to Next/Previous Chapter uses
+ * them on a video with no chapters of its own (communityChapters).
+ */
+const FETCH_ACTION_TYPES = encodeURIComponent(JSON.stringify(['skip', 'mute', 'full', 'chapter']));
 
 const HAS_ABORT_CONTROLLER = typeof AbortController !== 'undefined';
 
@@ -1456,7 +1463,24 @@ class SponsorBlockHandler {
      */
     updateSegmentList() {
         const muting = !!configGetAll().enableMutedSegments;
-        sponsorBlockUI.updateSegments(this.segments.filter(s => !isFullVideoSegment(s) && (muting || s.actionType !== 'mute')));
+        sponsorBlockUI.updateSegments(this.segments.filter(s => !isFullVideoSegment(s) && s.category !== 'chapter' &&
+            (muting || s.actionType !== 'mute')));
+    }
+
+    /**
+     * The community's chapters of this video, in order: [{ start, end, name }].
+     * Skip to Next/Previous Chapter falls back to them (ui.js).
+     */
+    communityChapters() {
+        const out = [];
+        for (const seg of this.segments || []) {
+            if (seg.category !== 'chapter' || !seg.segment) continue;
+            const start = Number(seg.segment[0]);
+            const end = Number(seg.segment[1]);
+            if (!isFinite(start) || !isFinite(end) || end <= start) continue;
+            out.push({ start, end, name: typeof seg.description === 'string' ? seg.description.trim() : '' });
+        }
+        return out.sort((a, b) => a.start - b.start);
     }
 
     /**
@@ -2036,7 +2060,10 @@ class SponsorBlockHandler {
                 const title = categoryName.charAt(0).toUpperCase() + categoryName.slice(1);
 
                 if (this.activeManualNotification) this.activeManualNotification.remove();
-                this.activeManualNotification = showNotification(`${title}: Press Blue to skip`, 0);
+                // The Skip button, bottom right (sponsorblock-skip-button.js):
+                // the key skips it, and so does the Magic Remote pointer. The
+                // button only skips: taking an auto skip back is the key's.
+                this.activeManualNotification = showSkipButton(title, () => this.skipManualSegment());
             }
             return;
         }
@@ -2262,6 +2289,15 @@ class SponsorBlockHandler {
             this.clearManualNotification();
             return true;
         }
+        if (this.skipManualSegment()) return true;
+
+        // Pressed just after an auto skip: the skip is taken back.
+        if (this.undoLastSkip()) return true;
+        return this.jumpToNextHighlight();
+    }
+
+    /** Skips the manual segment offered now, if any. */
+    skipManualSegment() {
         if (this.currentManualSegment) {
             if (this.video) {
                 this.isSkipping = true;
@@ -2282,10 +2318,7 @@ class SponsorBlockHandler {
                 return true;
             }
         }
-
-        // Pressed just after an auto skip: the skip is taken back.
-        if (this.undoLastSkip()) return true;
-        return this.jumpToNextHighlight();
+        return false;
     }
 
     clearRefresh() {
@@ -2365,7 +2398,9 @@ class SponsorBlockHandler {
             const chosen = before[this.tempWhitelistIndex];
             this.tempWhitelistIndex = chosen && chosen.UUID ? segments.findIndex(s => s.UUID === chosen.UUID) : -1;
         }
-        const added = segments.length - before.length;
+        // The community's chapters are no segments to announce.
+        const skippable = (list) => list.filter(s => s.category !== 'chapter').length;
+        const added = skippable(segments) - skippable(before);
 
         this.segments = segments;
         this.segmentsSig = sig;

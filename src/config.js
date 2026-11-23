@@ -269,6 +269,29 @@ export const sbMinSegmentLengthModes = {
   10: '10 s'
 };
 
+/**
+ * Subtitle Delay (caption-style.js), in milliseconds: m = earlier, p = later.
+ * Not bare numbers as keys: an object lists those first, out of order.
+ */
+export const subtitleDelayModes = {
+  m2000: '2 s Earlier',
+  m1000: '1 s Earlier',
+  m500: '0.5 s Earlier',
+  m250: '0.25 s Earlier',
+  off: 'Off',
+  p250: '0.25 s Later',
+  p500: '0.5 s Later',
+  p1000: '1 s Later',
+  p2000: '2 s Later'
+};
+
+/** A Subtitle Delay mode in milliseconds (negative: earlier); 0 for Off. */
+export function subtitleDelayMs(mode) {
+  const match = /^([mp])(\d+)$/.exec(String(mode));
+  if (!match) return 0;
+  return (match[1] === 'm' ? -1 : 1) * Number(match[2]);
+}
+
 /** Subtitle Position (caption-style.js). */
 export const subtitlePositionModes = {
   default: 'Default',
@@ -369,6 +392,8 @@ const configOptions = new Map([
   ['sbShowTimeWithSkips', { default: false, desc: 'Show time with skips removed' }],
   // Segments shorter than this, in seconds, are not skipped or muted ('0': all are).
   ['sbMinSegmentLength', { default: '0', desc: 'Ignore Segments Shorter Than' }],
+  // Skip to Next/Previous Chapter on a video without chapters: SponsorBlock's (ui.js).
+  ['sbCommunityChapters', { default: true, desc: 'Use Community Chapters When a Video Has None' }],
   // Channel names, compared without case: nothing is skipped on their videos.
   ['sbWhitelistChannels', { default: [], desc: 'Never Skip on These Channels' }],
   // Off until switched on: a third party learns which segments were skipped.
@@ -393,8 +418,12 @@ const configOptions = new Map([
   ['subtitlesAtStart', { default: 'youtube', desc: 'Subtitles When a Video Starts' }],
   // Drops the dubbed audio tracks from the player response, so the original plays.
   ['forceOriginalAudio', { default: false, desc: 'Prefer Original Audio over Dubbed' }],
+  // audio-only.js: Audio-Only Mode asks the player for the sound alone.
+  ['audioOnlyStream', { default: false, desc: 'Audio-Only Mode Streams Audio Only' }],
   // caption-style.js: the subtitles lifted above where YouTube puts them.
   ['subtitlePosition', { default: 'default', desc: 'Subtitle Position' }],
+  // caption-style.js: the subtitles' times moved (subtitleDelayModes).
+  ['subtitleDelay', { default: 'off', desc: 'Subtitle Delay' }],
   // caption-style.js: YouTube's own caption style record, kept. Not shown in the panel.
   ['captionStyleBackup', { default: {}, desc: 'Subtitle style kept' }],
   ['seekStep', { default: '0', desc: 'Left/Right Seek Step (Controls Hidden)' }],
@@ -472,6 +501,10 @@ const configOptions = new Map([
   ['enableDeArrow', { default: false, desc: 'DeArrow' }],
   ['dearrowShowBadge', { default: true, desc: 'Show the DeArrow Logo on Crowdsourced Titles/Thumbnails' }],
   ['dearrowCrowdTitles', { default: true, desc: 'Crowdsourced Titles' }],
+  // dearrow/titles.js: YouTube's title stays where casual voters found it fine.
+  ['dearrowCasualMode', { default: false, desc: 'Casual Mode: Keep Titles Voted Fine' }],
+  // dearrow/lookup.js: titles as uploaded, not translated by YouTube (oEmbed).
+  ['dearrowUntranslatedTitles', { default: false, desc: 'Untranslated Titles' }],
   // Every title shown, crowdsourced or YouTube's own (the legacy build: Title Case alone).
   ['dearrowTitleFormatting', { default: isEnglishUI ? 'title_case' : 'disable', desc: 'Title Formatting' }],
   ['dearrowCleanEmojis', { default: true, desc: 'Remove Emojis and Fancy Text' }],

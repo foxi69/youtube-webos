@@ -11,7 +11,7 @@
 import { configRead, configWrite } from './config.js';
 import { showNotification } from './notifications.js';
 import { ResolveCommandRegistry } from './app_api/index';
-import { addToQueue } from './video-queue.js';
+import { addToQueue, clearQueue, queuedVideos } from './video-queue.js';
 
 // Marks our own menu entries, so a tile seen twice does not get them twice,
 // and our commands, so the resolveCommand hook knows them from YouTube's.
@@ -319,6 +319,8 @@ function runAction(custom) {
     blockChannel(params.name);
   } else if (custom.action === 'addToQueue') {
     addToQueue(String(params.videoId), String(params.title));
+  } else if (custom.action === 'clearQueue') {
+    clearQueue();
   } else if (custom.action === 'feedback') {
     const panel = { panelId: String(params.panelId), params: String(params.params) };
     sendFeedback(panel, Number(params.index) || 0).catch((err) => {
@@ -336,6 +338,52 @@ function customAction(command) {
 function safeRunAction(custom) {
   try { runAction(custom); }
   catch (err) { console.warn('[LongPress] Action failed:', custom.action, err); }
+}
+
+/**
+ * The Queue row under the player: a Clear queue tile, then the queued videos,
+ * next first, as YouTube's own tiles, each video with a long-press menu of its
+ * own (these tiles are added after the menus are extended). Put first in the
+ * rows of a watch-next response while the queue has videos (adblock.js). OK on
+ * a video plays it now, and it leaves the queue (video-queue.js). From TizenTube.
+ */
+// exceptId: the video the watch page opens (still queued while its response
+// is read, before it plays): not offered again on its own row.
+export function queueShelf(exceptId) {
+  const videos = queuedVideos().filter((video) => video.videoId !== exceptId);
+  if (!videos.length) return null;
+  const items = [{
+    tileRenderer: {
+      contentType: 'TILE_CONTENT_TYPE_VIDEO',
+      metadata: { tileMetadataRenderer: { title: { simpleText: 'Clear queue' } } },
+      onSelectCommand: actionEndpoint('clearQueue', {}),
+      style: 'TILE_STYLE_YTLR_DEFAULT'
+    }
+  }];
+  for (const video of videos) {
+    const item = {
+      tileRenderer: {
+        contentType: 'TILE_CONTENT_TYPE_VIDEO',
+        contentId: video.videoId,
+        header: { tileHeaderRenderer: { thumbnail: { thumbnails: [
+          { url: `https://i.ytimg.com/vi/${encodeURIComponent(video.videoId)}/hqdefault.jpg`, width: 480, height: 360 }
+        ] } } },
+        metadata: { tileMetadataRenderer: { title: { simpleText: video.title } } },
+        onSelectCommand: { watchEndpoint: { videoId: video.videoId } },
+        style: 'TILE_STYLE_YTLR_DEFAULT'
+      }
+    };
+    item.tileRenderer.onLongPressCommand = buildMenu(tileInfo(item), []);
+    items.push(item);
+  }
+  return {
+    shelfRenderer: {
+      shelfHeaderRenderer: { title: { simpleText: `Queue (${videos.length})` } },
+      tvhtml5ShelfRendererType: 'TVHTML5_SHELF_RENDERER_TYPE_GRID',
+      // The focus starts on the next video, not on Clear queue.
+      content: { horizontalListRenderer: { items, selectedIndex: 1, visibleItemCount: 3 } }
+    }
+  };
 }
 
 ResolveCommandRegistry.setHooks({
