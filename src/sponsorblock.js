@@ -591,17 +591,18 @@ class SponsorBlockHandler {
 
         if (!this.segments || this.segments.length === 0 || this.activeCategories.size === 0) {
             this.skipSegments = [];
+            this.backSegments = [];
             this.resetSegmentTracking();
             return;
         }
 
         this.skipSegments = [];
+        // The ones the backward shortcut seeks to: also those not skipped for
+        // Never Skip on These Channels or Ignore Segments Shorter Than, which
+        // stay marked on the seek bar.
+        this.backSegments = [];
         const config = configGetAll();
-        // Never Skip on These Channels: the segments stay on the seek bar.
-        if (this.channelWhitelisted()) {
-            this.resetSegmentTracking();
-            return;
-        }
+        const whitelisted = this.channelWhitelisted();
         const minLength = Number(config.sbMinSegmentLength) || 0;
 
         const len = this.segments.length;
@@ -613,17 +614,20 @@ class SponsorBlockHandler {
             const mode = config[CONFIG_MAPPING[seg.category]];
             if (!mode || mode === 'disable' || mode === 'seek_bar') continue;
             if (seg.actionType && seg.actionType !== 'skip') continue;
-            // Ignore Segments Shorter Than: too short to be worth a jump.
-            if (shorterThan(seg.segment[0], seg.segment[1], minLength)) continue;
 
-            this.skipSegments.push({
+            const entry = {
                 start: seg.segment[0],
                 end: seg.segment[1],
                 category: seg.category,
                 categoryName: this.getCategoryName(seg.category),
                 mode: mode,
                 originalIndex: i
-            });
+            };
+            this.backSegments.push(entry);
+            // Never Skip on These Channels; Ignore Segments Shorter Than: too
+            // short to be worth a jump.
+            if (whitelisted || shorterThan(seg.segment[0], seg.segment[1], minLength)) continue;
+            this.skipSegments.push(entry);
         }
         this.resetSegmentTracking();
     }
@@ -2213,14 +2217,15 @@ class SponsorBlockHandler {
     }
     
     skipToPreviousSegment() {
-    if (!this.video || !this.skipSegments.length) return false;
+    const list = this.backSegments || this.skipSegments;
+    if (!this.video || !list.length) return false;
 
     const currentTime = this.video.currentTime;
     let targetSeg = null;
 
-    for (let i = this.skipSegments.length - 1; i >= 0; i--) {
-        if (this.skipSegments[i].start < currentTime - 2) {
-            targetSeg = this.skipSegments[i];
+    for (let i = list.length - 1; i >= 0; i--) {
+        if (list[i].start < currentTime - 2) {
+            targetSeg = list[i];
             break;
         }
     }

@@ -167,6 +167,14 @@ run(async () => {
     t(n('min length: no page error'), env.errors.length === 0, env.errors[0]);
   }
   {
+    // Not skipped, but marked on the bar: the backward shortcut still goes to it.
+    const env = await boot({ sbMinSegmentLength: '5' }, [seg('sponsor', 30, 33)]);
+    await env.playTo(70);
+    const ok = env.sb().skipToPreviousSegment();
+    await wait(40);
+    t(n('min length: the backward shortcut goes back to a 3 s segment'), ok === true && env.state.time === 30, String(env.state.time));
+  }
+  {
     const env = await boot({ sbMinSegmentLength: '5', enableMutedSegments: true },
       [seg('sponsor', 30, 33, 'mute'), seg('selfpromo', 100, 120, 'mute')]);
     await env.playTo(30.2);
@@ -197,6 +205,11 @@ run(async () => {
     const env = await boot({ sbWhitelistChannels: ['some channel'] }, [seg('sponsor', 30, 60)]);
     await env.playTo(30.2);
     t(n('whitelist: nothing is skipped on a listed channel (no case)'), env.state.time === 30.2 && env.state.seeks.length === 0);
+    await env.playTo(70);
+    const ok = env.sb().skipToPreviousSegment();
+    await wait(40);
+    t(n('whitelist: the backward shortcut still goes to a segment marked on the bar'), ok === true && env.state.time === 30,
+      String(env.state.time));
   }
   {
     const env = await boot({ sbWhitelistChannels: ['Other Channel'] }, [seg('sponsor', 30, 60)]);
