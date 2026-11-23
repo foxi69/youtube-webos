@@ -1806,12 +1806,15 @@ function isUpscaledFormat(format) {
  * A video format's size in lines, as YouTube labels it, or 0: a landscape one
  * by its 16:9 height (a 21:9 2560x1072 is 1440p, a 4:3 1440x1080 is 1080p),
  * a vertical one by its short side (1080x1920 and 1080x2400 are 1080p).
+ * A size or label of another shape counts as not known (0), not an error
+ * that would stop the response's other filters.
  */
+const sizeOf = (v) => (typeof v === 'number' || typeof v === 'string' ? Number(v) || 0 : 0);
 function formatLines(format) {
-  const w = Number(format.width) || 0;
-  const h = Number(format.height) || 0;
+  const w = sizeOf(format.width);
+  const h = sizeOf(format.height);
   if (w > 0 && h > 0) return h > w ? w : Math.max(h, Math.round((w * 9) / 16));
-  const match = /(\d{3,4})p/.exec(format.qualityLabel || '');
+  const match = /(\d{3,4})p/.exec(typeof format.qualityLabel === 'string' ? format.qualityLabel : '');
   return match ? Number(match[1]) : 0;
 }
 

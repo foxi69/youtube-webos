@@ -86,6 +86,11 @@ run(async () => {
       itags(vertical) === '299,298,398,251', itags(vertical));
     t('up to 1080p: only the label to go by',
       itags(capped.parse(player([{ itag: 1, mimeType: 'video/mp4', qualityLabel: '1440p60' }, { itag: 2, mimeType: 'video/mp4', qualityLabel: '1080p60' }]))) === '2');
+    // A label of an unknown shape (one that cannot even be made a string): that
+    // format counts as of unknown size, and the cap still applies to the rest.
+    const odd = boot({ forceQuality: 'up720' }).parse(player([{ itag: 5, mimeType: 'video/mp4', qualityLabel: { toString: null } },
+      video(400, 2560, 1440), video(398, 1280, 720), audio]));
+    t('up to 720p: a label of another shape is not known, the cap still drops 1440p', itags(odd) === '5,398,251', itags(odd));
     t('up to 480p: a video with nothing that small keeps its formats',
       itags(boot({ forceQuality: 'up480' }).parse(player([video(399, 1920, 1080), video(398, 1280, 720), audio]))) === '399,398,251');
     // Its control: with a 480p format there, the cap applies (480p stays, 720p goes).
