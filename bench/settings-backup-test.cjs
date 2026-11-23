@@ -74,14 +74,18 @@ run(async () => {
     const copy = savedCopy([[KEY, 'old shared'], [PROFILE_KEY, 'old profile']]);
     const idb = fakeIndexedDB(copy, []);
     const req = idb.open('ytaf-settings-backup', 1);
-    const conn = await new Promise((resolve) => { req.onsuccess = () => resolve(req.result); });
+    const conn = await new Promise((resolve, reject) => {
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(new Error('fixture: opening the backup database failed'));
+    });
     const seen = [];
     let wrote = false;
     // The store itself when the cursor gives its second record: the write must
     // still be waiting then, not merely hidden from the cursor.
     let duringRead = null;
-    const done = new Promise((resolve) => {
+    const done = new Promise((resolve, reject) => {
       const cursor = conn.transaction('kv').objectStore('kv').openCursor();
+      cursor.onerror = () => reject(new Error('fixture: cursor failed during the concurrent write'));
       cursor.onsuccess = () => {
         const c = cursor.result;
         if (!c) { resolve(); return; }
@@ -106,17 +110,19 @@ run(async () => {
     // The other order: a write made first, then a read: the read sees it.
     const tx = conn.transaction('kv', 'readwrite');
     tx.objectStore('kv').put('newer shared', KEY);
-    const firstSeen = await new Promise((resolve) => {
+    const firstSeen = await new Promise((resolve, reject) => {
       const cursor = conn.transaction('kv').objectStore('kv').openCursor();
       cursor.onsuccess = () => resolve(cursor.result && cursor.result.value);
+      cursor.onerror = () => reject(new Error('fixture: cursor failed after a write'));
     });
     t('fixture: a read made after a write sees that write', firstSeen === 'newer shared', String(firstSeen));
     // A read between two writes: it sees the first, not the one made after it.
     conn.transaction('kv', 'readwrite').objectStore('kv').put('first', KEY);
-    const between = await new Promise((resolve) => {
+    const between = await new Promise((resolve, reject) => {
       const cursor = conn.transaction('kv').objectStore('kv').openCursor();
       conn.transaction('kv', 'readwrite').objectStore('kv').put('last', KEY);
       cursor.onsuccess = () => resolve(cursor.result && cursor.result.value);
+      cursor.onerror = () => reject(new Error('fixture: cursor failed between two writes'));
     });
     t('fixture: a read between two writes sees the first, not the later one', between === 'first', String(between));
     // Ordered from creation, not from the first request: a writer made before
@@ -124,10 +130,11 @@ run(async () => {
     await until(() => copy.get(KEY) === 'last', 1000);
     t('fixture: ...and the later write lands after it', copy.get(KEY) === 'last', String(copy.get(KEY)));
     const writer = conn.transaction('kv', 'readwrite');
-    const madeFirst = await new Promise((resolve) => {
+    const madeFirst = await new Promise((resolve, reject) => {
       const cursor = conn.transaction('kv').objectStore('kv').openCursor();
       writer.objectStore('kv').put('from the writer made first', KEY);
       cursor.onsuccess = () => resolve(cursor.result && cursor.result.value);
+      cursor.onerror = () => reject(new Error('fixture: cursor failed when the writer was created before the cursor and wrote after it'));
     });
     t('fixture: a cursor sees a writer made before it, though its put came later', madeFirst === 'from the writer made first', String(madeFirst));
   }
@@ -160,10 +167,10 @@ run(async () => {
 
   // ---- localStorage emptied: the next start gets them back ----
   const second = boot({ data, log });
-  await wait(300);
+  const restored = await until(() => (stored(second.win) || {}).minVideoLength === '5', 3000);
   const back = stored(second.win);
   t('an app started with no settings writes the copy back',
-    !!back && back.minVideoLength === '5' && back.blockedChannels[0] === 'Some Channel' && back.removeUpscaledFormats === false, JSON.stringify(back));
+    restored && !!back && back.blockedChannels[0] === 'Some Channel' && back.removeUpscaledFormats === false, JSON.stringify(back));
   trustedKey(second.win, 404, second.win.document.body, 'keydown');
   trustedKey(second.win, 404, second.win.document.body, 'keyup');
   await wait(300);
@@ -174,15 +181,15 @@ run(async () => {
   t('...and nothing threw', second.errors.length === 0, second.errors[0]);
 
   // ---- Per-account profiles go back too ----
+  const profileKey = KEY + '::0123456789abcdef';
   const profiles = savedCopy([
     [KEY, JSON.stringify({ perAccountSettings: true, foxThemeApplied: true })],
-    [KEY + '::0123456789abcdef', JSON.stringify({ minVideoLength: '20' })]
+    [profileKey, JSON.stringify({ minVideoLength: '20' })]
   ]);
   const third = boot({ data: profiles, log: [] });
-  await wait(300);
+  const profileRestored = await until(() => (stored(third.win, profileKey) || {}).minVideoLength === '20', 3000);
   t('a profile is written back with the shared settings',
-    !!stored(third.win) && stored(third.win).perAccountSettings === true &&
-    !!stored(third.win, KEY + '::0123456789abcdef') && stored(third.win, KEY + '::0123456789abcdef').minVideoLength === '20');
+    profileRestored && !!stored(third.win) && stored(third.win).perAccountSettings === true);
 
   // ---- No copy: the defaults stay, and a write after it is copied ----
   const empty = new Map();
@@ -1500,16 +1507,20 @@ run(async () => {
     // Blocked until the test lets it through, after checking the pending state.
     let letThrough;
     const idb = { blockFirst: true, blockGate: new Promise((r) => { letThrough = r; }) };
-    const page = boot({ config: { minVideoLength: '5', foxThemeApplied: true }, data, log: [], idb });
+    const page = boot({ config: { minVideoLength: '5', foxThemeApplied: true, removeUpscaledFormats: true }, data, log: [], idb });
     await until(() => idb.opened >= 1, 4000);
     trustedKey(page.win, 404, page.win.document.body, 'keydown');
     trustedKey(page.win, 404, page.win.document.body, 'keyup');
     await until(() => page.win.document.querySelector('.ytaf-ui-container label'));
     const box = () => Array.prototype.slice.call(page.win.document.querySelectorAll('label'))
       .find((l) => l.textContent.trim() === 'Skip AI-Upscaled Qualities').querySelector('input');
+    t('blocked open, still pending: Skip AI-Upscaled Qualities starts on', box().checked === true);
     box().click();
-    await wait(500);
-    t('blocked open, still pending: a write asks no other open', idb.opened === 1 && !idb.closed, `${idb.opened} ${idb.closed}`);
+    const persisted = await until(() => (stored(page.win) || {}).removeUpscaledFormats === false, 3000);
+    t('blocked open, still pending: the first edit is saved locally', persisted, JSON.stringify(stored(page.win)));
+    // Time for that write to ask for the copy, had it been going to open again.
+    await wait(300);
+    t('blocked open, still pending: a write asks no other open', persisted && idb.opened === 1 && !idb.closed, `${idb.opened} ${idb.closed}`);
     letThrough();
     t('blocked open, answered: the late connection is closed', await until(() => idb.closed === 1, 3000), String(idb.closed));
     box().click();
