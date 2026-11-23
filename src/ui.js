@@ -1765,7 +1765,10 @@ function usableTrack(track) {
 // track in it that can be switched on).
 function captionTracks(player, trackList) {
     if (Array.isArray(trackList) && trackList.some(usableTrack)) return trackList;
-    const videoData = player.getVideoData ? player.getVideoData() : null;
+    // A player still starting can throw here: no tracks then, and the
+    // player's own choice (toggleSubtitlesOn) is still tried.
+    let videoData = null;
+    try { videoData = typeof player.getVideoData === 'function' ? player.getVideoData() : null; } catch { /* not ready */ }
     return videoData && Array.isArray(videoData.captionTracks) ? videoData.captionTracks : [];
 }
 

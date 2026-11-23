@@ -404,6 +404,20 @@ run(async () => {
     t(n('subtitles: a list with nothing to use, the video\'s own tracks'), set.length === 1 && set[0].languageCode === 'de', JSON.stringify(set));
   }
   {
+    // No list yet and the video's data throwing (a player still starting):
+    // the player's own choice is still tried.
+    const env = await boot();
+    const player = env.doc.getElementById('ytlr-player__player-container-player');
+    let track = {};
+    player.getOption = (m, k) => (k === 'track' ? track : []);
+    player.setOption = (m, k, v) => { track = v; };
+    player.getVideoData = () => { throw new Error('not ready'); };
+    player.toggleSubtitlesOn = () => { track = { languageCode: 'en', name: 'English' }; };
+    await env.press(D(K.subs));
+    t(n('subtitles: the video\'s data throwing, the player\'s own choice still switches them on'),
+      track.languageCode === 'en' && /Subtitles: ON \(English\)/.test(env.toasts()), env.toasts());
+  }
+  {
     // A list entry that names no track ({}, what switches them off): not
     // switched on as a track, the video's own tracks instead.
     const env = await boot();
