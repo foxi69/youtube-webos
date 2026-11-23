@@ -13,7 +13,7 @@
  * Chrome 87 (webOS 22) does, so the modern run gets a stand-in the test
  * drives, and the legacy run (Chrome 38, none) injects without one.
  */
-const { createReporter, flavorFromArgs, readBundle, bootPage, dispatchTrusted, wait } = require('./harness.cjs');
+const { createReporter, flavorFromArgs, readBundle, bootPage, trustedKey, wait } = require('./harness.cjs');
 
 // `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
 // with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
@@ -198,9 +198,8 @@ const shown = (win, cls) => {
 const shiftCss = (win) => (win.document.getElementById('ryd-shift-style') || {}).textContent;
 
 function key(win, target, name, code) {
-  const e = new win.KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true });
-  Object.defineProperty(e, 'keyCode', { get: () => code, configurable: true });
-  return dispatchTrusted(target, e);   // false: the press was taken
+  // false: the press was taken
+  return !trustedKey(win, code, target, 'keydown', { key: name }).defaultPrevented;
 }
 
 run(async () => {

@@ -5,20 +5,14 @@
  *
  * Usage: node bench/guide-fit-test.cjs [bundle] [legacy|modern]
  */
-const { flavorFromArgs, bootPage, wait, UA } = require('./harness.cjs');
+const { createReporter, flavorFromArgs, bootPage, wait, UA } = require('./harness.cjs');
 
 // `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment.
 // The legacy one runs with no environment applied (see boot); the user agent
 // is webOS 23 on both.
 const { modern } = flavorFromArgs();
 
-let passed = 0;
-let failed = 0;
-const t = (name, ok, extra) => {
-  if (ok) passed++;
-  else failed++;
-  console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${ok || extra === undefined ? '' : ' -> ' + extra}`);
-};
+const { t, run } = createReporter();
 
 function guideEl(win, width) {
   const g = win.document.createElement('ytlr-guide-response');
@@ -62,7 +56,7 @@ function boot(cfg, width) {
   return { win, guide, observers, errors };
 }
 
-(async () => {
+run(async () => {
   {
     const { win, guide, observers } = boot({ fitPageBesideGuide: false }, 400);
     await wait(500);
@@ -97,6 +91,4 @@ function boot(cfg, width) {
     // The checks every 2 s after it ran without an error (one that threw would measure nothing either).
     t('a removed guide: no page error on the checks after it', errors.length === 0, errors[0]);
   }
-  console.log(`${passed} passed, ${failed} failed`);
-  process.exit(failed ? 1 : 0);
-})();
+});

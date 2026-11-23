@@ -14,97 +14,47 @@
  * their delays and fires them itself. The <video> and the API are faked as in
  * sponsorblock-skip-test.
  */
-const { createReporter, flavorFromArgs, readBundle, bootPage, wait } = require('./harness.cjs');
+const { createReporter, flavorFromArgs, wait } = require('./harness.cjs');
+const { VIDEO_ID, OTHER_ID, BAR_MULTI, seg, bootSponsorBlock } = require('./sponsorblock-fixtures.cjs');
 
 // `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
 // with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
 const { modern } = flavorFromArgs();
-const code = readBundle();
 
-const VIDEO_ID = 'abcdefghijk';
-const OTHER_ID = 'zyxwvutsrqp';
 const MIN = 60 * 1000;
 const REFRESH_DELAYS = [5, 10, 15, 20, 30].map((m) => m * MIN);
 
 const { t, run } = createReporter();
 
-const seg = (category, start, end, actionType = 'skip') =>
-  ({ UUID: `${category}-${start}-${actionType}`, category, actionType, segment: [start, end] });
-
-const BAR = '<div class="bar-host"><ytlr-multi-markers-player-bar-renderer><ytlr-progress-bar>' +
-  '<div idomkey="progress-bar"></div></ytlr-progress-bar></ytlr-multi-markers-player-bar-renderer></div>';
-
-// A <video> whose time, play state and duration the test sets.
-function fakeVideo(win, video, duration) {
-  const state = { time: 0, paused: false, muted: false, seeks: [] };
-  const fire = (type) => video.dispatchEvent(new win.Event(type));
-  Object.defineProperties(video, {
-    currentTime: {
-      configurable: true,
-      get: () => state.time,
-      set: (v) => {
-        state.time = v;
-        state.seeks.push(v);
-        fire('seeking');
-        setTimeout(() => fire('seeked'), 5);
-      }
-    },
-    duration: { configurable: true, get: () => duration },
-    paused: { configurable: true, get: () => state.paused },
-    seeking: { configurable: true, get: () => false },
-    readyState: { configurable: true, get: () => 4 },
-    muted: { configurable: true, get: () => state.muted, set: (v) => { state.muted = !!v; } },
-    play: { configurable: true, value: () => { state.paused = false; fire('playing'); return Promise.resolve(); } },
-    pause: { configurable: true, value: () => { state.paused = true; fire('pause'); } }
-  });
-  const playTo = async (time) => {
-    state.time = time;
-    fire('timeupdate');
-    await wait(40);   // the rAF loop, the toast, a seek's 'seeked'
-  };
-  const seekTo = async (time) => {
-    video.currentTime = time;
-    await wait(40);
-  };
-  return { state, playTo, seekTo };
-}
-
 /**
- * The bundle on a watch page. net.segments is what the API answers for this
+ * The bundle on a watch page (sponsorblock-fixtures.cjs), with Periodically
+ * Check for New Segments on. net.segments is what the API answers for this
  * video (net.other for OTHER_ID), net.status what both servers answer.
  * opts.noVideo: the <video> is not in the page yet.
+ *
+ * The refresh's timers are held for the test to fire; with opts.fastRetry the
+ * 2 s and 4 s waits before asking failed servers again are cut short.
  */
 async function boot(cfg, segments, opts = {}) {
-  const { win, doc, errors, evaluate } = bootPage({
-    code,
-    bodyClass: 'WEB_PAGE_TYPE_WATCH',
-    inner: `\n    <div id="ytlr-player__player-container-player">${opts.noVideo ? '' : '<video></video>'}</div>${BAR}`,
-    url: `https://www.youtube.com/tv#/watch?v=${VIDEO_ID}`,
-    ignoreNavigation: true,
-    config: Object.assign({
-      enableAdBlock: false, enableSponsorBlock: true, enableReturnYouTubeDislike: false,
-      enableDeArrow: false, thumbnailQuality: 'off', enableAutoLogin: false,
-      checkForUpdates: false, showWhatsNew: false, sbPeriodicRefresh: true
-    }, cfg),
-    evaluate: false
-  });
-
-  // The refresh's timers are held for the test to fire; with opts.fastRetry
-  // the 2 s and 4 s waits before asking failed servers again are cut short.
   const held = [];
-  const realTimeout = win.setTimeout.bind(win);
-  const realClear = win.clearTimeout.bind(win);
-  let nextId = 1e7;
-  win.setTimeout = (fn, ms, ...args) => {
-    if (REFRESH_DELAYS.indexOf(ms) !== -1) { held.push({ fn, ms, id: ++nextId }); return nextId; }
-    if (opts.fastRetry && (ms === 2000 || ms === 4000)) return realTimeout(fn, 1, ...args);
-    return realTimeout(fn, ms, ...args);
-  };
-  win.clearTimeout = (id) => {
-    const i = held.findIndex((h) => h.id === id);
-    if (i !== -1) held.splice(i, 1);
-    else realClear(id);
-  };
+  const env = await bootSponsorBlock(Object.assign({ sbPeriodicRefresh: true }, cfg), segments, Object.assign({}, opts, {
+    bar: BAR_MULTI,
+    beforeEval: (win) => {
+      const realTimeout = win.setTimeout.bind(win);
+      const realClear = win.clearTimeout.bind(win);
+      let nextId = 1e7;
+      win.setTimeout = (fn, ms, ...args) => {
+        if (REFRESH_DELAYS.indexOf(ms) !== -1) { held.push({ fn, ms, id: ++nextId }); return nextId; }
+        if (opts.fastRetry && (ms === 2000 || ms === 4000)) return realTimeout(fn, 1, ...args);
+        return realTimeout(fn, ms, ...args);
+      };
+      win.clearTimeout = (id) => {
+        const i = held.findIndex((h) => h.id === id);
+        if (i !== -1) held.splice(i, 1);
+        else realClear(id);
+      };
+    }
+  }));
   const refreshes = () => held.map((h) => h.ms / MIN);
   // The pending refresh comes due.
   const fireRefresh = async () => {
@@ -112,67 +62,10 @@ async function boot(cfg, segments, opts = {}) {
     held.shift().fn();
     await wait(80);
   };
-
-  const net = { segments, other: [], status: opts.status || 200, asked: [] };
-  win.fetch = (resource) => {
-    const url = String(resource && resource.url || resource);
-    if (url.indexOf('/skipSegments/') === -1) return new Promise(() => {});
-    net.asked.push(url);
-    const body = [{ videoID: VIDEO_ID, segments: JSON.parse(JSON.stringify(net.segments)) },
-      { videoID: OTHER_ID, segments: JSON.parse(JSON.stringify(net.other)) }];
-    return Promise.resolve({ ok: net.status === 200, status: net.status, json: () => Promise.resolve(body) });
-  };
-  let v = null;
-  if (!opts.noVideo) v = fakeVideo(win, win.document.querySelector('video'), 600);
-  evaluate();
-  for (let i = 0; i < 100 && !net.asked.length; i++) await wait(50);
-  await wait(150);
-  const toasts = () => (doc.querySelector('.ytaf-notification-container') || {}).textContent || '';
-  const overlay = () => doc.getElementById('previewbar');
-  const marks = () => {
-    const o = overlay();
-    return o ? Array.prototype.slice.call(o.querySelectorAll('.previewbar')) : [];
-  };
-  const lefts = () => marks().map((m) => Math.round(parseFloat(m.style.left))).join();
-  const rows = () => Array.prototype.map.call(doc.querySelectorAll('.sb-segments-popup .sb-segment-row'),
+  const lefts = () => env.marks().map((m) => Math.round(parseFloat(m.style.left))).join();
+  const rows = () => Array.prototype.map.call(env.doc.querySelectorAll('.sb-segments-popup .sb-segment-row'),
     (r) => r.querySelector('.sb-segment-time').textContent);
-  const labelsCss = () => (doc.getElementById('sb-labels') || {}).textContent || '';
-  const playerState = (s) => { win.dispatchEvent(new win.CustomEvent('yt-player-state-change', { detail: { state: s } })); };
-  // A new <video> in the player, replacing the one there.
-  const newVideo = () => {
-    const el = doc.createElement('video');
-    const fv = fakeVideo(win, el, 600);
-    const box = doc.getElementById('ytlr-player__player-container-player');
-    const old = box.querySelector('video');
-    if (old) box.removeChild(old);
-    box.appendChild(el);
-    return Object.assign({ el }, fv);
-  };
-
-  let openedAt = 0;
-  const openPanel = async () => {
-    win.ytaf_showOptionsPanel(true);
-    if (!openedAt) openedAt = Date.now();
-    await wait(30);
-    doc.querySelectorAll('.ytaf-tab-btn')[3].click();
-    await wait(30);
-  };
-  const toggle = async (text) => {
-    const labels = doc.querySelectorAll('.ytaf-ui-container label');
-    for (let i = 0; i < labels.length; i++) {
-      const span = labels[i].querySelector('.label-text');
-      if (span && span.textContent === text) {
-        const input = labels[i].querySelector('input');
-        input.checked = !input.checked;
-        input.dispatchEvent(new win.Event('change', { bubbles: true }));
-        await wait(50);
-        return input.checked;
-      }
-    }
-    throw new Error('no switch "' + text + '" in the panel');
-  };
-  return { win, doc, errors, net, ...(v || {}), video: v && doc.querySelector('video'), toasts, overlay, marks, lefts,
-    rows, labelsCss, playerState, newVideo, refreshes, fireRefresh, openPanel, toggle, sb: () => win.sponsorblock };
+  return Object.assign(env, { refreshes, fireRefresh, lefts, rows });
 }
 
 run(async () => {
