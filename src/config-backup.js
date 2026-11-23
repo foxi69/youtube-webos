@@ -101,7 +101,7 @@ function openForWrite(ms) {
       const answer = (db, error) => {
         // Answered: a later write adds its own handler (run at once).
         if (openWaitersFor === opening) openWaitersFor = null;
-        waiters.forEach((waiter) => waiter(db, error));
+        waiters.forEach((waiter) => { waiter(db, error); });
         waiters.clear();
       };
       opening.then((db) => answer(db, null), (e) => answer(null, e));

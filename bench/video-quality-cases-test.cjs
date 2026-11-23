@@ -353,6 +353,22 @@ run(async () => {
     t('range set, then a failure: the next buffering sets no range again', !log.calls.some((c) => c.startsWith('range')),
       log.calls.join());
   }
+  // The same while playing: the video is paused, the range set, the next call
+  // fails; the next playing state does not pause and set it again.
+  {
+    const { log, s, emit } = boot({ forceQuality: 'max' }, { quality: 'hd720', state: 1, qualityThrows: true });
+    await wait(80);
+    t('playing, range set, then a failure: precondition: paused, the range went through, the next call threw',
+      log.calls.includes('pause') && log.calls.includes('range:highres') && log.calls.includes('quality-threw'), log.calls.join());
+    s.quality = 'hd720';
+    log.calls.length = 0;
+    emit(1);
+    await wait(50);
+    emit(1);
+    await wait(50);
+    t('playing, range set, then a failure: the next playing state sets no range again', !log.calls.some((c) => c.startsWith('range')),
+      log.calls.join());
+  }
   // A limit moved while a video plays, at 1x with no speed reload: a level the
   // viewer picked on this video stays; Force's own record does not hold it back.
   {

@@ -125,6 +125,22 @@ run(async () => {
     win.document.body.className = 'WEB_PAGE_TYPE_WATCH';
     t('per account: the video left, the next one plays at the account’s own speed', win.ytafSpeed.getSpeed() === 1,
       win.ytafSpeed.getSpeed());
+    // Again while a video plays, to the 2x account, and the viewer then sets
+    // 1.25x on that video: leaving it keeps the viewer's speed, not the 2x
+    // that was waiting for the next video.
+    win.localStorage.setItem('yt.leanback.default::last-identity-used', identity('abc'));
+    win.dispatchEvent(new win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: true } }));
+    win.dispatchEvent(new win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: false } }));
+    await wait(200);
+    t('per account: precondition: the 2x account loaded mid-video, the video keeps 1x', win.ytafSpeed.getSpeed() === 1,
+      win.ytafSpeed.getSpeed());
+    win.ytafSpeed.setSpeed(1.25, { immediate: true });
+    win.document.body.className = 'WEB_PAGE_TYPE_BROWSE';
+    win.dispatchEvent(new win.CustomEvent('ytaf-page-update', { detail: { isWatch: false } }));
+    await wait(50);
+    win.document.body.className = 'WEB_PAGE_TYPE_WATCH';
+    t('per account: a speed the viewer set after the change stays when the video is left', win.ytafSpeed.getSpeed() === 1.25,
+      win.ytafSpeed.getSpeed());
   }
 
   // ---- Remember Playback Speed ----

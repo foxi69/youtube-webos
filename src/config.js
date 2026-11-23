@@ -1196,7 +1196,6 @@ function restoreFromBackup() {
         // Stored merged with what an earlier owner of this account added (its
         // own write refused): that owner's additions are in it now too.
         ownersAwaitingCopy = ownersAwaitingCopy.filter((o) => profileStorageKey(o || profile) !== key);
-        recordsAwaitingCopy = recordsAwaitingCopy.filter((k) => k !== key);
       } catch {
         // Refused (quota): applied from memory, over the older record still in localStorage.
         unwrittenRecords[key] = record;
