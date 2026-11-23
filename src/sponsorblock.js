@@ -1020,16 +1020,20 @@ class SponsorBlockHandler {
 
     /**
      * Whether a skip segment belongs to an undone skip: those segments play
-     * until playback passes where the skip had gone.
+     * until playback passes where their skip had gone (each skip's own end).
      */
     isUndone(skipSeg) {
         const undone = this.undone;
         if (!undone || !this.video) return false;
-        if (this.video.currentTime >= undone.until) {
-            this.clearUndone();
+        const key = this.segmentKey(skipSeg.originalIndex);
+        const until = undone.keys.get(key);
+        if (until === undefined) return false;
+        if (this.video.currentTime >= until) {
+            undone.keys.delete(key);
+            if (!undone.keys.size) this.clearUndone();
             return false;
         }
-        return undone.keys.has(this.segmentKey(skipSeg.originalIndex));
+        return true;
     }
 
     /** Ends an undone skip's exemption (playback passed it, or the handler goes). */
@@ -1083,20 +1087,23 @@ class SponsorBlockHandler {
         const elapsed = (Date.now() - last.at) / 1000;
         if (Math.abs(this.video.currentTime - last.to) > elapsed * 2 + 2) return false;
         this.lastAutoSkip = null;
-        const keys = new Set(last.keys.filter(Boolean));
+        // Each segment's key, with where its skip had gone: it plays until then.
+        const keys = new Map(last.keys.filter(Boolean).map((key) => [key, last.to]));
         // Its segments gone in a refresh: nothing left to take back.
         if (!this.segments.some((seg, i) => keys.has(this.segmentKey(i)))) return false;
         const video = this.video;
         // An undo still in force on this video keeps its segments playing too
         // (one undone, another skip then undone before passing the first).
         const prior = this.undone && this.undone.video === video ? this.undone : null;
-        if (prior) prior.keys.forEach((key) => { keys.add(key); });
-        const until = prior ? Math.max(prior.until, last.to) : last.to;
+        if (prior) prior.keys.forEach((until, key) => { keys.set(key, Math.max(until, keys.get(key) || 0)); });
         this.clearUndone();
         // Its own timeupdate listener: the skip listener is off once no
-        // segment is ahead, and playback passing the skip must end it.
-        const onTime = () => { if (video.currentTime >= until) this.clearUndone(); };
-        this.undone = { keys, until, video, onTime };
+        // segment is ahead, and playback passing a skip's end must end its part.
+        const onTime = () => {
+            keys.forEach((until, key) => { if (video.currentTime >= until) keys.delete(key); });
+            if (!keys.size) this.clearUndone();
+        };
+        this.undone = { keys, video, onTime };
         video.addEventListener('timeupdate', onTime);
         // Our own seek: the highlight's guard (autoJumpToHighlight) leaves it.
         this.ownSkipTarget = last.from;

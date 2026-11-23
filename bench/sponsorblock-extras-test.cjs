@@ -909,6 +909,32 @@ run(async () => {
     t(n('undo, two segments: passing them ends it'), env.sb().undone === null);
   }
   {
+    // Two undos, each ending at its own landing point: A (30 to 60) undone,
+    // then B (25 to 30, stopped at A's start) undone. Past 30, B's ends while
+    // A's goes on: from 25 again, B is skipped and A still plays.
+    const clock = {};
+    const env = await boot({}, [seg('sponsor', 30, 60), seg('selfpromo', 25, 30)], { clock });
+    await env.playTo(30.2);
+    t(n('two undos: precondition: A skipped'), env.state.time === 60, String(env.state.time));
+    await press(env.win, BLUE);
+    env.video.currentTime = 20;
+    await wait(30);
+    await env.playTo(25.2);
+    t(n('two undos: precondition: B skipped, stopped at the undone A'), env.state.time === 30, String(env.state.time));
+    // A second Blue at the same instant is a repeat: the clock moves on a little.
+    clock.now += 500;
+    await press(env.win, BLUE);
+    t(n('two undos: precondition: B undone'), env.state.time === 25.2, String(env.state.time));
+    await env.playTo(28);
+    await env.playTo(36);
+    env.video.currentTime = 20;
+    await wait(30);
+    await env.playTo(25.2);
+    t(n('two undos: past B’s end, B is skipped again'), env.state.time === 30, String(env.state.time));
+    await env.playTo(30.5);
+    t(n('two undos: ...and A, still undone, plays'), env.state.time === 30.5, String(env.state.time));
+  }
+  {
     // A refresh puts a segment before it: the undo still frees the skipped one.
     const clock = {};
     const env = await boot({}, [seg('sponsor', 30, 60)], { clock });
