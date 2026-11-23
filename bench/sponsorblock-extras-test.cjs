@@ -808,6 +808,24 @@ run(async () => {
       String(env.state.time));
   }
   {
+    // The same, with the Skip button clicked (the Magic Remote pointer): it
+    // says Skip, so it skips the manual segment to 70 s; only the key takes
+    // the auto skip back.
+    const clock = {};
+    const env = await boot({ sbMode_outro: 'manual_skip' },
+      [seg('sponsor', 30, 40), seg('selfpromo', 40.1, 60), seg('outro', 40.1, 70)], { clock });
+    await env.playTo(31);
+    await wait(50);
+    await env.playTo(40.3);
+    const button = env.win.document.querySelector('.ytaf-sb-skip-button');
+    t(n('auto skip onto a manual segment, Skip button: precondition: offered'), !!button && !!env.sb().currentManualSegment);
+    clock.now += 500;
+    if (button) button.click();
+    await wait(50);
+    t(n('auto skip onto a manual segment, Skip button: skips the manual segment, to 70 s'), Math.abs(env.state.time - 70) < 0.01,
+      String(env.state.time));
+  }
+  {
     // 30 to 40 and 40.1 to 60 chain, and a manual segment at 40.1 cuts the
     // jump at its start: 40.1 to 60 is not crossed, so not reported.
     const env = await boot({ sbReportSkips: true, sbMode_outro: 'manual_skip' },

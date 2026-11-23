@@ -2061,8 +2061,9 @@ class SponsorBlockHandler {
 
                 if (this.activeManualNotification) this.activeManualNotification.remove();
                 // The Skip button, bottom right (sponsorblock-skip-button.js):
-                // the key skips it, and so does the Magic Remote pointer.
-                this.activeManualNotification = showSkipButton(title, () => this.handleBlueButton());
+                // the key skips it, and so does the Magic Remote pointer. The
+                // button only skips: taking an auto skip back is the key's.
+                this.activeManualNotification = showSkipButton(title, () => this.skipManualSegment());
             }
             return;
         }
@@ -2288,6 +2289,15 @@ class SponsorBlockHandler {
             this.clearManualNotification();
             return true;
         }
+        if (this.skipManualSegment()) return true;
+
+        // Pressed just after an auto skip: the skip is taken back.
+        if (this.undoLastSkip()) return true;
+        return this.jumpToNextHighlight();
+    }
+
+    /** Skips the manual segment offered now, if any. */
+    skipManualSegment() {
         if (this.currentManualSegment) {
             if (this.video) {
                 this.isSkipping = true;
@@ -2308,10 +2318,7 @@ class SponsorBlockHandler {
                 return true;
             }
         }
-
-        // Pressed just after an auto skip: the skip is taken back.
-        if (this.undoLastSkip()) return true;
-        return this.jumpToNextHighlight();
+        return false;
     }
 
     clearRefresh() {
