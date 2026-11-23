@@ -71,12 +71,20 @@ reviews:
         markup, data shapes and globals change without notice: flag code that
         breaks the page or throws when they are missing instead of degrading.
         Flag work done on every frame or every DOM mutation that a TV CPU
-        would feel, and timers or listeners that are never removed.
+        would feel, and timers or listeners that are never removed. Do not
+        flag failure modes of the settings backup and recovery (config.js,
+        config-backup.js) that need two or more storage failures at once (for
+        example localStorage refusing one record while taking another, and the
+        IndexedDB write failing too): these are documented limitations, kept
+        on purpose.
     - path: "bench/**"
       instructions: >-
-        Behaviour tests run by bench/ci.sh in CI. Check that each assertion
-        would fail if the logic it covers broke, and that timing does not make
-        a test pass by luck.
+        Behaviour tests run by bench/ci.sh in CI. Flag a test only when the
+        logic it covers could break in a realistic way while the test still
+        passes, or when real timing (not a contrived scheduler order) can make
+        it pass by luck. Do not ask for extra preconditions, controls or
+        fixture modelling for failure modes that need an unlikely combination
+        of events.
     - path: ".github/workflows/**"
       instructions: >-
         Check permissions, that actions stay pinned to commits, and that
