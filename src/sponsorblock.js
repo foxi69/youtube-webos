@@ -2253,6 +2253,15 @@ class SponsorBlockHandler {
     }
 
     handleBlueButton() {
+        // An auto skip that landed where this manual segment starts (a chain
+        // cut at it): Blue takes the skip back first, as the README says it
+        // does within 8 s, and the manual segment is offered again on the way.
+        const last = this.lastAutoSkip;
+        const manual = this.currentManualSegment;
+        if (last && manual && Math.abs(manual.start - last.to) < 0.5 && this.undoLastSkip()) {
+            this.clearManualNotification();
+            return true;
+        }
         if (this.currentManualSegment) {
             if (this.video) {
                 this.isSkipping = true;

@@ -861,6 +861,23 @@ run(async () => {
     t(n(`report on: chain from ${from} s: reports what the jump crossed`), uuids === want, uuids);
   }
   {
+    // The same cut chain without reporting: the jump lands at the manual
+    // segment's start, which then offers its own skip. Blue within the 8 s
+    // takes the auto skip back (to 31 s), not the manual skip to 70 s.
+    const clock = {};
+    const env = await boot({ sbMode_outro: 'manual_skip' },
+      [seg('sponsor', 30, 40), seg('selfpromo', 40.1, 60), seg('outro', 40.1, 70)], { clock });
+    await env.playTo(31);
+    await wait(50);
+    t(n('auto skip onto a manual segment: precondition: the jump stopped at 40.1'), env.state.time === 40.1, String(env.state.time));
+    await env.playTo(40.3);
+    t(n('auto skip onto a manual segment: precondition: the manual segment is offered'), !!env.sb().currentManualSegment);
+    clock.now += 500;
+    await press(env.win, BLUE);
+    t(n('auto skip onto a manual segment: Blue takes the auto skip back, to 31 s'), Math.abs(env.state.time - 31) < 0.01,
+      String(env.state.time));
+  }
+  {
     // 30 to 40 and 40.1 to 60 chain, and a manual segment at 40.1 cuts the
     // jump at its start: 40.1 to 60 is not crossed, so not reported.
     const env = await boot({ sbReportSkips: true, sbMode_outro: 'manual_skip' },
