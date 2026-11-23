@@ -1,11 +1,12 @@
 import { configGetAll, configAddChangeListener, forceQualityLines } from './config';
+import { streamsAudioOnly, makeAudioOnly } from './audio-only.js';
 import { isShortsPage, isSearchPage } from './utils';
 import { getWebOSVersion } from './webos-utils';
 import { FetchRegistry } from './hooks/fetch';
 import { upgradeResponseThumbnails } from './thumbnail-quality.js';
 import { raiseRowsAhead } from './rows-ahead.js';
 import { itemTitle, itemChannel, itemDurationSeconds, itemWatchedPercent, itemAgeDays, keepsWatchedVideos, playingPlaylistId, isMixItem } from './feed-filters.js';
-import { extendLongPressMenu } from './long-press-menu.js';
+import { extendLongPressMenu, queueShelf } from './long-press-menu.js';
 import { noteQueuePlayability } from './video-queue.js';
 import { applyDeArrow } from './dearrow/index.js';
 import { extractAiVideoId } from './ai-video-id.js';
@@ -790,6 +791,27 @@ function filterSafely(data, text) {
   } catch (e) {
     if (DEBUG) console.error('[AdBlock] Error during filtering:', e);
   }
+  try {
+    addQueueShelf(data);
+  } catch (e) {
+    if (DEBUG) console.error('[AdBlock] Queue row failed:', e);
+  }
+}
+
+/**
+ * The Queue row, first under the player in a watch-next response, after the
+ * filters (Hide Recommended Videos leaves it), whatever is on.
+ */
+function addQueueShelf(data) {
+  const rows = data.contents && data.contents.singleColumnWatchNextResults &&
+    data.contents.singleColumnWatchNextResults.pivot &&
+    data.contents.singleColumnWatchNextResults.pivot.sectionListRenderer &&
+    data.contents.singleColumnWatchNextResults.pivot.sectionListRenderer.contents;
+  if (!Array.isArray(rows)) return;
+  const current = data.currentVideoEndpoint && data.currentVideoEndpoint.watchEndpoint &&
+    data.currentVideoEndpoint.watchEndpoint.videoId;
+  const shelf = queueShelf(typeof current === 'string' ? current : undefined);
+  if (shelf) rows.unshift(shelf);
 }
 
 /**
@@ -828,6 +850,8 @@ function filterResponse(data, text) {
   if (text.indexOf(AUTOTRANSITION_KEY) !== -1 || text.indexOf(PLAYLIST_LIST_KEY) !== -1 ||
     (cfgFlags.continuePreviews && BLOCK_ADOPTION_RE.test(text)))
     fixPreviewCommands(data, cfgFlags.continuePreviews);
+  // Audio-Only Mode streaming the sound alone, whatever else is on.
+  if (streamsAudioOnly()) makeAudioOnly(data);
   if (!anyResponseFilterEnabled) return;
 
   // The legacy emoji fix walks every item it filters; a text without an
@@ -1460,7 +1484,8 @@ function hideRecommendedVideos(data, schema) {
   const playlistId = data.currentVideoEndpoint?.watchEndpoint?.playlistId;
   const kept = playlistId ? list.contents.filter((entry) => isPlaylistRow(entry, playlistId)) : [];
   if (DEBUG) debugLog(`NEXT: Hid ${list.contents.length - kept.length} recommended row(s)`);
-  if (!kept.length && results && results.pivot) {
+  // Nothing left: the rows go, unless the Queue row comes (addQueueShelf).
+  if (!kept.length && results && results.pivot && !queueShelf()) {
     delete results.pivot;
     return;
   }

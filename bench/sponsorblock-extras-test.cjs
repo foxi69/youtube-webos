@@ -5,146 +5,52 @@
  *
  *   node bench/sponsorblock-extras-test.cjs <bundle> [legacy|modern]
  *
- * The harness is sponsorblock-skip-test's, with the player's channel name.
+ * The page and the API are sponsorblock-fixtures.cjs's.
  */
-const { createReporter, flavorFromArgs, readBundle, bootPage, trustedKey, wait, until } = require('./harness.cjs');
+const { createReporter, flavorFromArgs, trustedKey, wait, until } = require('./harness.cjs');
+const { VIDEO_ID, BAR_MULTI, seg, fakeVideo, bootSponsorBlock } = require('./sponsorblock-fixtures.cjs');
 
-// `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
-// with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
 const { modern } = flavorFromArgs();
-const code = readBundle();
-
-const VIDEO_ID = 'abcdefghijk';
-const PRIMARY = 'https://sponsor.ajay.app/api/skipSegments/';
 
 const { t, run } = createReporter();
 
-const seg = (category, start, end, actionType = 'skip') =>
-  ({ UUID: `${category}-${start}`, category, actionType, segment: [start, end] });
-
-// A <video> whose time, play state and duration the test sets; state.dropSeeked:
-// that many next seeks send no 'seeked' (lost, as on the TV).
-function fakeVideo(win, video, duration) {
-  const state = { time: 0, paused: false, muted: false, seeks: [], ready: 4, dropSeeked: 0 };
-  const fire = (type) => video.dispatchEvent(new win.Event(type));
-  Object.defineProperties(video, {
-    currentTime: {
-      configurable: true,
-      get: () => state.time,
-      set: (v) => {
-        state.time = v;
-        state.seeks.push(v);
-        fire('seeking');
-        if (state.dropSeeked > 0) state.dropSeeked--;
-        else setTimeout(() => fire('seeked'), 5);
-      }
-    },
-    duration: { configurable: true, get: () => duration },
-    paused: { configurable: true, get: () => state.paused },
-    seeking: { configurable: true, get: () => false },
-    readyState: { configurable: true, get: () => state.ready },
-    muted: { configurable: true, get: () => state.muted, set: (v) => { state.muted = !!v; } },
-    play: { configurable: true, value: () => { state.paused = false; fire('playing'); return Promise.resolve(); } },
-    pause: { configurable: true, value: () => { state.paused = true; fire('pause'); } }
-  });
-  // Playback reaching `time`: a timeupdate there, as the element sends.
-  const playTo = async (time) => {
-    state.time = time;
-    fire('timeupdate');
-    await wait(40);   // the rAF loop, the toast, a seek's 'seeked'
-  };
-  return { state, playTo };
-}
-
-/**
- * The bundle on a watch page with `segments` from the API. `api` decides what
- * each server answers: { primary: status, fallback: status } (200 by default).
- */
-async function boot(cfg, segments, opts = {}) {
-  const { win, errors, evaluate } = bootPage({
-    code,
-    bodyClass: 'WEB_PAGE_TYPE_WATCH',
-    inner: '\n    <div id="ytlr-player__player-container-player"><video></video></div>',
-    url: `https://www.youtube.com/tv#/watch?v=${VIDEO_ID}`,
-    ignoreNavigation: true,
-    consoleErrors: false,
-    // opts.copy: localStorage empty, the settings come from this copy in IndexedDB.
-    config: opts.copy ? undefined : Object.assign({
-      enableAdBlock: false, enableSponsorBlock: true, enableReturnYouTubeDislike: false,
-      enableDeArrow: false, thumbnailQuality: 'off', enableAutoLogin: false,
-      checkForUpdates: false, showWhatsNew: false, sbPeriodicRefresh: false
-    }, cfg),
-    evaluate: false,
-    storage: opts.storage
-  });
-  const asked = [];
-  const reported = [];
-  const api = opts.api || {};
-  win.fetch = (resource, init) => {
-    const url = String(resource && resource.url || resource);
-    if (url.indexOf('/viewedVideoSponsorTime') !== -1) {
-      reported.push((init && init.method) + ' ' + url);
-      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
-    }
-    if (url.indexOf('/skipSegments/') === -1) return new Promise(() => {});
-    asked.push(url);
-    const status = url.indexOf(PRIMARY) === 0 ? (api.primary || 200) : (api.fallback || 200);
-    const body = [{ videoID: VIDEO_ID, segments: JSON.parse(JSON.stringify(segments)) }];
-    return Promise.resolve({ ok: status === 200, status, json: () => Promise.resolve(body) });
-  };
-  const player = win.document.getElementById('ytlr-player__player-container-player');
-  // opts.videoId: the video the player reports (the one before, say), undefined for none.
-  player.getVideoData = () => ({
-    video_id: 'videoId' in opts ? opts.videoId : VIDEO_ID,
-    author: 'author' in opts ? opts.author : 'Some Channel'
-  });
-  const video = win.document.querySelector('video');
-  const v = fakeVideo(win, video, 'duration' in opts ? opts.duration : 600);
-  if (opts.startAt) v.state.time = opts.startAt;
-  if (opts.readyState !== undefined) v.state.ready = opts.readyState;
-  // opts.holdClock: the page's Date.now stands still, so a window the bundle
-  // times with it (the highlight's 4 s) cannot run out on a slow machine.
-  if (opts.holdClock) {
-    const held = win.Date.now();
-    win.Date.now = () => held;
-  }
-  // opts.clock: the page's Date.now is { now }, moved by the test.
-  if (opts.clock) {
-    opts.clock.now = win.Date.now();
-    win.Date.now = () => opts.clock.now;
-  }
-  if (opts.copy) win.indexedDB = fakeIndexedDB(opts.copy, [], opts.idb || {});
+// The bundle on a watch page with `segments` from the API (sponsorblock-fixtures.cjs).
+// The same `opts` object, so a test can change opts.author afterwards.
+const boot = (cfg, segments, opts = {}) => {
+  if (opts.consoleErrors === undefined) opts.consoleErrors = false;
+  if (!('author' in opts)) opts.author = 'Some Channel';
   // opts.refuse: keys localStorage refuses to store (quota); opts.refused counts the refusals.
   // Refused by setItem and by assignment alike (the app writes both ways), as
   // settings-backup-test's stand-in does.
   if (opts.refuse) {
-    const real = win.localStorage;
-    const refuse = (key) => {
-      if (opts.refuse.indexOf(key) !== -1) { opts.refused = (opts.refused || 0) + 1; throw new Error('QuotaExceededError'); }
+    const before = opts.beforeEval;
+    opts.beforeEval = (win) => {
+      const real = win.localStorage;
+      const refuse = (key) => {
+        if (opts.refuse.indexOf(key) !== -1) { opts.refused = (opts.refused || 0) + 1; throw new Error('QuotaExceededError'); }
+      };
+      const proxy = new Proxy(real, {
+        get(target, prop) {
+          if (prop === 'setItem') return (key, value) => { refuse(key); target.setItem(key, value); };
+          const value = Reflect.get(target, prop);
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+        set(target, prop, value) { refuse(prop); target.setItem(prop, String(value)); return true; }
+      });
+      Object.defineProperty(win, 'localStorage', { configurable: true, get: () => proxy });
+      if (before) before(win);
     };
-    const proxy = new Proxy(real, {
-      get(target, prop) {
-        if (prop === 'setItem') return (key, value) => { refuse(key); target.setItem(key, value); };
-        const value = Reflect.get(target, prop);
-        return typeof value === 'function' ? value.bind(target) : value;
-      },
-      set(target, prop, value) { refuse(prop); target.setItem(prop, String(value)); return true; }
-    });
-    Object.defineProperty(win, 'localStorage', { configurable: true, get: () => proxy });
   }
   // opts.beforeEvaluate(win): set up the page (hold a timer, say) before the bundle runs.
-  if (opts.beforeEvaluate) opts.beforeEvaluate(win);
-  evaluate();
-  // The handler starts a moment after the page (about 0.8 s): wait for its
-  // request, then for the answer to be applied.
-  for (let i = 0; i < 100 && !asked.length; i++) await wait(50);
-  await wait(150);
-  const toasts = () => (win.document.querySelector('.ytaf-notification-container') || {}).textContent || '';
-  return { win, errors, asked, reported, video, ...v, toasts, sb: () => win.sponsorblock };
-}
+  if (opts.beforeEvaluate) {
+    const earlier = opts.beforeEval;
+    const setUp = opts.beforeEvaluate;
+    opts.beforeEval = (win) => { if (earlier) earlier(win); setUp(win); };
+  }
+  return bootSponsorBlock(cfg, segments, opts);
+};
 
-
-const { fakeIndexedDB, savedCopy, hashString } = require('./fake-indexeddb.cjs');
+const { savedCopy, hashString } = require('./fake-indexeddb.cjs');
 const stored = (win) => JSON.parse(win.localStorage.getItem('ytaf-configuration') || '{}');
 const BLUE = 406;
 const press = async (win, code) => {
@@ -854,7 +760,7 @@ run(async () => {
     await env.playTo(30.2);
     await wait(50);
     t(n('report on: the skipped segment is reported viewed, by its UUID'),
-      env.reported.length === 1 && env.reported[0] === 'POST https://sponsor.ajay.app/api/viewedVideoSponsorTime?UUID=sponsor-30',
+      env.reported.length === 1 && env.reported[0] === 'POST https://sponsor.ajay.app/api/viewedVideoSponsorTime?UUID=sponsor-30-skip',
       env.reported.join());
   }
   {
@@ -863,7 +769,7 @@ run(async () => {
     await wait(50);
     const uuids = env.reported.map((r) => r.split('UUID=')[1]).sort().join();
     t(n('report on: a segment nested in a chain skip is reported too'),
-      env.state.seeks.join() === '60' && uuids === 'selfpromo-10,sponsor-0', `${env.state.seeks.join()} ${uuids}`);
+      env.state.seeks.join() === '60' && uuids === 'selfpromo-10-skip,sponsor-0-skip', `${env.state.seeks.join()} ${uuids}`);
   }
   {
     // The jump from the start made at 0.4 s: a segment nested at 0.1 to 0.25 s
@@ -874,9 +780,9 @@ run(async () => {
     const uuids = env.reported.map((r) => r.split('UUID=')[1]).sort().join();
     t(n('report on: precondition: the jump from the start was made at 0.4 s'), env.state.seeks.join() === '60',
       env.state.seeks.join());
-    t(n('report on: a start jump from 0.4 s does not report a segment already behind it'), uuids === 'sponsor-0', uuids);
+    t(n('report on: a start jump from 0.4 s does not report a segment already behind it'), uuids === 'sponsor-0-skip', uuids);
   }
-  for (const [from, want] of [[0.4, 'selfpromo-0.3'], [0, 'selfpromo-0.3,sponsor-0']]) {
+  for (const [from, want] of [[0.4, 'selfpromo-0.3-skip'], [0, 'selfpromo-0.3-skip,sponsor-0-skip']]) {
     // A chain of 0 to 0.2 and 0.3 to 60: its first segment is crossed only by a jump made before 0.2 s.
     const env = await boot({ sbReportSkips: true }, [seg('sponsor', 0, 0.2), seg('selfpromo', 0.3, 60)], { startAt: from });
     await wait(50);
@@ -902,6 +808,24 @@ run(async () => {
       String(env.state.time));
   }
   {
+    // The same, with the Skip button clicked (the Magic Remote pointer): it
+    // says Skip, so it skips the manual segment to 70 s; only the key takes
+    // the auto skip back.
+    const clock = {};
+    const env = await boot({ sbMode_outro: 'manual_skip' },
+      [seg('sponsor', 30, 40), seg('selfpromo', 40.1, 60), seg('outro', 40.1, 70)], { clock });
+    await env.playTo(31);
+    await wait(50);
+    await env.playTo(40.3);
+    const button = env.win.document.querySelector('.ytaf-sb-skip-button');
+    t(n('auto skip onto a manual segment, Skip button: precondition: offered'), !!button && !!env.sb().currentManualSegment);
+    clock.now += 500;
+    if (button) button.click();
+    await wait(50);
+    t(n('auto skip onto a manual segment, Skip button: skips the manual segment, to 70 s'), Math.abs(env.state.time - 70) < 0.01,
+      String(env.state.time));
+  }
+  {
     // 30 to 40 and 40.1 to 60 chain, and a manual segment at 40.1 cuts the
     // jump at its start: 40.1 to 60 is not crossed, so not reported.
     const env = await boot({ sbReportSkips: true, sbMode_outro: 'manual_skip' },
@@ -911,7 +835,7 @@ run(async () => {
     const uuids = env.reported.map((r) => r.split('UUID=')[1]).sort().join();
     t(n('report on, cut at a chained start: precondition: the jump stopped at 40.1'), env.state.seeks[0] === 40.1,
       env.state.seeks.join());
-    t(n('report on, cut at a chained start: only the segment crossed is reported'), uuids === 'sponsor-30', uuids);
+    t(n('report on, cut at a chained start: only the segment crossed is reported'), uuids === 'sponsor-30-skip', uuids);
   }
   {
     // A manual segment at 40 cuts the jump inside both auto segments: both
@@ -922,7 +846,7 @@ run(async () => {
     const uuids = env.reported.map((r) => r.split('UUID=')[1]).sort().join();
     t(n('report on: a manual segment cuts the chain: the jump stops at its start'), env.state.seeks[0] === 40, env.state.seeks.join());
     t(n('report on: a manual segment cuts the chain: the auto segments it crossed are reported, the manual one is not'),
-      uuids === 'selfpromo-10,sponsor-0', uuids);
+      uuids === 'selfpromo-10-skip,sponsor-0-skip', uuids);
   }
   {
     // A segment nested in the one skipped, already behind the playhead: not
@@ -1269,6 +1193,115 @@ run(async () => {
     const env = await boot({ sbWhitelistChannels: ['Other Channel'] }, [seg('sponsor', 30, 60)], { videoId: undefined });
     await env.playTo(30.2);
     t(n('whitelist, no video ID in the data: its channel counts as known'), env.state.time === 60, String(env.state.time));
+  }
+  // ---- Community chapters ----
+  {
+    const chapter = (start, end, name) => Object.assign(seg('chapter', start, end, 'chapter'), { description: name });
+    const segments = [chapter(30, 60, 'Intro'), chapter(100, 200, 'Main part'), seg('sponsor', 300, 330)];
+    // With the seek bar, so the sponsor segment's mark is drawn and the chapters' are not.
+    const env = await boot({ shortcut_key_4: 'chapter_skip_prev' }, segments, { bar: BAR_MULTI });
+    const KEY_5 = 53;
+    const chapterKey = async () => { await press(env.win, KEY_5); await wait(700); };
+    // The API sends chapters only when asked for by their action type.
+    const actionTypes = env.asked.map((u) => new URL(u).searchParams.get('actionTypes'));
+    t(n('chapters: the request asks for the chapter action type'),
+      JSON.stringify(actionTypes) === JSON.stringify(['["skip","mute","full","chapter"]']), JSON.stringify(actionTypes));
+    // The segment list lists the sponsor segment (it does list), but not the chapters.
+    const listed = Array.prototype.map.call(env.doc.querySelectorAll('.sb-segments-popup .sb-segment-row .sb-segment-time'),
+      (r) => r.textContent);
+    t(n('chapters: the segment list has only the sponsor segment'),
+      JSON.stringify(listed) === '["05:00 to 05:30"]', JSON.stringify(listed));
+    await env.playTo(30.2);
+    t(n('chapters: a chapter is not skipped'), env.state.time === 30.2, String(env.state.time));
+    t(n('chapters: and has no mark on the bar'), env.marks().length === 1, String(env.marks().length));
+    await env.playTo(10);
+    await chapterKey();
+    t(n('chapters: Next Chapter goes to the first chapter, with its name'),
+      env.state.time === 30 && env.toasts().indexOf('Next Chapter: Intro') !== -1, `${env.state.time} ${env.toasts()}`);
+    await chapterKey();
+    t(n('chapters: ...then to its end'), env.state.time === 60, String(env.state.time));
+    await chapterKey();
+    t(n('chapters: ...then to the next one'), env.state.time === 100 && env.toasts().indexOf('Main part') !== -1, String(env.state.time));
+    env.state.time = 101.5;
+    await press(env.win, 52);
+    await wait(700);
+    t(n('chapters: Previous Chapter just after a start goes to the stop before it'), env.state.time === 60, String(env.state.time));
+  }
+  {
+    const env = await boot({ sbCommunityChapters: false },
+      [Object.assign(seg('chapter', 30, 60, 'chapter'), { description: 'Intro' })]);
+    await env.playTo(10);
+    await press(env.win, 53);
+    await wait(700);
+    t(n('chapters off: no chapters found'), env.state.time === 10 && env.toasts().indexOf('No chapters found') !== -1, env.toasts());
+  }
+  {
+    // The video's own chapter times, with no marker elements mounted: they win over the community's.
+    const env = await boot({}, [Object.assign(seg('chapter', 30, 60, 'chapter'), { description: 'Intro' })], { bar: BAR_MULTI });
+    env.win.document.querySelector('ytlr-multi-markers-player-bar-renderer').__instance =
+      { props: { data: { chapters: [{ start: 0 }, { start: 120 }] } } };
+    await env.playTo(10);
+    await press(env.win, 53);
+    await wait(700);
+    t(n('chapters: native start times without markers win over community chapters'), env.state.time === 120, String(env.state.time));
+  }
+  // ---- The Skip button of a Manual Skip segment ----
+  {
+    const env = await boot({ sbMode_sponsor: 'manual_skip' }, [seg('sponsor', 30, 60)]);
+    // The player at the left two thirds of a 1920x1080 screen (a side panel open beside it).
+    const box = { left: 0, top: 0, right: 1280, bottom: 720, width: 1280, height: 720 };
+    env.player.getBoundingClientRect = () => box;
+    Object.defineProperty(env.win, 'innerWidth', { configurable: true, value: 1920 });
+    Object.defineProperty(env.win, 'innerHeight', { configurable: true, value: 1080 });
+    await env.playTo(30.2);
+    const button = () => env.win.document.querySelector('.ytaf-sb-skip-button');
+    t(n('skip button: shown in a Manual Skip segment, naming it and its key'), !!button() &&
+      button().textContent === 'Skip SponsoredBlue', button() ? button().textContent : 'none');
+    t(n('skip button: in the player\'s bottom right, above its controls'),
+      !!button() && button().style.right === '672px' && button().style.bottom === '504px' && button().style.display === '',
+      button() && `${button().style.right} ${button().style.bottom}`);
+    box.width = 0; box.height = 0;
+    await wait(600);
+    t(n('skip button: hidden while the player is not on screen'), button().style.display === 'none');
+    // Its full size, moved past the right edge of the screen.
+    Object.assign(box, { left: 1920, right: 3200, width: 1280, height: 720 });
+    await wait(600);
+    t(n('skip button: hidden while the player is off the screen at its full size'), button().style.display === 'none',
+      button().style.display);
+    box.left = 0;
+    box.width = 1920; box.height = 1080; box.right = 1920; box.bottom = 1080;
+    await wait(600);
+    t(n('skip button: follows the player back to full screen'), button().style.display === '' &&
+      button().style.right === '48px' && button().style.bottom === '216px', `${button().style.right} ${button().style.bottom}`);
+    button().click();
+    await wait(60);
+    t(n('skip button: a click (the Magic Remote pointer) skips the segment'), env.state.time === 60, String(env.state.time));
+    t(n('skip button: and it goes'), !button());
+  }
+  {
+    // As on the TV (webOS 25): the player's own element is 0 px high, and
+    // YouTube's <ytlr-player> around it has the player's size.
+    const env = await boot({ sbMode_sponsor: 'manual_skip' }, [seg('sponsor', 30, 60)]);
+    env.player.getBoundingClientRect = () => ({ left: 0, top: 0, right: 1920, bottom: 0, width: 1920, height: 0 });
+    const outer = env.win.document.createElement('ytlr-player');
+    outer.getBoundingClientRect = () => ({ left: 0, top: 0, right: 1920, bottom: 1080, width: 1920, height: 1080 });
+    env.win.document.body.appendChild(outer);
+    Object.defineProperty(env.win, 'innerWidth', { configurable: true, value: 1920 });
+    Object.defineProperty(env.win, 'innerHeight', { configurable: true, value: 1080 });
+    await env.playTo(30.2);
+    const button = env.win.document.querySelector('.ytaf-sb-skip-button');
+    t(n('skip button: a player element with no height is passed over for <ytlr-player>'),
+      !!button && button.style.display === '' && button.style.right === '48px' && button.style.bottom === '216px',
+      button ? `${button.style.display}|${button.style.right} ${button.style.bottom}` : 'none');
+  }
+  {
+    const env = await boot({ sbMode_sponsor: 'manual_skip', shortcut_key_blue: 'none', shortcut_key_red: 'sb_manual_skip' },
+      [seg('sponsor', 30, 60)]);
+    await env.playTo(30.2);
+    const key = env.win.document.querySelector('.ytaf-sb-skip-key');
+    t(n('skip button: names the key Manual Skip is set to'), !!key && key.textContent === 'Red', key ? key.textContent : 'none');
+    await env.playTo(61);
+    t(n('skip button: gone once the segment is behind'), !env.win.document.querySelector('.ytaf-sb-skip-button'));
   }
 
   // ---- Undo, the highlight's guard and a new <video> ----

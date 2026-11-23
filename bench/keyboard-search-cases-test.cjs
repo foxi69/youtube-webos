@@ -13,7 +13,7 @@
  * on-screen keyboard whose keys type into it only when pressed the way the
  * case says. Key presses are dispatched as trusted, as the remote's are.
  */
-const { createReporter, flavorFromArgs, readBundle, bootPage, dispatchTrusted, wait } = require('./harness.cjs');
+const { createReporter, flavorFromArgs, readBundle, bootPage, trustedKey, wait } = require('./harness.cjs');
 
 // `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
 // with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
@@ -144,17 +144,20 @@ async function boot(yt = {}, cfg = {}) {
     const kc = o.keyCode !== undefined ? o.keyCode
       : k === 'Enter' ? 13 : k === 'Backspace' ? 8 : k === ' ' ? 32 : k === 'ArrowLeft' ? 37
         : k.length === 1 ? k.toUpperCase().charCodeAt(0) : 0;
-    const mk = (type) => {
-      const e = new win.KeyboardEvent(type, { key: name, bubbles: true, cancelable: true,
-        ctrlKey: !!o.ctrl, shiftKey: !!o.shift });
+    const fields = { key: name, ctrlKey: !!o.ctrl, shiftKey: !!o.shift };
+    const props = o.synthetic ? { __ytafSynthetic: true } : null;
+    const target = o.target || doc.activeElement || doc.body;
+    // An untrusted press: a plain dispatchEvent, as a page script would make.
+    const untrusted = (type) => {
+      const e = new win.KeyboardEvent(type, Object.assign({ bubbles: true, cancelable: true }, fields));
       Object.defineProperty(e, 'keyCode', { get: () => kc, configurable: true });
-      if (o.synthetic) e.__ytafSynthetic = true;
+      if (props) Object.assign(e, props);
+      target.dispatchEvent(e);
       return e;
     };
-    const target = o.target || doc.activeElement || doc.body;
-    const fire = o.untrusted ? (el, e) => el.dispatchEvent(e) : dispatchTrusted;
-    const taken = !fire(target, mk('keydown'));
-    fire(target, mk('keyup'));
+    const fire = (type) => (o.untrusted ? untrusted(type) : trustedKey(win, kc, target, type, Object.assign({ props }, fields)));
+    const taken = fire('keydown').defaultPrevented;
+    fire('keyup');
     return !taken;
   };
   const typeAll = (s) => { for (const ch of s) press(ch); };

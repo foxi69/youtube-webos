@@ -11,7 +11,7 @@
  *
  *   node bench/rows-ahead-test.cjs <bundle> [legacy|modern]
  */
-const { createReporter, flavorFromArgs, readBundle, bootPage, dispatchTrusted, wait } = require('./harness.cjs');
+const { createReporter, flavorFromArgs, readBundle, bootPage, trustedKey, wait } = require('./harness.cjs');
 
 // `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
 // with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
@@ -149,9 +149,7 @@ run(async () => {
   {
     const h = boot({});
     await wait(20);
-    const e = new h.win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-    Object.defineProperty(e, 'keyCode', { get: () => GREEN, configurable: true });
-    dispatchTrusted(h.win.document.body, e);
+    trustedKey(h.win, GREEN);
     await wait(20);
     const labels = [...h.win.document.querySelectorAll('.ytaf-ui-container label')].map((l) => l.textContent.trim());
     t(n('the panel is open'), labels.length > 0, labels.length);

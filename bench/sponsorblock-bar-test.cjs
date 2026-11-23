@@ -13,19 +13,14 @@
  * sponsorblock-skip-test; the API is faked; settings are changed through the
  * panel's own controls.
  */
-const { createReporter, flavorFromArgs, readBundle, bootPage, wait } = require('./harness.cjs');
+const { createReporter, flavorFromArgs, wait } = require('./harness.cjs');
+const { BAR_MULTI, BAR_OLD, seg, bootSponsorBlock } = require('./sponsorblock-fixtures.cjs');
 
 // `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
 // with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
 const { modern } = flavorFromArgs();
-const code = readBundle();
-
-const VIDEO_ID = 'abcdefghijk';
 
 const { t, run } = createReporter();
-
-const seg = (category, start, end, actionType = 'skip') =>
-  ({ UUID: `${category}-${start}-${actionType}`, category, actionType, segment: [start, end] });
 
 // '#00d400' -> 'rgb(0, 212, 0)', as the element's style reads it back.
 const rgb = (hex) => {
@@ -34,118 +29,44 @@ const rgb = (hex) => {
 };
 const near = (a, b) => Math.abs(a - b) < 0.01;
 
-// The seek bar as the TV UI renders it: the multi-markers renderer around
-// ytlr-progress-bar around the track. The overlay belongs beside the renderer.
-const BAR_MULTI = '<div class="bar-host"><ytlr-multi-markers-player-bar-renderer><ytlr-progress-bar>' +
-  '<div idomkey="progress-bar"></div></ytlr-progress-bar></ytlr-multi-markers-player-bar-renderer></div>';
-// The older layout: ytlr-progress-bar with its slider, no renderer around it.
-const BAR_OLD = '<div class="bar-host"><ytlr-progress-bar><div idomkey="slider"></div></ytlr-progress-bar></div>';
-
-// A <video> whose time, play state and duration the test sets.
-function fakeVideo(win, video, duration) {
-  const state = { time: 0, paused: false, muted: false, seeks: [], duration };
-  const fire = (type) => video.dispatchEvent(new win.Event(type));
-  Object.defineProperties(video, {
-    currentTime: {
-      configurable: true,
-      get: () => state.time,
-      set: (v) => {
-        state.time = v;
-        state.seeks.push(v);
-        fire('seeking');
-        setTimeout(() => fire('seeked'), 5);
-      }
-    },
-    duration: { configurable: true, get: () => state.duration },
-    paused: { configurable: true, get: () => state.paused },
-    seeking: { configurable: true, get: () => false },
-    readyState: { configurable: true, get: () => 4 },
-    muted: { configurable: true, get: () => state.muted, set: (v) => { state.muted = !!v; } },
-    play: { configurable: true, value: () => { state.paused = false; fire('playing'); return Promise.resolve(); } },
-    pause: { configurable: true, value: () => { state.paused = true; fire('pause'); } }
-  });
-  const playTo = async (time) => {
-    state.time = time;
-    fire('timeupdate');
-    await wait(40);   // the rAF loop, the toast, a seek's 'seeked'
-  };
-  const setDuration = async (d) => {
-    state.duration = d;
-    fire('durationchange');
-    await wait(20);
-  };
-  return { state, playTo, setDuration };
-}
-
 /**
- * The bundle on a watch page whose API answers `segments`. opts.bar: the bar
- * markup in the player (BAR_MULTI by default, '' for none yet).
+ * The bundle on a watch page whose API answers `segments`
+ * (sponsorblock-fixtures.cjs). opts.bar: the bar markup in the player
+ * (BAR_MULTI by default, '' for none yet); opts.fastPoll: the bar poll (every
+ * 250 ms, ~10 s in all) ten times as fast, so a test can outlast it.
  */
 async function boot(cfg, segments, opts = {}) {
-  const bar = opts.bar === undefined ? BAR_MULTI : opts.bar;
-  const { win, doc, errors, evaluate } = bootPage({
-    code,
-    bodyClass: 'WEB_PAGE_TYPE_WATCH',
-    inner: `\n    <div id="ytlr-player__player-container-player"><video></video></div>${bar}`,
-    url: `https://www.youtube.com/tv#/watch?v=${VIDEO_ID}`,
-    ignoreNavigation: true,
-    config: Object.assign({
-      enableAdBlock: false, enableSponsorBlock: true, enableReturnYouTubeDislike: false,
-      enableDeArrow: false, thumbnailQuality: 'off', enableAutoLogin: false,
-      checkForUpdates: false, showWhatsNew: false, sbPeriodicRefresh: false
-    }, cfg),
-    evaluate: false
-  });
-  // The bar poll (every 250 ms, ~10 s in all) ten times as fast, so a test
-  // can outlast it.
   // `polls` holds the bar polls still running.
   const polls = new Set();
-  if (opts.fastPoll) {
-    const realInterval = win.setInterval.bind(win);
-    const realClear = win.clearInterval.bind(win);
-    win.setInterval = (fn, ms, ...args) => {
-      const id = realInterval(fn, ms === 250 ? 25 : ms, ...args);
-      if (ms === 250) polls.add(id);
-      return id;
-    };
-    win.clearInterval = (id) => { polls.delete(id); return realClear(id); };
-  }
-  // opts.holdMeasure: the look for the chapter pieces' width (every 1 s) is
-  // not timed; measureTick() runs it once, measuring() tells it is set.
   const measure = { fn: null, id: -7 };
-  if (opts.holdMeasure) {
-    const nextInterval = win.setInterval.bind(win);
-    const nextClear = win.clearInterval.bind(win);
-    win.setInterval = (fn, ms, ...args) => {
-      if (ms !== 1000) return nextInterval(fn, ms, ...args);
-      measure.fn = fn;
-      return measure.id;
-    };
-    win.clearInterval = (id) => { if (id === measure.id) { measure.fn = null; return undefined; } return nextClear(id); };
-  }
-  const net = { segments, asked: [] };
-  win.fetch = (resource) => {
-    const url = String(resource && resource.url || resource);
-    if (url.indexOf('/skipSegments/') === -1) return new Promise(() => {});
-    net.asked.push(url);
-    const body = [{ videoID: VIDEO_ID, segments: JSON.parse(JSON.stringify(net.segments)) }];
-    return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) });
-  };
-  // opts.author: the channel the player names for the video.
-  if ('author' in opts) {
-    win.document.getElementById('ytlr-player__player-container-player').getVideoData = () => ({ video_id: VIDEO_ID, author: opts.author });
-  }
-  const video = win.document.querySelector('video');
-  const v = fakeVideo(win, video, opts.duration || 600);
-  evaluate();
-  for (let i = 0; i < 100 && !net.asked.length; i++) await wait(50);
-  await wait(150);
-  const toasts = () => (doc.querySelector('.ytaf-notification-container') || {}).textContent || '';
-  const overlay = () => doc.getElementById('previewbar');
-  const marks = () => {
-    const o = overlay();
-    return o ? Array.prototype.slice.call(o.querySelectorAll('.previewbar')) : [];
-  };
+  const env = await bootSponsorBlock(cfg, segments, Object.assign({}, opts, {
+    bar: opts.bar === undefined ? BAR_MULTI : opts.bar,
+    beforeEval: (win) => {
+      if (opts.fastPoll) {
+        const realInterval = win.setInterval.bind(win);
+        const realClear = win.clearInterval.bind(win);
+        win.setInterval = (fn, ms, ...args) => {
+          const id = realInterval(fn, ms === 250 ? 25 : ms, ...args);
+          if (ms === 250) polls.add(id);
+          return id;
+        };
+        win.clearInterval = (id) => { polls.delete(id); return realClear(id); };
+      }
+      // opts.holdMeasure: the look for the chapter pieces' width (every 1 s) is
+      // not timed; measureTick() runs it once, measuring() tells it is set.
+      if (opts.holdMeasure) {
+        const nextInterval = win.setInterval.bind(win);
+        const nextClear = win.clearInterval.bind(win);
+        win.setInterval = (fn, ms, ...args) => {
+          if (ms !== 1000) return nextInterval(fn, ms, ...args);
+          measure.fn = fn;
+          return measure.id;
+        };
+        win.clearInterval = (id) => { if (id === measure.id) { measure.fn = null; return undefined; } return nextClear(id); };
+      }
+    }
+  }));
+  const { win, doc } = env;
   const rows = () => Array.prototype.map.call(doc.querySelectorAll('.sb-segments-popup .sb-segment-row'), (r) => ({
     name: r.querySelector('.sb-segment-category').textContent,
     time: r.querySelector('.sb-segment-time').textContent,
@@ -155,61 +76,14 @@ async function boot(cfg, segments, opts = {}) {
     const p = doc.querySelector('.sb-segments-popup');
     return !!p && p.classList.contains('visible');
   };
-  const labelsCss = () => (doc.getElementById('sb-labels') || {}).textContent || '';
-  const playerState = (s) => { win.dispatchEvent(new win.CustomEvent('yt-player-state-change', { detail: { state: s } })); };
-
-  // The panel, on its SponsorBlock tab.
-  // The panel ignores a toggle in its first 500 ms.
-  let openedAt = 0;
-  const openPanel = async () => {
-    win.ytaf_showOptionsPanel(true);
-    if (!openedAt) openedAt = Date.now();
-    await wait(30);
-    doc.querySelectorAll('.ytaf-tab-btn')[3].click();
-    await wait(30);
-  };
-  const closePanel = async () => {
-    await wait(Math.max(0, openedAt + 600 - Date.now()));
-    win.ytaf_showOptionsPanel(false);
-    await wait(30);
-  };
-  const row = (text) => {
-    const all = doc.querySelectorAll('.ytaf-ui-container .shortcut-control-row');
-    for (let i = 0; i < all.length; i++) {
-      if ((all[i].querySelector('.shortcut-label') || {}).textContent === text) return all[i];
-    }
-    throw new Error('no control "' + text + '" in the panel');
-  };
-  /** One step of a cycle control: the row clicked (next), or its '<' (back). */
-  const cycle = async (text, back = false) => {
-    const r = row(text);
-    (back ? r.querySelector('.arrow-btn') : r).click();
-    await wait(30);
-    return r.querySelector('.current-value').textContent;
-  };
   const pickColor = async (text, hex) => {
-    const input = row(text).querySelector('input[type="color"]');
+    const input = env.row(text).querySelector('input[type="color"]');
     input.value = hex;
     input.dispatchEvent(new win.Event('input', { bubbles: true }));
     await wait(30);
   };
-  const toggle = async (text) => {
-    const labels = doc.querySelectorAll('.ytaf-ui-container label');
-    for (let i = 0; i < labels.length; i++) {
-      const span = labels[i].querySelector('.label-text');
-      if (span && span.textContent === text) {
-        const input = labels[i].querySelector('input');
-        input.checked = !input.checked;
-        input.dispatchEvent(new win.Event('change', { bubbles: true }));
-        await wait(30);
-        return input.checked;
-      }
-    }
-    throw new Error('no switch "' + text + '" in the panel');
-  };
-  return { win, doc, errors, net, video, ...v, toasts, overlay, marks, rows, popupShown, labelsCss, playerState,
-    openPanel, closePanel, cycle, pickColor, toggle, polls: () => polls.size, sb: () => win.sponsorblock,
-    measureTick: () => { if (measure.fn) measure.fn(); }, measuring: () => !!measure.fn };
+  return Object.assign(env, { rows, popupShown, pickColor, polls: () => polls.size,
+    measureTick: () => { if (measure.fn) measure.fn(); }, measuring: () => !!measure.fn });
 }
 
 run(async () => {
@@ -434,7 +308,7 @@ run(async () => {
     env.video.currentTime = 20;
     await wait(40);
     await env.playTo(30.5);
-    t(n('...the segment is offered, not skipped'), env.state.time === 30.5 && /Sponsored: Press Blue to skip/.test(env.toasts()),
+    t(n('...the segment is offered, not skipped'), env.state.time === 30.5 && !!env.doc.querySelector('.ytaf-sb-skip-button'),
       env.toasts());
     const before = env.overlay();
     await env.pickColor('Self Promotion', '#abcdef');

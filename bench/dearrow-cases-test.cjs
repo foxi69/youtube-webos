@@ -11,16 +11,13 @@
  *
  * Usage: node bench/dearrow-cases-test.cjs <bundle> [legacy|modern]
  */
-const fs = require('fs');
 const crypto = require('crypto');
-const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, applyChrome87Downgrade, UA, setUserAgent } = require('./chrome38-env.cjs');
-const { createReporter, trustedKey, wait } = require('./harness.cjs');
+const { createReporter, flavorFromArgs, readBundle, bootPage, trustedKey, wait } = require('./harness.cjs');
 
-const bundlePath = process.argv[2] || 'dist/webOSUserScripts/userScript.js';
 // `modern`: the modern bundle (webOS 22 and newer), in a Chrome 87 environment
 // with a webOS 23 user agent, instead of the legacy one in a Chrome 38 one.
-const modern = process.argv[3] === 'modern';
+const { modern } = flavorFromArgs();
+const bundle = readBundle();
 const GREEN = 404;
 const BADGE = '◉';
 const pad = 'z'.repeat(600);
@@ -40,16 +37,16 @@ function boot(cfg, { copySize = 1000 } = {}) {
   const errors = [];
   const fetched = [];
   const images = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => { errors.push(e.message); allErrors.push(e.message); });
-  const dom = new JSDOM('<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app></ytlr-app></body></html>',
-    { runScripts: 'outside-only', url: 'https://www.youtube.com/tv', virtualConsole: vc, pretendToBeVisual: true });
-  const win = dom.window;
-  setUserAgent(win, modern ? UA.webos23 : UA.webos3);
-  if (modern) applyChrome87Downgrade(win); else applyChrome38Downgrade(win);
-  // Chrome 23 has it; the Chrome 38 environment takes it away all the same.
-  win.Element.prototype.remove = function remove() { if (this.parentNode) this.parentNode.removeChild(this); };
-  win.launchParams = '{}';
+  // The page in its environment (the user agent, the Chrome 38 or 87 one,
+  // Element#remove); the stubs below go in before the bundle runs.
+  const page = bootPage({
+    code: bundle,
+    launchParams: '{}',
+    consoleErrors: false,
+    onError: (text) => { errors.push(text); allErrors.push(text); },
+    evaluate: false
+  });
+  const win = page.win;
   win.XMLHttpRequest = class { open() {} send() {} setRequestHeader() {} getResponseHeader() { return null; } addEventListener() {} };
   let rafQ = [];
   win.requestAnimationFrame = (cb) => { rafQ.push(cb); return rafQ.length; };
@@ -60,14 +57,28 @@ function boot(cfg, { copySize = 1000 } = {}) {
     enableDeArrow: true, dearrowTitleFormatting: 'disable', dearrowThumbnailFallback: 'original'
   }, cfg)));
   const known = new Set();
+  // Casual votes by video id: [{ id, count, title }] in the branding answer.
+  const casual = new Map();
+  // Titles as uploaded, by video id, for YouTube's oEmbed answer.
+  const uploaded = new Map();
+  // Video ids whose next oEmbed request fails (no connection), once each.
+  const oembedFails = new Set();
   win.fetch = (url) => {
     url = String(url);
     fetched.push(url);
+    if (url.indexOf('https://www.youtube.com/oembed?') === 0) {
+      const id = decodeURIComponent(url).split('v=').pop();
+      if (oembedFails.delete(id)) return Promise.reject(new Error('offline'));
+      const title = uploaded.get(id);
+      return Promise.resolve(title ? { ok: true, status: 200, json: () => Promise.resolve({ title }) }
+        : { ok: false, status: 404, json: () => Promise.resolve({}) });
+    }
     const prefix = url.split('/').pop();
     const answer = {};
     known.forEach((id) => {
       if (prefixOf(id) === prefix) {
         answer[id] = { titles: [{ title: 'Calm ' + id, original: false, votes: 1 }], thumbnails: [{ timestamp: 12.5, original: false, votes: 1 }] };
+        if (casual.has(id)) answer[id].casualVotes = casual.get(id);
       }
     });
     return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(answer) });
@@ -106,7 +117,7 @@ function boot(cfg, { copySize = 1000 } = {}) {
   win.HTMLElement.prototype.getBoundingClientRect = function () {
     return this.__box || { left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 };
   };
-  win.eval(fs.readFileSync(bundlePath, 'utf8'));
+  page.evaluate();
   const parse = (obj) => win.JSON.parse(win.JSON.stringify(obj));
   const pump = () => { const q = rafQ; rafQ = []; for (const cb of q) cb(Date.now()); };
   const toggle = (label, on) => {
@@ -120,7 +131,7 @@ function boot(cfg, { copySize = 1000 } = {}) {
     input.checked = on;
     input.dispatchEvent(new win.Event('change'));
   };
-  return { win, errors, fetched, images, parse, toggle, known };
+  return { win, errors, fetched, images, parse, toggle, known, casual, uploaded, oembedFails };
 }
 
 function tile(id, title) {
@@ -234,4 +245,126 @@ run(async () => {
   }
 
   t('no jsdomError in any case', allErrors.length === 0, allErrors[0]);
+  // ---- Casual Mode ----
+  {
+    const { win, parse, known, casual, errors } = boot({ dearrowCasualMode: true });
+    for (const id of ['casualfine1', 'casualold01', 'nocasual001']) known.add(id);
+    casual.set('casualfine1', [{ id: 'funny', count: 1, title: 'loud casualfine1' }]);
+    // A vote for the title the video had before: it does not count.
+    casual.set('casualold01', [{ id: 'descriptive', count: 2, title: 'An older title' }]);
+    const els = ['casualfine1', 'casualold01', 'nocasual001'].map((id) => render(win, id, 'Loud ' + id));
+    parse(browse(['casualfine1', 'casualold01', 'nocasual001'].map((id) => tile(id, 'Loud ' + id))));
+    await waitFor(() => shownTitle(els[1]) === 'Calm casualold01' && shownTitle(els[2]) === 'Calm nocasual001', 2000);
+    await wait(200);
+    t('casual: a title casual voters found fine stays YouTube\'s', shownTitle(els[0]) === 'Loud casualfine1', shownTitle(els[0]));
+    t('casual: a vote for an earlier title does not count', shownTitle(els[1]) === 'Calm casualold01', shownTitle(els[1]));
+    t('casual: a video with no casual votes gets the crowdsourced title', shownTitle(els[2]) === 'Calm nocasual001', shownTitle(els[2]));
+    t('casual: the thumbnail is still DeArrow\'s', shownThumb(els[0]).includes('COPY'), shownThumb(els[0]).slice(0, 80));
+    t('no jsdomError (casual)', errors.length === 0, errors[0]);
+    win.close();
+  }
+  {
+    const { win, parse, known, casual } = boot({ dearrowCasualMode: false });
+    known.add('casualfine2');
+    casual.set('casualfine2', [{ id: 'funny', count: 1, title: 'loud casualfine2' }]);
+    const el = render(win, 'casualfine2', 'Loud casualfine2');
+    parse(browse([tile('casualfine2', 'Loud casualfine2')]));
+    await waitFor(() => shownTitle(el) === 'Calm casualfine2', 2000);
+    t('casual off: the crowdsourced title, casual votes or not', shownTitle(el) === 'Calm casualfine2', shownTitle(el));
+    win.close();
+  }
+  // ---- Untranslated Titles ----
+  {
+    const { win, parse, known, uploaded, fetched, errors } = boot({ dearrowUntranslatedTitles: true, dearrowCrowdTitles: false });
+    for (const id of ['translated1', 'sametitle01']) known.add(id);
+    uploaded.set('translated1', 'How I built a boat');
+    uploaded.set('sametitle01', 'Hogyan építettem hajót');
+    const els = [render(win, 'translated1', 'Hogyan építettem csónakot'), render(win, 'sametitle01', 'Hogyan építettem hajót')];
+    parse(browse([tile('translated1', 'Hogyan építettem csónakot'), tile('sametitle01', 'Hogyan építettem hajót')]));
+    await waitFor(() => shownTitle(els[0]) === 'How I built a boat', 2000);
+    t('untranslated: a translated title shows as uploaded', shownTitle(els[0]) === 'How I built a boat', shownTitle(els[0]));
+    t('untranslated: a title YouTube did not translate stays', shownTitle(els[1]) === 'Hogyan építettem hajót', shownTitle(els[1]));
+    const asked = fetched.filter((u) => u.indexOf('/oembed?') !== -1);
+    t('untranslated: YouTube is asked once per video, on its own origin',
+      asked.length === 2 && asked.every((u) => u.indexOf('https://www.youtube.com/oembed?') === 0), asked.join(' '));
+    t('no jsdomError (untranslated)', errors.length === 0, errors[0]);
+    win.close();
+  }
+  {
+    const { win, parse, known, uploaded, fetched } = boot({ dearrowUntranslatedTitles: false, dearrowCrowdTitles: false });
+    known.add('translated2');
+    uploaded.set('translated2', 'How I built a boat');
+    const el = render(win, 'translated2', 'Hogyan építettem csónakot');
+    parse(browse([tile('translated2', 'Hogyan építettem csónakot')]));
+    // The crowdsourced thumbnail on the tile: the lookup has run its course.
+    await waitFor(() => shownThumb(el).includes('COPY'), 2000);
+    t('untranslated off: precondition: the lookup finished', shownThumb(el).includes('COPY'), shownThumb(el).slice(0, 120));
+    t('untranslated off: nothing asked, the title as shown',
+      shownTitle(el) === 'Hogyan építettem csónakot' && !fetched.some((u) => u.indexOf('/oembed?') !== -1), shownTitle(el));
+    win.close();
+  }
+  {
+    // The first tile already shows the title as uploaded, a later one a translation.
+    const { win, parse, known, uploaded, fetched } = boot({ dearrowUntranslatedTitles: true, dearrowCrowdTitles: false });
+    known.add('boatvideo01');
+    uploaded.set('boatvideo01', 'How I built a boat');
+    const first = render(win, 'boatvideo01', 'How I built a boat');
+    parse(browse([tile('boatvideo01', 'How I built a boat')]));
+    await waitFor(() => shownThumb(first).includes('COPY'), 2000);
+    const later = render(win, 'boatvideo01', 'Hogyan építettem csónakot');
+    parse(browse([tile('boatvideo01', 'Hogyan építettem csónakot')]));
+    await waitFor(() => shownTitle(later) === 'How I built a boat', 2000);
+    t('untranslated: a later translated tile gets the title kept from the first',
+      shownTitle(later) === 'How I built a boat' && shownTitle(first) === 'How I built a boat', shownTitle(later));
+    t('untranslated: ...with YouTube asked once', fetched.filter((u) => u.indexOf('/oembed?') !== -1).length === 1);
+    win.close();
+  }
+  {
+    // The request for the title as uploaded fails (no connection): the video
+    // is asked again when it is looked up again (the setting switched off and
+    // on), not left at the translation for good.
+    const { win, parse, known, uploaded, fetched, toggle, oembedFails } = boot({ dearrowUntranslatedTitles: true, dearrowCrowdTitles: false });
+    known.add('flakyvideo1');
+    uploaded.set('flakyvideo1', 'How I built a boat');
+    oembedFails.add('flakyvideo1');
+    const el = render(win, 'flakyvideo1', 'Hogyan építettem csónakot');
+    parse(browse([tile('flakyvideo1', 'Hogyan építettem csónakot')]));
+    await waitFor(() => shownThumb(el).includes('COPY'), 2000);
+    const asked = () => fetched.filter((u) => u.indexOf('/oembed?') !== -1).length;
+    t('untranslated, failed request: precondition: asked once, the title as shown',
+      asked() === 1 && shownTitle(el) === 'Hogyan építettem csónakot', `${asked()} ${shownTitle(el)}`);
+    toggle('Untranslated Titles', false);
+    await wait(300);
+    toggle('Untranslated Titles', true);
+    await waitFor(() => shownTitle(el) === 'How I built a boat', 3000);
+    t('untranslated, failed request: looked up again, it is asked again and shown as uploaded',
+      asked() === 2 && shownTitle(el) === 'How I built a boat', `${asked()} ${shownTitle(el)}`);
+    win.close();
+  }
+  {
+    // A trusted crowdsourced title wins anyway: nothing to wait for.
+    const { win, parse, known, uploaded, fetched } = boot({ dearrowUntranslatedTitles: true });
+    known.add('crowdwins01');
+    uploaded.set('crowdwins01', 'As uploaded');
+    const el = render(win, 'crowdwins01', 'Translated');
+    parse(browse([tile('crowdwins01', 'Translated')]));
+    await waitFor(() => shownTitle(el) === 'Calm crowdwins01' && shownThumb(el).includes('COPY'), 2000);
+    t('untranslated, a trusted crowdsourced title: precondition: shown', shownTitle(el) === 'Calm crowdwins01', shownTitle(el));
+    t('untranslated, a trusted crowdsourced title: YouTube is not asked', !fetched.some((u) => u.indexOf('/oembed?') !== -1),
+      fetched.filter((u) => u.indexOf('/oembed?') !== -1).join());
+    win.close();
+  }
+  {
+    // Casual Mode compares its votes with the title as uploaded: that one is still asked for.
+    const { win, parse, known, casual, uploaded, fetched } = boot({ dearrowUntranslatedTitles: true, dearrowCasualMode: true });
+    known.add('casualasked');
+    uploaded.set('casualasked', 'As uploaded');
+    casual.set('casualasked', [{ id: 'funny', count: 1, title: 'as uploaded' }]);
+    const el = render(win, 'casualasked', 'Translated');
+    parse(browse([tile('casualasked', 'Translated')]));
+    await waitFor(() => shownTitle(el) === 'As uploaded', 2000);
+    t('untranslated, Casual Mode with votes: asked, and the vote for the uploaded title counts',
+      shownTitle(el) === 'As uploaded' && fetched.some((u) => u.indexOf('/oembed?') !== -1), shownTitle(el));
+    win.close();
+  }
 });

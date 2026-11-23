@@ -50,11 +50,41 @@ function formatTitle(title, isCustom) {
   );
 }
 
+/**
+ * Casual Mode: casual voters said YouTube's own title is fine (funny,
+ * creative, clever, descriptive or other: any of them, by at least one vote),
+ * for the title the video has now. A vote names the title it was cast for;
+ * one for an earlier title does not count. As DeArrow's own Casual mode with
+ * its default settings (videoBranding.ts shouldShowCasualOnVideo).
+ */
+export function casualKeepsOriginal(video) {
+  const votes = video.raw && Array.isArray(video.raw.casualVotes) ? video.raw.casualVotes : null;
+  if (!votes || !votes.length) return false;
+  const own = untranslatedOrOriginal(video);
+  const original = typeof own === 'string' ? own.trim().toLowerCase() : '';
+  return votes.some((vote) => !!vote && Number(vote.count) >= 1 &&
+    (!vote.title || (typeof vote.title === 'string' && vote.title.trim().toLowerCase() === original)));
+}
+
 /** The crowdsourced title the settings let a video show: the top one when it is trusted, else null. */
 export function crowdsourcedTitle(video) {
   if (!configRead('dearrowCrowdTitles')) return null;
+  if (configRead('dearrowCasualMode') && casualKeepsOriginal(video)) return null;
   const custom = video.raw && Array.isArray(video.raw.titles) ? video.raw.titles[0] : null;
   return isTrusted(custom) && typeof custom.title === 'string' ? custom : null;
+}
+
+/**
+ * Whether the title as uploaded can change what a video shows: not when a
+ * trusted crowdsourced title wins anyway, unless Casual Mode has votes to
+ * compare with it.
+ */
+export function uploadedTitleMatters(video) {
+  if (!configRead('dearrowCrowdTitles')) return true;
+  const raw = video.raw;
+  const custom = raw && Array.isArray(raw.titles) ? raw.titles[0] : null;
+  if (!isTrusted(custom) || typeof custom.title !== 'string') return true;
+  return !!configRead('dearrowCasualMode') && Array.isArray(raw.casualVotes) && raw.casualVotes.length > 0;
 }
 
 /**
@@ -66,7 +96,16 @@ export async function resolveTitle(video) {
   const custom = crowdsourcedTitle(video);
   if (custom) return (await formatTitle(custom.title, true)) || null;
 
+  // Untranslated Titles: the title as uploaded, where YouTube shows a translation.
+  const untranslated = configRead('dearrowUntranslatedTitles') ? video.untranslated : null;
+  if (untranslated) return (await formatTitle(untranslated, false)) || untranslated;
+
   if (!video.original) return null;
   const formatted = await formatTitle(video.original, false);
   return formatted && formatted !== video.original ? formatted : null;
+}
+
+/** YouTube's own title of a video: as uploaded when Untranslated Titles knows it, else as shown. */
+function untranslatedOrOriginal(video) {
+  return (configRead('dearrowUntranslatedTitles') && video.untranslated) || video.original;
 }

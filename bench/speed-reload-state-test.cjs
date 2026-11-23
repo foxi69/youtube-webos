@@ -26,8 +26,8 @@ const writeQuality = (win, height, previous) => win.localStorage.setItem('yt-pla
   creation: win.Date.now(), expiration: win.Date.now() + 1e9
 }));
 
-// A trusted key press, as the remote sends: the speed keys too.
-const pressKey = (win) => dispatchTrusted(win.document.body, new win.KeyboardEvent('keydown', { bubbles: true }));
+// A press of some key (keyCode 0): the viewer's, for the subtitle and quality checks.
+const pressKey = (win) => trustedKey(win, 0);
 
 // force: Force Max Quality on (Max), or the mode itself ('up1080').
 // lateRecord: the record follows each range call by 50 ms (true) or that many ms.
@@ -414,8 +414,12 @@ run(async () => {
       t('no pick, limit moved: precondition: Up to 1080p chosen', await moveForceRow(win, 'Up to 1080p', 37) === 'Up to 1080p');
       await sleep(900);
       emit(3); emit(1); pump(); pump();
-      await sleep(100);
-      t('no pick, limit moved: the new limit applies', log.ranges.includes('hd1080'), log.ranges.join());
+      // Polled: on a slow run (coverage) the change is applied later than 1 s.
+      // On a failure, what the pick test reads (the detail is the evidence).
+      const state = () => JSON.stringify({ ranges: log.ranges, now: win.Date.now(),
+        quality: win.localStorage.getItem('yt-player-quality'), forced: win.localStorage.getItem('ytaf-force-record'),
+        speedRange: win.localStorage.getItem('ytaf-speed-own-range'), force: JSON.parse(win.localStorage.getItem('ytaf-configuration') || '{}').forceQuality });
+      t('no pick, limit moved: the new limit applies', await until(() => log.ranges.includes('hd1080'), 3000), state());
     }
     win.close();
   }
@@ -665,7 +669,7 @@ run(async () => {
     const { win, p, speed, emit } = boot(720, { manualPlayback: true });
     speed.setSpeed(1.5, { immediate: true });
     // A real key during buffering changes the viewer's choice before PLAYING.
-    dispatchTrusted(win.document.body, new win.KeyboardEvent('keydown', { bubbles: true }));
+    trustedKey(win, 0);
     p.track = EN;
     emit(1);
     await sleep(600);
@@ -752,19 +756,15 @@ run(async () => {
     emit(-1); emit(3); emit(1); pump(); pump();
     t('the next video is not held back by the previous video quality override',
       log.ranges.includes('highres'), log.ranges.join());
-    const open = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-    Object.defineProperty(open, 'keyCode', { get: () => 404 });
-    dispatchTrusted(win.document.body, open);
+    trustedKey(win, 404);
     for (let i = 0; i < 20; i++) pump();
     // A choice row: Left from Max goes to Off, Right from Off back to Max.
     const row = Array.from(win.document.querySelectorAll('.shortcut-control-row'))
       .find((r) => r.querySelector('.shortcut-label')?.textContent.trim() === 'Force Max Quality');
     if (!row) throw new Error('Force Max Quality control missing');
     const flip = (on) => {
-      const press = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true });
-      Object.defineProperty(press, 'keyCode', { get: () => (on ? 39 : 37) });
       row.focus();
-      dispatchTrusted(row, press);
+      trustedKey(win, on ? 39 : 37, row);
     };
     // Capture a fresh retained choice on this video, then explicitly override it.
     writeQuality(win, 480, 2160);

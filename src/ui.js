@@ -1,4 +1,4 @@
-import { aiVideoModes, subtitlesAtStartModes, logoStyles, timeRemainingModes, thumbnailQualityModes, videoCodecModes, uiThemes, clockModes, startPageModes, minVideoLengthModes, seekStepModes, maxVideoAgeModes, searchUploadDateModes, dearrowTitleFormats, dearrowThumbnailFallbacks, forceQualityModes, subtitlePositionModes, sbMinSegmentLengthModes, searchDurationModes, searchTypeModes, searchFeatureModes } from './config.js';
+import { aiVideoModes, subtitlesAtStartModes, logoStyles, timeRemainingModes, thumbnailQualityModes, videoCodecModes, uiThemes, clockModes, startPageModes, minVideoLengthModes, seekStepModes, maxVideoAgeModes, searchUploadDateModes, dearrowTitleFormats, dearrowThumbnailFallbacks, forceQualityModes, subtitlePositionModes, subtitleDelayModes, sbMinSegmentLengthModes, searchDurationModes, searchTypeModes, searchFeatureModes } from './config.js';
 import { configAddChangeListener, configRead, configWrite, configGetDesc, segmentTypes, configGetDefault, shortcutActions, sbModes, sbModesHighlight, videoPreviewModes, videoQualityDisplayModes, configGetProfileStatus, configResetCounters } from './config.js';
 import './ui.css';
 import './auto-login.js';
@@ -8,6 +8,7 @@ import { initLogoStyle } from './logo-style.js';
 import { initMathLetters } from './math-letters.js';
 import { initPlaybackSpeed, stepSpeed, resetSpeed, toggleSpeed } from './playback-speed.js';
 import { toggleChannelWhitelist, formatTimeSaved, titleTrayChannel } from './sponsorblock-extras.js';
+import { toggleAudioOnly } from './audio-only.js';
 import sponsorBlockUI from './Sponsorblock-UI.js';
 import { sendKey, REMOTE_KEYS, COLOR_CODE_MAP, isGuestMode, invalidateGuestModeCache, isWatchPage, isShortsPage, isSearchPage, SELECTORS, getVideo, SYNTHETIC_KEY_FLAG, isSyntheticKeyEcho, isAutoplayOn, isLiveStream, rendererChapterStarts } from './utils.js';
 import { initTrackingBlock, destroyTrackingBlock } from './adblock.js';
@@ -155,9 +156,6 @@ function findPlayerButton(match) {
 }
 
 window.addEventListener('ytaf-page-update', (e) => {
-    // Audio-only ends with the watch page, so home-screen previews are not
-    // left invisible.
-    if (!e.detail.isWatch && !e.detail.isShorts) document.documentElement.classList.remove('ytaf-audio-only');
     if (e.detail.isWatch) {
         cachedSelectors.comments = null;
         cachedSelectors.description = null;
@@ -1119,8 +1117,12 @@ function createOptionsPanel() {
   createAlignedCycleControl('subtitlesAtStart', subtitlesAtStartModes),
   createElement('div', { text: 'Off: no subtitles until you turn them on. Translated: only the Auto-Translate Subtitles language above', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   createAlignedCycleControl('subtitlePosition', subtitlePositionModes),
+  createAlignedCycleControl('subtitleDelay', subtitleDelayModes),
+  createElement('div', { text: 'For subtitles out of step with the sound. Applies to the next subtitles loaded: turn them off and on again', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   createElement('div', { text: 'Lifts the subtitles, for a TV or soundbar that covers the bottom of the picture. Their font, size and colours are in YouTube\'s own settings, and are kept now', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   createConfigCheckbox('forceOriginalAudio'),
+  createConfigCheckbox('audioOnlyStream'),
+  createElement('div', { text: 'With the Audio-Only Mode action: only the sound is downloaded and played, not the hidden picture. The video loads again where it is when the mode goes on or off. Only at 1x: at another speed the picture is only hidden', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   createAlignedCycleControl('timeRemainingMode', timeRemainingModes),
   createConfigCheckbox('showMostReplayed'),
   createConfigCheckbox('hideEndcards'),
@@ -1178,6 +1180,8 @@ function createOptionsPanel() {
       createConfigCheckbox('sbFullVideoLabel'),
       createConfigCheckbox('sbShowTimeWithSkips'),
       createAlignedCycleControl('sbMinSegmentLength', sbMinSegmentLengthModes),
+      createConfigCheckbox('sbCommunityChapters'),
+      createElement('div', { text: 'Skip to Next/Previous Chapter goes by the chapters SponsorBlock users made, on a video with none of its own', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
       createConfigCheckbox('sbReportSkips'),
       createElement('div', { text: 'Tells sponsor.ajay.app which segments were skipped (their ids only), for the counts SponsorBlock shows their submitters', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
       createListEditor('sbWhitelistChannels', {
@@ -1251,7 +1255,10 @@ function createOptionsPanel() {
     // a seventh tab does not fit the panel's width. The legacy build has
     // Title Case alone (dearrow/formatter-legacy.js).
     const elDeArrowBadge = createConfigCheckbox('dearrowShowBadge');
-    const deArrowTitleRows = [createConfigCheckbox('dearrowCrowdTitles')];
+    const deArrowTitleRows = [createConfigCheckbox('dearrowCrowdTitles'), createConfigCheckbox('dearrowCasualMode'),
+      createElement('div', { text: 'Keeps YouTube\'s own title where DeArrow\'s casual voters found it fine (funny, clever, descriptive...), instead of a crowdsourced one. Where YouTube shows titles translated, it needs Untranslated Titles on: the votes are for the title as uploaded', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
+      createConfigCheckbox('dearrowUntranslatedTitles'),
+      createElement('div', { text: 'YouTube\'s titles as their uploader wrote them, where YouTube shows them translated into your language. One request to YouTube per video shown; with Crowdsourced Titles off, only this', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } })];
     if (titleFormattingSupported) {
       deArrowTitleRows.push(
         createAlignedCycleControl('dearrowTitleFormatting', titleFormatChoices(dearrowTitleFormats)),
@@ -1524,6 +1531,46 @@ function chapterStarts(chapterEls, duration) {
   });
 }
 
+/**
+ * Skip to Next/Previous Chapter on a video with no chapters of its own: the
+ * community's chapters from SponsorBlock (sponsorblock.js communityChapters),
+ * with Use Community Chapters on. Their starts and ends are the stops; the
+ * chapter's name comes with the notice. False when there are none.
+ */
+function skipCommunityChapter(video, direction) {
+  if (!configRead('sbCommunityChapters') || !window.sponsorblock ||
+      typeof window.sponsorblock.communityChapters !== 'function') return false;
+  const chapters = window.sponsorblock.communityChapters();
+  if (!chapters.length) return false;
+  const stops = [0];
+  for (const chapter of chapters) stops.push(chapter.start, chapter.end);
+  const sorted = stops.filter((at, i, all) => at < video.duration && all.indexOf(at) === i).sort((a, b) => a - b);
+  const now = video.currentTime;
+  let target = -1;
+  if (direction === 'next') {
+    target = sorted.find((at) => at > now + 1);
+    if (target === undefined) target = -1;
+  } else {
+    let current = 0;
+    let previous = 0;
+    for (const at of sorted) {
+      if (at > now) break;
+      previous = current;
+      current = at;
+    }
+    target = now - current > 3 ? current : previous;
+  }
+  if (target === -1) {
+    showNotification(direction === 'next' ? 'No next chapter' : 'Start of video');
+    return true;
+  }
+  video.currentTime = target;
+  const chapter = chapters.find((c) => c.start === target);
+  const label = direction === 'next' ? 'Next Chapter' : 'Previous Chapter';
+  showNotification(chapter && chapter.name ? `${label}: ${chapter.name}` : label);
+  return true;
+}
+
 async function skipChapter(direction = 'next') {
   if(isShortsPage()) return;
   // A press during the wait below would find no chapters yet.
@@ -1581,18 +1628,13 @@ async function skipChapter(direction = 'next') {
     chapterEls = getChapterEls();
   }
 
-  if (chapterEls.length === 0) {
-    showNotification('No chapters found');
-    if (wasForcedNow) closeForcedControls();
-    return;
-  }
-
   const currentTime = video.currentTime;
+  // The renderer's own start times count even with no marker elements mounted.
   const starts = chapterStarts(chapterEls, video.duration);
 
-  // A bar without chapter markers.
+  // No chapters of its own.
   if (starts.length === 0) {
-    showNotification('No chapters found');
+    if (!skipCommunityChapter(video, direction)) showNotification('No chapters found');
     if (wasForcedNow) closeForcedControls();
     return;
   }
@@ -2338,15 +2380,9 @@ function handleShortcutAction(action) {
             showNotification('SponsorBlock not loaded');
         }
         break;
-    case 'audio_only': {
-        // The picture is hidden, the sound keeps playing - for music and
-        // podcasts on an OLED panel. A class on <html> rather than a style on
-        // the element, so it survives YouTube replacing the <video>. From
-        // jesvijonathan's fork via anikettuli's NicholasBly PR #146.
-        const on = document.documentElement.classList.toggle('ytaf-audio-only');
-        showNotification(`Audio-Only Mode ${on ? 'Enabled' : 'Disabled'}`);
+    case 'audio_only':
+        toggleAudioOnly();
         break;
-    }
     case 'sb_manual_skip':
         try {
           if (window.sponsorblock) {

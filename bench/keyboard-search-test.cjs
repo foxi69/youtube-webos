@@ -8,15 +8,9 @@
  *
  * Usage: node bench/keyboard-search-test.cjs [bundle] [legacy|modern]
  */
-const { bootPage, trustedKey, wait, UA } = require('./harness.cjs');
+const { createReporter, bootPage, trustedKey, wait, UA } = require('./harness.cjs');
 
-let passed = 0;
-let failed = 0;
-const t = (name, ok, extra) => {
-  if (ok) passed++;
-  else failed++;
-  console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${ok || extra === undefined ? '' : ' -> ' + extra}`);
-};
+const { t, run } = createReporter();
 
 // The bundle of the command line: `modern` is the modern one (webOS 22 and
 // newer) in a Chrome 87 environment, instead of the legacy one in a Chrome 38
@@ -53,7 +47,7 @@ for (const k of doc.querySelectorAll('ytlr-keyboard-key')) {
 const type = (ch) => trustedKey(win, ch.toUpperCase().charCodeAt(0), doc.body, 'keydown', { key: ch });
 const query = () => (doc.querySelector('ytlr-search-text-box') || {}).textContent;
 
-(async () => {
+run(async () => {
   await wait(300);
   type('a');
   // The query box goes before the probe settles.
@@ -69,6 +63,4 @@ const query = () => (doc.querySelector('ytlr-search-text-box') || {}).textConten
   t('a query box gone during the probe settles nothing: the next character is typed on the on-screen keys',
     query() === 'b', JSON.stringify(query()));
   t('no jsdomError', errors.length === 0, errors[0]);
-  console.log(`${passed} passed, ${failed} failed`);
-  process.exit(failed ? 1 : 0);
-})();
+});
