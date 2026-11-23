@@ -784,6 +784,31 @@ run(async () => {
   }
 
   {
+    // Separate settings on, no account readable at the start (no restore): the
+    // skip goes to the shared totals. An existing account then loads (from
+    // none, not by a restore): Blue must not take the skip off its totals.
+    const A = 'ytaf-configuration::' + hashString('accountId=abc');
+    const clock = {};
+    const storage = { [A]: JSON.stringify({ sbTimeSaved: 100, sbSkipCount: 4 }) };
+    const env = await boot({ perAccountSettings: true }, [seg('sponsor', 30, 60)], { clock, storage });
+    const rec = (key) => JSON.parse(env.win.localStorage.getItem(key) || '{}');
+    await env.playTo(30.2);
+    t(n('account loaded after a skip: precondition: skipped with no account loaded'), env.state.time === 60, String(env.state.time));
+    const changes = [];
+    env.win.addEventListener('ytaf-profile-change', (e) => changes.push(e.detail));
+    env.win.localStorage.setItem('yt.leanback.default::last-identity-used', JSON.stringify({ data: { accountId: 'abc' } }));
+    env.win.dispatchEvent(new env.win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: true } }));
+    env.win.dispatchEvent(new env.win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: false } }));
+    await wait(50);
+    t(n('account loaded after a skip: precondition: abc loaded from none, not by a restore'),
+      changes.length === 1 && changes[0].from === null && !changes[0].restored, JSON.stringify(changes));
+    await press(env.win, BLUE);
+    t(n('account loaded after a skip: Blue does not go back'), env.state.time === 60, String(env.state.time));
+    await wait(300);
+    t(n('account loaded after a skip: abc’s totals are untouched'), rec(A).sbTimeSaved === 100 && rec(A).sbSkipCount === 4,
+      JSON.stringify(rec(A)));
+  }
+  {
     // Per-account settings in the copy, but no record of this account: it
     // starts from the restored shared totals, which hold the early skip once.
     let release;

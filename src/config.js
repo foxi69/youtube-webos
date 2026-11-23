@@ -998,7 +998,8 @@ let restoredRecords = null;
  * each had been changed in the panel. The outgoing account's pending write is
  * flushed to its own profile first.
  */
-function switchProfile(profile) {
+// restored: the account the copy of the settings was restored into (restoreFromBackup).
+function switchProfile(profile, restored = false) {
   if (profile === activeProfile) return;
   flushPendingWrite();
   const previous = activeProfile;
@@ -1028,8 +1029,9 @@ function switchProfile(profile) {
     notifyChange(key, newValue, oldValue);
   }
   // detail.from: the profile loaded before (null: none, as at the start or
-  // while the copy was read), detail.to: this one.
-  window.dispatchEvent(new CustomEvent('ytaf-profile-change', { detail: { from: previous, to: profile } }));
+  // while the copy was read), detail.to: this one; detail.restored: loaded by
+  // the restore, whose merge took what was counted with none loaded.
+  window.dispatchEvent(new CustomEvent('ytaf-profile-change', { detail: { from: previous, to: profile, restored } }));
 }
 
 /**
@@ -1219,7 +1221,7 @@ function restoreFromBackup() {
         recordsAwaitingCopy.push(key);
       }
     }
-    if (perAccount && profile !== null) switchProfile(profile);
+    if (perAccount && profile !== null) switchProfile(profile, true);
     return true;
   }).then((restored) => {
     restoreSettled = true;

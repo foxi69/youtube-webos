@@ -1321,9 +1321,12 @@ class SponsorBlockHandler {
         // back. Loaded from none (the restore of the copy loading the account in
         // use), the skip's totals went to that account, so it stays.
         if (this.boundProfileChange) window.removeEventListener('ytaf-profile-change', this.boundProfileChange);
+        // A skip counted with no account loaded can be undone in the account
+        // the restore then loads (its merge took those counters); any other
+        // account loaded since never had them, so the undo goes.
         this.boundProfileChange = (evt) => {
-            const from = evt && evt.detail ? evt.detail.from : undefined;
-            if (from !== null) this.lastAutoSkip = null;
+            const detail = evt && evt.detail ? evt.detail : {};
+            if (!(detail.from === null && detail.restored)) this.lastAutoSkip = null;
         };
         window.addEventListener('ytaf-profile-change', this.boundProfileChange);
 
