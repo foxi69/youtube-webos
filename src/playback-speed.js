@@ -236,6 +236,8 @@ export function createSpeedController({
   onSpeed = () => {}
 }) {
   let currentSpeed = 1;
+  // Another account's speed, loaded while a video played: set once it is left.
+  let deferredSpeed = null;
   let activeSink = null;
   let pending = null;
   let lastReloadAt = 0;
@@ -418,6 +420,12 @@ export function createSpeedController({
   /** The video was left (another page than the watch page or Shorts). */
   function leaveVideo() {
     qualityPickVideoId = null;
+    // Also called with the watch page still there (a page update of the
+    // account selector over it): the video plays on, and so does its speed.
+    if (deferredSpeed === null || onPlaybackPage()) return;
+    const next = deferredSpeed;
+    deferredSpeed = null;
+    if (!pending) currentSpeed = next;
   }
 
   function clearQualityPick() {
@@ -639,6 +647,8 @@ export function createSpeedController({
       notify('Playback speed is not supported on this TV');
       return;
     }
+    // The viewer's choice wins over another account's speed still waiting.
+    deferredSpeed = null;
     const previousSpeed = currentSpeed;
     currentSpeed = speed;
     notify(`Playback speed ${speed}×`);
@@ -662,11 +672,17 @@ export function createSpeedController({
   /**
    * Another account's settings loaded (Separate Settings for Each Account):
    * its remembered speed, or 1x when it remembers none, for the next video it
-   * opens, set with no reload as at the start. Not while a video plays.
+   * opens, set with no reload as at the start. Not while a video plays: then
+   * once that video is left (leaveVideo), unless the viewer set a speed meanwhile.
    */
   function rememberedSpeed(speed) {
     const next = speed !== 1 && isSupportedSpeed(speed) && enabled() && isSupported() ? speed : 1;
-    if (next === currentSpeed || pending || onPlaybackPage()) return false;
+    if (onPlaybackPage()) {
+      deferredSpeed = next === currentSpeed ? null : next;
+      return false;
+    }
+    deferredSpeed = null;
+    if (next === currentSpeed || pending) return false;
     currentSpeed = next;
     return true;
   }

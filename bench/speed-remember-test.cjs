@@ -117,6 +117,14 @@ run(async () => {
     t('per account: precondition: the account in use changed', changes > 0, String(changes));
     t('per account: a change of account while a video plays leaves its speed alone', win.ytafSpeed.getSpeed() === 2,
       win.ytafSpeed.getSpeed());
+    // That video left, with no other change of account: the next video
+    // plays at the account's own speed (xyz remembers none: 1x).
+    win.document.body.className = 'WEB_PAGE_TYPE_BROWSE';
+    win.dispatchEvent(new win.CustomEvent('ytaf-page-update', { detail: { isWatch: false } }));
+    await wait(50);
+    win.document.body.className = 'WEB_PAGE_TYPE_WATCH';
+    t('per account: the video left, the next one plays at the account’s own speed', win.ytafSpeed.getSpeed() === 1,
+      win.ytafSpeed.getSpeed());
   }
 
   // ---- Remember Playback Speed ----
