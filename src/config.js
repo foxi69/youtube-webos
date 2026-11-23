@@ -958,10 +958,11 @@ function journalBeforeRestore(key, value) {
   beforeRestoreChanged = true;
 }
 
-function notifyChange(key, newValue, oldValue) {
+// restored: the change came back with the copy of the settings (restoreFromBackup).
+function notifyChange(key, newValue, oldValue, restored) {
   const listeners = changeListeners.get(key);
   if (listeners) {
-    const syntheticEvent = { detail: { key, newValue, oldValue } };
+    const syntheticEvent = { detail: { key, newValue, oldValue, restored: !!restored } };
     for (const callback of listeners) {
       try { callback(syntheticEvent); }
       catch (err) { console.warn('[Config] change listener failed for', key, err); }
@@ -1147,7 +1148,7 @@ function restoreFromBackup() {
         const oldValue = localConfig[key];
         if (oldValue === shared[key]) continue;
         localConfig[key] = shared[key];
-        notifyChange(key, shared[key], oldValue);
+        notifyChange(key, shared[key], oldValue, true);
       }
     } finally {
       restoringBackup = false;

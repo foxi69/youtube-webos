@@ -956,10 +956,14 @@ export function initPlaybackSpeed() {
     if (configRead('rememberPlaybackSpeed')) speedInstance.controller.restoreSpeed(Number(configRead('savedPlaybackSpeed')));
     // Separate Settings for Each Account: the account picked in Who's watching
     // brings its own Remember Playback Speed, not the one the app started with.
-    window.addEventListener('ytaf-profile-change', () => {
-      const remembered = configRead('rememberPlaybackSpeed') ? Number(configRead('savedPlaybackSpeed')) : 1;
-      speedInstance.controller.rememberedSpeed(remembered);
-    });
+    const remembered = () => (configRead('rememberPlaybackSpeed') ? Number(configRead('savedPlaybackSpeed')) : 1);
+    window.addEventListener('ytaf-profile-change', () => speedInstance.controller.rememberedSpeed(remembered()));
+    // The settings back from their copy after the start (localStorage was
+    // emptied, config-backup.js): the speed they remember, as an account's
+    // comes. Only the restore's own change: one in the panel is no new video.
+    const onRestored = ({ detail }) => { if (detail.restored) speedInstance.controller.rememberedSpeed(remembered()); };
+    configAddChangeListener('rememberPlaybackSpeed', onRestored);
+    configAddChangeListener('savedPlaybackSpeed', onRestored);
     configAddChangeListener('enablePlaybackSpeed', ({ detail }) => {
       if (!detail.newValue) speedInstance.controller.stop();
     });

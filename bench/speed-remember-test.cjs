@@ -16,16 +16,19 @@ function boot(config, opts = {}) {
   if (opts.live === undefined) opts.live = false;
   if (opts.id === undefined) opts.id = 'aaaaaaaaaaa';
   const page = bootPage({
-    bodyClass: 'WEB_PAGE_TYPE_WATCH',
+    bodyClass: opts.bodyClass || 'WEB_PAGE_TYPE_WATCH',
     url: 'https://www.youtube.com/tv#/watch?v=aaaaaaaaaaa',
     consoleErrors: false,
     storage: opts.storage,
-    config: Object.assign({
+    // opts.idb: an IndexedDB with the settings' copy, and no settings in
+    // localStorage (as after YouTube emptied it), so the copy is restored.
+    config: opts.idb ? undefined : Object.assign({
       enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
       thumbnailQuality: 'off', enableAutoLogin: false, checkForUpdates: false, showWhatsNew: false
     }, config),
     fetch: 'pending',
     beforeEval(win) {
+      if (opts.idb) win.indexedDB = opts.idb;
       win.requestAnimationFrame = (cb) => setTimeout(cb, 0);
       win.cancelAnimationFrame = () => {};
       win.AudioDecoder = class { configure() {} decode() {} flush() { return Promise.resolve(); } close() {} };
@@ -142,6 +145,19 @@ run(async () => {
     win.document.body.className = 'WEB_PAGE_TYPE_WATCH';
     t('per account: a speed the viewer set after the change stays when the video is left', win.ytafSpeed.getSpeed() === 1.25,
       win.ytafSpeed.getSpeed());
+  }
+
+  // ---- Remember Playback Speed, back from the copy of the settings ----
+  {
+    // localStorage emptied: the app starts at 1x, then the copy brings
+    // Remember on at 1.5x; the next video plays at 1.5x.
+    const { fakeIndexedDB, savedCopy } = require('./fake-indexeddb.cjs');
+    const copy = savedCopy([['ytaf-configuration', JSON.stringify({ rememberPlaybackSpeed: true, savedPlaybackSpeed: 1.5, foxThemeApplied: true })]]);
+    const { win } = boot({}, { idb: fakeIndexedDB(copy, []), bodyClass: 'WEB_PAGE_TYPE_BROWSE' });
+    const back = await until(() => stored(win).rememberPlaybackSpeed === true && stored(win).savedPlaybackSpeed === 1.5, 3000);
+    t('restored: precondition: the copy brought Remember on at 1.5x', back, JSON.stringify(stored(win)));
+    win.document.body.className = 'WEB_PAGE_TYPE_WATCH';
+    t('restored: the next video plays at the remembered 1.5x', win.ytafSpeed.getSpeed() === 1.5, win.ytafSpeed.getSpeed());
   }
 
   // ---- Remember Playback Speed ----
