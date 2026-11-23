@@ -415,7 +415,11 @@ run(async () => {
       await sleep(900);
       emit(3); emit(1); pump(); pump();
       // Polled: on a slow run (coverage) the change is applied later than 1 s.
-      t('no pick, limit moved: the new limit applies', await until(() => log.ranges.includes('hd1080'), 3000), log.ranges.join());
+      // On a failure, what the pick test reads (the detail is the evidence).
+      const state = () => JSON.stringify({ ranges: log.ranges, now: win.Date.now(),
+        quality: win.localStorage.getItem('yt-player-quality'), forced: win.localStorage.getItem('ytaf-force-record'),
+        speedRange: win.localStorage.getItem('ytaf-speed-own-range'), force: JSON.parse(win.localStorage.getItem('ytaf-configuration') || '{}').forceQuality });
+      t('no pick, limit moved: the new limit applies', await until(() => log.ranges.includes('hd1080'), 3000), state());
     }
     win.close();
   }
