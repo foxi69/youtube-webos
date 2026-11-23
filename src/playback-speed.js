@@ -5,7 +5,7 @@ import { legacyAudioCodecs } from './speed/legacy-decoder.js';
 import { watchPosition } from './speed/position-watch.js';
 import { readCaptions, keepCaptions, readQualityRecord, QUALITY_KEY, QUALITY_HEIGHTS, levelUpTo } from './speed/player-state.js';
 import { showNotification } from './notifications.js';
-import { configRead, configWrite, configAddChangeListener, forceQualityLines } from './config.js';
+import { configRead, configWrite, configAddChangeListener, forceQualityLines, forceQualityOn } from './config.js';
 import { SELECTORS, SYNTHETIC_KEY_FLAG } from './utils.js';
 
 export const SPEED_BUTTON_TYPE = 'TRANSPORT_CONTROLS_BUTTON_TYPE_SPEED_BUTTON';
@@ -515,7 +515,7 @@ export function createSpeedController({
         try { levels = player.getAvailableQualityLevels(); } catch { /* none listed */ }
         // None listed: the level named for the limit, so it still holds.
         if (!Array.isArray(levels) || !levels.length) levels = Object.keys(QUALITY_HEIGHTS);
-        const quality = viewerPick() || (mode !== 'off' ? levelUpTo(levels, forceQualityLines(mode)) : 'auto');
+        const quality = viewerPick() || (forceQualityOn(mode) ? levelUpTo(levels, forceQualityLines(mode)) : 'auto');
         setRange(player, quality);
       }
     } catch { /* the reload goes on at the quality it has */ }

@@ -337,6 +337,14 @@ run(async () => {
     t(`Same level, ${name}: ${kept ? 'kept' : 'removed'} when switched off`,
       kept ? stored()?.data?.quality === 720 : win.localStorage.getItem(KEY) === null, win.localStorage.getItem(KEY));
   }
+  // A mode this build does not know (stored by a later one, say) is Off: no
+  // range at all, where Max would set highres; Max itself is the control.
+  for (const [mode, forced] of [['futureMode', false], ['max', true]]) {
+    const { log } = boot({ forceQuality: mode }, { quality: 'hd720', state: 3 });
+    await wait(50);
+    const ranged = log.calls.some((c) => c.startsWith('range'));
+    t(`unknown mode: ${mode} ${forced ? 'forces (the control)' : 'forces nothing, as Off'}`, ranged === forced, log.calls.join());
+  }
   // The range set, then the player's next call failing: the video counts as
   // done, so the next state change does not set the range (and reload) again.
   {

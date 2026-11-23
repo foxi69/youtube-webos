@@ -1,4 +1,4 @@
-import { configRead, configAddChangeListener, forceQualityLines } from './config.js';
+import { configRead, configAddChangeListener, forceQualityLines, forceQualityOn } from './config.js';
 import { showNotification } from './notifications.js';
 import { isWebOS25 } from './webos-utils.js';
 import { sendKey, REMOTE_KEYS, SELECTORS, SYNTHETIC_KEY_FLAG, isWatchPage, getVideo } from './utils.js';
@@ -728,7 +728,7 @@ export function initVideoQuality() {
   isDestroyed = false;
   _isWatchPageCached = true;
   
-  _shouldForce = configRead('forceQuality') !== 'off';
+  _shouldForce = forceQualityOn(configRead('forceQuality'));
   
   setLocalStorageQuality();
   
@@ -854,7 +854,7 @@ function setupListeners() {
     // 4320p record it wrote must go then too.
     configAddChangeListener('forceQuality', (evt) => {
       const wasForcing = _shouldForce;
-      _shouldForce = evt.detail.newValue !== 'off';
+      _shouldForce = forceQualityOn(evt.detail.newValue);
       if (!_shouldForce) {
         clearTimeout(applyNowTimer);
         applyNowTimer = null;

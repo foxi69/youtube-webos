@@ -247,6 +247,11 @@ export const forceQualityModes = {
 };
 
 /** The lines a Force Max Quality mode stops at: 0 for Off and Max. */
+/** Force Max Quality on: a mode of forceQualityModes other than Off (an unknown one stored, say by a later build, is Off). */
+export function forceQualityOn(mode) {
+  return mode !== 'off' && Object.prototype.hasOwnProperty.call(forceQualityModes, mode);
+}
+
 export function forceQualityLines(mode) {
   const match = /^up(\d+)$/.exec(String(mode));
   return match ? Number(match[1]) : 0;
