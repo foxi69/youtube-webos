@@ -77,12 +77,16 @@ run(async () => {
     const conn = await new Promise((resolve) => { req.onsuccess = () => resolve(req.result); });
     const seen = [];
     let wrote = false;
+    // The store itself when the cursor gives its second record: the write must
+    // still be waiting then, not merely hidden from the cursor.
+    let duringRead = null;
     const done = new Promise((resolve) => {
       const cursor = conn.transaction('kv').objectStore('kv').openCursor();
       cursor.onsuccess = () => {
         const c = cursor.result;
         if (!c) { resolve(); return; }
         seen.push(c.value);
+        if (seen.length === 2) duringRead = `${copy.get(KEY)},${copy.get(PROFILE_KEY)}`;
         if (!wrote) {
           wrote = true;
           const tx = conn.transaction('kv', 'readwrite');
@@ -95,6 +99,7 @@ run(async () => {
     await done;
     t('fixture: a cursor gives the records as they were when it opened, not part of a later write',
       seen.join() === 'old shared,old profile', seen.join());
+    t('fixture: ...and the store still holds the old pair while the cursor reads', duringRead === 'old shared,old profile', String(duringRead));
     await until(() => copy.get(PROFILE_KEY) === 'new profile', 1000);
     t('fixture: ...and the write lands once the read is done', copy.get(KEY) === 'new shared' && copy.get(PROFILE_KEY) === 'new profile',
       `${copy.get(KEY)} ${copy.get(PROFILE_KEY)}`);
@@ -1065,7 +1070,11 @@ run(async () => {
       !!separate && separate.checked === false && !!upscaled && upscaled.checked === true);
     separate.click();
     upscaled.click();
-    // Read before the debounced write: the account's record is not stored yet.
+    // Read before the debounced write (200 ms; the fixture's read takes a few
+    // timer turns): the account's record is not stored yet, so the restore
+    // flushes it itself.
+    t('precondition (no account record): none stored when the read goes on', page.win.localStorage.getItem(PROFILE_KEY) === null,
+      String(page.win.localStorage.getItem(PROFILE_KEY)));
     release();
     const restored = await until(() => !!stored(page.win, PROFILE_KEY) && stored(page.win, PROFILE_KEY).minVideoLength === '1');
     t('no account record: the account starts from the restored shared settings',
@@ -1109,13 +1118,33 @@ run(async () => {
     const backup = savedCopy([[KEY, JSON.stringify({ captionStyleBackup: { [CAPTION]: STYLE }, foxThemeApplied: true })]]);
     let release;
     const gate = new Promise((r) => { release = r; });
-    const page = boot({ data: backup, log: [], idb: { gate } });
+    // Counts the reads of the caption record, so the test can see the look at
+    // it as the app goes to the background really happened.
+    const reads = { caption: 0 };
+    const page = boot({
+      data: backup, log: [], idb: { gate },
+      setup: (w) => {
+        const real = w.localStorage;
+        const proxy = new Proxy(real, {
+          get(target, prop) {
+            if (prop === 'getItem') return (key) => { if (key === CAPTION) reads.caption++; return target.getItem(key); };
+            const value = Reflect.get(target, prop);
+            return typeof value === 'function' ? value.bind(target) : value;
+          },
+          set(target, prop, value) { target.setItem(prop, String(value)); return true; }
+        });
+        Object.defineProperty(w, 'localStorage', { configurable: true, get: () => proxy });
+      }
+    });
     await wait(100);
     const now = Date.now();
     page.win.localStorage.setItem(CAPTION, JSON.stringify({ data: DEFAULT, expiration: now + 1000, creation: now }));
+    const readsBefore = reads.caption;
     Object.defineProperty(page.win.document, 'hidden', { value: true, configurable: true });
     page.win.document.dispatchEvent(new page.win.Event('visibilitychange'));
     Object.defineProperty(page.win.document, 'hidden', { value: false, configurable: true });
+    t('precondition (caption, before the read): going to the background looked at the caption record',
+      reads.caption > readsBefore, `${readsBefore} -> ${reads.caption}`);
     await wait(300);
     const early = stored(page.win) && stored(page.win).captionStyleBackup;
     t('a caption record YouTube wrote before the copy was read is not copied as the style',
@@ -1195,7 +1224,8 @@ run(async () => {
     const backup = savedCopy([[KEY, JSON.stringify({ sbTimeSaved: 100, sbSkipCount: 4, minVideoLength: '5', foxThemeApplied: true })]]);
     let release;
     const gate = new Promise((r) => { release = r; });
-    const first = boot({ data: backup, log: [], idb: { gate, failAfter: 0 } });
+    const failing = { gate, failAfter: 0 };
+    const first = boot({ data: backup, log: [], idb: failing });
     await wait(1000);
     trustedKey(first.win, 404, first.win.document.body, 'keydown');
     trustedKey(first.win, 404, first.win.document.body, 'keyup');
@@ -1204,7 +1234,8 @@ run(async () => {
     if (button) first.win.document.querySelector('.ytaf-sb-stats .ytaf-list-btn').click();
     await wait(600);
     release();
-    await wait(300);
+    t('precondition (reset, failed read): the read failed before the snapshot', await until(() => (failing.cursorFailed || 0) > 0, 3000));
+    await wait(50);
     const left = {};
     for (let i = 0; i < first.win.localStorage.length; i++) {
       const k = first.win.localStorage.key(i);
@@ -1229,9 +1260,10 @@ run(async () => {
     let release;
     const gate = new Promise((r) => { release = r; });
     const full = { on: true, refused: 0 };
+    const failingJ = { gate, failAfter: 0 };
     const now = Date.now();
     const first = boot({
-      data: backup, log: [], idb: { gate, failAfter: 0 },
+      data: backup, log: [], idb: failingJ,
       storage: { [CAPTION]: JSON.stringify({ data: 'A', expiration: now + 200 * 86400000, creation: now }) },
       setup: (w) => refuseKeys(w, (key) => key === 'ytaf-settings-changed' && full.on && ++full.refused > 0)
     });
@@ -1257,7 +1289,8 @@ run(async () => {
     t('refused journal: the app record’s write stores the journal it refused',
       !!first.win.localStorage.getItem('ytaf-settings-changed'), String(first.win.localStorage.getItem('ytaf-settings-changed')));
     release();
-    await wait(300);
+    t('refused journal: precondition: the read failed before the snapshot', await until(() => (failingJ.cursorFailed || 0) > 0, 3000));
+    await wait(50);
     const left = {};
     for (let i = 0; i < first.win.localStorage.length; i++) {
       const k = first.win.localStorage.key(i);
@@ -1302,7 +1335,8 @@ run(async () => {
     ]);
     let release;
     const gate = new Promise((r) => { release = r; });
-    const first = boot({ data: backup, log: [], storage: IDENTITY, idb: { gate, failAfter: 0 } });
+    const failingS = { gate, failAfter: 0 };
+    const first = boot({ data: backup, log: [], storage: IDENTITY, idb: failingS });
     await wait(300);
     trustedKey(first.win, 404, first.win.document.body, 'keydown');
     trustedKey(first.win, 404, first.win.document.body, 'keyup');
@@ -1312,7 +1346,8 @@ run(async () => {
     if (label) label.querySelector('input').click();
     const seeded = await until(() => !!stored(first.win, PROFILE_KEY));
     release();
-    await wait(300);
+    t('precondition (seeded, failed read): the read failed before the snapshot', await until(() => (failingS.cursorFailed || 0) > 0, 3000));
+    await wait(50);
     const left = {};
     for (let i = 0; i < first.win.localStorage.length; i++) {
       const k = first.win.localStorage.key(i);
