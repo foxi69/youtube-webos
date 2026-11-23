@@ -181,6 +181,31 @@ run(async () => {
     }
     win.close();
   }
+  {
+    // At 1.5x the cap's range call throws (a player between two videos); the
+    // viewer then picks 480p with a key: that record is theirs, not taken for
+    // the cap's, which never went through.
+    const { win, p, log, speed } = boot(0, { force: 'up480' });
+    t('precondition: the speed feature is installed', !!speed);
+    if (speed) {
+      const setRange = p.setPlaybackQualityRange;
+      let threw = 0;
+      p.setPlaybackQualityRange = function () { threw++; throw new Error('between two videos'); };
+      try { speed.setSpeed(1.5, { immediate: true }); } catch { /* the reload's own failure */ }
+      await sleep(300);
+      p.setPlaybackQualityRange = setRange;
+      t('failed range: precondition: the range call threw', threw > 0, String(threw));
+      pressKey(win);
+      await sleep(20);
+      writeQuality(win, 480, 720);
+      await sleep(50);
+      // The next speed reload reads it: kept as the viewer's pick.
+      speed.setSpeed(1.75, { immediate: true });
+      await sleep(900);
+      t('failed range: the 480p picked with a key just after is the viewer’s', speed.keepsQuality(p) === true, log.ranges.join());
+    }
+    win.close();
+  }
   for (const [mode, want] of [['up480', 'large'], ['max', 'highres']]) {
     // The player lists only auto (its list being rebuilt): back at 1x, Up to
     // 480p asks for its own level, not highres (Max); Max is the control.

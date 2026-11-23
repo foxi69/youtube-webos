@@ -450,6 +450,9 @@ export function createSpeedController({
     const now = Date.now();
     const own = level === ownRangeLevel ? ownRanges.get(level) : null;
     const from = own ? own.from : now;
+    // Ours only once the player took it (times from before the call, which
+    // writes the record): a call that throws leaves a later record the viewer's.
+    player.setPlaybackQualityRange(quality, quality);
     ownRanges.set(level, { from, last: now, until: now + OWN_RECORD_MS });
     ownRangeLevel = level;
     // Kept for the next run only when it is a cap of the controller's own: a
@@ -458,7 +461,6 @@ export function createSpeedController({
     if (level && level !== lastPick) {
       try { win.localStorage.setItem(OWN_RANGE_KEY, JSON.stringify({ level, from, last: now })); } catch { /* storage denied */ }
     }
-    player.setPlaybackQualityRange(quality, quality);
   }
 
   // Above CAP_ABOVE: 1080p, or the viewer's own pick when it is lower.
