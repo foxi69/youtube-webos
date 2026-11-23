@@ -160,7 +160,7 @@ run(async () => {
       // Offered on every TV: on webOS 3-6 on by default, on webOS 22 and newer
       // a switch of its own for a TV that needs it, with its own hint.
       t(n + 'panel: Fix Black Tile Previews offered, with the hint of ' + (v <= 6 ? 'webOS 3-6' : 'webOS 22 and newer'),
-        has('Fix Black Tile Previews') && has('Turn on only if a tile preview plays its sound over a black tile') === (v > 6));
+        has('Fix Black Tile Previews') && has('(webOS 3-6)') === (v <= 6) && has('(webOS 22 and newer)') === (v > 6));
     }
     t(n + 'no console.error / jsdomError', errors.length === 0, errors.slice(0, 2).join(' || '));
     win.close();
