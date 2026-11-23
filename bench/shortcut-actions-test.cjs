@@ -404,6 +404,34 @@ run(async () => {
     t(n('subtitles: a list with nothing to use, the video\'s own tracks'), set.length === 1 && set[0].languageCode === 'de', JSON.stringify(set));
   }
   {
+    // A list entry that names no track ({}, what switches them off): not
+    // switched on as a track, the video's own tracks instead.
+    const env = await boot();
+    const player = env.doc.getElementById('ytlr-player__player-container-player');
+    const set = [];
+    player.getOption = (m, k) => (k === 'track' ? {} : [{}]);
+    player.setOption = (m, k, v) => set.push(v);
+    player.getVideoData = () => ({ captionTracks: [{ languageCode: 'de', name: 'Deutsch' }] });
+    await env.press(D(K.subs));
+    t(n('subtitles: a list entry naming no track is not switched on, the video\'s own track is'),
+      set.length === 1 && set[0].languageCode === 'de' && /Subtitles: ON \(Deutsch\)/.test(env.toasts()), JSON.stringify(set));
+  }
+  {
+    // A list with nothing to use and a subtitle language set: the video's
+    // track in it, before the player's own choice (English here).
+    const env = await boot({ subtitleTranslateLang: 'hu' });
+    const player = env.doc.getElementById('ytlr-player__player-container-player');
+    let track = {};
+    const set = [];
+    player.getOption = (m, k) => (k === 'track' ? track : [null]);
+    player.setOption = (m, k, v) => { set.push(v); track = v; };
+    player.getVideoData = () => ({ captionTracks: [{ languageCode: 'en', name: 'English' }, { languageCode: 'hu', name: 'Magyar' }] });
+    player.toggleSubtitlesOn = () => { track = { languageCode: 'en', name: 'English' }; };
+    await env.press(D(K.subs));
+    t(n('subtitles: a list with nothing to use, the set language from the video\'s tracks, not the player\'s choice'),
+      set.length === 1 && set[0].languageCode === 'hu' && /Subtitles: ON \(Magyar\)/.test(env.toasts()), `${JSON.stringify(set)} ${env.toasts()}`);
+  }
+  {
     // The TV's language from the list: its own words over speech recognition.
     const env = await boot();
     const player = env.doc.getElementById('ytlr-player__player-container-player');

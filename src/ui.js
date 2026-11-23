@@ -1751,16 +1751,20 @@ function subtitlesOnNotice(track) {
     return 'Subtitles: ON';
 }
 
-// A list entry that can be switched on as it is: a track, not a translation
-// entry (as pickTrack takes them).
+// A list entry that can be switched on as it is: a track that names itself
+// (a language code or a vss id), not a translation entry (as pickTrack takes
+// them). An empty object is what switches the subtitles off.
 function usableTrack(track) {
-    return !!track && typeof track === 'object' && !track.translationLanguage;
+    if (!track || typeof track !== 'object' || Array.isArray(track) || track.translationLanguage) return false;
+    const ids = [track.languageCode, track.vssId, track.vss_id];
+    return ids.some((id) => typeof id === 'string' && id !== '');
 }
 
 // The tracks to choose from: the player's list, else the video's caption
-// tracks (the captions API can answer before it has a list).
+// tracks (the captions API can answer before it has a list, or one with no
+// track in it that can be switched on).
 function captionTracks(player, trackList) {
-    if (Array.isArray(trackList) && trackList.length) return trackList;
+    if (Array.isArray(trackList) && trackList.some(usableTrack)) return trackList;
     const videoData = player.getVideoData ? player.getVideoData() : null;
     return videoData && Array.isArray(videoData.captionTracks) ? videoData.captionTracks : [];
 }
