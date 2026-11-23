@@ -529,6 +529,51 @@ run(async () => {
     win.close();
   }
   {
+    // The same, with the player between two videos when the limit is applied
+    // (its range call throws): the next play applies it, once.
+    const { win, p, log, speed, emit } = boot(0, { force: true });
+    if (speed) {
+      speed.setSpeed(1.5, { immediate: true });
+      await sleep(900);
+      log.ranges.length = 0;
+      trustedKey(win, 404);
+      await until(() => win.document.querySelector('.ytaf-ui-container .shortcut-control-row'), 2000);
+      const held = [];
+      const realSet = win.setTimeout;
+      const realClear = win.clearTimeout;
+      win.setTimeout = (fn, ms, ...args) => {
+        if (ms !== 600) return realSet.call(win, fn, ms, ...args);
+        const h = { id: -600 - held.length, fn, cleared: false };
+        held.push(h);
+        return h.id;
+      };
+      win.clearTimeout = (id) => {
+        const h = held.find((x) => x.id === id);
+        if (h) h.cleared = true; else realClear.call(win, id);
+      };
+      const row = Array.from(win.document.querySelectorAll('.ytaf-ui-container .shortcut-control-row'))
+        .find((r) => r.querySelector('.shortcut-label') && r.querySelector('.shortcut-label').textContent.trim() === 'Force Max Quality');
+      for (let i = 0; i < 10; i++) {
+        if (!row || row.querySelector('.current-value').textContent === 'Up to 480p') break;
+        row.focus();
+        trustedKey(win, 39, row);
+      }
+      const setRange = p.setPlaybackQualityRange;
+      let threw = 0;
+      p.setPlaybackQualityRange = function () { threw++; throw new Error('between two videos'); };
+      for (const h of held.filter((x) => !x.cleared)) h.fn();
+      p.setPlaybackQualityRange = setRange;
+      win.setTimeout = realSet;
+      win.clearTimeout = realClear;
+      t('missed limit at 1.5x: precondition: the limit’s range call threw', threw > 0 && log.ranges.length === 0,
+        `${threw} ${log.ranges.join()}`);
+      emit(1);
+      const lowered = await until(() => log.ranges.includes('large'), 2000);
+      t('missed limit at 1.5x: the next play applies it', lowered, log.ranges.join());
+    }
+    win.close();
+  }
+  {
     const { win, p, speed, emit } = boot(720, { manualPlayback: true });
     speed.setSpeed(1.5, { immediate: true });
     // A real key during buffering changes the viewer's choice before PLAYING.

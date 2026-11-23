@@ -964,8 +964,12 @@ export function initPlaybackSpeed() {
     // the video playing above it goes down to it at once, once the row stops
     // (as video-quality.js does at 1x). Raised again by the next video.
     let limitTimer = null;
+    // A lower limit that could not be applied (a player between two videos):
+    // the next play applies it once, as the change would have.
+    let limitMissed = false;
     configAddChangeListener('forceQuality', () => {
       clearTimeout(limitTimer);
+      limitMissed = false;
       limitTimer = setTimeout(() => {
         limitTimer = null;
         if (!speedCapsQuality()) return;
@@ -977,7 +981,8 @@ export function initPlaybackSpeed() {
           const cap = speedInstance.controller.capQuality();
           if ((QUALITY_HEIGHTS[player.getPlaybackQuality()] || 0) > QUALITY_HEIGHTS[cap]) speedInstance.controller.setRange(player, cap);
         } catch {
-          // A player between two videos: the next video takes the limit.
+          // A player between two videos: applied when it plays.
+          limitMissed = true;
         }
       }, LIMIT_APPLY_MS);
     });
@@ -991,7 +996,15 @@ export function initPlaybackSpeed() {
         document.querySelector('.html5-video-player');
       if (!player) return;
       speedInstance.controller.notePlay(player);
-      if (!speedCapsQuality()) return;
+      if (!speedCapsQuality()) { limitMissed = false; return; }
+      if (limitMissed) {
+        limitMissed = false;
+        const cap = speedInstance.controller.capQuality();
+        if ((QUALITY_HEIGHTS[player.getPlaybackQuality()] || 0) > QUALITY_HEIGHTS[cap]) {
+          speedInstance.controller.setRange(player, cap);
+          return;
+        }
+      }
       if (ABOVE_1080.includes(player.getPlaybackQuality())) {
         speedInstance.controller.setRange(player, speedInstance.controller.capQuality());
       } else {
