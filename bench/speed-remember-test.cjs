@@ -53,7 +53,8 @@ function boot(config, opts = {}) {
       el.getPlayerState = () => 1;
       el.getPlaybackQuality = () => 'hd1080';
       el.getAvailableQualityLevels = () => ['hd1080', 'auto'];
-      el.loadVideoById = () => {};
+      // opts.reloads: each reload's arguments, for a test that counts them.
+      el.loadVideoById = (...args) => { if (opts.reloads) opts.reloads.push(args); };
       el.setPlaybackQualityRange = () => {};
       el.appendChild(win.document.createElement('video'));
       win.document.body.appendChild(el);
@@ -159,7 +160,8 @@ run(async () => {
       [KEY + '::' + hashString('accountId=abc')]: JSON.stringify({ rememberPlaybackSpeed: true, savedPlaybackSpeed: 2 }),
       [KEY + '::' + hashString('accountId=pqr')]: JSON.stringify({ rememberPlaybackSpeed: true, savedPlaybackSpeed: 1.75 })
     };
-    const { win } = boot({ perAccountSettings: true }, { storage });
+    const opts = { storage, reloads: [] };
+    const { win } = boot({ perAccountSettings: true }, opts);
     let changes = 0;
     win.addEventListener('ytaf-profile-change', () => { changes++; });
     win.ytafSpeed.setSpeed(1.5);
@@ -174,6 +176,10 @@ run(async () => {
     await wait(50);
     win.document.body.className = 'WEB_PAGE_TYPE_WATCH';
     t('reload waiting: the next video plays at the account’s 1.75x', win.ytafSpeed.getSpeed() === 1.75, win.ytafSpeed.getSpeed());
+    // The next video, and past the 800 ms the left one's reload waited: it never comes.
+    opts.id = 'bbbbbbbbbbb';
+    await wait(1000);
+    t('reload waiting: the left video’s reload is dropped, not made on the next one', opts.reloads.length === 0, JSON.stringify(opts.reloads));
   }
 
   // ---- Remember Playback Speed, back from the copy of the settings ----
