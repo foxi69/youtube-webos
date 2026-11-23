@@ -61,11 +61,14 @@ function boot(cfg, { copySize = 1000 } = {}) {
   const casual = new Map();
   // Titles as uploaded, by video id, for YouTube's oEmbed answer.
   const uploaded = new Map();
+  // Video ids whose next oEmbed request fails (no connection), once each.
+  const oembedFails = new Set();
   win.fetch = (url) => {
     url = String(url);
     fetched.push(url);
     if (url.indexOf('https://www.youtube.com/oembed?') === 0) {
       const id = decodeURIComponent(url).split('v=').pop();
+      if (oembedFails.delete(id)) return Promise.reject(new Error('offline'));
       const title = uploaded.get(id);
       return Promise.resolve(title ? { ok: true, status: 200, json: () => Promise.resolve({ title }) }
         : { ok: false, status: 404, json: () => Promise.resolve({}) });
@@ -128,7 +131,7 @@ function boot(cfg, { copySize = 1000 } = {}) {
     input.checked = on;
     input.dispatchEvent(new win.Event('change'));
   };
-  return { win, errors, fetched, images, parse, toggle, known, casual, uploaded };
+  return { win, errors, fetched, images, parse, toggle, known, casual, uploaded, oembedFails };
 }
 
 function tile(id, title) {
@@ -314,6 +317,28 @@ run(async () => {
     t('untranslated: a later translated tile gets the title kept from the first',
       shownTitle(later) === 'How I built a boat' && shownTitle(first) === 'How I built a boat', shownTitle(later));
     t('untranslated: ...with YouTube asked once', fetched.filter((u) => u.indexOf('/oembed?') !== -1).length === 1);
+    win.close();
+  }
+  {
+    // The request for the title as uploaded fails (no connection): the video
+    // is asked again when it is looked up again (the setting switched off and
+    // on), not left at the translation for good.
+    const { win, parse, known, uploaded, fetched, toggle, oembedFails } = boot({ dearrowUntranslatedTitles: true, dearrowCrowdTitles: false });
+    known.add('flakyvideo1');
+    uploaded.set('flakyvideo1', 'How I built a boat');
+    oembedFails.add('flakyvideo1');
+    const el = render(win, 'flakyvideo1', 'Hogyan építettem csónakot');
+    parse(browse([tile('flakyvideo1', 'Hogyan építettem csónakot')]));
+    await waitFor(() => shownThumb(el).includes('COPY'), 2000);
+    const asked = () => fetched.filter((u) => u.indexOf('/oembed?') !== -1).length;
+    t('untranslated, failed request: precondition: asked once, the title as shown',
+      asked() === 1 && shownTitle(el) === 'Hogyan építettem csónakot', `${asked()} ${shownTitle(el)}`);
+    toggle('Untranslated Titles', false);
+    await wait(300);
+    toggle('Untranslated Titles', true);
+    await waitFor(() => shownTitle(el) === 'How I built a boat', 3000);
+    t('untranslated, failed request: looked up again, it is asked again and shown as uploaded',
+      asked() === 2 && shownTitle(el) === 'How I built a boat', `${asked()} ${shownTitle(el)}`);
     win.close();
   }
   {

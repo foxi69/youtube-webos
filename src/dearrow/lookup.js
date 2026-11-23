@@ -42,17 +42,24 @@ const OEMBED_TIMEOUT_MS = 8000;
 /**
  * Untranslated Titles: the title as uploaded, kept on the video as
  * `untranslated` even when this tile already shows it (a later tile of the
- * video may be translated); asked for once per video. A failed or empty answer
- * leaves the title as YouTube shows it. From YouTube Anti Translate (zpix1).
+ * video may be translated); asked for once per video. An empty answer leaves
+ * the title as YouTube shows it; so does a failed request (no connection, a
+ * server error), for now: the next lookup of the video asks again.
+ * From YouTube Anti Translate (zpix1).
  */
 async function fetchUntranslated(videoId, video) {
   if (video.untranslatedAsked) return;
   video.untranslatedAsked = true;
   try {
     const res = await fetchJsonWithTimeout(OEMBED_URL + encodeURIComponent(videoId), OEMBED_TIMEOUT_MS);
+    // A server error is no answer: asked again later, as a request that failed.
+    if (!res || res.status >= 500) video.untranslatedAsked = false;
     const title = res && res.data && typeof res.data.title === 'string' ? res.data.title.trim() : '';
     if (title) video.untranslated = title;
-  } catch { /* the title as YouTube shows it */ }
+  } catch {
+    // The title as YouTube shows it until the video is looked up again.
+    video.untranslatedAsked = false;
+  }
 }
 
 // The videos waiting: the ones with a tile on screen first (`onScreen`, in
