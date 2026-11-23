@@ -360,6 +360,8 @@ run(async () => {
     await wait(80);
     t('playing, range set, then a failure: precondition: paused, the range went through, the next call threw',
       log.calls.includes('pause') && log.calls.includes('range:highres') && log.calls.includes('quality-threw'), log.calls.join());
+    t('playing, range set, then a failure: playback goes on after the failed call',
+      log.calls.lastIndexOf('play') > log.calls.indexOf('quality-threw'), log.calls.join());
     s.quality = 'hd720';
     log.calls.length = 0;
     emit(1);

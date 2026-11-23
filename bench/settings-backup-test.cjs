@@ -350,19 +350,7 @@ run(async () => {
     const page = boot({
       data: backup, log: [], idb: { gate },
       storage: Object.assign({ [PROFILE_KEY]: JSON.stringify({ minVideoLength: '10', removeUpscaledFormats: true }) }, IDENTITY),
-      setup: (w) => {
-        const real = w.localStorage;
-        const refuse = (key) => { if (key === PROFILE_KEY) { refusing.refused++; throw new Error('QuotaExceededError'); } };
-        const proxy = new Proxy(real, {
-          get(target, prop) {
-            if (prop === 'setItem') return (key, value) => { refuse(key); target.setItem(key, value); };
-            const value = Reflect.get(target, prop);
-            return typeof value === 'function' ? value.bind(target) : value;
-          },
-          set(target, prop, value) { refuse(prop); target.setItem(prop, String(value)); return true; }
-        });
-        Object.defineProperty(w, 'localStorage', { configurable: true, get: () => proxy });
-      }
+      setup: (w) => refuseKeys(w, (key) => key === PROFILE_KEY && ++refusing.refused > 0)
     });
     await wait(300);
     trustedKey(page.win, 404, page.win.document.body, 'keydown');
@@ -589,21 +577,7 @@ run(async () => {
     const refuseShared = { on: true, refused: 0 };
     const page = boot({
       data: backup, log: [], storage: IDENTITY, idb: { gate },
-      setup: (w) => {
-        const real = w.localStorage;
-        const refuse = (key) => {
-          if (refuseShared.on && key === KEY) { refuseShared.refused++; throw new Error('QuotaExceededError'); }
-        };
-        const proxy = new Proxy(real, {
-          get(target, prop) {
-            if (prop === 'setItem') return (key, value) => { refuse(key); target.setItem(key, value); };
-            const value = Reflect.get(target, prop);
-            return typeof value === 'function' ? value.bind(target) : value;
-          },
-          set(target, prop, value) { refuse(prop); target.setItem(prop, String(value)); return true; }
-        });
-        Object.defineProperty(w, 'localStorage', { configurable: true, get: () => proxy });
-      }
+      setup: (w) => refuseKeys(w, (key) => refuseShared.on && key === KEY && ++refuseShared.refused > 0)
     });
     await wait(300);
     trustedKey(page.win, 404, page.win.document.body, 'keydown');
@@ -795,21 +769,7 @@ run(async () => {
       }, IDENTITY),
       // The app writes the records by assignment (localStorage[key] = text):
       // a stand-in that refuses the shared record, by assignment or setItem.
-      setup: (w) => {
-        const real = w.localStorage;
-        const refuse = (key) => {
-          if (refuseShared.on && key === KEY) { refuseShared.refused++; throw new Error('QuotaExceededError'); }
-        };
-        const proxy = new Proxy(real, {
-          get(target, prop) {
-            if (prop === 'setItem') return (key, value) => { refuse(key); target.setItem(key, value); };
-            const value = Reflect.get(target, prop);
-            return typeof value === 'function' ? value.bind(target) : value;
-          },
-          set(target, prop, value) { refuse(prop); target.setItem(prop, String(value)); return true; }
-        });
-        Object.defineProperty(w, 'localStorage', { configurable: true, get: () => proxy });
-      }
+      setup: (w) => refuseKeys(w, (key) => refuseShared.on && key === KEY && ++refuseShared.refused > 0)
     });
     await wait(400);
     const switchTo = async (accountId) => {
@@ -915,21 +875,7 @@ run(async () => {
     const refuseShared = { on: true, refused: 0 };
     const second = boot({
       data: backup, log: [], storage: left,
-      setup: (w) => {
-        const real = w.localStorage;
-        const refuse = (key) => {
-          if (refuseShared.on && key === KEY) { refuseShared.refused++; throw new Error('QuotaExceededError'); }
-        };
-        const proxy = new Proxy(real, {
-          get(target, prop) {
-            if (prop === 'setItem') return (key, value) => { refuse(key); target.setItem(key, value); };
-            const value = Reflect.get(target, prop);
-            return typeof value === 'function' ? value.bind(target) : value;
-          },
-          set(target, prop, value) { refuse(prop); target.setItem(prop, String(value)); return true; }
-        });
-        Object.defineProperty(w, 'localStorage', { configurable: true, get: () => proxy });
-      }
+      setup: (w) => refuseKeys(w, (key) => refuseShared.on && key === KEY && ++refuseShared.refused > 0)
     });
     await wait(1800);
     t('...precondition: the restored shared record was refused', refuseShared.refused > 0 && JSON.parse(second.win.localStorage.getItem(KEY)).minVideoLength === '0',
