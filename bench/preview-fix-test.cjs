@@ -11,7 +11,8 @@
  *
  * legacy: the legacy bundle as webOS 3 (no elementsFromPoint: only the
  * surface pages over the video count) and as webOS 6 (elementsFromPoint: the
- * whole stack). modern: the modern bundle as webOS 23, where the fix is off.
+ * whole stack). modern: the modern bundle as webOS 23, where the fix is a
+ * switch of its own, off by default (fixBlackPreviews22).
  *
  * jsdom has no layout: getBoundingClientRect gives each element the rectangle
  * the case sets, and on webOS 6 document.elementsFromPoint returns, topmost
@@ -155,7 +156,7 @@ function boot(webos, cfg = {}) {
 
 run(async () => {
   if (modern) {
-    // ---- webOS 23: not a legacy TV, the fix stays off ----
+    // ---- webOS 23: a switch of its own, off by default ----
     const env = boot(23);
     await wait(50);
     t('webOS 23: <html> does not get the fix\'s class', !env.on(), env.doc.documentElement.className);
@@ -167,8 +168,44 @@ run(async () => {
     t('webOS 23: nothing cleared a second later either, and no stack is looked up',
       env.cleared() === '' && env.state.fromPoint.length === 0, env.cleared() + ' / ' + env.state.fromPoint.length);
     const opened = env.openPanel();
-    t('webOS 23: the panel does not offer Fix Black Tile Previews', opened &&
-      !!env.doc.querySelector('.ytaf-ui-container') && env.checkbox() === null);
+    t('webOS 23: the panel offers Fix Black Tile Previews, unchecked', opened && !!env.checkbox() && !env.checkbox().checked);
+
+    // Turned on (a TV that plays the sound over a black tile): the preview
+    // playing now is cleared at once, its whole stack as on webOS 6.
+    t('webOS 23: turned on in the panel', env.setBox(true) && env.on());
+    t('webOS 23: ...the preview playing is cleared at once', env.cleared() === 'browse,tile1,thumb1,shade1,tint1', env.cleared());
+    t('webOS 23: ...the browse page shows through', env.style('browse').backgroundColor === 'rgba(0, 0, 0, 0)',
+      env.style('browse').backgroundColor);
+    t('webOS 23: ...a shadow stays (the focus ring can be one), unlike on webOS 3-6',
+      env.style('shade1').boxShadow !== 'none' && env.style('thumb1').opacity === '0', env.style('shade1').boxShadow);
+    // Each lookup restyles the page twice: none with nothing moving.
+    const looked = env.state.fromPoint.length;
+    await wait(1300);
+    t('webOS 23: no lookup a second later with nothing moved (webOS 3-6 look every second)',
+      env.state.fromPoint.length === looked, String(env.state.fromPoint.length - looked));
+    // The focus moves on (each press of the remote), or a transition ends: looked
+    // up again in the next frame, once for all the events of that frame.
+    env.doc.body.dispatchEvent(new env.win.Event('focusin', { bubbles: true }));
+    env.doc.body.dispatchEvent(new env.win.Event('focusin', { bubbles: true }));
+    env.doc.body.dispatchEvent(new env.win.Event('transitionend', { bubbles: true }));
+    await wait(100);
+    t('webOS 23: three events in a frame: one lookup', env.state.fromPoint.length === looked + 1,
+      String(env.state.fromPoint.length - looked));
+    // YouTube draws the browse page anew with nothing moving: the 5 s re-check clears it.
+    const old = env.el('browse');
+    const fresh = old.cloneNode(true);
+    old.parentNode.replaceChild(fresh, old);
+    fresh.classList.remove(CLEARED);
+    await wait(4000);
+    t('webOS 23: a re-rendered page: cleared by the 5 s re-check', fresh.classList.contains(CLEARED), env.cleared());
+    env.pause();
+    t('webOS 23: the preview stops: everything gets its look back at once', env.cleared() === '' &&
+      env.style('browse').backgroundColor === 'rgb(0, 0, 0)', env.cleared());
+    const afterStop = env.state.fromPoint.length;
+    env.doc.body.dispatchEvent(new env.win.Event('focusin', { bubbles: true }));
+    await wait(100);
+    t('webOS 23: no preview playing: a focus move looks nothing up', env.state.fromPoint.length === afterStop,
+      String(env.state.fromPoint.length - afterStop));
     t('webOS 23: no page errors', env.errors.length === 0, env.errors.join(' | '));
     env.win.close();
   } else {

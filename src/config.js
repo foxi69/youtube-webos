@@ -425,6 +425,9 @@ const configOptions = new Map([
   ['continuePreviews', { default: false, desc: 'Open Playing Previews Without Reloading' }],
   // webOS 3-6 only (preview-fix.js, #67).
   ['fixBlackPreviews', { default: true, desc: 'Fix Black Tile Previews' }],
+  // The same on webOS 22 and newer, off by default there: a key of its own,
+  // as the one above is stored as true on these TVs too (its default).
+  ['fixBlackPreviews22', { default: false, desc: 'Fix Black Tile Previews' }],
   // About tab (about.js).
   ['checkForUpdates', { default: true, desc: 'Check for Updates' }],
   ['showWhatsNew', { default: true, desc: "Show What's New After an Update" }],

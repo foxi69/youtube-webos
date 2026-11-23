@@ -3,7 +3,8 @@ import { isWatchPage, isShortsPage } from './utils.js';
 import { isLegacyWebOS } from './webos-utils.js';
 
 /**
- * Fix Black Tile Previews (webOS 3-6, #67).
+ * Fix Black Tile Previews (#67): on by default on webOS 3-6; on webOS 22
+ * and newer a switch of its own (fixBlackPreviews22), off by default.
  *
  * A tile preview does not play inside the tile: YouTube's one full-screen
  * player is scaled down onto it, under the browse page. On webOS the video is
@@ -17,18 +18,33 @@ import { isLegacyWebOS } from './webos-utils.js';
  * that draw anything of their own (a background colour or image, a shadow, an
  * image) lose it; when it stops or the page changes, they get it back. On the
  * C9 that is the one surface page; nothing else on the tile changes.
+ *
+ * On webOS 22 and newer most TVs show previews with their picture (a webOS 25
+ * TV), but some play the sound over a black tile (NicholasBly/youtube-webos#221,
+ * a webOS 26 C4 and others); the same clearing shows it there
+ * (NicholasBly/youtube-webos#229, by valentinBoch, tested on such a TV). There
+ * the stack is looked up when the preview starts, when the focus moves or the
+ * layout changes (once per frame, however many events) and every RESCAN_MS,
+ * not every second, as each lookup restyles the page twice (stackAt); and a
+ * shadow stays (the focus ring can be one). webOS 3-6 keep the 1 s re-check
+ * and the shadow cleared, as tested on the C9.
  */
 
 const CLEAR_CLASS = 'ytaf-pfix-cleared';
 const ON_CLASS = 'ytaf-pfix-clear';
 const TICK_MS = 1000;
+const RESCAN_MS = 5000;
+// On webOS 22 and newer: the shadow is not cleared (yt-fixes.css).
+const MODERN_CLASS = 'ytaf-pfix-modern';
 
 let legacy = false;
 let timer = null;
+let frame = null;
 let cleared = [];
 
 const isPreviewPage = () => !isWatchPage() && !isShortsPage();
-const enabled = () => legacy && !!configRead('fixBlackPreviews');
+const settingKey = () => (legacy ? 'fixBlackPreviews' : 'fixBlackPreviews22');
+const enabled = () => !!configRead(settingKey());
 
 function playingVideo() {
   const videos = document.querySelectorAll('video');
@@ -112,13 +128,27 @@ function stop() {
     clearInterval(timer);
     timer = null;
   }
+  if (frame !== null) {
+    cancelAnimationFrame(frame);
+    frame = null;
+  }
   unclear();
 }
 
 // Clear at once, then keep up with YouTube's re-renders.
 function start() {
   tick();
-  if (!timer) timer = setInterval(tick, TICK_MS);
+  if (!timer) timer = setInterval(tick, legacy ? TICK_MS : RESCAN_MS);
+}
+
+// webOS 22 and newer: the focus moved or the layout changed while a preview
+// plays: looked up again in the next frame, once however many events came.
+function queueTick() {
+  if (!timer || frame !== null) return;
+  frame = requestAnimationFrame(() => {
+    frame = null;
+    if (timer) tick();
+  });
 }
 
 // A preview starting.
@@ -149,11 +179,16 @@ function onSettingChange() {
 
 export function initPreviewFix() {
   legacy = isLegacyWebOS();
-  if (!legacy) return;
+  if (!legacy) {
+    document.documentElement.classList.add(MODERN_CLASS);
+    document.addEventListener('focusin', queueTick, true);
+    document.addEventListener('transitionend', queueTick, true);
+    window.addEventListener('resize', queueTick);
+  }
   document.addEventListener('playing', onPlaying, true);
   document.addEventListener('pause', onStopped, true);
   document.addEventListener('ended', onStopped, true);
   window.addEventListener('ytaf-page-update', sync);
-  configAddChangeListener('fixBlackPreviews', onSettingChange);
+  configAddChangeListener(settingKey(), onSettingChange);
   sync();
 }
