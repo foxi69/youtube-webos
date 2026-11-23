@@ -128,12 +128,13 @@ run(async () => {
     // Again while a video plays, to the 2x account, and the viewer then sets
     // 1.25x on that video: leaving it keeps the viewer's speed, not the 2x
     // that was waiting for the next video.
+    const changesBefore = changes;
     win.localStorage.setItem('yt.leanback.default::last-identity-used', identity('abc'));
     win.dispatchEvent(new win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: true } }));
     win.dispatchEvent(new win.CustomEvent('ytaf-page-update', { detail: { isAccountSelector: false } }));
     await wait(200);
-    t('per account: precondition: the 2x account loaded mid-video, the video keeps 1x', win.ytafSpeed.getSpeed() === 1,
-      win.ytafSpeed.getSpeed());
+    t('per account: precondition: the 2x account loaded mid-video, the video keeps 1x',
+      changes > changesBefore && win.ytafSpeed.getSpeed() === 1, `${changes - changesBefore} ${win.ytafSpeed.getSpeed()}`);
     win.ytafSpeed.setSpeed(1.25, { immediate: true });
     win.document.body.className = 'WEB_PAGE_TYPE_BROWSE';
     win.dispatchEvent(new win.CustomEvent('ytaf-page-update', { detail: { isWatch: false } }));
@@ -214,13 +215,13 @@ run(async () => {
   // ---- Toggle Speed on a live stream ----
   {
     const opts = { live: true };
-    const { win } = boot({ shortcut_key_7: 'speed_toggle', rememberPlaybackSpeed: true, savedPlaybackSpeed: 1.5 }, opts);
+    const { win } = boot({ shortcut_key_7: 'speed_toggle', rememberPlaybackSpeed: true, savedPlaybackSpeed: 1.75, toggleSpeed: 2 }, opts);
     await wait(300);
     const before = stored(win).savedPlaybackSpeed;
     trustedKey(win, 55, win.document.body, 'keydown');
     trustedKey(win, 55, win.document.body, 'keyup');
     await wait(400);
-    t('toggle on a live stream: the speed kept for the next video stays', stored(win).savedPlaybackSpeed === before && before === 1.5,
+    t('toggle on a live stream: the speed kept for the next video stays', stored(win).savedPlaybackSpeed === before && before === 1.75 && stored(win).toggleSpeed === 2,
       JSON.stringify([before, stored(win).savedPlaybackSpeed]));
     t('...and it still plays at 1x', win.ytafSpeed.getSpeed() === 1);
     t('...with the notice that there is no speed on a live stream',
@@ -228,6 +229,6 @@ run(async () => {
     // The next video, another one and not live: it plays at the speed kept.
     opts.live = false;
     opts.id = 'bbbbbbbbbbb';
-    t('...and the next video that is not live plays at it', win.ytafSpeed.getSpeed() === 1.5, win.ytafSpeed.getSpeed());
+    t('...and the next video that is not live plays at it', win.ytafSpeed.getSpeed() === 1.75, win.ytafSpeed.getSpeed());
   }
 });

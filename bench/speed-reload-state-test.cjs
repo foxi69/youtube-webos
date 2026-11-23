@@ -152,6 +152,7 @@ run(async () => {
   {
     // No pick: the 1080p cap and Auto as before.
     const { win, log, speed } = boot(0);
+    t('precondition: the speed feature is installed', !!speed);
     if (speed) {
       speed.setSpeed(1.5, { immediate: true });
       await sleep(900);
@@ -167,6 +168,7 @@ run(async () => {
   {
     // Force Max Quality on, 480p picked in the menu: the pick wins back at 1x (seen on a TV going to 2160p).
     const { win, log, speed } = boot(480, { force: true });
+    t('precondition: the speed feature is installed', !!speed);
     if (speed) {
       speed.setSpeed(1.25, { immediate: true });
       await sleep(900);
@@ -182,6 +184,7 @@ run(async () => {
   {
     // Force Max Quality on, no pick: Max back at 1x, even after the 1080p cap was recorded.
     const { win, log, speed } = boot(0, { force: true });
+    t('precondition: the speed feature is installed', !!speed);
     if (speed) {
       speed.setSpeed(1.5, { immediate: true });
       await sleep(900);
@@ -337,6 +340,7 @@ run(async () => {
   {
     // Its control: the same steps with no pick of the viewer's: the new limit applies.
     const { win, p, log, speed, emit, setQuality, pump } = boot(0, { force: 'up720' });
+    t('precondition: the speed feature is installed', !!speed);
     if (speed) {
       win.dispatchEvent(new win.CustomEvent('yt-navigate-finish', { detail: { pageType: 'watch' } }));
       await sleep(300);
@@ -535,6 +539,7 @@ run(async () => {
     // The same, with the player between two videos when the limit is applied
     // (its range call throws): the next play applies it, once.
     const { win, p, log, speed, emit } = boot(0, { force: true });
+    t('precondition: the speed feature is installed', !!speed);
     if (speed) {
       speed.setSpeed(1.5, { immediate: true });
       await sleep(900);
@@ -573,6 +578,11 @@ run(async () => {
       emit(1);
       const lowered = await until(() => log.ranges.includes('large'), 2000);
       t('missed limit at 1.5x: the next play applies it', lowered, log.ranges.join());
+      // Once: a later play, the limit already applied, sets it no more.
+      emit(1);
+      await sleep(300);
+      t('missed limit at 1.5x: ...once, not again at the next play', log.ranges.filter((r) => r === 'large').length === 1,
+        log.ranges.join());
     }
     win.close();
   }
