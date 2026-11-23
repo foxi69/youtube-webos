@@ -45,7 +45,7 @@ const allErrors = [];
  * whether the player takes state listeners. opts.record: the yt-player-quality
  * record in storage before the app starts.
  */
-function boot(cfg, { player = true, events = true, record, ua, quality = 'hd720', state = 1, levels, holdApply = false, qualityThrows = false } = {}) {
+function boot(cfg, { player = true, events = true, record, ua, quality = 'hd720', state = 1, levels, holdApply = false, qualityThrows = false, rafHook } = {}) {
   const errors = [];
   const vc = new VirtualConsole();
   vc.on('jsdomError', (e) => { errors.push(e.message); allErrors.push(e.message); });
@@ -82,6 +82,12 @@ function boot(cfg, { player = true, events = true, record, ua, quality = 'hd720'
       else realClear(id);
     };
   }
+  // rafHook(s): run before each animation frame callback, with the player's state (set before the bundle runs).
+  let rafState = null;
+  if (rafHook) {
+    const raf = win.requestAnimationFrame.bind(win);
+    win.requestAnimationFrame = (cb) => raf((ts) => { if (rafState) rafHook(rafState); cb(ts); });
+  }
   if (record) win.localStorage.setItem(KEY, JSON.stringify(record));
   win.localStorage.setItem('ytaf-configuration', JSON.stringify(Object.assign({
     enableAdBlock: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
@@ -93,6 +99,7 @@ function boot(cfg, { player = true, events = true, record, ua, quality = 'hd720'
   p.id = 'ytlr-player__player-container-player';
   p.innerHTML = '<video></video>';
   const s = { state, quality, levels: levels || ['hd2160', 'hd1080', 'hd720', 'auto'], label: true, videoId: 'abcdefghijk' };
+  rafState = s;
   let onStateChange = null;
   const calls = (name) => (...args) => { log.calls.push(name + (args.length ? ':' + args.join(',') : '')); };
   Object.assign(p, {
@@ -348,6 +355,24 @@ run(async () => {
     toggle('Force Max Quality', false);
     t(`Same level, ${name}: ${kept ? 'kept' : 'removed'} when switched off`,
       kept ? stored()?.data?.quality === 720 : win.localStorage.getItem(KEY) === null, win.localStorage.getItem(KEY));
+  }
+  // Paused to raise the quality, and the levels gone by the frame that sets
+  // the range (a list being rebuilt): no range then, which a player could
+  // ignore for a level it does not list, leaving the video taken as done;
+  // playback resumes, and once listed again the limit's level is set.
+  {
+    let emptied = false;
+    const { log, s, emit } = boot({ forceQuality: 'up1080' }, { quality: 'hd720', state: 1, levels: ['hd2160', 'hd1080', 'hd720', 'auto'],
+      rafHook: (st) => { if (!emptied && log.calls.includes('pause')) { emptied = true; st.levels = ['auto']; } } });
+    await wait(100);
+    t('levels gone in the frame: precondition: paused to raise it, then the list emptied', emptied && log.calls.includes('pause'), log.calls.join());
+    t('levels gone in the frame: no range then, and playback goes on', !log.calls.some((c) => c.startsWith('range')) && log.calls.includes('play'),
+      log.calls.join());
+    s.levels = ['hd2160', 'hd1080', 'hd720', 'auto'];
+    log.calls.length = 0;
+    emit(1);
+    await wait(100);
+    t('levels gone in the frame: listed again, the next play sets the limit’s level', log.calls.includes('range:hd1080'), log.calls.join());
   }
   // A mode this build does not know (stored by a later one, say) is Off: no
   // range at all, where Max would set highres; Max itself is the control.

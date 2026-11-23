@@ -119,8 +119,17 @@ run(async () => {
       cursor.onsuccess = () => resolve(cursor.result && cursor.result.value);
     });
     t('fixture: a read between two writes sees the first, not the later one', between === 'first', String(between));
+    // Ordered from creation, not from the first request: a writer made before
+    // the cursor, its put made after the cursor opened, is still seen.
     await until(() => copy.get(KEY) === 'last', 1000);
     t('fixture: ...and the later write lands after it', copy.get(KEY) === 'last', String(copy.get(KEY)));
+    const writer = conn.transaction('kv', 'readwrite');
+    const madeFirst = await new Promise((resolve) => {
+      const cursor = conn.transaction('kv').objectStore('kv').openCursor();
+      writer.objectStore('kv').put('from the writer made first', KEY);
+      cursor.onsuccess = () => resolve(cursor.result && cursor.result.value);
+    });
+    t('fixture: a cursor sees a writer made before it, though its put came later', madeFirst === 'from the writer made first', String(madeFirst));
   }
 
   const data = new Map();

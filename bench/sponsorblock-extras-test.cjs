@@ -1054,12 +1054,12 @@ run(async () => {
     await wait(100);
     env.sb().applyRefreshedSegments([seg('selfpromo', 0, 60), seg('sponsor', 0.2, 20)], 'around');
     await wait(50);
-    env.video.currentTime = 0;
-    await wait(30);
+    // Back at the start with no event (a seek's seeked could skip by itself),
+    // and the chain skip asked before anything else runs.
+    env.state.time = 0;
     env.sb().hasPerformedChainSkip = false;
     const jumped = env.sb().executeChainSkip(env.video);
-    await wait(30);
-    t(n('undone chain: control: with no undo, the same segments are skipped to 60 s'), env.state.time === 60,
+    t(n('undone chain: control: with no undo, the same segments are skipped to 60 s'), jumped === true && env.state.time === 60,
       `${jumped} ${env.state.time}`);
   }
 

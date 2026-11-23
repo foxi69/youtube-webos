@@ -462,7 +462,11 @@ function interceptAndUpgradeQuality(videoId) {
   
   requestAnimationFrame(() => {
     if (player !== owner) return;
-    const result = setQualityOnPlayer();
+    // The levels gone by now (a list being rebuilt): no range, as an Up to
+    // limit would ask for a level the player may not list and ignore, and the
+    // video would count as done. Playback goes on; the next state event, with
+    // the levels listed, tries again.
+    const result = levelsListed() ? setQualityOnPlayer() : { success: false, upgraded: false, rangeSet: false };
     
     // A range that went through counts too: the video reloads at it, and
     // setting it again on the next state change would reload it again.

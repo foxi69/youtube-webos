@@ -14,7 +14,7 @@
  * opts.gate: a promise the cursor waits for before its first record;
  * opts.abortReads: a read transaction aborts once its cursor has given every
  * record (the connection closed at the end); opts.readsAborted counts the
- * aborts delivered, for a test to wait for;
+ * aborts delivered to an onabort handler, for a test to wait for;
  * opts.failAfter: the cursor fails after that many records (opts.cursorFailed
  * counts the failures delivered, for a test to wait for); opts.openFails:
  * the database does not open (onerror): true for every open, a number for
@@ -66,12 +66,17 @@ function fakeIndexedDB(data, log, opts = {}) {
     };
     const tx = { oncomplete: null, onerror: null, onabort: null };
     const txId = ++txCount;
+    // In the order of transactions from its creation, as the real one; one
+    // given no request in the task that made it ends by itself.
+    const entry = enqueue(mode === 'readwrite');
+    let used = false;
+    later(() => { if (!used) finish(entry); });
     // As the real one: a transaction's writes land together, once, or not at all.
     const staged = [];
     const stage = (apply, note) => {
       staged.push({ apply, note });
+      used = true;
       if (staged.length > 1) return;
-      const entry = enqueue(true);
       later(() => whenReady(entry, () => {
         const aborted = !!opts.abortWrites;
         // Logged once done: a test that waits for the log finds the data there.
@@ -91,7 +96,7 @@ function fakeIndexedDB(data, log, opts = {}) {
         put(value, key) { writable(); stage(() => data.set(key, value), 'put ' + key); },
         delete(key) { writable(); stage(() => data.delete(key)); },
         openCursor() {
-          const entry = enqueue(false);
+          used = true;
           let keys = [];
           let i = 0;
           const req = { result: null, onsuccess: null, onerror: null };
@@ -104,8 +109,11 @@ function fakeIndexedDB(data, log, opts = {}) {
             later(() => {
               const aborted = failed || opts.abortReads;
               const done = aborted ? tx.onabort : tx.oncomplete;
-              if (done) done();
-              if (aborted) opts.readsAborted = (opts.readsAborted || 0) + 1;
+              // Counted only once a handler of it ran: the reader really heard it.
+              if (done) {
+                done();
+                if (aborted) opts.readsAborted = (opts.readsAborted || 0) + 1;
+              }
             });
           };
           const step = () => {
