@@ -44,23 +44,38 @@ const OEMBED_TIMEOUT_MS = 8000;
  * `untranslated` even when this tile already shows it (a later tile of the
  * video may be translated); asked for once per video. An empty answer leaves
  * the title as YouTube shows it; so does a failed request (no connection, a
- * server error), for now: the next lookup of the video asks again.
+ * server error), for now: a response that shows the video RETRY_AFTER_MS
+ * later looks it up again (untranslatedDue), as a failed DeArrow lookup is.
  * From YouTube Anti Translate (zpix1).
  */
 async function fetchUntranslated(videoId, video) {
   if (video.untranslatedAsked) return;
   video.untranslatedAsked = true;
+  video.untranslatedRetryAt = 0;
   try {
     const res = await fetchJsonWithTimeout(OEMBED_URL + encodeURIComponent(videoId), OEMBED_TIMEOUT_MS);
     // A server error is no answer: asked again later, as a request that failed.
-    if (!res || res.status >= 500) video.untranslatedAsked = false;
+    if (!res || res.status >= 500) untranslatedFailed(video);
     const title = res && res.data && typeof res.data.title === 'string' ? res.data.title.trim() : '';
     if (title) video.untranslated = title;
   } catch {
-    // The title as YouTube shows it until the video is looked up again.
-    video.untranslatedAsked = false;
+    untranslatedFailed(video);
   }
 }
+
+// The title as YouTube shows it until the video is looked up again, from
+// RETRY_AFTER_MS on: resolve() leaves it decided (not stale), so without
+// this neither wantsLookup nor lookup would ask again.
+function untranslatedFailed(video) {
+  video.untranslatedAsked = false;
+  video.untranslatedRetryAt = Date.now() + RETRY_AFTER_MS;
+}
+
+// Only while the request would go out again (lookup's own gate): with the
+// setting off since, an expired deadline would never be cleared, and each
+// lookup would bring another sweep of the tiles.
+const untranslatedDue = (video) => !!video.untranslatedRetryAt && Date.now() >= video.untranslatedRetryAt &&
+  !!configRead('dearrowUntranslatedTitles') && uploadedTitleMatters(video);
 
 // The videos waiting: the ones with a tile on screen first (`onScreen`, in
 // screen order), then the rest in response order (`queue`), on at most
@@ -95,7 +110,7 @@ const thumbnailUrl = (videoId, time) => `${THUMBNAIL_API}?videoID=${videoId}&tim
  * never answered and its last failure (if any) RETRY_AFTER_MS ago.
  */
 export const wantsLookup = (video) =>
-  !video.queued && !video.looking && (video.fetched ? video.stale : Date.now() >= video.retryAt);
+  !video.queued && !video.looking && (video.fetched ? video.stale || untranslatedDue(video) : Date.now() >= video.retryAt);
 
 /**
  * The branding of every video with a submission under `prefix`: an object by
@@ -329,7 +344,7 @@ async function lookup(videoId, prefetch) {
   if (!video) return;
   video.queued = false;
   // Decided since it was queued (a tile asked again meanwhile).
-  if (video.fetched && video.resolved && !video.stale) return;
+  if (video.fetched && video.resolved && !video.stale && !untranslatedDue(video)) return;
   video.looking = true;
   try {
     if (!video.fetched) {

@@ -188,11 +188,11 @@ async function bootSponsorBlock(cfg, segments, opts = {}) {
   };
 
   // The settings panel, on its SponsorBlock tab. The panel ignores a toggle
-  // in its first 500 ms, so closePanel waits that out.
+  // in its first 500 ms, so closePanel waits that out, from each opening.
   let openedAt = 0;
   const openPanel = async () => {
     win.ytaf_showOptionsPanel(true);
-    if (!openedAt) openedAt = Date.now();
+    openedAt = Date.now();
     await wait(30);
     doc.querySelectorAll('.ytaf-tab-btn')[3].click();
     await wait(30);

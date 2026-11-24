@@ -333,7 +333,7 @@ The actions each key can take are listed under [Remote control](#-remote-control
 | UI Brightness (dims menus and thumbnails, never the video) | 100% |
 | Video Previews (Default, Off, Without sound, With sound; Off and the sound ones set YouTube's own setting) | Default |
 | Open Playing Previews Without Reloading (OK on a playing preview carries it on, full screen) | Off |
-| Fix Black Tile Previews (webOS 3-6 only) | On |
+| Fix Black Tile Previews (for a preview that plays its sound over a black tile; no change where the picture shows anyway) | On |
 | Fit Page Beside Open Menu | Off |
 | Remove Black Text Boxes | On |
 | New Liquid Glass UI | Off |
