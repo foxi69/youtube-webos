@@ -62,6 +62,10 @@ run(async () => {
     env.action('addToQueue', { videoId: 'bbbbbbbbbbb', title: 'Second' });
     const r = env.parse(watchNext());
     t('with videos: the Queue row comes first', rows(r).map(title).join() === 'Queue (2),Up next', rows(r).map(title).join());
+    // webOS 25 draws a watch-page row only with its header in headerRenderer, as YouTube's own rows have it.
+    const head = rows(r)[0].shelfRenderer.headerRenderer;
+    t('...its header in headerRenderer too, where webOS 25 reads it',
+      !!head && !!head.shelfHeaderRenderer && head.shelfHeaderRenderer.title.simpleText === 'Queue (2)', JSON.stringify(head));
     const row = tiles(rows(r)[0]);
     t('...a Clear queue tile, then the videos, next first',
       row.map((x) => x.metadata.tileMetadataRenderer.title.simpleText).join() === 'Clear queue,First,Second');

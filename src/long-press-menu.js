@@ -376,9 +376,14 @@ export function queueShelf(exceptId) {
     item.tileRenderer.onLongPressCommand = buildMenu(tileInfo(item), []);
     items.push(item);
   }
+  const header = { title: { simpleText: `Queue (${videos.length})` } };
   return {
     shelfRenderer: {
-      shelfHeaderRenderer: { title: { simpleText: `Queue (${videos.length})` } },
+      // webOS 25's client draws a watch-page row only with its header in
+      // headerRenderer (as YouTube's own rows have it); without it the row is
+      // in the response but never shown. The bare key stays for older clients.
+      headerRenderer: { shelfHeaderRenderer: header },
+      shelfHeaderRenderer: header,
       tvhtml5ShelfRendererType: 'TVHTML5_SHELF_RENDERER_TYPE_GRID',
       // The focus starts on the next video, not on Clear queue.
       content: { horizontalListRenderer: { items, selectedIndex: 1, visibleItemCount: 3 } }
