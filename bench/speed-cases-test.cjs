@@ -15,12 +15,13 @@
  *
  * Usage: node bench/speed-cases-test.cjs <bundle> [legacy|modern]
  */
-const { createReporter, readBundle, bootPage, failingXHR, trustedKey, wait } = require('./harness.cjs');
+const { createReporter, readBundle, bootPage, failingXHR, trustedKey, wait, flavorFromArgs } = require('./harness.cjs');
 
 // With `modern`, bootPage runs the modern bundle (webOS 22 and newer) in a
 // Chrome 87 environment with a webOS 23 user agent, instead of the legacy one
 // in a Chrome 38 one.
 const bundle = readBundle();
+const { modern } = flavorFromArgs();
 
 const GREEN = 404;
 // RELOAD_DELAY_MS in playback-speed.js, with room.
@@ -331,10 +332,18 @@ run(async () => {
     ] } });
     const mimes = (r) => r.streamingData.adaptiveFormats.map((f) => f.mimeType).join(' | ');
     t('at 1x the audio offer is left as it is', /ac-3/.test(mimes(parse(offer()))), mimes(parse(offer())));
+    const av1Offer = () => ({ streamingData: { adaptiveFormats: [
+      { mimeType: 'video/mp4; codecs="av01.0.08M.08"' }, { mimeType: 'video/webm; codecs="vp9"' },
+      { mimeType: 'audio/mp4; codecs="mp4a.40.2"' }] } });
+    t('at 1x AV1 is kept on every TV', /av01/.test(mimes(parse(av1Offer()))), mimes(parse(av1Offer())));
     speed.setSpeed(1.5, { immediate: true });
     const fast = parse(offer());
     t('off 1x the audio the engine cannot stretch is left out, the video and the other audio kept',
       mimes(fast) === 'video/mp4; codecs="avc1.640028" | audio/mp4; codecs="mp4a.40.2"', mimes(fast));
+    // AV1 off 1x: left out on webOS 6 and older (the legacy run is webOS 3), kept on newer TVs.
+    const av1 = parse(av1Offer());
+    t(modern ? 'webOS 23 off 1x: AV1 kept' : 'webOS 3 off 1x: AV1 left out, VP9 kept',
+      /av01/.test(mimes(av1)) === !!modern && /vp9/.test(mimes(av1)), mimes(av1));
     // The next video starts at 2160p: capped once it plays.
     p.videoId = 'nextvideo01';
     quality('hd2160');

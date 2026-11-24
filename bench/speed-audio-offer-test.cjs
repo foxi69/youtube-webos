@@ -27,7 +27,22 @@ const offer = () => [
 
 const { t, run } = createReporter();
 
-run(() => import(MODULE).then(({ keepStretchableAudio, allowSpeedMenuOnSurround }) => {
+run(() => import(MODULE).then(({ keepStretchableAudio, keepNonAv1Video, allowSpeedMenuOnSurround }) => {
+  {
+    // webOS 6 and older off 1x: AV1 goes when VP9 or H.264 the TV plays is left.
+    const sd = { adaptiveFormats: offer() };
+    const removed = keepNonAv1Video(sd);
+    t('AV1 video left out, VP9 and every audio kept', removed === 1 &&
+      sd.adaptiveFormats.map((f) => f.mimeType).join('|') === offer().slice(1).map((f) => f.mimeType).join('|'),
+      sd.adaptiveFormats.map((f) => f.mimeType).join('|'));
+    const only = { adaptiveFormats: [video('video/mp4; codecs="av01.0.13M.08"'), audio('audio/mp4; codecs="mp4a.40.2"')] };
+    t('only AV1 (Force Video Codec: AV1): kept', keepNonAv1Video(only) === 0 && only.adaptiveFormats.length === 2);
+    const refused = { adaptiveFormats: offer() };
+    t('VP9 the TV refuses: AV1 kept', keepNonAv1Video(refused, (mime) => !/vp9/.test(mime)) === 0 &&
+      refused.adaptiveFormats.length === offer().length);
+    const none = { adaptiveFormats: offer().slice(1) };
+    t('no AV1: the same list', keepNonAv1Video(none) === 0 && none.adaptiveFormats.length === offer().length - 1);
+  }
   {
     const sd = { adaptiveFormats: offer() };
     const removed = keepStretchableAudio(sd);
