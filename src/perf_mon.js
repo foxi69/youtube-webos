@@ -391,7 +391,6 @@ export {};
     getShelfTitleOptimized: ['adblock.js', 'Reads a shelf title for name matching', 'light'],
     isReelAd: ['adblock.js', 'Detects REEL_VIDEO_TYPE_AD entries', 'free'],
     hasAdRenderer: ['adblock.js', 'Detects ad renderer keys on a tile', 'free'],
-    dropSignInPromoButton: ['adblock.js', 'Drops the guest sign-in button from the home feed', 'free'],
     removeEndcardsOptimized: ['adblock.js', 'Clears endcard arrays on PLAYER responses', 'light'],
     removePlayerAdsOptimized: ['adblock.js', 'Strips playerAds and adPlacements', 'light'],
     findObjects: ['adblock.js', 'Recursive needle search (fallback path only)', 'heavy'],
@@ -1794,7 +1793,6 @@ export {};
     removeBlackBorders: false,
     videoPreviews: 'default',
     enableLegacyEmojiFix: true,
-    hideGuestSignInPrompts: false,
     forceQuality: 'off',
     disableNotifications: false
   };
@@ -2433,20 +2431,6 @@ export {};
           state: parseTypeSeen('HOME_BROWSE') || parseTypeSeen('SEARCH') ? 'firing' : 'armed',
           detail: 'Title match runs inside the existing shelf walk; no extra traversal.'
         };
-      }
-    },
-
-    {
-      key: 'hideGuestSignInPrompts',
-      label: 'Guest Mode: Hide Sign-in Buttons',
-      lamp: 'GUEST',
-      module: 'adblock.js',
-      pages: ['home', 'search', 'watch'],
-      cost: 'light',
-      expect: 'Tiles carrying the guest sign-in prompt renderer are filtered out of every list.',
-      fns: ['dropSignInPromoButton', 'filterItemsOptimized'],
-      probe: function () {
-        return { state: 'armed', detail: 'Filter is part of the per-tile pass.' };
       }
     },
 

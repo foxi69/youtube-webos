@@ -29,7 +29,7 @@ function boot(cfg, extraHtml = '', storage = {}, before) {
     config: Object.assign({
       enableAdBlock: true, enableTrackingBlock: false, removeGlobalShorts: false,
       removeLiveVideos: false, aiVideos: 'show', removeTopLiveGames: false, removeMostRelevant: false,
-      hideGuestSignInPrompts: false, hideEndcards: false, enableLegacyEmojiFix: false,
+      hideEndcards: false, enableLegacyEmojiFix: false,
       enableSponsorBlock: false, enableReturnYouTubeDislike: false,
       thumbnailQuality: 'off', enableAutoLogin: false, logoStyle: 'default'
     }, cfg),

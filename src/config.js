@@ -463,7 +463,6 @@ const configOptions = new Map([
   // webOS 3-4 only (emoji-font.js, adblock.js). No switch in the panel: on
   // by default, and nothing is gained by turning it off.
   ['enableLegacyEmojiFix', { default: true, desc: 'Emoji + Characters Fix' }],
-  ['hideGuestSignInPrompts', { default: false, desc: 'Guest Mode: Hide Sign-in Buttons' }],
   // forceQualityModes: Off, Max or the best level up to a number of lines.
   ['forceQuality', { default: 'off', desc: 'Force Max Quality' }],
   // Drops the formats YouTube upscaled with AI from player responses (adblock.js).

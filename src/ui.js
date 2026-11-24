@@ -10,7 +10,7 @@ import { initPlaybackSpeed, stepSpeed, resetSpeed, toggleSpeed } from './playbac
 import { toggleChannelWhitelist, formatTimeSaved, titleTrayChannel } from './sponsorblock-extras.js';
 import { toggleAudioOnly } from './audio-only.js';
 import sponsorBlockUI from './Sponsorblock-UI.js';
-import { sendKey, REMOTE_KEYS, COLOR_CODE_MAP, isGuestMode, invalidateGuestModeCache, isWatchPage, isShortsPage, isSearchPage, SELECTORS, getVideo, SYNTHETIC_KEY_FLAG, isSyntheticKeyEcho, isAutoplayOn, isLiveStream, rendererChapterStarts } from './utils.js';
+import { sendKey, REMOTE_KEYS, COLOR_CODE_MAP, isGuestMode, isWatchPage, isShortsPage, isSearchPage, SELECTORS, getVideo, SYNTHETIC_KEY_FLAG, isSyntheticKeyEcho, isAutoplayOn, isLiveStream, rendererChapterStarts } from './utils.js';
 import { initTrackingBlock, destroyTrackingBlock } from './adblock.js';
 import logoOrangeUrl from './icons/logo-orange.png';
 import logoBlueUrl from './icons/logo-blue.png';
@@ -1030,22 +1030,18 @@ function createOptionsPanel() {
     const value = elAiVideos.querySelector('.current-value');
     if (value) value.textContent = aiVideoLabels[configRead('aiVideos')] || configRead('aiVideos');
   });
-  let elGuestPrompts = null;
   cosmeticGroup.push(elRemoveGlobalShorts, elRemoveLiveVideos, elRemoveTopLiveGames, elRemoveMostRelevant, elRemoveUpcoming, elRemoveMembersOnly, elRemoveMixes, elHideRecommended, elAiVideos);
-  if (isGuestMode()) { elGuestPrompts = createConfigCheckbox('hideGuestSignInPrompts'); cosmeticGroup.push(elGuestPrompts); }
 
   pageFilters.appendChild(createSection('Cosmetic Filtering', cosmeticGroup, 'ytaf-section-2col'));
 
   // Dependency Management
   const setState = (el, enabled) => { if (!el) return; const input = el.querySelector('input'); if (input) { input.disabled = !enabled; el.style.opacity = enabled ? '1' : '0.5'; }};
 
-  // Declared after the conditional elGuestPrompts assignment above.
-  // setState already no-ops on null, so no filtering needed.
   // Tracking Block rides on the same JSON.parse hook and network hooks as Ad
   // Blocking, so it genuinely does nothing while Ad Blocking is off. Greying it
   // out is what tells the user that, instead of leaving a checkbox that looks
   // armed but is inert.
-  const adBlockDependents = [elTrackingBlock, elRemoveGlobalShorts, elRemoveLiveVideos, elRemoveTopLiveGames, elRemoveMostRelevant, elRemoveUpcoming, elRemoveMembersOnly, elRemoveMixes, elHideRecommended, elGuestPrompts];
+  const adBlockDependents = [elTrackingBlock, elRemoveGlobalShorts, elRemoveLiveVideos, elRemoveTopLiveGames, elRemoveMostRelevant, elRemoveUpcoming, elRemoveMembersOnly, elRemoveMixes, elHideRecommended];
   const updateDependencyState = () => {
     const enabled = configRead('enableAdBlock');
     adBlockDependents.forEach(el => { setState(el, enabled); });
@@ -2682,10 +2678,6 @@ function initGlobalStyles() {
             scroll-behavior: auto !important;
         }
 
-        /* Not display:none: YouTube still focuses it at start, and a hidden element
-           cannot take focus, which would leave focus nowhere. */
-        html.ytaf-hide-guest-nudge ytlr-feed-nudge-renderer { opacity: 0 !important; height: 0 !important; overflow: hidden !important; }
-
         /* Hide Recommended Videos (adblock.js): with the rows gone the pivot
            under the player keeps its grey skeleton tiles up for good. */
         html.ytaf-hide-recommended ytlr-pivot ytlr-ghost-surface { display: none !important; }
@@ -2703,26 +2695,6 @@ function initGlobalStyles() {
         configAddChangeListener(key, () => syncClass(cls, key));
     }
 
-    // Guest mode, Hide Sign-in Buttons: the guest home's sign-in nudge comes in
-    // the session's first response, which YouTube parses before the JSON.parse
-    // hook (adblock.js) is in, so it is hidden here as well. Focus landing on
-    // the hidden nudge is passed to the guide.
-    const passFocus = (el) => {
-        if (el && el.closest && el.closest('ytlr-feed-nudge-renderer')) sendKey(REMOTE_KEYS.LEFT, el);
-    };
-    const syncGuestNudge = () => {
-        invalidateGuestModeCache();
-        const on = isGuestMode() && !!configRead('enableAdBlock') && !!configRead('hideGuestSignInPrompts');
-        if (on) passFocus(document.activeElement);
-        document.documentElement.classList.toggle('ytaf-hide-guest-nudge', on);
-    };
-    syncGuestNudge();
-    configAddChangeListener('hideGuestSignInPrompts', syncGuestNudge);
-    configAddChangeListener('enableAdBlock', syncGuestNudge);
-    window.addEventListener('ytaf-page-update', syncGuestNudge);
-    document.addEventListener('focusin', (evt) => {
-        if (document.documentElement.classList.contains('ytaf-hide-guest-nudge')) passFocus(evt.target);
-    }, true);
 }
 
 const LOGO_URLS = {

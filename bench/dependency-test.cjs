@@ -73,7 +73,7 @@ run(async () => {
   // it into a pass-through instead of writing the original back over them.
   {
     const { win, NS } = boot({ enableAdBlock: false, enableLegacyEmojiFix: false,
-                               hideGuestSignInPrompts: false, hideEndcards: false });
+                               hideEndcards: false });
     const text = emojiPayload(NS);
     t('JSON.parse passes responses through when nothing needs it',
       NS(win.JSON.parse(text)) === text);
