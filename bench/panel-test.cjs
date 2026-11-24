@@ -272,26 +272,6 @@ setTimeout(async () => {
     t('Enter presses the on-screen search key', searched === 1 && okOnA === 0, `searched=${searched} okOnA=${okOnA}`);
   }
 
-  // ---- Case 8: guest home's sign-in nudge (parsed before the hook) is hidden, focus leaves it ----
-  {
-    const { win } = boot('WEB_PAGE_TYPE_BROWSE',
-      '<ytlr-feed-nudge-renderer><button id="nudgeBtn">Sign in</button></ytlr-feed-nudge-renderer>',
-      (w) => {
-        w.localStorage.setItem('yt.leanback.default::last-identity-used',
-          JSON.stringify({ data: { identityType: 'UNAUTHENTICATED_IDENTITY_TYPE_GUEST' } }));
-        const c = JSON.parse(w.localStorage.getItem('ytaf-configuration'));
-        c.hideGuestSignInPrompts = true;
-        w.localStorage.setItem('ytaf-configuration', JSON.stringify(c));
-      });
-    const btn = win.document.getElementById('nudgeBtn');
-    let left = 0;
-    btn.addEventListener('keydown', (e) => { if (e.keyCode === 37) left++; });
-    btn.focus();
-    await new Promise((r) => setTimeout(r, 50));
-    t('guest nudge hidden', win.document.documentElement.classList.contains('ytaf-hide-guest-nudge'));
-    t('focus on the hidden nudge is passed left', left === 1, 'left=' + left);
-  }
-
   // ---- Case 9: Toggle Comments finds the button by its data, whatever the UI language (webOS 25) ----
   {
     const { win } = boot('WEB_PAGE_TYPE_WATCH',

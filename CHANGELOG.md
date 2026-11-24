@@ -28,6 +28,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 + **Skip AI-Upscaled Qualities** (Player, on by default): the qualities YouTube makes by upscaling a smaller video with AI ("Super resolution") are taken out of the video's list, so neither YouTube's adaptive stream nor Force Max Quality picks them; the real ones play. Each such format says so in its tags (`xtags`, the pair `sr=1`); a video that has only upscaled formats keeps them. From [VacuumTube](https://github.com/shy1132/VacuumTube).
 + **Force Max Quality** (Player) is a choice now: Off, Max (the best quality the video has, as the switch did), or Up to 2160p, 1440p, 1080p, 720p or 480p: the best quality up to that size, for a slower connection or a TV that struggles with 4K. The bigger formats are left out of the video's list, so YouTube's adaptive stream does not go above the limit either. A size counts as YouTube labels it: a landscape video by its 16:9 height (a 21:9 2560x1072 is 1440p), a vertical one by its short side (1080x1920 and 1080x2400 are 1080p). A video with nothing that small plays as before. A change in the panel applies at once, to the video playing too; a higher limit than the one the video was loaded with (its bigger formats were left out then) applies from the next video. Above 1x, where the playback speed holds a video at 1080p, a lower limit (Up to 720p or 480p) holds instead, and back at 1x the video goes to the best quality up to the limit, not Max. The old switch is not carried over: Force Max Quality starts at Off.
 
+## Removed
+
++ Guest Mode: Hide Sign-in Buttons. A guest's settings are not kept, so the switch had to be turned on again in every guest session, and it is off by default: YouTube's sign-in tiles and buttons show for a guest, as they did with it off.
+
 ## Fixes
 
 + Queue: the Queue row shows under the player on webOS 25 too. Its header was only in the older place, and the newer client draws a watch-page row only with its header where YouTube's own rows have it (headerRenderer), so the row was in the response and never shown. It has both now.

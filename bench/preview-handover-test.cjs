@@ -19,7 +19,7 @@ const LABEL = 'Open Playing Previews Without Reloading';
 const ALL_OFF = {
   enableAdBlock: false, enableTrackingBlock: false, removeGlobalShorts: false,
   removeLiveVideos: false, aiVideos: 'show', removeTopLiveGames: false,
-  removeMostRelevant: false, hideGuestSignInPrompts: false, hideEndcards: false,
+  removeMostRelevant: false, hideEndcards: false,
   enableLegacyEmojiFix: false, enableSponsorBlock: false, enableReturnYouTubeDislike: false,
   thumbnailQuality: 'off', enableAutoLogin: false,
   subtitlesAtStart: 'youtube', forceOriginalAudio: false, extendLongPressMenu: false,

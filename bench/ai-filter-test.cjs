@@ -83,7 +83,7 @@ function boot(cfg, opts) {
     config: Object.assign({
       enableAdBlock: true, enableTrackingBlock: false, removeGlobalShorts: false,
       removeLiveVideos: false, aiVideos: 'show', removeTopLiveGames: false,
-      removeMostRelevant: false, hideGuestSignInPrompts: false,
+      removeMostRelevant: false,
       hideEndcards: false, enableLegacyEmojiFix: false, enableSponsorBlock: false,
       enableReturnYouTubeDislike: false, thumbnailQuality: 'off'
     }, cfg),

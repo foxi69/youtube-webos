@@ -41,8 +41,7 @@ const TELEMETRY_REGEX = new RegExp(
 );
 
 const UI_STRINGS = {
-  SHORTS_TITLE: 'Shorts',
-  GUEST_PROMPT_TEXT: 'Sign in for better recommendations'
+  SHORTS_TITLE: 'Shorts'
 };
 
 // The shelves removed by their title. The TV sends the title in the account's
@@ -78,7 +77,6 @@ const CONFIG_KEYS = {
   MIXES: 'removeMixes',
   MOST_RELEVANT: 'removeMostRelevant',
   RECOMMENDED: 'hideRecommendedVideos',
-  GUEST_PROMPTS: 'hideGuestSignInPrompts',
   EMOJI_FIX: 'enableLegacyEmojiFix',
   ENDCARDS: 'hideEndcards',
   THUMBNAILS: 'thumbnailQuality',
@@ -263,7 +261,6 @@ const cfgFlags = {
   removeMixes: false,
   removeMostRelevant: false,
   hideRecommended: false,
-  hideGuestPrompts: false,
   enableLegacyEmojiFix: false,
   hideEndcards: false,
   upgradeThumbnails: false,
@@ -342,7 +339,6 @@ function recomputeFilterFlags() {
   cfgFlags.removeMixes = adBlock && !!cfgSnapshot[CONFIG_KEYS.MIXES];
   cfgFlags.removeMostRelevant = adBlock && !!cfgSnapshot[CONFIG_KEYS.MOST_RELEVANT];
   cfgFlags.hideRecommended = adBlock && !!cfgSnapshot[CONFIG_KEYS.RECOMMENDED];
-  cfgFlags.hideGuestPrompts = adBlock && !!cfgSnapshot[CONFIG_KEYS.GUEST_PROMPTS];
   // Independent switches on the same hook.
   cfgFlags.enableLegacyEmojiFix = cfgEmojiFixEffective;
   cfgFlags.hideEndcards = !!cfgSnapshot[CONFIG_KEYS.ENDCARDS];
@@ -387,7 +383,6 @@ function recomputeFilterFlags() {
     cfgFlags.removeMixes ||
     cfgFlags.removeMostRelevant ||
     cfgFlags.hideRecommended ||
-    cfgFlags.hideGuestPrompts ||
     cfgFlags.enableLegacyEmojiFix ||
     cfgFlags.hideEndcards ||
     cfgFlags.upgradeThumbnails ||
@@ -936,7 +931,6 @@ function applySchemaFilters(data, responseType, config) {
         }
         break;
     case 'HOME_BROWSE':
-      if (config.hideGuestPrompts) dropSignInPromoButton(getByPath(data, ['contents', 'tvBrowseRenderer', 'content', 'tvSurfaceContentRenderer', 'content']));
       if (schema?.mainContent) {
         let contents = getByPath(data, schema.mainContent);
         if (!contents) {
@@ -1011,7 +1005,7 @@ function applySchemaFilters(data, responseType, config) {
       // own (AI Videos: Remove, Remove Shorts and the Live / Upcoming /
       // Members-only badges were missing, so they did nothing there unless a
       // feed filter was on as well).
-      if (config.enableAdBlock || config.hideGuestPrompts || config.feedFilters || config.decorateItems ||
+      if (config.enableAdBlock || config.feedFilters || config.decorateItems ||
           config.removeAiVideos || config.removeGlobalShorts || config.removeMixes || config.badgeMask) {
          let pivotContents = getByPath(data, schema?.pivotPath);
          if (!pivotContents) {
@@ -1334,17 +1328,6 @@ function hasAdRenderer(item) {
   return !!(item.adSlotRenderer || item.tvMastheadRenderer);
 }
 
-// A guest's Subscriptions and Library are one whole-page sign-in promo. The
-// text stays, so the page is not blank; its Sign in button goes.
-function dropSignInPromoButton(content) {
-  const promo = content && content.genericPromoRenderer;
-  if (promo?.actionButton?.buttonRenderer?.navigationEndpoint?.signInEndpoint) delete promo.actionButton;
-}
-
-function isGuestPrompt(item) {
-  return !!(item.feedNudgeRenderer || item.alertWithActionsRenderer || item.gridButtonRenderer?.title?.runs?.[0]?.text === UI_STRINGS.GUEST_PROMPT_TEXT);
-}
-
 function isShortsItem(item) {
   const tile = item.tileRenderer;
   if (tile && (tile.style === YT_CONSTANTS.TILE_STYLE_SHORTS || tile.contentType === YT_CONSTANTS.CONTENT_TYPE_SHORTS || tile.onSelectCommand?.reelWatchEndpoint)) return true;
@@ -1362,7 +1345,6 @@ function isShortsItem(item) {
 function shouldDropItem(item, config) {
   if (!item || typeof item !== 'object') return false;
   if (config.enableAdBlock && (hasAdRenderer(item) || isReelAd(item))) return true;
-  if (config.hideGuestPrompts && isGuestPrompt(item)) return true;
   if (config.removeGlobalShorts && isShortsItem(item)) return true;
   if (config.removeMixes && isMixItem(item)) return true;
   // AI Videos: Remove: only videos ai-content-filter.js already found labelled "AI".

@@ -42,7 +42,7 @@ win.eval(fs.readFileSync(bundlePath, 'utf8'));
 const cfg = JSON.parse(win.localStorage.getItem('ytaf-configuration') || '{}');
 Object.assign(cfg, {
   enableAdBlock: true, enableTrackingBlock: true, removeGlobalShorts: true,
-  removeTopLiveGames: true, removeMostRelevant: true, hideGuestSignInPrompts: true,
+  removeTopLiveGames: true, removeMostRelevant: true,
   hideEndcards: true, enableLegacyEmojiFix: legacy
 });
 win.localStorage.setItem('ytaf-configuration', JSON.stringify(cfg));

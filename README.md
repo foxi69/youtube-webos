@@ -183,7 +183,6 @@ column. A setting marked *webOS 25* appears on webOS 25 and newer, and one marke
 | Remove Mixes (YouTube's generated Mix playlists; YouTube Music albums and charts stay) | Off |
 | AI Videos (labelled "AI" by YouTube): Show, Mark (an "AI" badge on their tiles; works without Ad Blocking), Remove (from the second time a video is listed; not on playlist pages) | Show |
 | Hide Recommended Videos Under the Player (the row of a playlist you play stays) | Off |
-| Guest Mode: Hide Sign-in Buttons (*guest*) | Off |
 | Hide Watched Videos (90%+; not in History, Library, playlists) | Off |
 | Hide Videos Shorter Than (1, 2, 3, 5, 10, 20 min) | Off |
 | Hide Videos Older Than (1 week, 1, 3, 6 months, 1, 2 years) | Off |
