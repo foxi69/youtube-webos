@@ -15,7 +15,7 @@
  *
  * Usage: node bench/speed-cases-test.cjs <bundle> [legacy|modern]
  */
-const { createReporter, readBundle, bootPage, failingXHR, trustedKey, wait, flavorFromArgs } = require('./harness.cjs');
+const { createReporter, readBundle, bootPage, failingXHR, trustedKey, wait, flavorFromArgs, UA } = require('./harness.cjs');
 
 // With `modern`, bootPage runs the modern bundle (webOS 22 and newer) in a
 // Chrome 87 environment with a webOS 23 user agent, instead of the legacy one
@@ -44,7 +44,7 @@ const press = async (win, ...codes) => {
 // Every boot's jsdomErrors (a script error on the page), checked at the end.
 const allErrors = [];
 
-function boot(cfg = {}, { live = false, page = 'WEB_PAGE_TYPE_WATCH' } = {}) {
+function boot(cfg = {}, { live = false, page = 'WEB_PAGE_TYPE_WATCH', userAgent } = {}) {
   const { win, errors, frames, evaluate } = bootPage({
     code: bundle,
     bodyClass: page,
@@ -59,7 +59,8 @@ function boot(cfg = {}, { live = false, page = 'WEB_PAGE_TYPE_WATCH' } = {}) {
       thumbnailQuality: 'off', enableAutoLogin: false
     }, cfg),
     fetch: () => Promise.reject(new Error('offline')),
-    evaluate: false
+    evaluate: false,
+    userAgent
   });
   // What the speed feature needs to install.
   win.AudioDecoder = class {};
@@ -352,6 +353,20 @@ run(async () => {
     t('the next video at 2160p is capped at 1080p once it plays', log.ranges.join() === 'hd1080', log.ranges.join());
     win.dispatchEvent(new win.CustomEvent('yt-player-state-change', { detail: { state: 1 } }));
     t('at 1080p it is left alone', log.ranges.join() === 'hd1080', log.ranges.join());
+    win.close();
+  }
+
+  // webOS 6 (an LG C1's user agent) off 1x, in either build: AV1 left out, VP9 kept.
+  {
+    const { win, speed, parse } = boot({}, { userAgent: UA.webos23.replace('webOS.TV-2023', 'webOS.TV-2021') });
+    const mimes = (r) => r.streamingData.adaptiveFormats.map((f) => f.mimeType).join(' | ');
+    const offer = () => ({ streamingData: { adaptiveFormats: [
+      { mimeType: 'video/mp4; codecs="av01.0.08M.08"' }, { mimeType: 'video/webm; codecs="vp9"' },
+      { mimeType: 'audio/mp4; codecs="mp4a.40.2"' }] } });
+    t('webOS 6 at 1x: AV1 kept', /av01/.test(mimes(parse(offer()))), mimes(parse(offer())));
+    speed.setSpeed(1.5, { immediate: true });
+    const fast = parse(offer());
+    t('webOS 6 off 1x: AV1 left out, VP9 kept', !/av01/.test(mimes(fast)) && /vp9/.test(mimes(fast)), mimes(fast));
     win.close();
   }
 
