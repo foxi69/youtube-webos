@@ -49,7 +49,8 @@ const enabled = () => !!configRead('fixBlackPreviews');
 function playingVideo() {
   const videos = document.querySelectorAll('video');
   for (let i = 0; i < videos.length; i++) {
-    if (!videos[i].paused && !videos[i].ended) return videos[i];
+    // A media error leaves paused and ended false: a failed video is not playing.
+    if (!videos[i].paused && !videos[i].ended && !videos[i].error) return videos[i];
   }
   return null;
 }

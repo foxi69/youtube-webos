@@ -250,6 +250,14 @@ run(async () => {
     env.video.dispatchEvent(new env.win.Event('emptied'));
     t('webOS 23: the source taken away (emptied): everything gets its look back at once',
       playingAgain && env.cleared() === '', env.cleared());
+    // A media error, with paused and ended left false (as a fatal error leaves them).
+    env.play();
+    const playingThird = env.cleared() !== '';
+    Object.defineProperty(env.video, 'error', { configurable: true, get: () => ({ code: 3 }) });
+    env.video.dispatchEvent(new env.win.Event('error'));
+    t('webOS 23: a media error, paused still false: everything gets its look back at once',
+      playingThird && !env.video.paused && env.cleared() === '', env.cleared());
+    delete env.video.error;
     t('webOS 23: no page errors', env.errors.length === 0, env.errors.join(' | '));
     env.win.close();
   } else {
