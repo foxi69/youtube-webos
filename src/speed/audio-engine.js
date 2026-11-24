@@ -159,7 +159,11 @@ export class AudioEngine {
         this.sentToDecoder.clear();
         this.pumpDecoder();
       })
-      .catch((e) => this.reportError(e));
+      // A check that fails late for a replaced configuration (or after
+      // destroy) is not this decoder's error, as above.
+      .catch((e) => {
+        if (this.cfg === cfg && !this.destroyed) this.reportError(e);
+      });
   }
 
   isSameCfg(c1, c2) {
