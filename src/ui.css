@@ -234,10 +234,13 @@
   background: rgba(255, 0, 0, 0.05);
 }
 
+/* The same side padding as the rows outside, so a switch's text lines up with
+   the cycle rows, hints and lists below it in the block. */
 .ytaf-ui-container blockquote label {
   font-size: 1.85vh;
   color: #e0e0e0;
-  padding: 0.75vh 0;
+  padding: 0.75vh;
+  margin: 0 0 0.2vh;
 }
 
 .ytaf-ui-container small {
@@ -873,8 +876,9 @@
    Each entry is a button that removes it; a text box and an Add button go
    under them. Plain flex-wrap, no gap property: Chrome 38 (webOS 3) has
    neither gap nor :focus-within. */
+/* Indented as the hints are (4.3vh), so the title lines up with the rows. */
 .ytaf-list-editor {
-  margin: 0.6vh 0 0.9vh 3.2vh;
+  margin: 0.6vh 0 0.9vh 4.3vh;
   font-size: 2.1vh;
 }
 
@@ -888,7 +892,7 @@
 }
 
 .ytaf-list-empty {
-  font-size: 1.8vh;
+  font-size: 1.67vh;
   opacity: 0.7;
   margin-bottom: 0.5vh;
 }
@@ -906,6 +910,18 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* SponsorBlock's time saved: the size of a row's text (unset, it took the
+   panel's 4.44vh), its Reset button beside it. */
+.ytaf-sb-stats {
+  display: flex;
+  align-items: center;
+  font-size: 2.1vh;
+}
+
+.ytaf-sb-stats .ytaf-list-btn {
+  margin: 0 0 0 1.5vh;
 }
 
 .ytaf-list-btn.ytaf-list-action {
