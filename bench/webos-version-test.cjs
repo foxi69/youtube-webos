@@ -157,8 +157,7 @@ run(async () => {
       const has = (label) => text.indexOf(label) !== -1;
       t(n + `panel: Block webOS Cast Service ${v >= 25 ? 'offered' : 'not offered'}`,
         has('Block webOS Cast Service') === (v >= 25));
-      t(n + `panel: Fix Black Tile Previews ${v <= 6 ? 'offered' : 'not offered'}`,
-        has('Fix Black Tile Previews') === (v <= 6));
+      t(n + 'panel: Fix Black Tile Previews offered', has('Fix Black Tile Previews'));
     }
     t(n + 'no console.error / jsdomError', errors.length === 0, errors.slice(0, 2).join(' || '));
     win.close();

@@ -60,7 +60,7 @@ ytlr-tile-renderer[style*='width: 12.75rem; height: 21.25rem;']
 }
 
 /*
- * Fix Black Tile Previews (webOS 3-6, #67): what preview-fix.js finds drawing
+ * Fix Black Tile Previews (#67): what preview-fix.js finds drawing
  * over the middle of the playing preview (on an OLED C9, the browse page's
  * full-screen ytlr-surface-page with its black background) loses its
  * background, shadow and images (img, canvas, svg) while the preview plays,
@@ -69,6 +69,10 @@ ytlr-tile-renderer[style*='width: 12.75rem; height: 21.25rem;']
 html.ytaf-pfix-clear .ytaf-pfix-cleared {
   background-color: transparent !important;
   background-image: none !important;
+}
+
+/* webOS 22 and newer: the shadow stays (the focused tile's ring can be one). */
+html.ytaf-pfix-clear:not(.ytaf-pfix-modern) .ytaf-pfix-cleared {
   box-shadow: none !important;
 }
 

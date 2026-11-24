@@ -16,7 +16,7 @@ import logoOrangeUrl from './icons/logo-orange.png';
 import logoBlueUrl from './icons/logo-blue.png';
 import logoRedUrl from './icons/logo-red.png';
 import logoDarkUrl from './icons/logo-dark.png';
-import { isWebOS25, isLegacyWebOS } from './webos-utils.js';
+import { isWebOS25 } from './webos-utils.js';
 import { subtitleTranslateLanguages, pickTrack, currentTarget } from './subtitle-translate.js';
 import { showNotification, setNotificationOled, setNotificationTheme } from './notifications.js';
 import { blockChannel, openFocusedLongPressMenu } from './long-press-menu.js';
@@ -1220,10 +1220,8 @@ function createOptionsPanel() {
   	  createElement('div', { text: 'Default leaves the previews to YouTube\'s own setting. Off and With sound set it; Without sound turns previews on and mutes them. No effect where YouTube shows no previews', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   	  createConfigCheckbox('continuePreviews'),
   	  createElement('div', { text: 'OK on a tile whose preview is playing carries that playback on, full screen, instead of loading the video again', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
-  	  ...(isLegacyWebOS() ? [
-  	    createConfigCheckbox('fixBlackPreviews'),
-  	    createElement('div', { text: 'Shows the picture of a tile preview that plays its sound over a black tile (webOS 3-6)', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } })
-  	  ] : []),
+  	  createConfigCheckbox('fixBlackPreviews'),
+  	  createElement('div', { text: 'Shows the picture of a tile preview that plays its sound over a black tile. No change on a TV that shows it anyway', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   	  createConfigCheckbox('fitPageBesideGuide'),
   	  createElement('div', { text: 'Shrinks the page beside the open left menu, instead of pushing its right side off the screen', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   	  createConfigCheckbox('removeLowMemoryStyle'),

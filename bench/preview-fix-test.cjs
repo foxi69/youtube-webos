@@ -11,7 +11,7 @@
  *
  * legacy: the legacy bundle as webOS 3 (no elementsFromPoint: only the
  * surface pages over the video count) and as webOS 6 (elementsFromPoint: the
- * whole stack). modern: the modern bundle as webOS 23, where the fix is off.
+ * whole stack). modern: the modern bundle as webOS 23, on by default there too.
  *
  * jsdom has no layout: getBoundingClientRect gives each element the rectangle
  * the case sets, and on webOS 6 document.elementsFromPoint returns, topmost
@@ -155,8 +155,17 @@ function boot(webos, cfg = {}) {
 
 run(async () => {
   if (modern) {
-    // ---- webOS 23: not a legacy TV, the fix stays off ----
-    const env = boot(23);
+    // ---- webOS 23: on by default, as on webOS 3-6 ----
+    {
+      const dflt = boot(23);
+      await wait(50);
+      dflt.play();
+      t('webOS 23: on by default: a playing preview is cleared', dflt.on() && dflt.cleared() !== '', dflt.cleared());
+      t('webOS 23: ...the panel offers it, checked', dflt.openPanel() && !!dflt.checkbox() && dflt.checkbox().checked);
+      dflt.win.close();
+    }
+    // ---- webOS 23, turned off ----
+    const env = boot(23, { fixBlackPreviews: false });
     await wait(50);
     t('webOS 23: <html> does not get the fix\'s class', !env.on(), env.doc.documentElement.className);
     env.play();
@@ -167,8 +176,88 @@ run(async () => {
     t('webOS 23: nothing cleared a second later either, and no stack is looked up',
       env.cleared() === '' && env.state.fromPoint.length === 0, env.cleared() + ' / ' + env.state.fromPoint.length);
     const opened = env.openPanel();
-    t('webOS 23: the panel does not offer Fix Black Tile Previews', opened &&
-      !!env.doc.querySelector('.ytaf-ui-container') && env.checkbox() === null);
+    t('webOS 23: the panel offers Fix Black Tile Previews, unchecked', opened && !!env.checkbox() && !env.checkbox().checked);
+
+    // Turned on (a TV that plays the sound over a black tile): the preview
+    // playing now is cleared at once, its whole stack as on webOS 6.
+    // The 5 s re-check counts from here: the switch starts its timer.
+    const switchedOn = Date.now();
+    t('webOS 23: turned on in the panel', env.setBox(true) && env.on());
+    t('webOS 23: ...the preview playing is cleared at once', env.cleared() === 'browse,tile1,thumb1,shade1,tint1', env.cleared());
+    t('webOS 23: ...the browse page shows through', env.style('browse').backgroundColor === 'rgba(0, 0, 0, 0)',
+      env.style('browse').backgroundColor);
+    t('webOS 23: ...a shadow stays (the focus ring can be one), unlike on webOS 3-6',
+      env.style('shade1').boxShadow !== 'none' && env.style('thumb1').opacity === '0', env.style('shade1').boxShadow);
+    // Each lookup restyles the page twice: none with nothing moving.
+    const looked = env.state.fromPoint.length;
+    await wait(1300);
+    t('webOS 23: no lookup a second later with nothing moved (webOS 3-6 look every second)',
+      env.state.fromPoint.length === looked, String(env.state.fromPoint.length - looked));
+    // The focus moves on (each press of the remote), or a transition ends: looked
+    // up again in the next frame, once for all the events of that frame.
+    env.doc.body.dispatchEvent(new env.win.Event('focusin', { bubbles: true }));
+    env.doc.body.dispatchEvent(new env.win.Event('focusin', { bubbles: true }));
+    env.doc.body.dispatchEvent(new env.win.Event('transitionend', { bubbles: true }));
+    await wait(100);
+    t('webOS 23: three events in a frame: one lookup', env.state.fromPoint.length === looked + 1,
+      String(env.state.fromPoint.length - looked));
+    // A transition elsewhere on the page (a tile's focus animation): nothing looked up.
+    env.el('label2').dispatchEvent(new env.win.Event('transitionend', { bubbles: true }));
+    await wait(100);
+    t('webOS 23: a transition away from the video: no lookup', env.state.fromPoint.length === looked + 1,
+      String(env.state.fromPoint.length - looked));
+    // The settings panel open over the playing preview: it keeps its background.
+    const panel = env.doc.createElement('div');
+    panel.id = 'panelbox';
+    panel.className = 'ytaf-ui-container';
+    panel.setAttribute('style', 'background-color: rgb(0, 0, 0)');
+    env.doc.body.appendChild(panel);
+    RECTS.panelbox = FULL;
+    env.state.order.unshift('panelbox');
+    env.doc.body.dispatchEvent(new env.win.Event('focusin', { bubbles: true }));
+    await wait(100);
+    t('webOS 23: the settings panel over the preview is not cleared, the page under it is',
+      !panel.classList.contains(CLEARED) && env.el('browse').classList.contains(CLEARED), env.cleared());
+    env.state.order.shift();
+    panel.remove();
+    delete RECTS.panelbox;
+    // YouTube draws the browse page anew with nothing moving: the 5 s re-check clears it.
+    const old = env.el('browse');
+    const fresh = old.cloneNode(true);
+    old.parentNode.replaceChild(fresh, old);
+    fresh.classList.remove(CLEARED);
+    const beforeRecheck = env.state.fromPoint.length;
+    await wait(switchedOn + 4700 - Date.now());
+    t('webOS 23: no re-check before 5 s (not every second, not every 2 s)',
+      env.state.fromPoint.length === beforeRecheck && !fresh.classList.contains(CLEARED),
+      String(env.state.fromPoint.length - beforeRecheck));
+    await wait(switchedOn + 5400 - Date.now());
+    t('webOS 23: a re-rendered page: cleared by the 5 s re-check, one lookup',
+      fresh.classList.contains(CLEARED) && env.state.fromPoint.length === beforeRecheck + 1,
+      env.cleared() + ' / ' + String(env.state.fromPoint.length - beforeRecheck));
+    env.pause();
+    t('webOS 23: the preview stops: everything gets its look back at once', env.cleared() === '' &&
+      env.style('browse').backgroundColor === 'rgb(0, 0, 0)', env.cleared());
+    const afterStop = env.state.fromPoint.length;
+    env.doc.body.dispatchEvent(new env.win.Event('focusin', { bubbles: true }));
+    await wait(100);
+    t('webOS 23: no preview playing: a focus move looks nothing up', env.state.fromPoint.length === afterStop,
+      String(env.state.fromPoint.length - afterStop));
+    // A preview whose source is taken away (its tile recycled): stopped at once too.
+    env.play();
+    const playingAgain = env.cleared() !== '';
+    env.state.playing = false;
+    env.video.dispatchEvent(new env.win.Event('emptied'));
+    t('webOS 23: the source taken away (emptied): everything gets its look back at once',
+      playingAgain && env.cleared() === '', env.cleared());
+    // A media error, with paused and ended left false (as a fatal error leaves them).
+    env.play();
+    const playingThird = env.cleared() !== '';
+    Object.defineProperty(env.video, 'error', { configurable: true, get: () => ({ code: 3 }) });
+    env.video.dispatchEvent(new env.win.Event('error'));
+    t('webOS 23: a media error, paused still false: everything gets its look back at once',
+      playingThird && !env.video.paused && env.cleared() === '', env.cleared());
+    delete env.video.error;
     t('webOS 23: no page errors', env.errors.length === 0, env.errors.join(' | '));
     env.win.close();
   } else {

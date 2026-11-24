@@ -452,7 +452,7 @@ const configOptions = new Map([
   ['videoPreviews', { default: 'default', desc: 'Video Previews' }],
   // OK on a playing preview carries it on instead of loading the video again (adblock.js).
   ['continuePreviews', { default: false, desc: 'Open Playing Previews Without Reloading' }],
-  // webOS 3-6 only (preview-fix.js, #67).
+  // Every webOS (preview-fix.js, #67).
   ['fixBlackPreviews', { default: true, desc: 'Fix Black Tile Previews' }],
   // About tab (about.js).
   ['checkForUpdates', { default: true, desc: 'Check for Updates' }],
