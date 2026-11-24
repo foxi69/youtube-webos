@@ -172,6 +172,8 @@ run(async () => {
 
     // Turned on (a TV that plays the sound over a black tile): the preview
     // playing now is cleared at once, its whole stack as on webOS 6.
+    // The 5 s re-check counts from here: the switch starts its timer.
+    const switchedOn = Date.now();
     t('webOS 23: turned on in the panel', env.setBox(true) && env.on());
     t('webOS 23: ...the preview playing is cleared at once', env.cleared() === 'browse,tile1,thumb1,shade1,tint1', env.cleared());
     t('webOS 23: ...the browse page shows through', env.style('browse').backgroundColor === 'rgba(0, 0, 0, 0)',
@@ -196,8 +198,15 @@ run(async () => {
     const fresh = old.cloneNode(true);
     old.parentNode.replaceChild(fresh, old);
     fresh.classList.remove(CLEARED);
-    await wait(4000);
-    t('webOS 23: a re-rendered page: cleared by the 5 s re-check', fresh.classList.contains(CLEARED), env.cleared());
+    const beforeRecheck = env.state.fromPoint.length;
+    await wait(switchedOn + 4700 - Date.now());
+    t('webOS 23: no re-check before 5 s (not every second, not every 2 s)',
+      env.state.fromPoint.length === beforeRecheck && !fresh.classList.contains(CLEARED),
+      String(env.state.fromPoint.length - beforeRecheck));
+    await wait(switchedOn + 5400 - Date.now());
+    t('webOS 23: a re-rendered page: cleared by the 5 s re-check, one lookup',
+      fresh.classList.contains(CLEARED) && env.state.fromPoint.length === beforeRecheck + 1,
+      env.cleared() + ' / ' + String(env.state.fromPoint.length - beforeRecheck));
     env.pause();
     t('webOS 23: the preview stops: everything gets its look back at once', env.cleared() === '' &&
       env.style('browse').backgroundColor === 'rgb(0, 0, 0)', env.cleared());

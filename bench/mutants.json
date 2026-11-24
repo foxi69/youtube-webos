@@ -308,6 +308,7 @@
   {"id":"audio-only-reload-notice","file":"src/audio-only.js","from":"${reloaded ? '' : ' from the next video'}","to":"","why":"switched off with no video to load again, the notice says Disabled while the sound-only stream plays on"},
   {"id":"pfix22-setting-key","file":"src/preview-fix.js","from":"const settingKey = () => (legacy ? 'fixBlackPreviews' : 'fixBlackPreviews22');","to":"const settingKey = () => 'fixBlackPreviews';","why":"webOS 22 and newer read the webOS 3-6 key, stored as true: the fix is on there by default"},
   {"id":"pfix22-rescan","file":"src/preview-fix.js","from":"setInterval(tick, legacy ? TICK_MS : RESCAN_MS)","to":"setInterval(tick, TICK_MS)","why":"webOS 22 and newer look the stack up every second, restyling the page twice each time"},
+  {"id":"pfix22-rescan-2s","file":"src/preview-fix.js","from":"const RESCAN_MS = 5000;","to":"const RESCAN_MS = 2000;","why":"webOS 22 and newer look the stack up every 2 s, not every 5 s as #229 found enough"},
   {"id":"pfix22-one-per-frame","file":"src/preview-fix.js","from":"  if (!timer || frame !== null) return;","to":"  if (!timer) return;","why":"each focus or transition event of a frame looks the stack up again"},
   {"id":"pfix22-shadow-kept","file":"src/yt-fixes.css","from":"html.ytaf-pfix-clear:not(.ytaf-pfix-modern) .ytaf-pfix-cleared {","to":"html.ytaf-pfix-clear .ytaf-pfix-cleared {","why":"on webOS 22 and newer the focus ring drawn as a shadow is cleared with the stack"}
 ]
