@@ -410,6 +410,10 @@ run(async () => {
       setQuality('hd2160');
       emit(-1); emit(3); emit(1); pump(); pump();
       t('no pick, limit moved: precondition: Force set 720p', await until(() => log.ranges.includes('hd720'), 3000), log.ranges.join());
+      // A key in the same millisecond as Force's record counts as a pick after it
+      // (keyAt === at, the failure seen on CI): no viewer presses that fast. As
+      // the pick test above, the keys come a moment after the range.
+      await sleep(20);
       log.ranges.length = 0;
       t('no pick, limit moved: precondition: Up to 1080p chosen', await moveForceRow(win, 'Up to 1080p', 37) === 'Up to 1080p');
       await sleep(900);
