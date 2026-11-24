@@ -343,9 +343,12 @@ run(async () => {
   }
   {
     // The same failure with the setting left alone: the video was decided
-    // (not stale), so it was never asked again. A response that shows it a
-    // minute later asks again; one before that does not.
+    // (not stale), so it was never asked again. A response that shows it
+    // RETRY_AFTER_MS (60 s) after the failure asks again; one a millisecond
+    // before that does not. The clock stands still from before the request.
     const { win, parse, known, uploaded, fetched, oembedFails } = boot({ dearrowUntranslatedTitles: true, dearrowCrowdTitles: false });
+    const t0 = win.Date.now();
+    win.Date.now = () => t0;
     known.add('flakyvideo2');
     uploaded.set('flakyvideo2', 'How I built a boat');
     oembedFails.add('flakyvideo2');
@@ -354,15 +357,44 @@ run(async () => {
     await waitFor(() => shownThumb(el).includes('COPY'), 2000);
     const asked = () => fetched.filter((u) => u.indexOf('/oembed?') !== -1).length;
     t('untranslated, failed request, left alone: precondition: asked once', asked() === 1, String(asked()));
+    win.Date.now = () => t0 + 59999;
     parse(browse([tile('flakyvideo2', 'Hogyan építettem csónakot')]));
     await wait(300);
-    t('...shown again at once: not asked again yet', asked() === 1, String(asked()));
-    const realNow = win.Date.now.bind(win.Date);
-    win.Date.now = () => realNow() + 61000;
+    t('...shown again 59.999 s after the failure: not asked again yet', asked() === 1, String(asked()));
+    win.Date.now = () => t0 + 60000;
     parse(browse([tile('flakyvideo2', 'Hogyan építettem csónakot')]));
     await waitFor(() => shownTitle(el) === 'How I built a boat', 3000);
-    t('...shown a minute later: asked again and shown as uploaded',
+    t('...shown 60 s after it: asked again and shown as uploaded',
       asked() === 2 && shownTitle(el) === 'How I built a boat', `${asked()} ${shownTitle(el)}`);
+    win.close();
+  }
+  {
+    // The same failure, then the setting switched off: past the deadline the
+    // video is not looked up again and again (each lookup brought another
+    // sweep of the tiles), nor asked.
+    const { win, parse, known, uploaded, fetched, toggle, oembedFails } = boot({ dearrowUntranslatedTitles: true, dearrowCrowdTitles: false });
+    const t0 = win.Date.now();
+    win.Date.now = () => t0;
+    known.add('flakyvideo3');
+    uploaded.set('flakyvideo3', 'How I built a boat');
+    oembedFails.add('flakyvideo3');
+    const el = render(win, 'flakyvideo3', 'Hogyan építettem csónakot');
+    parse(browse([tile('flakyvideo3', 'Hogyan építettem csónakot')]));
+    await waitFor(() => shownThumb(el).includes('COPY'), 2000);
+    const asked = () => fetched.filter((u) => u.indexOf('/oembed?') !== -1).length;
+    toggle('Untranslated Titles', false);
+    await wait(500);
+    win.Date.now = () => t0 + 61000;
+    parse(browse([tile('flakyvideo3', 'Hogyan építettem csónakot')]));
+    await wait(400);
+    const doc = win.document;
+    const qsa = doc.querySelectorAll;
+    let sweeps = 0;
+    doc.querySelectorAll = function () { sweeps++; return qsa.apply(this, arguments); };
+    await wait(1500);
+    doc.querySelectorAll = qsa;
+    t('untranslated, failed request, setting off since: no repeated sweeps past the deadline, not asked',
+      sweeps === 0 && asked() === 1, `${sweeps} sweeps, asked ${asked()}`);
     win.close();
   }
   {

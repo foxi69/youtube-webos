@@ -71,7 +71,11 @@ function untranslatedFailed(video) {
   video.untranslatedRetryAt = Date.now() + RETRY_AFTER_MS;
 }
 
-const untranslatedDue = (video) => !!video.untranslatedRetryAt && Date.now() >= video.untranslatedRetryAt;
+// Only while the request would go out again (lookup's own gate): with the
+// setting off since, an expired deadline would never be cleared, and each
+// lookup would bring another sweep of the tiles.
+const untranslatedDue = (video) => !!video.untranslatedRetryAt && Date.now() >= video.untranslatedRetryAt &&
+  !!configRead('dearrowUntranslatedTitles') && uploadedTitleMatters(video);
 
 // The videos waiting: the ones with a tile on screen first (`onScreen`, in
 // screen order), then the rest in response order (`queue`), on at most
