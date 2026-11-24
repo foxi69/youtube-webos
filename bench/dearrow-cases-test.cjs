@@ -342,6 +342,30 @@ run(async () => {
     win.close();
   }
   {
+    // The same failure with the setting left alone: the video was decided
+    // (not stale), so it was never asked again. A response that shows it a
+    // minute later asks again; one before that does not.
+    const { win, parse, known, uploaded, fetched, oembedFails } = boot({ dearrowUntranslatedTitles: true, dearrowCrowdTitles: false });
+    known.add('flakyvideo2');
+    uploaded.set('flakyvideo2', 'How I built a boat');
+    oembedFails.add('flakyvideo2');
+    const el = render(win, 'flakyvideo2', 'Hogyan építettem csónakot');
+    parse(browse([tile('flakyvideo2', 'Hogyan építettem csónakot')]));
+    await waitFor(() => shownThumb(el).includes('COPY'), 2000);
+    const asked = () => fetched.filter((u) => u.indexOf('/oembed?') !== -1).length;
+    t('untranslated, failed request, left alone: precondition: asked once', asked() === 1, String(asked()));
+    parse(browse([tile('flakyvideo2', 'Hogyan építettem csónakot')]));
+    await wait(300);
+    t('...shown again at once: not asked again yet', asked() === 1, String(asked()));
+    const realNow = win.Date.now.bind(win.Date);
+    win.Date.now = () => realNow() + 61000;
+    parse(browse([tile('flakyvideo2', 'Hogyan építettem csónakot')]));
+    await waitFor(() => shownTitle(el) === 'How I built a boat', 3000);
+    t('...shown a minute later: asked again and shown as uploaded',
+      asked() === 2 && shownTitle(el) === 'How I built a boat', `${asked()} ${shownTitle(el)}`);
+    win.close();
+  }
+  {
     // A trusted crowdsourced title wins anyway: nothing to wait for.
     const { win, parse, known, uploaded, fetched } = boot({ dearrowUntranslatedTitles: true });
     known.add('crowdwins01');
