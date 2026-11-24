@@ -3,8 +3,7 @@ import { isWatchPage, isShortsPage } from './utils.js';
 import { isLegacyWebOS } from './webos-utils.js';
 
 /**
- * Fix Black Tile Previews (#67): on by default on webOS 3-6; on webOS 22
- * and newer a switch of its own (fixBlackPreviews22), off by default.
+ * Fix Black Tile Previews (#67), on by default on every webOS.
  *
  * A tile preview does not play inside the tile: YouTube's one full-screen
  * player is scaled down onto it, under the browse page. On webOS the video is
@@ -27,7 +26,9 @@ import { isLegacyWebOS } from './webos-utils.js';
  * layout changes (once per frame, however many events) and every RESCAN_MS,
  * not every second, as each lookup restyles the page twice (stackAt); and a
  * shadow stays (the focus ring can be one). webOS 3-6 keep the 1 s re-check
- * and the shadow cleared, as tested on the C9.
+ * and the shadow cleared, as tested on the C9. On a TV that shows the
+ * picture anyway the clearing changes nothing visible (a webOS 25 TV,
+ * 2026-11-24: same focus ring, no flash, same scroll time).
  */
 
 const CLEAR_CLASS = 'ytaf-pfix-cleared';
@@ -43,8 +44,7 @@ let frame = null;
 let cleared = [];
 
 const isPreviewPage = () => !isWatchPage() && !isShortsPage();
-const settingKey = () => (legacy ? 'fixBlackPreviews' : 'fixBlackPreviews22');
-const enabled = () => !!configRead(settingKey());
+const enabled = () => !!configRead('fixBlackPreviews');
 
 function playingVideo() {
   const videos = document.querySelectorAll('video');
@@ -99,6 +99,9 @@ function coverOf(video) {
   for (let i = 0; i < stack.length; i++) {
     const el = stack[i];
     if (el === video || el.contains(video)) break;
+    // The settings panel open over a playing preview keeps its look
+    // (NicholasBly/youtube-webos 4f7d787).
+    if (el.closest && el.closest('.ytaf-ui-container')) continue;
     if (el.classList.contains(CLEAR_CLASS) || paints(el)) out.push(el);
   }
   return out;
@@ -151,6 +154,15 @@ function queueTick() {
   });
 }
 
+// A transition ended: only one around the playing video moves it (the
+// player scaled onto the tile); the page's other transitions (each focus
+// move has some) look nothing up (NicholasBly/youtube-webos 4f7d787).
+function onTransitionEnd(evt) {
+  if (!timer) return;
+  const video = playingVideo();
+  if (video && evt.target && evt.target.contains && evt.target.contains(video)) queueTick();
+}
+
 // A preview starting.
 function onPlaying(evt) {
   if (!(evt.target instanceof HTMLVideoElement) || !enabled() || !isPreviewPage()) return;
@@ -182,13 +194,16 @@ export function initPreviewFix() {
   if (!legacy) {
     document.documentElement.classList.add(MODERN_CLASS);
     document.addEventListener('focusin', queueTick, true);
-    document.addEventListener('transitionend', queueTick, true);
+    document.addEventListener('transitionend', onTransitionEnd, true);
     window.addEventListener('resize', queueTick);
   }
   document.addEventListener('playing', onPlaying, true);
   document.addEventListener('pause', onStopped, true);
   document.addEventListener('ended', onStopped, true);
+  // Its source taken away (a tile recycled) or failed: stopped too.
+  document.addEventListener('emptied', onStopped, true);
+  document.addEventListener('error', onStopped, true);
   window.addEventListener('ytaf-page-update', sync);
-  configAddChangeListener(settingKey(), onSettingChange);
+  configAddChangeListener('fixBlackPreviews', onSettingChange);
   sync();
 }
