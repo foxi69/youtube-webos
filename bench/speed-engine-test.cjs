@@ -430,6 +430,46 @@ runTest(async () => {
     env.engine.destroy();
   }
   {
+    // A check that fails late for a configuration since replaced is not this
+    // engine's error; one that fails for the configuration in use is.
+    const errors = [];
+    const env = setup(AudioEngine, { errors });
+    const Decoder = env.engine.codecs.AudioDecoder;
+    const supported = Decoder.isConfigSupported;
+    const pending = [];
+    Decoder.isConfigSupported = (cfg) => new Promise((resolve, reject) => pending.push({ cfg, resolve, reject }));
+    env.engine.configure({ ...CFG, sampleRate: 44100 });
+    env.engine.configure(CFG);
+    pending[1].resolve({ supported: true });
+    await tick();
+    pending[0].reject(new Error('check failed'));
+    await tick();
+    t("configure: a replaced configuration's check failing late is not reported, the decoder stays",
+      errors.length === 0 && env.decoders.length === 1 && env.engine.decoder === env.decoders[0],
+      errors.map(String).join());
+    env.engine.configure({ ...CFG, numberOfChannels: 1 });
+    pending[2].reject(new Error('check failed'));
+    await tick();
+    t('configure: the configuration in use failing its check is reported', errors.length === 1, String(errors.length));
+    Decoder.isConfigSupported = supported;
+  }
+  {
+    // Nor is a check that fails after destroy. A new engine: one that has
+    // reported an error reports no second one, whatever the check does.
+    const errors = [];
+    const env = setup(AudioEngine, { errors });
+    const Decoder = env.engine.codecs.AudioDecoder;
+    const supported = Decoder.isConfigSupported;
+    let fail;
+    Decoder.isConfigSupported = () => new Promise((resolve, reject) => { fail = reject; });
+    env.engine.configure(CFG);
+    env.engine.destroy();
+    fail(new Error('check failed'));
+    await tick();
+    t('configure: a check failing after destroy is not reported', errors.length === 0, errors.map(String).join());
+    Decoder.isConfigSupported = supported;
+  }
+  {
     const errors = [];
     const env = setup(AudioEngine, { errors });
     env.engine.configure(CFG);
