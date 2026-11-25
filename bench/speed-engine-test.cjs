@@ -430,9 +430,8 @@ runTest(async () => {
     env.engine.destroy();
   }
   {
-    // A check that fails late, for a configuration since replaced or for an
-    // engine since destroyed, is not this engine's error; one that fails for
-    // the configuration in use is.
+    // A check that fails late for a configuration since replaced is not this
+    // engine's error; one that fails for the configuration in use is.
     const errors = [];
     const env = setup(AudioEngine, { errors });
     const Decoder = env.engine.codecs.AudioDecoder;
@@ -452,11 +451,22 @@ runTest(async () => {
     pending[2].reject(new Error('check failed'));
     await tick();
     t('configure: the configuration in use failing its check is reported', errors.length === 1, String(errors.length));
+    Decoder.isConfigSupported = supported;
+  }
+  {
+    // Nor is a check that fails after destroy. A new engine: one that has
+    // reported an error reports no second one, whatever the check does.
+    const errors = [];
+    const env = setup(AudioEngine, { errors });
+    const Decoder = env.engine.codecs.AudioDecoder;
+    const supported = Decoder.isConfigSupported;
+    let fail;
+    Decoder.isConfigSupported = () => new Promise((resolve, reject) => { fail = reject; });
     env.engine.configure(CFG);
     env.engine.destroy();
-    pending[3].reject(new Error('check failed'));
+    fail(new Error('check failed'));
     await tick();
-    t('configure: a check failing after destroy is not reported', errors.length === 1, String(errors.length));
+    t('configure: a check failing after destroy is not reported', errors.length === 0, errors.map(String).join());
     Decoder.isConfigSupported = supported;
   }
   {
