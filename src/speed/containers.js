@@ -871,6 +871,26 @@ export function keepStretchableAudio(streamingData, stretchable = STRETCHABLE_AU
 }
 
 /**
+ * Above 1x on webOS 6 and older, the player's offer leaves out AV1 video when
+ * a VP9 or H.264 one the TV can play (`canPlay`, by MIME type) is left: the
+ * speed makes the decoder show that many more frames a second, and on an LG
+ * OLED C1 (webOS 6) AV1 1080p30 at 1.75x-2x dropped 7-15 frames a second,
+ * where VP9 of the same video dropped none (vviniciusbarreto/youtube-webos
+ * 7ce70e9). With only AV1 left (Force Video Codec: AV1) it stays. Returns
+ * the number removed.
+ */
+export function keepNonAv1Video(streamingData, canPlay = () => true) {
+  const list = streamingData && streamingData.adaptiveFormats;
+  if (!Array.isArray(list)) return 0;
+  const isVideo = (f) => !!f && typeof f.mimeType === 'string' && f.mimeType.indexOf('video/') === 0;
+  const isAv1 = (f) => isVideo(f) && /av01/i.test(f.mimeType);
+  if (!list.some(isAv1) || !list.some((f) => isVideo(f) && !isAv1(f) && canPlay(f.mimeType))) return 0;
+  const keep = list.filter((f) => !isAv1(f));
+  streamingData.adaptiveFormats = keep;
+  return list.length - keep.length;
+}
+
+/**
  * YouTube's Speed menu lists only Normal for a video with surround audio: the
  * client reads `isMultiChannelAudio` from the player's video data. The engine
  * plays such a video in stereo off 1x (keepStretchableAudio), so that limit does

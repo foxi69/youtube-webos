@@ -15,12 +15,13 @@
  *
  * Usage: node bench/speed-cases-test.cjs <bundle> [legacy|modern]
  */
-const { createReporter, readBundle, bootPage, failingXHR, trustedKey, wait } = require('./harness.cjs');
+const { createReporter, readBundle, bootPage, failingXHR, trustedKey, wait, flavorFromArgs, UA } = require('./harness.cjs');
 
 // With `modern`, bootPage runs the modern bundle (webOS 22 and newer) in a
 // Chrome 87 environment with a webOS 23 user agent, instead of the legacy one
 // in a Chrome 38 one.
 const bundle = readBundle();
+const { modern } = flavorFromArgs();
 
 const GREEN = 404;
 // RELOAD_DELAY_MS in playback-speed.js, with room.
@@ -43,7 +44,7 @@ const press = async (win, ...codes) => {
 // Every boot's jsdomErrors (a script error on the page), checked at the end.
 const allErrors = [];
 
-function boot(cfg = {}, { live = false, page = 'WEB_PAGE_TYPE_WATCH' } = {}) {
+function boot(cfg = {}, { live = false, page = 'WEB_PAGE_TYPE_WATCH', userAgent } = {}) {
   const { win, errors, frames, evaluate } = bootPage({
     code: bundle,
     bodyClass: page,
@@ -58,7 +59,8 @@ function boot(cfg = {}, { live = false, page = 'WEB_PAGE_TYPE_WATCH' } = {}) {
       thumbnailQuality: 'off', enableAutoLogin: false
     }, cfg),
     fetch: () => Promise.reject(new Error('offline')),
-    evaluate: false
+    evaluate: false,
+    userAgent
   });
   // What the speed feature needs to install.
   win.AudioDecoder = class {};
@@ -331,10 +333,18 @@ run(async () => {
     ] } });
     const mimes = (r) => r.streamingData.adaptiveFormats.map((f) => f.mimeType).join(' | ');
     t('at 1x the audio offer is left as it is', /ac-3/.test(mimes(parse(offer()))), mimes(parse(offer())));
+    const av1Offer = () => ({ streamingData: { adaptiveFormats: [
+      { mimeType: 'video/mp4; codecs="av01.0.08M.08"' }, { mimeType: 'video/webm; codecs="vp9"' },
+      { mimeType: 'audio/mp4; codecs="mp4a.40.2"' }] } });
+    t('at 1x AV1 is kept on every TV', /av01/.test(mimes(parse(av1Offer()))), mimes(parse(av1Offer())));
     speed.setSpeed(1.5, { immediate: true });
     const fast = parse(offer());
     t('off 1x the audio the engine cannot stretch is left out, the video and the other audio kept',
       mimes(fast) === 'video/mp4; codecs="avc1.640028" | audio/mp4; codecs="mp4a.40.2"', mimes(fast));
+    // AV1 off 1x: left out on webOS 6 and older (the legacy run is webOS 3), kept on newer TVs.
+    const av1 = parse(av1Offer());
+    t(modern ? 'webOS 23 off 1x: AV1 kept' : 'webOS 3 off 1x: AV1 left out, VP9 kept',
+      /av01/.test(mimes(av1)) === !!modern && /vp9/.test(mimes(av1)), mimes(av1));
     // The next video starts at 2160p: capped once it plays.
     p.videoId = 'nextvideo01';
     quality('hd2160');
@@ -343,6 +353,35 @@ run(async () => {
     t('the next video at 2160p is capped at 1080p once it plays', log.ranges.join() === 'hd1080', log.ranges.join());
     win.dispatchEvent(new win.CustomEvent('yt-player-state-change', { detail: { state: 1 } }));
     t('at 1080p it is left alone', log.ranges.join() === 'hd1080', log.ranges.join());
+    win.close();
+  }
+
+  // webOS 6 (an LG C1's user agent) off 1x, in either build: AV1 left out, VP9 kept.
+  {
+    const { win, speed, parse } = boot({}, { userAgent: UA.webos23.replace('webOS.TV-2023', 'webOS.TV-2021') });
+    const mimes = (r) => r.streamingData.adaptiveFormats.map((f) => f.mimeType).join(' | ');
+    const offer = () => ({ streamingData: { adaptiveFormats: [
+      { mimeType: 'video/mp4; codecs="av01.0.08M.08"' }, { mimeType: 'video/webm; codecs="vp9"' },
+      { mimeType: 'audio/mp4; codecs="mp4a.40.2"' }] } });
+    t('webOS 6 at 1x: AV1 kept', /av01/.test(mimes(parse(offer()))), mimes(parse(offer())));
+    // Below 1x the decoder shows fewer frames a second: AV1 stays.
+    speed.setSpeed(0.5, { immediate: true });
+    t('webOS 6 at 0.5x: AV1 kept', /av01/.test(mimes(parse(offer()))), mimes(parse(offer())));
+    speed.setSpeed(1.5, { immediate: true });
+    const fast = parse(offer());
+    t('webOS 6 above 1x: AV1 left out, VP9 kept', !/av01/.test(mimes(fast)) && /vp9/.test(mimes(fast)), mimes(fast));
+    // The TV's own answer (MediaSource.isTypeSupported) decides whether VP9 can take over.
+    const asked = [];
+    win.MediaSource.isTypeSupported = (mime) => { asked.push(mime); return true; };
+    const yes = parse(offer());
+    t('webOS 6 above 1x, the TV plays VP9: AV1 left out, the TV asked about VP9',
+      !/av01/.test(mimes(yes)) && asked.some((m) => /vp9/.test(m)), mimes(yes) + ' asked: ' + asked.join(', '));
+    win.MediaSource.isTypeSupported = (mime) => !/vp9/.test(mime);
+    const no = parse(offer());
+    t('webOS 6 above 1x, the TV refuses VP9: AV1 kept', /av01/.test(mimes(no)) && /vp9/.test(mimes(no)), mimes(no));
+    win.MediaSource.isTypeSupported = () => { throw new Error('no answer'); };
+    const thrown = parse(offer());
+    t('webOS 6 above 1x, the check throws: AV1 kept', /av01/.test(mimes(thrown)) && /vp9/.test(mimes(thrown)), mimes(thrown));
     win.close();
   }
 
