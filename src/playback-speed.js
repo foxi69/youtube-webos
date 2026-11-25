@@ -1,6 +1,7 @@
 import { AudioEngine } from './speed/audio-engine.js';
 import { installMseHook, isSupportedSpeed, SUPPORTED_SPEEDS } from './speed/mse-hook.js';
-import { keepStretchableAudio, allowSpeedMenuOnSurround, LEGACY_STRETCHABLE_AUDIO_RE } from './speed/containers.js';
+import { keepStretchableAudio, keepNonAv1Video, allowSpeedMenuOnSurround, LEGACY_STRETCHABLE_AUDIO_RE } from './speed/containers.js';
+import { isLegacyWebOS } from './webos-utils.js';
 import { legacyAudioCodecs } from './speed/legacy-decoder.js';
 import { watchPosition } from './speed/position-watch.js';
 import { readCaptions, keepCaptions, readQualityRecord, QUALITY_KEY, QUALITY_HEIGHTS, levelUpTo } from './speed/player-state.js';
@@ -71,7 +72,10 @@ export function installSpeedButtonPatch(win, isOn) {
 // video while it lasts) loses the audio the engine cannot stretch
 // (speed/containers.js). At 1x the offer is left as it is: AC-3 stays.
 // Without WebCodecs only AAC LC can be stretched (`stretchable`).
-export function installAudioOfferFilter(win, getSpeed, stretchable) {
+// `avoidAv1` (webOS 6 and older): above 1x it loses AV1 video too, when a
+// codec the TV can play is left (keepNonAv1Video). Below 1x the decoder shows
+// fewer frames a second, so AV1 stays.
+export function installAudioOfferFilter(win, getSpeed, stretchable, avoidAv1 = false) {
   const json = win.JSON || JSON;
   const original = json.parse;
   const patched = function () {
@@ -80,12 +84,23 @@ export function installAudioOfferFilter(win, getSpeed, stretchable) {
       r &&
       typeof r === 'object' &&
       (r.streamingData || (r.playerResponse && r.playerResponse.streamingData));
-    if (streaming && getSpeed() !== 1) keepStretchableAudio(streaming, stretchable);
+    const speed = streaming ? getSpeed() : 1;
+    if (speed !== 1) keepStretchableAudio(streaming, stretchable);
+    if (avoidAv1 && speed > 1) keepNonAv1Video(streaming, canPlayType(win));
     return r;
   };
   json.parse = patched;
   return () => {
     if (json.parse === patched) json.parse = original;
+  };
+}
+
+// MSE's own answer for a MIME type (as Force Video Codec narrows it); none to ask: yes.
+function canPlayType(win) {
+  const ms = win.MediaSource;
+  return (mime) => {
+    if (!ms || typeof ms.isTypeSupported !== 'function') return true;
+    try { return !!ms.isTypeSupported(mime); } catch { return false; }
   };
 }
 
@@ -913,7 +928,7 @@ export function installSpeedFeature(win, { notify, configRead: cfgRead, getPlaye
   const restoreSurround = allowSpeedMenuOnSurround(win, isOn);
   const restoreRateHook = hookRateAssignments(win, ctrl);
   const restoreButton = installSpeedButtonPatch(win, isOn);
-  const restoreAudioOffer = installAudioOfferFilter(win, ctrl.getSpeed, codecs ? LEGACY_STRETCHABLE_AUDIO_RE : undefined);
+  const restoreAudioOffer = installAudioOfferFilter(win, ctrl.getSpeed, codecs ? LEGACY_STRETCHABLE_AUDIO_RE : undefined, isLegacyWebOS());
   const bindTimer =
     typeof win.setInterval === 'function'
       ? win.setInterval(() => bindPlayerRate(getPlayer(), ctrl), 1000)
