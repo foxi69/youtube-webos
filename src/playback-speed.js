@@ -72,8 +72,9 @@ export function installSpeedButtonPatch(win, isOn) {
 // video while it lasts) loses the audio the engine cannot stretch
 // (speed/containers.js). At 1x the offer is left as it is: AC-3 stays.
 // Without WebCodecs only AAC LC can be stretched (`stretchable`).
-// `avoidAv1` (webOS 6 and older): it loses AV1 video too, when a codec the
-// TV can play is left (keepNonAv1Video).
+// `avoidAv1` (webOS 6 and older): above 1x it loses AV1 video too, when a
+// codec the TV can play is left (keepNonAv1Video). Below 1x the decoder shows
+// fewer frames a second, so AV1 stays.
 export function installAudioOfferFilter(win, getSpeed, stretchable, avoidAv1 = false) {
   const json = win.JSON || JSON;
   const original = json.parse;
@@ -83,10 +84,9 @@ export function installAudioOfferFilter(win, getSpeed, stretchable, avoidAv1 = f
       r &&
       typeof r === 'object' &&
       (r.streamingData || (r.playerResponse && r.playerResponse.streamingData));
-    if (streaming && getSpeed() !== 1) {
-      keepStretchableAudio(streaming, stretchable);
-      if (avoidAv1) keepNonAv1Video(streaming, canPlayType(win));
-    }
+    const speed = streaming ? getSpeed() : 1;
+    if (speed !== 1) keepStretchableAudio(streaming, stretchable);
+    if (avoidAv1 && speed > 1) keepNonAv1Video(streaming, canPlayType(win));
     return r;
   };
   json.parse = patched;

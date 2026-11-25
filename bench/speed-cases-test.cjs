@@ -364,9 +364,24 @@ run(async () => {
       { mimeType: 'video/mp4; codecs="av01.0.08M.08"' }, { mimeType: 'video/webm; codecs="vp9"' },
       { mimeType: 'audio/mp4; codecs="mp4a.40.2"' }] } });
     t('webOS 6 at 1x: AV1 kept', /av01/.test(mimes(parse(offer()))), mimes(parse(offer())));
+    // Below 1x the decoder shows fewer frames a second: AV1 stays.
+    speed.setSpeed(0.5, { immediate: true });
+    t('webOS 6 at 0.5x: AV1 kept', /av01/.test(mimes(parse(offer()))), mimes(parse(offer())));
     speed.setSpeed(1.5, { immediate: true });
     const fast = parse(offer());
-    t('webOS 6 off 1x: AV1 left out, VP9 kept', !/av01/.test(mimes(fast)) && /vp9/.test(mimes(fast)), mimes(fast));
+    t('webOS 6 above 1x: AV1 left out, VP9 kept', !/av01/.test(mimes(fast)) && /vp9/.test(mimes(fast)), mimes(fast));
+    // The TV's own answer (MediaSource.isTypeSupported) decides whether VP9 can take over.
+    const asked = [];
+    win.MediaSource.isTypeSupported = (mime) => { asked.push(mime); return true; };
+    const yes = parse(offer());
+    t('webOS 6 above 1x, the TV plays VP9: AV1 left out, the TV asked about VP9',
+      !/av01/.test(mimes(yes)) && asked.some((m) => /vp9/.test(m)), mimes(yes) + ' asked: ' + asked.join(', '));
+    win.MediaSource.isTypeSupported = (mime) => !/vp9/.test(mime);
+    const no = parse(offer());
+    t('webOS 6 above 1x, the TV refuses VP9: AV1 kept', /av01/.test(mimes(no)) && /vp9/.test(mimes(no)), mimes(no));
+    win.MediaSource.isTypeSupported = () => { throw new Error('no answer'); };
+    const thrown = parse(offer());
+    t('webOS 6 above 1x, the check throws: AV1 kept', /av01/.test(mimes(thrown)) && /vp9/.test(mimes(thrown)), mimes(thrown));
     win.close();
   }
 

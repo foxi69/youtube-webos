@@ -871,7 +871,7 @@ export function keepStretchableAudio(streamingData, stretchable = STRETCHABLE_AU
 }
 
 /**
- * Off 1x on webOS 6 and older, the player's offer leaves out AV1 video when
+ * Above 1x on webOS 6 and older, the player's offer leaves out AV1 video when
  * a VP9 or H.264 one the TV can play (`canPlay`, by MIME type) is left: the
  * speed makes the decoder show that many more frames a second, and on an LG
  * OLED C1 (webOS 6) AV1 1080p30 at 1.75x-2x dropped 7-15 frames a second,
