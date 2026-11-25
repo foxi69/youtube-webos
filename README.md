@@ -417,6 +417,10 @@ in [CHANGELOG.md](CHANGELOG.md).
 - *0.10.0:* tile previews again on most newer TVs (webOS 22 to 25), with a countdown on the tile; Repeat Video and
   Open Long-Press Menu as shortcut actions; Open Playing Previews Without Reloading; Open Comments at the End of a
   Video; DeArrow's Title Formatting on webOS 3-6.
+- *0.11.0:* SponsorBlock's Skip button for Manual Skip segments, Blue to take an auto skip back, community chapters,
+  Ignore Segments Shorter Than, Never Skip on These Channels and the time saved; a Queue row under the player; Force
+  Max Quality with an upper limit; Skip AI-Upscaled Qualities; Subtitle Delay and Subtitle Position; Remember Playback
+  Speed and Toggle Speed; DeArrow's Untranslated Titles; search filters for duration, type and features.
 
 <details>
 <summary><b>Fixed</b></summary>
@@ -445,6 +449,9 @@ in [CHANGELOG.md](CHANGELOG.md).
 - *0.10.0:* previews no longer open the video by themselves or go into the watch history; playback speed on
   webOS 4-6, and 0.5× and 0.75× on every TV that has it; translated subtitles from the first line; New Liquid Glass UI on the
   player's left buttons; chapter skips land on the chapter's start.
+- *0.11.0:* the settings and the subtitle style survive YouTube TV emptying its storage; Toggle Subtitles picks the
+  right track; the Queue row shows on webOS 25; no preview plays unseen on playlist pages; VP9 or H.264 instead of AV1
+  above 1× on webOS 6 and older; SponsorBlock's marks follow the chapters on the progress bar.
 </details>
 
 <details>

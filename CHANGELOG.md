@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.11.0] - 2026/11/25
+
+SponsorBlock grows: a Skip button for Manual Skip segments, Blue to take an auto skip back, community chapters on videos with none of their own, Ignore Segments Shorter Than, Never Skip on These Channels, and the time saved in its tab. A Queue row under the player; Force Max Quality as a choice with an upper limit (Up to 2160p … 480p), which starts at Off, as the old switch is not carried over; Skip AI-Upscaled Qualities; Subtitle Delay and Subtitle Position; Remember Playback Speed and a Toggle Speed action; DeArrow's Untranslated Titles; search filters for duration, type and features; Fix Black Tile Previews on webOS 22 and newer too. The settings are kept in a second place (IndexedDB), so they survive YouTube TV emptying localStorage. Guest Mode: Hide Sign-in Buttons is gone. Ships both packages: `_webOS22+.ipk` for webOS 22 and newer, and the legacy `.ipk` for webOS 3-6.
+
 ## Added
 
 + **Fix Black Tile Previews** on webOS 22 and newer too, on by default as on webOS 3-6 (UI Tweaks): for a TV that plays a tile preview's sound over a black tile. Previews show their picture on most of these TVs, but some do not (NicholasBly/youtube-webos#221: a webOS 26 C4 and others). The same clearing as on webOS 3-6 shows the picture there, as NicholasBly/youtube-webos#229 by valentinBoch, which ported #156 and was tested on such a TV, found. On a TV that shows the picture anyway it changes nothing visible (tested on a webOS 25 TV: the same focus ring, no flash, the same scroll time). Ported back from it: on these TVs the stack over the preview is looked up when it starts, when the focus moves or the layout changes (once per frame) and every 5 s, not every second, and a shadow is not cleared (the focused tile's ring can be one). From its later version (NicholasBly/youtube-webos 4f7d787), on every TV: the settings panel open over a playing preview keeps its background, a preview whose source is taken away gives the page its look back at once, and on webOS 22 and newer only a transition around the video looks the stack up again. On webOS 3-6 nothing changes: a lookup every second.
@@ -2265,7 +2269,8 @@ SponsorBlock Optimizations:
 
 - Created basic web app which launches YouTube TV.
 
-[Unreleased]: https://github.com/foxi69/youtube-webos/compare/v0.10.0...main
+[Unreleased]: https://github.com/foxi69/youtube-webos/compare/v0.11.0...main
+[0.11.0]: https://github.com/foxi69/youtube-webos/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/foxi69/youtube-webos/compare/v0.9.2...v0.10.0
 [0.9.2]: https://github.com/foxi69/youtube-webos/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/foxi69/youtube-webos/compare/v0.9.0...v0.9.1
