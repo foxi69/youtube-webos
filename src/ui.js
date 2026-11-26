@@ -1211,6 +1211,20 @@ function createOptionsPanel() {
     };
     configAddChangeListener('enableOledCareMode', syncShelfOpacity);
     syncShelfOpacity();
+    // Fix Black Tile Previews the other way round: always on with OLED-Care
+    // Mode (preview-fix.js), shown checked and greyed out while that is on;
+    // the stored value comes back when it is turned off.
+    const fixPreviews = createConfigCheckbox('fixBlackPreviews');
+    const syncFixPreviews = () => {
+      const forced = !!configRead('enableOledCareMode');
+      const input = fixPreviews.querySelector('input');
+      input.checked = forced || !!configRead('fixBlackPreviews');
+      input.disabled = forced;
+      fixPreviews.style.opacity = forced ? '0.5' : '1';
+    };
+    configAddChangeListener('enableOledCareMode', syncFixPreviews);
+    configAddChangeListener('fixBlackPreviews', syncFixPreviews);
+    syncFixPreviews();
     const playerUITweaks = [
         shelfOpacity,
         createElement('div', { text: 'Adjusts opacity of black background underneath videos (Requires OLED-care mode)', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
@@ -1220,8 +1234,8 @@ function createOptionsPanel() {
   	  createElement('div', { text: 'Default leaves the previews to YouTube\'s own setting. Off and With sound set it; Without sound turns previews on and mutes them. No effect where YouTube shows no previews', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   	  createConfigCheckbox('continuePreviews'),
   	  createElement('div', { text: 'OK on a tile whose preview is playing carries that playback on, full screen, instead of loading the video again', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
-  	  createConfigCheckbox('fixBlackPreviews'),
-  	  createElement('div', { text: 'Shows the picture of a tile preview that plays its sound over a black tile. No change on a TV that shows it anyway', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
+  	  fixPreviews,
+  	  createElement('div', { text: 'Shows the picture of a tile preview that plays its sound over a black tile. No change on a TV that shows it anyway. Always on with OLED-Care Mode, whose black background would cover the preview',style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   	  createConfigCheckbox('fitPageBesideGuide'),
   	  createElement('div', { text: 'Shrinks the page beside the open left menu, instead of pushing its right side off the screen', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   	  createConfigCheckbox('removeLowMemoryStyle'),
