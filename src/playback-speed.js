@@ -1059,40 +1059,66 @@ export function initPlaybackSpeed() {
     // A lower limit that could not be applied (a player between two videos):
     // the next play applies it once, as the change would have.
     let limitMissed = false;
+    // A higher limit chosen while the video was paused (a load would start
+    // it): the video it was for, loaded again when it plays on.
+    let raiseOnPlay = null;
+    const applyLimit = () => {
+      if (!speedCapsQuality()) return;
+      const player =
+        document.getElementById(SELECTORS.PLAYER_ID) ||
+        document.querySelector('.html5-video-player');
+      // No player that can take it now (one being built again): missed too.
+      if (!player || typeof player.getPlaybackQuality !== 'function' || typeof player.setPlaybackQualityRange !== 'function') {
+        limitMissed = true;
+        return;
+      }
+      try {
+        const videoId = player.getVideoData().video_id;
+        const cut = videoId ? formatsCutAt(videoId) : 0;
+        // The record YouTube wrote for a level at or above the cut was the
+        // old limit's: the formats left offered nothing bigger to pick, even
+        // with a key pressed since (the OK that opened the video). No pick of
+        // the viewer's, so the new limit is the cap.
+        const pick = speedInstance.controller.viewerPick();
+        if (cut && pick && (QUALITY_HEIGHTS[pick] || 0) >= cut) speedInstance.controller.clearQualityPick();
+        const cap = speedInstance.controller.capQuality();
+        const now = QUALITY_HEIGHTS[player.getPlaybackQuality()] || 0;
+        if (now > QUALITY_HEIGHTS[cap]) {
+          speedInstance.controller.setRange(player, cap);
+          return;
+        }
+        // A higher limit than the one the video's formats were cut at: it is
+        // read again where it is, and the cap then holds (reloadInPlace).
+        const video = document.querySelector('video');
+        if (cut && cut < QUALITY_HEIGHTS[cap] && now <= cut && video) {
+          if (video.paused) raiseOnPlay = videoId;
+          else speedInstance.controller.reloadInPlace(cap);
+        }
+      } catch {
+        // A player between two videos: applied when it plays.
+        limitMissed = true;
+      }
+    };
     configAddChangeListener('forceQuality', () => {
       clearTimeout(limitTimer);
       limitMissed = false;
+      raiseOnPlay = null;
       limitTimer = setTimeout(() => {
         limitTimer = null;
         settledQuality = configRead('forceQuality');
-        if (!speedCapsQuality()) return;
-        const player =
-          document.getElementById(SELECTORS.PLAYER_ID) ||
-          document.querySelector('.html5-video-player');
-        // No player that can take it now (one being built again): missed too.
-        if (!player || typeof player.getPlaybackQuality !== 'function' || typeof player.setPlaybackQualityRange !== 'function') {
-          limitMissed = true;
-          return;
-        }
-        try {
-          const cap = speedInstance.controller.capQuality();
-          const now = QUALITY_HEIGHTS[player.getPlaybackQuality()] || 0;
-          if (now > QUALITY_HEIGHTS[cap]) {
-            speedInstance.controller.setRange(player, cap);
-            return;
-          }
-          // A higher limit than the one the video's formats were cut at: it is
-          // read again where it is, and the cap then holds (reloadInPlace).
-          const videoId = player.getVideoData().video_id;
-          const cut = videoId ? formatsCutAt(videoId) : 0;
-          const video = document.querySelector('video');
-          if (cut && cut < QUALITY_HEIGHTS[cap] && now <= cut && video && !video.paused) speedInstance.controller.reloadInPlace(cap);
-        } catch {
-          // A player between two videos: applied when it plays.
-          limitMissed = true;
-        }
+        applyLimit();
       }, LIMIT_APPLY_MS);
     });
+    // The paused video plays on: the raise it waited for, once.
+    document.addEventListener('playing', () => {
+      if (!raiseOnPlay) return;
+      const player = document.getElementById(SELECTORS.PLAYER_ID) || document.querySelector('.html5-video-player');
+      let id = null;
+      try { id = player && player.getVideoData().video_id; } catch { /* none */ }
+      const waited = raiseOnPlay;
+      raiseOnPlay = null;
+      if (id === waited) applyLimit();
+    }, true);
     // The next video (autoplay, a tile) keeps the speed but starts at the
     // quality YouTube picks: 2160p on a 4K TV, capped once it plays, or one
     // below the cap (capNext).

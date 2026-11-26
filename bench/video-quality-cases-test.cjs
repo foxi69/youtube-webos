@@ -285,7 +285,8 @@ run(async () => {
         t('raise (' + variant + '): precondition: the read left the bigger formats out',
           r.streamingData.adaptiveFormats.map((x) => x.itag).join() === '397,251', r.streamingData.adaptiveFormats.map((x) => x.itag).join());
       }
-      Object.defineProperty(video, 'paused', { configurable: true, get: () => variant === 'paused' });
+      let paused = variant === 'paused';
+      Object.defineProperty(video, 'paused', { configurable: true, get: () => paused });
       await wait(50);
       emit(1);
       log.calls.length = 0;
@@ -306,6 +307,17 @@ run(async () => {
           log.calls.join());
       } else {
         t('raise (' + variant + '): not loaded again', loads.length === 0, log.calls.join());
+      }
+      if (variant !== 'whole') {
+        // Played on: the paused one is loaded again then, once; the one
+        // already loaded again is not loaded a second time.
+        paused = false;
+        log.calls.length = 0;
+        video.dispatchEvent(new win.Event('playing'));
+        video.dispatchEvent(new win.Event('playing'));
+        const again = log.calls.filter((c) => c.startsWith('load:'));
+        t('raise (' + variant + '): playing on: ' + (variant === 'paused' ? 'loaded again where it is, once' : 'not loaded again'),
+          variant === 'paused' ? again.join() === 'load:abcdefghijk,10' : again.length === 0, log.calls.join());
       }
     }
   }

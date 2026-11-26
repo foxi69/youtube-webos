@@ -563,12 +563,17 @@ run(async () => {
       { itag: 397, mimeType: 'video/webm; codecs="vp9"', width: 854, height: 480, qualityLabel: '480p' },
       { itag: 251, mimeType: 'audio/webm; codecs="opus"' }
     ];
-    for (const at of [1, 1.5]) {
+    // key: a key pressed (the OK that opened the video, say) before the
+    // record YouTube writes for the limit's level: still the limit's, not a
+    // pick of the viewer's (seen on a webOS 25 TV at 1.5x). paused: chosen
+    // while paused, loaded again only once it plays on.
+    for (const [at, variant] of [[1, ''], [1.5, ''], [1.5, 'key'], [1, 'paused'], [1.5, 'paused']]) {
       const { win, p, log, speed, emit, pump } = boot(0, { force: at === 1 ? 'up720' : 'up480' });
-      t('raise at ' + at + 'x: precondition: the speed feature is installed', !!speed);
+      const name = 'raise at ' + at + 'x' + (variant ? ' (' + variant + ')' : '');
+      t(name + ': precondition: the speed feature is installed', !!speed);
       if (!speed) { win.close(); continue; }
-      const name = 'raise at ' + at + 'x';
-      Object.defineProperty(p.querySelector('video'), 'paused', { configurable: true, get: () => false });
+      let paused = false;
+      Object.defineProperty(p.querySelector('video'), 'paused', { configurable: true, get: () => paused });
       win.dispatchEvent(new win.CustomEvent('yt-navigate-finish', { detail: { pageType: 'watch' } }));
       await sleep(300);
       const r = win.JSON.parse(win.JSON.stringify({ responseContext: { _pad: 'z'.repeat(600) },
@@ -582,6 +587,15 @@ run(async () => {
         emit(-1); emit(3); emit(1); pump(); pump();
         await sleep(300);
       }
+      if (variant === 'key') {
+        // Written more than a second after the range, as YouTube did on the TV.
+        await sleep(1200);
+        pressKey(win);
+        await sleep(20);
+        writeQuality(win, HEIGHTS.large, 2160);
+        t(name + ': precondition: the 480p record counts as a pick so far', speed.viewerPick() === 'large', String(speed.viewerPick()));
+      }
+      if (variant === 'paused') paused = true;
       const before = log.reloads;
       log.ranges.length = 0;
       trustedKey(win, 404);
@@ -596,11 +610,17 @@ run(async () => {
       }
       t(name + ': precondition: ' + want + ' chosen', !!row && row.querySelector('.current-value').textContent === want,
         row ? row.querySelector('.current-value').textContent : 'no row');
+      if (variant === 'paused') {
+        await sleep(1500);
+        t(name + ': not loaded while paused (a load would start it)', log.reloads === before, String(log.reloads - before));
+        paused = false;
+        p.querySelector('video').dispatchEvent(new win.Event('playing'));
+      }
       const reloaded = await until(() => log.reloads > before, 3000);
       const level = at === 1 ? 'hd1080' : 'hd720';
       t(name + ': loaded again where it is, at ' + level, reloaded && log.reloads === before + 1 && log.ranges.includes(level),
         log.reloads - before + ' ' + log.ranges.join());
-      if (at === 1) {
+      if (at === 1 && !variant) {
         const note = JSON.parse(win.localStorage.getItem('ytaf-force-record') || 'null');
         t(name + ': the record of this range is noted as Force\'s', !!note && note.level === level, JSON.stringify(note));
       }
