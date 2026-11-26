@@ -568,7 +568,7 @@ run(async () => {
     // record YouTube writes for the limit's level: still the limit's, not a
     // pick of the viewer's (seen on a webOS 25 TV at 1.5x). paused: chosen
     // while paused, loaded again only once it plays on.
-    for (const [at, variant] of [[1, ''], [1.5, ''], [1.5, 'key'], [1, 'paused'], [1.5, 'paused']]) {
+    for (const [at, variant] of [[1, ''], [1.5, ''], [1.5, 'key'], [1, 'paused'], [1.5, 'paused'], [1.5, 'busy']]) {
       const { win, p, log, speed, emit, pump } = boot(0, { force: at === 1 ? 'up720' : 'up480' });
       const name = 'raise at ' + at + 'x' + (variant ? ' (' + variant + ')' : '');
       t(name + ': precondition: the speed feature is installed', !!speed);
@@ -597,6 +597,9 @@ run(async () => {
         t(name + ': precondition: the 480p record counts as a pick so far', speed.viewerPick() === 'large', String(speed.viewerPick()));
       }
       if (variant === 'paused') paused = true;
+      // busy: the player cannot say where it is (buffering) when the raise
+      // comes, so it cannot be loaded again there: tried when it plays.
+      if (variant === 'busy') p.getCurrentTime = () => { throw new Error('buffering'); };
       // Subtitles on: the reload turns them off (the mock), they come back.
       p.track = EN;
       const before = log.reloads;
@@ -618,6 +621,12 @@ run(async () => {
         await sleep(1500);
         t(name + ': not loaded while paused (a load would start it)', log.reloads === before, String(log.reloads - before));
         paused = false;
+        p.querySelector('video').dispatchEvent(new win.Event('playing'));
+      }
+      if (variant === 'busy') {
+        await sleep(1500);
+        t(name + ': not loaded while the player cannot say where it is', log.reloads === before, String(log.reloads - before));
+        p.getCurrentTime = () => 50;
         p.querySelector('video').dispatchEvent(new win.Event('playing'));
       }
       const reloaded = await until(() => log.reloads > before, 3000);
@@ -661,11 +670,15 @@ run(async () => {
       speed.setSpeed(1.5, { immediate: true });
       await sleep(900);
       const reloads = log.reloads;
+      // Subtitles on; the range keeps failing when the reloaded video plays.
+      p.track = EN;
       p.setPlaybackQualityRange = () => { throw new Error('range refused'); };
       let ok;
       try { ok = speed.reloadInPlace('hd720'); } catch { ok = 'threw'; }
       t('raise, range throws: the video is loaded again all the same', ok === true && log.reloads === reloads + 1,
         String(ok) + ' ' + (log.reloads - reloads));
+      await sleep(900);
+      t('raise, range throws: its subtitles come back once it plays, the cap failing again', p.track === EN, JSON.stringify(p.track));
     }
     win.close();
   }

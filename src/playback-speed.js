@@ -613,7 +613,10 @@ export function createSpeedController({
       return true;
     };
     const onPlaying = () => {
-      const capped = setCap();
+      // A player that fails on the cap still gets its subtitles back: the
+      // watch counts this play as handled and calls no second time.
+      let capped = false;
+      try { capped = setCap(); } catch { /* the video plays on at the quality it has */ }
       kept.landed = true;
       stopCaptions = keepCaptions(win, player, kept.captions, userKeyAt, kept);
       return capped;
@@ -1101,8 +1104,9 @@ export function initPlaybackSpeed() {
         // read again where it is, and the cap then holds (reloadInPlace).
         const video = document.querySelector('video');
         if (cut && cut < QUALITY_HEIGHTS[cap] && now <= cut && video) {
-          if (video.paused) raiseOnPlay = videoId;
-          else speedInstance.controller.reloadInPlace(cap);
+          // Paused, or the reload could not read where it is (the player
+          // buffering): tried again when the video plays.
+          if (video.paused || !speedInstance.controller.reloadInPlace(cap)) raiseOnPlay = videoId;
         }
       } catch {
         // A player between two videos: applied when it plays.
