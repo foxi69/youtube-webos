@@ -287,18 +287,22 @@ run(async () => {
   // there, so with per-account settings the panel waits for the choice ----
   for (const perAccount of [true, false]) {
     const name = 'selector (per-account ' + (perAccount ? 'on' : 'off') + ')';
-    const { win, errors } = boot({ perAccountSettings: perAccount }, ACCOUNT_A);
+    const { win, errors, pump } = boot({ perAccountSettings: perAccount }, ACCOUNT_A);
     await wait(100);
     win.document.body.className = 'WEB_PAGE_TYPE_ACCOUNT_SELECTOR';
     await wait(20);
     key(win, GREEN);
     await wait(50);
+    // The notice is revealed two frames after it is added (notifications.js).
+    pump();
     const panel = () => win.document.querySelector('.ytaf-ui-container');
     const shown = () => !!panel() && win.getComputedStyle(panel()).display !== 'none';
-    const note = (win.document.querySelector('.ytaf-notification-container') || { textContent: '' }).textContent;
+    const notice = Array.from(win.document.querySelectorAll('.ytaf-notification-container .message'))
+      .find((m) => /Choose an account first/.test(m.textContent));
     if (perAccount) {
       t(name + ': Green opens no panel', !shown());
-      t(name + ': ...and says to choose an account first', /Choose an account first/.test(note), note);
+      t(name + ': ...and says to choose an account first, shown', !!notice && !notice.classList.contains('message-hidden'),
+        notice ? notice.className : 'no notice');
       win.localStorage.setItem(IDENTITY_KEY, JSON.stringify({ data: ACCOUNT_B }));
       win.document.body.className = 'WEB_PAGE_TYPE_BROWSE';
       await wait(50);
