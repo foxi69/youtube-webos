@@ -186,10 +186,12 @@ function sync() {
 }
 
 // The setting switched: turned on while a preview plays, that preview is
-// fixed now rather than from the next one.
+// fixed now rather than from the next one. Also while it is already being
+// fixed: OLED-Care turned on paints the page black, looked up again at once
+// (start() keeps a running timer).
 function onSettingChange() {
   sync();
-  if (enabled() && isPreviewPage() && !timer && playingVideo()) start();
+  if (enabled() && isPreviewPage() && playingVideo()) start();
 }
 
 export function initPreviewFix() {

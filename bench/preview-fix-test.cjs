@@ -162,6 +162,13 @@ run(async () => {
       dflt.play();
       t('webOS 23: on by default: a playing preview is cleared', dflt.on() && dflt.cleared() !== '', dflt.cleared());
       t('webOS 23: ...the panel offers it, checked', dflt.openPanel() && !!dflt.checkbox() && dflt.checkbox().checked);
+      // OLED-Care turned on while that preview is being fixed: the page it
+      // paints black is cleared at once, not at the 5 s re-check.
+      t('webOS 23: ...the page without a colour of its own is not cleared yet', dflt.cleared().indexOf('clearpage') === -1, dflt.cleared());
+      t('webOS 23: OLED-Care turned on while it plays', dflt.setBox(true, 'OLED-Care Mode (True Black UI)'));
+      t('webOS 23: ...the page OLED-Care blackened is cleared at once',
+        dflt.cleared().indexOf('clearpage') !== -1 && dflt.style('clearpage').backgroundColor === 'rgba(0, 0, 0, 0)',
+        dflt.cleared() + ' / ' + dflt.style('clearpage').backgroundColor);
       dflt.win.close();
     }
     // ---- webOS 23, turned off but OLED-Care Mode on: its black browse page
