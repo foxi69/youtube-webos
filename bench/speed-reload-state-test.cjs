@@ -662,7 +662,7 @@ run(async () => {
       await sleep(900);
       const reloads = log.reloads;
       p.setPlaybackQualityRange = () => { throw new Error('range refused'); };
-      let ok = false;
+      let ok;
       try { ok = speed.reloadInPlace('hd720'); } catch { ok = 'threw'; }
       t('raise, range throws: the video is loaded again all the same', ok === true && log.reloads === reloads + 1,
         String(ok) + ' ' + (log.reloads - reloads));
