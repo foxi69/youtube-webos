@@ -44,7 +44,9 @@ let frame = null;
 let cleared = [];
 
 const isPreviewPage = () => !isWatchPage() && !isShortsPage();
-const enabled = () => !!configRead('fixBlackPreviews');
+// OLED-Care Mode paints the browse page black (ui.js), over the preview on
+// every TV (NicholasBly/youtube-webos#231): with it the fix is always on.
+const enabled = () => !!configRead('fixBlackPreviews') || !!configRead('enableOledCareMode');
 
 function playingVideo() {
   const videos = document.querySelectorAll('video');
@@ -184,10 +186,12 @@ function sync() {
 }
 
 // The setting switched: turned on while a preview plays, that preview is
-// fixed now rather than from the next one.
+// fixed now rather than from the next one. Also while it is already being
+// fixed: OLED-Care turned on paints the page black, looked up again at once
+// (start() keeps a running timer).
 function onSettingChange() {
   sync();
-  if (enabled() && isPreviewPage() && !timer && playingVideo()) start();
+  if (enabled() && isPreviewPage() && playingVideo()) start();
 }
 
 export function initPreviewFix() {
@@ -206,5 +210,6 @@ export function initPreviewFix() {
   document.addEventListener('error', onStopped, true);
   window.addEventListener('ytaf-page-update', sync);
   configAddChangeListener('fixBlackPreviews', onSettingChange);
+  configAddChangeListener('enableOledCareMode', onSettingChange);
   sync();
 }

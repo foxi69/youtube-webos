@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## Changed
+
++ **Fix Black Tile Previews** is always on while **OLED-Care Mode** is on: its true-black background (on the browse page) is drawn over the tile preview on every TV, so with the fix off a preview played its sound over a black tile (as NicholasBly/youtube-webos#231 reports; seen on a webOS 25 TV). The panel shows the box checked and greyed out while OLED-Care Mode is on; its own value is kept and comes back when OLED-Care Mode is turned off.
+
 ## [0.11.0] - 2026/11/25
 
 SponsorBlock grows: a Skip button for Manual Skip segments, Blue to take an auto skip back, community chapters on videos with none of their own, Ignore Segments Shorter Than, Never Skip on These Channels, and the time saved in its tab. A Queue row under the player; Force Max Quality as a choice with an upper limit (Up to 2160p … 480p), which starts at Off, as the old switch is not carried over; Skip AI-Upscaled Qualities; Subtitle Delay and Subtitle Position; Remember Playback Speed and a Toggle Speed action; DeArrow's Untranslated Titles; search filters for duration, type and features; Fix Black Tile Previews on webOS 22 and newer too. The settings are kept in a second place (IndexedDB), so they survive YouTube TV emptying localStorage. Guest Mode: Hide Sign-in Buttons is gone. Ships both packages: `_webOS22+.ipk` for webOS 22 and newer, and the legacy `.ipk` for webOS 3-6.

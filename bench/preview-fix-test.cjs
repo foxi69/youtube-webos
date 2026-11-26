@@ -136,14 +136,14 @@ function boot(webos, cfg = {}) {
       if (tab) tab.click();
       return !!tab;
     },
-    // The panel's Fix Black Tile Previews checkbox (null when not offered).
-    checkbox() {
+    // The panel's Fix Black Tile Previews checkbox, or the one of `text` (null when not offered).
+    checkbox(text = 'Fix Black Tile Previews') {
       const label = Array.prototype.find.call(doc.querySelectorAll('.ytaf-ui-container label'),
-        (l) => l.textContent.trim() === 'Fix Black Tile Previews');
+        (l) => l.textContent.trim() === text);
       return label ? label.querySelector('input[type=checkbox]') : null;
     },
-    setBox(on) {
-      const b = env.checkbox();
+    setBox(on, text) {
+      const b = env.checkbox(text);
       if (!b) return false;
       b.checked = on;
       b.dispatchEvent(new win.Event('change', { bubbles: true }));
@@ -162,7 +162,39 @@ run(async () => {
       dflt.play();
       t('webOS 23: on by default: a playing preview is cleared', dflt.on() && dflt.cleared() !== '', dflt.cleared());
       t('webOS 23: ...the panel offers it, checked', dflt.openPanel() && !!dflt.checkbox() && dflt.checkbox().checked);
+      // OLED-Care turned on while that preview is being fixed: the page it
+      // paints black is cleared at once, not at the 5 s re-check.
+      t('webOS 23: ...the page without a colour of its own is not cleared yet', dflt.cleared().indexOf('clearpage') === -1, dflt.cleared());
+      t('webOS 23: OLED-Care turned on while it plays', dflt.setBox(true, 'OLED-Care Mode (True Black UI)'));
+      t('webOS 23: ...the page OLED-Care blackened is cleared at once',
+        dflt.cleared().indexOf('clearpage') !== -1 && dflt.style('clearpage').backgroundColor === 'rgba(0, 0, 0, 0)',
+        dflt.cleared() + ' / ' + dflt.style('clearpage').backgroundColor);
       dflt.win.close();
+    }
+    // ---- webOS 23, turned off but OLED-Care Mode on: its black browse page
+    // covers the preview on every TV (NicholasBly/youtube-webos#231), so the
+    // fix runs anyway and the panel shows it checked and greyed out ----
+    {
+      const OLED = 'OLED-Care Mode (True Black UI)';
+      const oled = boot(23, { fixBlackPreviews: false, enableOledCareMode: true });
+      await wait(50);
+      t('OLED-Care: <html> gets the fix\'s class with the setting off', oled.on(), oled.doc.documentElement.className);
+      oled.play();
+      // OLED-Care paints every surface page black: the one without a colour of its own too.
+      t('OLED-Care: ...a playing preview is cleared, the page OLED-Care blackened too', oled.cleared() === 'browse,tile1,thumb1,shade1,tint1,clearpage', oled.cleared());
+      t('OLED-Care: ...that page shows through', oled.style('clearpage').backgroundColor === 'rgba(0, 0, 0, 0)', oled.style('clearpage').backgroundColor);
+      t('OLED-Care: ...the panel shows it checked and disabled',
+        oled.openPanel() && !!oled.checkbox() && oled.checkbox().checked && oled.checkbox().disabled);
+      // OLED-Care turned off: the stored value (off) is back, the preview is no longer cleared.
+      t('OLED-Care: turned off in the panel', oled.setBox(false, OLED) && !oled.on(), oled.doc.documentElement.className);
+      t('OLED-Care: ...nothing stays cleared', oled.cleared() === '', oled.cleared());
+      t('OLED-Care: ...the box is unchecked and enabled again', !oled.checkbox().checked && !oled.checkbox().disabled);
+      // On again while the preview plays: cleared at once, not from the next preview.
+      t('OLED-Care: turned on again', oled.setBox(true, OLED) && oled.on());
+      t('OLED-Care: ...the preview playing is cleared at once', oled.cleared() === 'browse,tile1,thumb1,shade1,tint1,clearpage', oled.cleared());
+      t('OLED-Care: ...the box is checked and disabled again', oled.checkbox().checked && oled.checkbox().disabled);
+      t('OLED-Care: no errors', oled.errors.length === 0, oled.errors.join(' | '));
+      oled.win.close();
     }
     // ---- webOS 23, turned off ----
     const env = boot(23, { fixBlackPreviews: false });
