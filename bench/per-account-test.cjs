@@ -282,4 +282,32 @@ run(async () => {
     t('storage that refuses the read: the panel opens', !!checkbox(win, RYD));
     t('...with no errors', errors.length === 0, errors.join(' | '));
   }
+
+  // ---- The account selector: the previous account's settings are loaded
+  // there, so with per-account settings the panel waits for the choice ----
+  for (const perAccount of [true, false]) {
+    const name = 'selector (per-account ' + (perAccount ? 'on' : 'off') + ')';
+    const { win, errors } = boot({ perAccountSettings: perAccount }, ACCOUNT_A);
+    await wait(100);
+    win.document.body.className = 'WEB_PAGE_TYPE_ACCOUNT_SELECTOR';
+    await wait(20);
+    key(win, GREEN);
+    await wait(50);
+    const panel = () => win.document.querySelector('.ytaf-ui-container');
+    const shown = () => !!panel() && win.getComputedStyle(panel()).display !== 'none';
+    const note = (win.document.querySelector('.ytaf-notification-container') || { textContent: '' }).textContent;
+    if (perAccount) {
+      t(name + ': Green opens no panel', !shown());
+      t(name + ': ...and says to choose an account first', /Choose an account first/.test(note), note);
+      win.localStorage.setItem(IDENTITY_KEY, JSON.stringify({ data: ACCOUNT_B }));
+      win.document.body.className = 'WEB_PAGE_TYPE_BROWSE';
+      await wait(50);
+      key(win, GREEN);
+      await wait(50);
+      t(name + ': an account chosen, Green opens the panel', shown());
+    } else {
+      t(name + ': Green opens the panel (shared settings everywhere)', shown());
+    }
+    t(name + ': no errors', errors.length === 0, errors.join(' | '));
+  }
 });

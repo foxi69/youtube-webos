@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Changed
 
++ With **Separate Settings for Each Account** on, the settings panel no longer opens on the account selector: the previous account's settings are still loaded there, so a change made there went to that account, not to the one chosen next. A notice says to choose an account first; once one (or guest) is chosen the panel opens as before. With the option off nothing changes.
 + **Fix Black Tile Previews** is always on while **OLED-Care Mode** is on: its true-black background (on the browse page) is drawn over the tile preview on every TV, so with the fix off a preview played its sound over a black tile (as NicholasBly/youtube-webos#231 reports; seen on a webOS 25 TV). The panel shows the box checked and greyed out while OLED-Care Mode is on; its own value is kept and comes back when OLED-Care Mode is turned off.
 
 ## [0.11.0] - 2026/11/25

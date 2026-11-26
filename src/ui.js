@@ -1359,7 +1359,16 @@ function showOptionsPanel(visible) {
       return;
   }
   if (visible === undefined || visible === null) visible = true;
-  
+
+  // With per-account settings, the account selector still has the previous
+  // account's settings loaded: a change there would land in that account's,
+  // not in the one chosen next. Opened once an account (or guest) is chosen.
+  if (visible && !optionsPanelVisible && configRead('perAccountSettings') &&
+      document.body && document.body.classList.contains(SELECTORS.ACCOUNT_SELECTOR)) {
+    showNotification('Choose an account first: settings are kept per account');
+    return;
+  }
+
   if (visible && !optionsPanelVisible) {
     panelReturnFocus = document.activeElement;
     // The blackout sits above the panel, which would open unseen.
