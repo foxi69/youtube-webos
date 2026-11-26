@@ -578,13 +578,23 @@ export function createSpeedController({
     if (!videoId || !(at >= 0)) return false;
     releaseAudioSink();
     stopCaptions();
-    keptCaptions = { videoId, captions: readCaptions(player), landed: false, keyAt: userKeyAt() };
-    if (currentSpeed > CAP_ABOVE) {
-      setRange(player, capQuality());
+    // A reload of this video that has not played yet keeps its snapshot: the
+    // player may show a subtitle track of its own until it does (applyReload).
+    if (keptCaptions && !keptCaptions.landed && keptCaptions.videoId === videoId) {
+      keptCaptions.keyAt = userKeyAt();
     } else {
-      forcedRange = { from: Date.now() };
-      player.setPlaybackQualityRange(quality, quality);
+      keptCaptions = { videoId, captions: readCaptions(player), landed: false, keyAt: userKeyAt() };
     }
+    // The audio sink is gone already: a player that fails on the quality
+    // still gets the reload, or the video would go on without sound.
+    try {
+      if (currentSpeed > CAP_ABOVE) {
+        setRange(player, capQuality());
+      } else {
+        forcedRange = { from: Date.now() };
+        player.setPlaybackQualityRange(quality, quality);
+      }
+    } catch { /* the raise's reload goes on at the quality it has */ }
     lastReloadAt = Date.now();
     player.loadVideoById(videoId, at);
     restorePosition(player, at, videoId, keptCaptions);

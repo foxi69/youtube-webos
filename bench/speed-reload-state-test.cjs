@@ -78,7 +78,7 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
   if (pickHeight) writeQuality(win, pickHeight, 2160);
 
   const p = win.document.getElementById('ytlr-player__player-container-player');
-  const log = { ranges: [], reloads: 0, sets: [] };
+  const log = { ranges: [], reloads: 0, sets: [], loads: [] };
   let state = 1;
   let quality = 'hd720';
   let onStateChange = null;
@@ -109,8 +109,9 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
     getCurrentTime: () => 50,
     getPlayerState: () => state,
     seekTo() {},
-    loadVideoById() {
+    loadVideoById(videoId, at) {
       log.reloads++;
+      log.loads.push(videoId + '@' + at);
       // YouTube starts the reloaded video with its own subtitles choice.
       state = 3;
       if (this.reloadTrack !== undefined) this.track = this.reloadTrack;
@@ -596,8 +597,11 @@ run(async () => {
         t(name + ': precondition: the 480p record counts as a pick so far', speed.viewerPick() === 'large', String(speed.viewerPick()));
       }
       if (variant === 'paused') paused = true;
+      // Subtitles on: the reload turns them off (the mock), they come back.
+      p.track = EN;
       const before = log.reloads;
       log.ranges.length = 0;
+      log.loads.length = 0;
       trustedKey(win, 404);
       await until(() => win.document.querySelector('.ytaf-ui-container .shortcut-control-row'), 2000);
       const row = Array.from(win.document.querySelectorAll('.ytaf-ui-container .shortcut-control-row'))
@@ -620,12 +624,50 @@ run(async () => {
       const level = at === 1 ? 'hd1080' : 'hd720';
       t(name + ': loaded again where it is, at ' + level, reloaded && log.reloads === before + 1 && log.ranges.includes(level),
         log.reloads - before + ' ' + log.ranges.join());
+      t(name + ': the same video, at its position', log.loads.join() === 'abcdefghijk@50', log.loads.join());
+      await sleep(900);
+      t(name + ': the subtitles come back', p.track === EN, JSON.stringify(p.track));
       if (at === 1 && !variant) {
         const note = JSON.parse(win.localStorage.getItem('ytaf-force-record') || 'null');
         t(name + ': the record of this range is noted as Force\'s', !!note && note.level === level, JSON.stringify(note));
       }
       win.close();
     }
+  }
+  {
+    // Two raises before the first reload plays (the row moved on while it
+    // loaded): the second keeps the first one's subtitle snapshot, not the
+    // track the player shows meanwhile.
+    const { win, p, log, speed, emit } = boot(0, { manualPlayback: true });
+    t('raise twice: precondition: the speed feature is installed', !!speed);
+    if (speed) {
+      p.track = EN;
+      speed.reloadInPlace('hd720');
+      t('raise twice: precondition: the reload turned the subtitles off', !p.track.languageCode, JSON.stringify(p.track));
+      speed.reloadInPlace('hd1080');
+      emit(1);
+      await sleep(900);
+      t('raise twice: both reloads ran', log.reloads === 2, String(log.reloads));
+      t('raise twice: the subtitles chosen before the first come back', p.track === EN, JSON.stringify(p.track));
+    }
+    win.close();
+  }
+  {
+    // A player that throws on the quality range: above 1x the audio sink is
+    // gone already, so the reload still runs.
+    const { win, p, log, speed } = boot(0);
+    t('raise, range throws: precondition: the speed feature is installed', !!speed);
+    if (speed) {
+      speed.setSpeed(1.5, { immediate: true });
+      await sleep(900);
+      const reloads = log.reloads;
+      p.setPlaybackQualityRange = () => { throw new Error('range refused'); };
+      let ok = false;
+      try { ok = speed.reloadInPlace('hd720'); } catch { ok = 'threw'; }
+      t('raise, range throws: the video is loaded again all the same', ok === true && log.reloads === reloads + 1,
+        String(ok) + ' ' + (log.reloads - reloads));
+    }
+    win.close();
   }
   {
     // Max at 1.5x (capped at 1080p), then Up to 480p chosen in the panel: the
