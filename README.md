@@ -5,6 +5,7 @@
 <p align="center">
   <a href="https://github.com/foxi69/youtube-webos/releases/latest"><img src="https://img.shields.io/github/v/release/foxi69/youtube-webos?style=for-the-badge&color=ff7a1a&label=release" alt="Latest release"></a>
   <a href="https://github.com/foxi69/youtube-webos/releases"><img src="https://img.shields.io/github/downloads/foxi69/youtube-webos/total?style=for-the-badge&color=2ea44f&label=downloads" alt="Downloads"></a>
+  <a href="https://github.com/foxi69/youtube-webos/actions/workflows/main.yml"><img src="https://img.shields.io/github/actions/workflow/status/foxi69/youtube-webos/main.yml?branch=main&style=for-the-badge&label=build" alt="Build and test status"></a>
   <img src="https://img.shields.io/badge/webOS-3%20%E2%86%92%2025%2B-a50034?style=for-the-badge" alt="webOS 3 to 25+">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-444?style=for-the-badge" alt="License: GPL-3.0"></a>
   <a href="https://github.com/foxi69/youtube-webos"><img src="https://img.shields.io/github/stars/foxi69/youtube-webos?style=for-the-badge&color=f5c518" alt="Stars"></a>
@@ -109,7 +110,8 @@ webOS 1 and 2 (2014-2015 TVs) are not supported by this build.
   | webOS 3-6 (or any TV) | `https://raw.githubusercontent.com/foxi69/youtube-webos/main/repo.json` |
 
   Add only one of them: both builds install as the same app, and Homebrew Channel offers the update from the link
-  you added. NicholasBly's repo link would replace this build with NicholasBly's. The entry "YouTube AdFree" of the default repository is an older build (0.5.3) under the same app id: its Update button would take you back to it.
+  you added. Any other entry with the same app id replaces this build when you press its Update button. That
+  includes "YouTube AdFree" in the default repository, an older build (0.5.3), and other forks' repo links.
 - 💻 **[Device Manager app](https://github.com/webosbrew/dev-manager-desktop)**: install the downloaded `.ipk`.
 - ⌨️ **[webOS TV CLI tools](https://webostv.developer.lge.com/develop/tools/cli-installation)**:
   `ares-install youtube...ipk` (see [Development TV setup](#development-tv-setup)).
@@ -388,6 +390,17 @@ Ad Blocking. Taken from webosbrew, NicholasBly's open pull requests and the othe
 in [CHANGELOG.md](CHANGELOG.md).
 
 **New**
+- *0.11.0:* SponsorBlock's Skip button for Manual Skip segments, Blue to take an auto skip back, community chapters,
+  Ignore Segments Shorter Than, Never Skip on These Channels and the time saved; a Queue row under the player; Force
+  Max Quality with an upper limit; Skip AI-Upscaled Qualities; Subtitle Delay and Subtitle Position; Remember Playback
+  Speed and Toggle Speed; DeArrow's Untranslated Titles; search filters for duration, type and features.
+- *0.10.0:* tile previews again on most newer TVs (webOS 22 to 25), with a countdown on the tile; Repeat Video and
+  Open Long-Press Menu as shortcut actions; Open Playing Previews Without Reloading; Open Comments at the End of a
+  Video; DeArrow's Title Formatting on webOS 3-6.
+
+<details>
+<summary><b>Earlier releases</b> (up to 0.9.2)</summary>
+
 - Auto-Translate Subtitles to a language of your choice.
 - Auto Login: always ask who is watching.
 - Separate Settings for Each Account: each YouTube account on the TV keeps its own settings; guest mode starts
@@ -417,13 +430,7 @@ in [CHANGELOG.md](CHANGELOG.md).
   and it lasts until the app closes. Playback Speed Control on webOS 4-6 and 22 (AAC audio only), Remove Mixes,
   Hide Videos Older Than, Hide Repeated Videos, Hide Left Menu Entries, Remove Black Text Boxes and Keep App Open
   When Paused.
-- *0.10.0:* tile previews again on most newer TVs (webOS 22 to 25), with a countdown on the tile; Repeat Video and
-  Open Long-Press Menu as shortcut actions; Open Playing Previews Without Reloading; Open Comments at the End of a
-  Video; DeArrow's Title Formatting on webOS 3-6.
-- *0.11.0:* SponsorBlock's Skip button for Manual Skip segments, Blue to take an auto skip back, community chapters,
-  Ignore Segments Shorter Than, Never Skip on These Channels and the time saved; a Queue row under the player; Force
-  Max Quality with an upper limit; Skip AI-Upscaled Qualities; Subtitle Delay and Subtitle Position; Remember Playback
-  Speed and Toggle Speed; DeArrow's Untranslated Titles; search filters for duration, type and features.
+</details>
 
 <details>
 <summary><b>Fixed</b></summary>
