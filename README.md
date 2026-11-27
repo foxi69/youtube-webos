@@ -623,7 +623,7 @@ npm run launch -- -p '{"contentTarget":"v=F8PGWLvn1mQ"}'   # start straight into
 </details>
 
 <details>
-<summary><b>For maintainers: releases, upstream sync, fork watch</b></summary>
+<summary><b>For maintainers: releases, fork watch</b></summary>
 
 ### Releases
 

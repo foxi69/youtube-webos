@@ -68,7 +68,9 @@ jobs:
 
       - run: npm ci
 
-      # The whole repository: source, tests and tools (eslint.config.ts).
+      # The JavaScript of the whole repository: source, tests and tools
+      # (eslint.config.ts). The few .ts files are not linted; the type check
+      # below covers them.
       - name: Lint
         run: npm run lint
 

@@ -3,7 +3,6 @@
   "version": "0.11.0",
   "description": "Ad-free YouTube app for webOS",
   "type": "module",
-  "main": "index.js",
   "scripts": {
     "build": "webpack --mode=production",
     "build:modern": "webpack --mode=production --env modern",
@@ -16,10 +15,8 @@
     "inspect": "ares-inspect youtube.leanback.v4",
     "launch": "ares-launch youtube.leanback.v4",
     "version": "node tools/sync-version.cjs && git add assets/appinfo.json",
-    "prepare": "husky",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "prettier-check": "prettier --ignore-path .prettierignore --check .",
     "test": "bash bench/ci.sh",
     "coverage": "c8 bash bench/ci.sh --coverage --late"
   },
