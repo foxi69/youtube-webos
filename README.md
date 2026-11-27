@@ -92,7 +92,7 @@
 | `youtube.leanback.v4_<version>_all_webOS22+.ipk` | **webOS 22 and newer** (2022+ TVs). Lighter and faster; use this when your TV supports it. |
 | `youtube.leanback.v4_<version>_all.ipk` | **webOS 3-6** (2016-2021 TVs). Also runs on newer TVs. |
 
-webOS 1 and 2 (2014-2015 TVs) are not supported by this build. For those, see [SiberianMishka/youtube-webos-legacy](https://github.com/SiberianMishka/youtube-webos-legacy).
+webOS 1 and 2 (2014-2015 TVs) are not supported by this build.
 
 **2. Install it** in one of three ways:
 
@@ -460,7 +460,7 @@ in [CHANGELOG.md](CHANGELOG.md).
 <details>
 <summary><b>All features</b></summary>
 
-- Support for webOS 3, 4, 5, 6, 22, 23, 24, 25 and newer (2016 and newer LG TVs). webOS 1 and 2 are not supported; [SiberianMishka/youtube-webos-legacy](https://github.com/SiberianMishka/youtube-webos-legacy) is a build for them.
+- Support for webOS 3, 4, 5, 6, 22, 23, 24, 25 and newer (2016 and newer LG TVs). webOS 1 and 2 are not supported.
 - Ad blocking with a schema-based filter engine: cleaner Home, Search and Shorts. It also hides QR-code and
   shop overlays and the "Includes paid promotion" banner during playback.
 - Optional filters: Shorts, live, upcoming, members-only and AI videos, Mixes, "Most Relevant" shelf, Top Live Games,
