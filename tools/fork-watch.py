@@ -16,8 +16,8 @@ GitHub notification. Nothing is merged or pushed - porting stays a decision.
 A branch with no commit in common with our main (a fork that rewrote its
 history, as NicholasBly did at 0.8.5) cannot be compared: its own commits
 since the last run are read instead.
-Forks of forks are followed too, to any depth: the forks API only lists
-direct forks, so the tree is walked from each root.
+Forks of forks are followed too, MAX_FORK_DEPTH levels deep: the forks API
+only lists direct forks, so the tree is walked from each root.
 
 A commit is reported once. The state - the time of the last run and the
 commits already reported, with their dates - is kept as hidden markers in
