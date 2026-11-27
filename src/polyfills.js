@@ -122,8 +122,7 @@ if (typeof Symbol !== 'undefined' && Symbol.iterator && typeof window !== 'undef
   // IMPORTANT: this whole block is best-effort. On a real webOS 3 TV some of
   // these prototypes cannot be patched at all, silently. Do NOT write
   // `for (const x of someNodeList)` in src/ and rely on this - use an indexed
-  // loop. bench/spatnav-correctness.cjs runs with these prototypes sealed to
-  // keep that honest.
+  // loop.
 
   // NodeList#forEach is Chrome 51 as well. HTMLCollection has never had one in
   // any browser, so it is deliberately not added here.

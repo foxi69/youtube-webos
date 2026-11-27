@@ -361,8 +361,6 @@ function createConfigCheckbox(key) {
   const labelContent = createElement('div', { class: 'label-content', style: { fontSize: '2.1vh' } }, elmInput, labelText);
   const elmLabel = createElement('label', {}, labelContent);
   
-  // elmInput.addEventListener('focus', () => elmLabel.classList.add('focused'));
-  // elmInput.addEventListener('blur', () => elmLabel.classList.remove('focused'));
   configAddChangeListener(key, (evt) => elmInput.checked = evt.detail.newValue);
   
   return elmLabel;
@@ -2135,8 +2133,6 @@ function refreshPageLogic() {
         composed: true,
         detail: commandPayload
     }));
-    
-    // showNotification('Refreshing Page...');
 }
 
 function playPauseLogic(video) {

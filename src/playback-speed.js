@@ -548,7 +548,7 @@ export function createSpeedController({
     lastReloadAt = Date.now();
     player.loadVideoById(videoId, at);
     restorePosition(player, at, videoId, keptCaptions);
-    // If YouTube's own menu is bound (native-menu.js), keep what it shows in
+    // If YouTube's own menu is bound (enableNativeSpeedMenu), keep what it shows in
     // line with the real speed once the reloaded video has started.
     const setRate = player.__ytafOriginalSetPlaybackRate;
     if (setRate && typeof player.getPlaybackRate === 'function') {
