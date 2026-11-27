@@ -3,18 +3,17 @@
 # GitHub Actions: one grouped pull request. It touches CI, never the TV
 # packages.
 #
-# npm: one grouped pull request with the minor and patch updates of the
-# packages on the allow list only. Those are the lint, type-check and test
-# tools, which cannot change what is shipped (CI fails if one of them
-# breaks), and LG's CLI, which packs the .ipk and is checked by installing
-# the package on a TV.
+# npm: only the packages on the allow list. Those are the lint, type-check
+# and test tools, which cannot change what is shipped (CI fails if one of
+# them breaks), and LG's CLI, which packs the .ipk and is checked by
+# installing the package on a TV. Their minor and patch updates come in one
+# grouped pull request, each major version in its own.
 #
 # Everything that produces the bundle (webpack, Babel, postcss, cssnano,
 # terser and the runtime dependencies) is left out on purpose: an update
 # there can change the legacy webOS 3-6 bundle in ways CI does not catch, and
 # there is no such TV to test on. A new package is not watched until it is
-# added to the list. Major versions are left out too; they are migrations and
-# are done by hand.
+# added to the list.
 #
 # Security alerts and security updates are separate, in the repository
 # settings (Code security), and do not need this file.
@@ -55,9 +54,8 @@ updates:
       npm:
         patterns:
           - '*'
-    ignore:
-      - dependency-name: '*'
         update-types:
-          - version-update:semver-major
+          - minor
+          - patch
     commit-message:
       prefix: Dependencies
