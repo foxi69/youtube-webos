@@ -475,6 +475,11 @@ export class AudioEngine {
         last2[0] * last2[1] > 0);
 
     if (jumped || starving) {
+      // Heard so far: the content queued, less what its sources still have to
+      // play. Not from nextWhen, which a soft correction's silence moved on.
+      let toPlay = 0;
+      for (const s of this.sources) toPlay += Math.max(0, s.when + s.dur - Math.max(nowCtx, s.when));
+      const ahead = this.outContent - toPlay * this.speed - seenT;
       this.stopFuture();
       this.sources.clear();
       // Ahead of a picture that plays slower for a while (after a reload at
@@ -482,7 +487,7 @@ export class AudioEngine {
       // played the last words twice. Up to MAX_WAIT_S ahead it goes on from
       // what was heard, once the picture is there: a short silence instead.
       // Further ahead the video went back (a jump without an event): there.
-      const wait = !starving && drift > 0 && drift <= MAX_WAIT_S ? drift / this.speed : 0;
+      const wait = !starving && ahead > 0 && ahead <= MAX_WAIT_S ? ahead / this.speed : 0;
       this.nextWhen = nowCtx + 0.03 + wait;
       this.outContent = seenT + (this.nextWhen - nowCtx) * this.speed;
       this.inPos = this.outContent;

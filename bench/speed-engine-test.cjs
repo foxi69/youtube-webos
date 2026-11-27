@@ -556,13 +556,12 @@ runTest(async () => {
     for (const s of heard) {
       const end = Math.min(s.when + s.buffer.length / RATE, s.stoppedAt === undefined ? Infinity : s.stoppedAt);
       if (end <= s.when) continue;
-      // A restart fades in from silence (the samples scaled down): read 0.07 s
-      // in, past the fade, and count back to where the source starts.
+      // A restart fades in from silence (the samples scaled down): the last
+      // sample heard (never faded) and the time heard tell where it starts.
       const ch = s.buffer.data[0];
       const upTo = Math.min(ch.length, Math.floor((end - s.when) * RATE));
-      const at = Math.floor(0.07 * RATE);
-      if (upTo <= at) continue;
-      replayed = Math.max(replayed, last - (ch[at] - (at / RATE) * 1.5));
+      if (upTo <= 0) continue;
+      replayed = Math.max(replayed, last - (ch[upTo - 1] - ((upTo - 1) / RATE) * 1.5));
       last = ch[upTo - 1];
     }
     t('a picture slower for a while: nothing heard is played again', replayed < 0.02, `${replayed.toFixed(3)} s played twice`);
@@ -571,6 +570,37 @@ runTest(async () => {
     const off = offsets(q, (T) => v0 + (T - c0) * 1.5);
     t('a picture slower for a while: the audio is back in step after it', q.length > 5 && within(off, 0.12),
       `max ${max(off).toFixed(3)} s`);
+    env.engine.destroy();
+  }
+
+  // ---- A wait after a soft correction's silence ----
+  // A soft correction of audio ahead puts a silence in the queue (nextWhen
+  // on, the content not). A jump back while that silence is still to come
+  // must count only the queued audio as not heard yet, or it goes back over
+  // what was heard by the silence's length.
+  {
+    const env = setup(AudioEngine);
+    env.engine.configure(CFG);
+    await tick();
+    env.push(0, 30);
+    env.run(2);
+    env.engine.softCorrect(0.225);  // a 0.15 s silence at the end of the queue
+    env.video.currentTime -= 0.55;  // the picture back 0.55 s, no event
+    env.run(3);
+    const heard = env.ctx.sources.slice().sort((a, b) => a.when - b.when);
+    let last = -Infinity;
+    let replayed = 0;
+    for (const s of heard) {
+      const end = Math.min(s.when + s.buffer.length / RATE, s.stoppedAt === undefined ? Infinity : s.stoppedAt);
+      if (end <= s.when) continue;
+      const ch = s.buffer.data[0];
+      const upTo = Math.min(ch.length, Math.floor((end - s.when) * RATE));
+      if (upTo <= 0) continue;
+      replayed = Math.max(replayed, last - (ch[upTo - 1] - ((upTo - 1) / RATE) * 1.5));
+      last = ch[upTo - 1];
+    }
+    t('a silence from a soft correction, then a jump back: nothing heard is played again', replayed < 0.02,
+      `${replayed.toFixed(3)} s played twice`);
     env.engine.destroy();
   }
 });
