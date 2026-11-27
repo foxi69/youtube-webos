@@ -17,9 +17,8 @@ Helpful to include:
 - the webOS version of the TV,
 - what an attacker could do, and the steps that show it.
 
-You should get an answer within a week. A fix goes into the next release, and
-the report is published as a security advisory once the fix is out, crediting
-you if you like.
+Reports are answered as soon as possible. A confirmed problem is fixed in a
+coming release.
 
 ## Scope
 
