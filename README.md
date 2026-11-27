@@ -82,6 +82,11 @@
   <br><sub>Three panel themes (<b>Fox</b>, <b>Blue</b>, <b>Red</b>), and any of them in true black with OLED-Care Mode.</sub>
 </p>
 
+<p align="center">
+  <img src="screenshots/seekbar.png" alt="The seek bar of a video with its chapters, and SponsorBlock segments marked in their own colours" width="100%">
+  <br><sub>SponsorBlock segments on the seek bar, each category in its own colour, between the video's chapters.</sub>
+</p>
+
 ## 📦 Installation
 
 > [!IMPORTANT]
