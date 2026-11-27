@@ -3,17 +3,18 @@
 # GitHub Actions: one grouped pull request. It touches CI, never the TV
 # packages.
 #
-# npm: only the packages on the allow list. Those are the lint, type-check
-# and test tools, which cannot change what is shipped (CI fails if one of
-# them breaks), and LG's CLI, which packs the .ipk and is checked by
-# installing the package on a TV. Their minor and patch updates come in one
-# grouped pull request, each major version in its own.
+# npm: every package is watched. A pull request here is only a notice;
+# nothing reaches main until it is merged. Minor and patch updates come in
+# two grouped pull requests, each major version in its own.
 #
-# Everything that produces the bundle (webpack, Babel, postcss, cssnano,
-# terser and the runtime dependencies) is left out on purpose: an update
-# there can change the legacy webOS 3-6 bundle in ways CI does not catch, and
-# there is no such TV to test on. A new package is not watched until it is
-# added to the list.
+# - "tools": the lint, type-check and test tools and LG's CLI. They cannot
+#   change the bundle, and CI fails if one of them breaks. LG's CLI packs the
+#   .ipk, so its update is checked by installing the package on a TV.
+# - "bundle": everything that produces the bundle (webpack, Babel, postcss,
+#   cssnano, terser and the runtime dependencies). An update there can change
+#   the legacy webOS 3-6 bundle in ways CI does not catch, and there is no
+#   such TV to test on. Do not merge these as routine: merge one only on
+#   purpose, or close it. The same goes for a major version of these.
 #
 # Security alerts and security updates are separate, in the repository
 # settings (Code security), and do not need this file.
@@ -33,25 +34,24 @@ updates:
     directory: /
     schedule:
       interval: monthly
-    allow:
-      - dependency-name: '@webos-tools/cli'
-      - dependency-name: '@eslint/js'
-      - dependency-name: '@stylistic/eslint-plugin'
-      - dependency-name: '@types/*'
-      - dependency-name: c8
-      - dependency-name: eslint
-      - dependency-name: eslint-config-prettier
-      - dependency-name: eslint-plugin-regexp
-      - dependency-name: globals
-      - dependency-name: husky
-      - dependency-name: jsdom
-      - dependency-name: lint-staged
-      - dependency-name: monocart-coverage-reports
-      - dependency-name: playwright
-      - dependency-name: prettier
-      - dependency-name: typescript
+    open-pull-requests-limit: 20
     groups:
-      npm:
+      bundle:
+        patterns:
+          - '@babel/*'
+          - '@twemoji/api'
+          - '*-webpack-plugin'
+          - babel-loader
+          - cssnano
+          - 'postcss*'
+          - tiny-sha256
+          - webpack
+          - webpack-cli
+          - whatwg-fetch
+        update-types:
+          - minor
+          - patch
+      tools:
         patterns:
           - '*'
         update-types:
