@@ -3,9 +3,9 @@ name: Dependency review
 # On every pull request, compares the dependencies of the base and the head
 # (package-lock.json and the actions the workflows use) and fails if the pull
 # request adds or upgrades to a version with a known vulnerability of high or
-# critical severity. Dependabot does not update the npm dependencies here (see
-# .github/dependabot.yml), so a new or changed one only ever arrives in a pull
-# request, and this is where it is checked. Development dependencies count too:
+# critical severity. Of the npm dependencies Dependabot updates only LG's CLI
+# (see .github/dependabot.yml), so any other new or changed one only ever
+# arrives in a pull request written by hand, and this is where both are checked. Development dependencies count too:
 # webpack and Babel build the bundle the TV runs, and their helpers end up in
 # it. It reads the dependency graph through the API and runs none of the
 # repository's code, so it needs no checkout.
