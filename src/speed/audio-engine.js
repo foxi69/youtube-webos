@@ -475,11 +475,24 @@ export class AudioEngine {
         last2[0] * last2[1] > 0);
 
     if (jumped || starving) {
-      // Heard so far: the content queued, less what its sources still have to
-      // play. Not from nextWhen, which a soft correction's silence moved on.
-      let toPlay = 0;
-      for (const s of this.sources) toPlay += Math.max(0, s.when + s.dur - Math.max(nowCtx, s.when));
-      const ahead = this.outContent - toPlay * this.speed - seenT;
+      // Heard so far: where the sources that have started are, from the
+      // content each one starts at. Not from nextWhen or outContent, which a
+      // soft correction moves on (a silence, or content skipped) without
+      // touching the sources already queued. None started (the ones played
+      // gone at their end, a silence playing): the next one's start, where the
+      // audio stands. Nothing queued: all that was queued was heard.
+      let heard = null;
+      let next = null;
+      for (const s of this.sources) {
+        if (s.when > nowCtx) {
+          if (next === null || s.content < next) next = s.content;
+          continue;
+        }
+        const at = s.content + Math.min(nowCtx - s.when, s.dur) * this.speed;
+        if (heard === null || at > heard) heard = at;
+      }
+      if (heard === null) heard = next !== null ? next : this.outContent;
+      const ahead = heard - seenT;
       this.stopFuture();
       this.sources.clear();
       // Ahead of a picture that plays slower for a while (after a reload at
@@ -565,7 +578,9 @@ export class AudioEngine {
           const srcInfo = {
             node,
             when: this.nextWhen,
-            dur: len / this.stretcherRate
+            dur: len / this.stretcherRate,
+            // The content it starts at: where a resync reads what was heard.
+            content: this.outContent
           };
           this.sources.add(srcInfo);
           node.onended = () => this.sources.delete(srcInfo);

@@ -603,4 +603,66 @@ runTest(async () => {
       `${replayed.toFixed(3)} s played twice`);
     env.engine.destroy();
   }
+
+  // ---- A wait after a soft correction's skip ----
+  // A soft correction of audio behind skips content (outContent on, the
+  // queued sources as they were). A jump back 0.52 s while those sources still
+  // play is within MAX_WAIT_S: it must wait, not count the skip as heard (0.66 s,
+  // past the limit) and go back over what was heard.
+  {
+    const env = setup(AudioEngine);
+    env.engine.configure(CFG);
+    await tick();
+    env.push(0, 30);
+    env.run(2);
+    env.engine.softCorrect(-0.14);  // 0.14 s of content skipped
+    env.video.currentTime -= 0.52;  // the picture back 0.52 s, no event
+    env.run(3);
+    const heard = env.ctx.sources.slice().sort((a, b) => a.when - b.when);
+    let last = -Infinity;
+    let replayed = 0;
+    for (const s of heard) {
+      const end = Math.min(s.when + s.buffer.length / RATE, s.stoppedAt === undefined ? Infinity : s.stoppedAt);
+      if (end <= s.when) continue;
+      const ch = s.buffer.data[0];
+      const upTo = Math.min(ch.length, Math.floor((end - s.when) * RATE));
+      if (upTo <= 0) continue;
+      replayed = Math.max(replayed, last - (ch[upTo - 1] - ((upTo - 1) / RATE) * 1.5));
+      last = ch[upTo - 1];
+    }
+    t('a skip from a soft correction, then a jump back: nothing heard is played again', replayed < 0.02,
+      `${replayed.toFixed(3)} s played twice`);
+    env.engine.destroy();
+  }
+
+  // ---- The same, the silence playing ----
+  // On a TV a source leaves the queue when it ends: while the silence plays
+  // no source has started. The audio stands at the next one's start.
+  {
+    const env = setup(AudioEngine);
+    env.engine.configure(CFG);
+    await tick();
+    env.push(0, 30);
+    env.run(2);
+    env.engine.softCorrect(0.225);  // a 0.15 s silence at the end of the queue
+    env.run(0.45);                  // the silence playing
+    for (const q of [...env.engine.sources]) if (q.when + q.dur <= env.ctx.currentTime) env.engine.sources.delete(q);
+    env.video.currentTime -= 0.55;  // the picture back 0.55 s, no event
+    env.run(3);
+    const heard = env.ctx.sources.slice().sort((a, b) => a.when - b.when);
+    let last = -Infinity;
+    let replayed = 0;
+    for (const s of heard) {
+      const end = Math.min(s.when + s.buffer.length / RATE, s.stoppedAt === undefined ? Infinity : s.stoppedAt);
+      if (end <= s.when) continue;
+      const ch = s.buffer.data[0];
+      const upTo = Math.min(ch.length, Math.floor((end - s.when) * RATE));
+      if (upTo <= 0) continue;
+      replayed = Math.max(replayed, last - (ch[upTo - 1] - ((upTo - 1) / RATE) * 1.5));
+      last = ch[upTo - 1];
+    }
+    t('a jump back while the silence of a soft correction plays: nothing heard is played again', replayed < 0.02,
+      `${replayed.toFixed(3)} s played twice`);
+    env.engine.destroy();
+  }
 });
