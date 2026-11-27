@@ -19,6 +19,7 @@
 
 <p align="center">
   <a href="#-installation"><b>Install</b></a> ·
+  <a href="#-troubleshooting"><b>Help</b></a> ·
   <a href="#-highlights"><b>Highlights</b></a> ·
   <a href="#-remote-control"><b>Remote</b></a> ·
   <a href="#%EF%B8%8F-settings"><b>Settings</b></a> ·
@@ -117,6 +118,27 @@ webOS 1 and 2 (2014-2015 TVs) are not supported by this build.
   `ares-install youtube...ipk` (see [Development TV setup](#development-tv-setup)).
 
 **Updating:** with the repo link added, press **Update** on this app's entry in the Homebrew Channel. The app's own **Update** button needs a TV that lets the app reach the Homebrew Channel, which webOS 25 does not. On a pre-release, the Homebrew Channel's **Update** would take you back to the older full release. Without the Homebrew Channel, install the new `.ipk` the same way as the first one.
+
+## 🩺 Troubleshooting
+
+| Problem | What to do |
+|---|---|
+| It asks who is watching at every start | Turn on **Bypass Nag Screens** and **Auto Login** on the Interface tab. |
+| An update took you back to an older version | Another Homebrew Channel entry with the same app id was updated (see the note under [Installation](#-installation)). Keep only this repo's link and install the latest release again. |
+| The app's own **Update** button does nothing | webOS 25 does not let the app reach the Homebrew Channel. Update from the Homebrew Channel instead. |
+| The app is gone, or will not start (TV in Developer Mode) | LG's developer session ran out. Extend it in the Developer Mode app, see [webosbrew's guide](https://www.webosbrew.org/devmode/), then install the app again if it is gone. |
+| A filter has no effect, or is greyed out | All filters except AI Videos' *Mark* need **Ad Blocking** on. |
+| A video stays at 1× | On webOS 4-6 and 22 only videos with AAC audio change speed. webOS 3 has no speed control. |
+| Casting from a phone fails (webOS 25) | Turn off **Block webOS Cast Service** on the Interface tab. Turn it back on if the app starts freezing. |
+| Playback stops at 1:00 with a QR code (mostly webOS 6, LG C1) | A change on YouTube's servers; no fix is known yet. Follow [#104](https://github.com/foxi69/youtube-webos/issues/104). |
+
+More known issues are in [CHANGELOG.md](CHANGELOG.md#known-issues).
+
+**Reporting a bug:** open a [bug report](https://github.com/foxi69/youtube-webos/issues/new?template=bug_report.yml).
+It asks for the app version, the package (webOS 22+ or legacy), the webOS version (TV Settings → General → About
+This TV) and the steps that make it happen. A photo or phone video of the screen helps the most. Before you send it,
+check that the official YouTube app is uninstalled, and that it still happens after closing the app fully and
+starting it again.
 
 ## 🎮 Remote control
 
@@ -235,18 +257,27 @@ Ukrainian, Russian, Swedish, Danish, Finnish, Norwegian, Arabic, Hindi, Indonesi
 Korean and Chinese. The chosen language is pinned to the top of the subtitle menu; if the video has no subtitle in
 it, a "*Language* (auto-translated)" track is added, translated by YouTube's own servers.
 
-**Playback Speed Control** unlocks YouTube's Speed menu: 0.25× to 2× with the pitch kept. Every launch starts at
-1×, or with **Remember Playback Speed** on at the speed last set (a live stream still plays at 1×), and off 1× a video with surround audio plays in stereo. webOS 4-6 and 22 have no WebCodecs, so there the audio
-is decoded the older way, which works with **AAC audio only**: off 1× the video plays its AAC track, and a video
-without one stays at 1×. Not on webOS 3.
+**Playback Speed Control** unlocks YouTube's Speed menu: 0.25× to 2× with the pitch kept.
+- Every launch starts at 1×. With **Remember Playback Speed** on, it starts at the speed last set; a live stream
+  still plays at 1×.
+- Off 1×, a video with surround audio plays in stereo.
+- webOS 4-6 and 22 have no WebCodecs, so the audio is decoded the older way, which works with **AAC audio only**:
+  off 1× the video plays its AAC track, and a video without one stays at 1×.
+- Not on webOS 3.
 
-**Force Max Quality** plays the best quality the video has, or with *Up to* the best up to that size: the bigger
-ones are left out, so YouTube's own adaptive stream stays under it too (a landscape video counts by its 16:9 height,
-a vertical one by its short side); a change applies at once, to the video playing too (raised above the limit it loaded under, it is loaded again where it is; a paused one when it plays on). It is no hard limit: a video with nothing that small (Up to 480p on
-a video of 720p and 1080p) keeps all its qualities, rather than play no picture. **Skip AI-Upscaled Qualities** leaves out YouTube's "Super
-resolution" qualities, upscaled from a smaller video by AI; with an *Up to* limit too, the limit wins: when only upscaled qualities fit
-under it, those stay. The subtitle style picked in YouTube's own settings is
-kept: YouTube gives it an expiry date, and lost it whenever its storage was emptied.
+**Force Max Quality** plays the best quality the video has. With *Up to*, it plays the best up to that size:
+- The bigger qualities are left out, so YouTube's own adaptive stream stays under the limit too. A landscape video
+  counts by its 16:9 height, a vertical one by its short side.
+- A change applies at once, to the playing video too. Raised above the limit the video loaded under, the video is
+  loaded again where it is; a paused one when it plays on.
+- It is no hard limit: a video with nothing that small (Up to 480p on a video of 720p and 1080p) keeps all its
+  qualities, rather than play no picture.
+
+**Skip AI-Upscaled Qualities** leaves out YouTube's "Super resolution" qualities, upscaled from a smaller video by
+AI. With an *Up to* limit too, the limit wins: when only upscaled qualities fit under it, those stay.
+
+The subtitle style picked in YouTube's own settings is kept: YouTube gives it an expiry date, and lost it whenever
+its storage was emptied.
 
 Return YouTube Dislike sends the id of every video you open to returnyoutubedislikeapi.com.
 </details>
