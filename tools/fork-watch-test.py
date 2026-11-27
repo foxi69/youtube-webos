@@ -218,7 +218,10 @@ for name, want in (('src/README.md.js', False), ('package.json', False), ('asset
                    ('src/vendor/LICENSE-MIT', True), ('assets/icon.svg', True), ('repo.json', True),
                    ('tools/repo.json', False),
                    # The dot before an extension is a dot: "cmd" does not end in ".md".
-                   ('build-local.cmd', False), ('src/xmd', False), ('repoXjson', False), ('tools/a.ico.py', False)):
+                   ('build-local.cmd', False), ('src/xmd', False), ('repoXjson', False), ('tools/a.ico.py', False),
+                   # A licence file has no extension, or a document's: a script named after one is code.
+                   ('LICENSE', True), ('LICENSE.txt', True), ('COPYING', True),
+                   ('src/license-check.js', False), ('tools/notice.py', False)):
     check(f'DOCS_RE: {name} is {"not " if not want else ""}documentation', bool(fw.DOCS_RE.search(name)) == want)
 
 # --- is_docs_only(): a renamed file counts by both names; a dead network is not "no code" ---

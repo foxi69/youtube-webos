@@ -73,7 +73,7 @@ RETRY_DELAY_S = 5
 # A commit that changes nothing but these is left out of the report: text
 # files, pictures, and the Homebrew listing a release rewrites.
 DOCS_RE = re.compile(
-    r'(^|/)(LICENSE|COPYING|NOTICE)[^/]*$'
+    r'(^|/)(LICENSE|COPYING|NOTICE)[^/.]*$'
     r'|\.(md|markdown|txt|rst|png|jpe?g|gif|webp|svg|ico)$'
     r'|^(docs|screenshots)/'
     r'|^repo[^/]*\.json$', re.I)
