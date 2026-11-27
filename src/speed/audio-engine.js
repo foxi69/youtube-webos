@@ -3,6 +3,9 @@ import { WsolaStretcher } from './wsola.js';
 const DRIFT_WINDOW = 30;
 // The last steps of the video's clock that tell its usual step (stallTicks()).
 const CLOCK_GAPS = 9;
+// Seconds of content the audio may be ahead of the picture and wait for it
+// (a short silence) instead of going back over what was heard (tick()).
+const MAX_WAIT_S = 0.6;
 
 export class AudioEngine {
   constructor({
@@ -425,6 +428,8 @@ export class AudioEngine {
 
     if (this.anchorPending && moving) {
       this.anchorPending = false;
+      // A new start (a seek, a pause, a stall): what was heard before it no longer counts.
+      this.lastHeard = null;
       this.nextWhen = nowCtx + 0.03;
       this.outContent = seenT + (this.nextWhen - nowCtx) * this.speed;
       this.inPos = this.outContent;
@@ -472,9 +477,37 @@ export class AudioEngine {
         last2[0] * last2[1] > 0);
 
     if (jumped || starving) {
+      // Heard so far: where the sources that have started are, from the
+      // content each one starts at. Not from nextWhen or outContent, which a
+      // soft correction moves on (a silence, or content skipped) without
+      // touching the sources already queued. None started (the ones played
+      // gone at their end, a silence playing): the next one's start, where the
+      // audio stands. Nothing queued: all that was queued was heard.
+      let heard = null;
+      let next = null;
+      for (const s of this.sources) {
+        if (s.when > nowCtx) {
+          if (next === null || s.content < next) next = s.content;
+          continue;
+        }
+        const at = s.content + Math.min(nowCtx - s.when, s.dur) * this.speed;
+        if (heard === null || at > heard) heard = at;
+      }
+      // Still waiting after the last resync, its sources not started: what was
+      // heard then (their start is that plus the 30 ms lead).
+      if (heard === null && this.lastHeard && nowCtx < this.lastHeard.until) heard = this.lastHeard.content;
+      if (heard === null) heard = next !== null ? next : this.outContent;
+      const ahead = heard - seenT;
       this.stopFuture();
       this.sources.clear();
-      this.nextWhen = nowCtx + 0.03;
+      // Ahead of a picture that plays slower for a while (after a reload at
+      // 1.5x a webOS 25 TV plays it at about 1.2x for 2 s): going back to it
+      // played the last words twice. Up to MAX_WAIT_S ahead it goes on from
+      // what was heard, once the picture is there: a short silence instead.
+      // Further ahead the video went back (a jump without an event): there.
+      const wait = !starving && ahead > 0 && ahead <= MAX_WAIT_S ? ahead / this.speed : 0;
+      this.nextWhen = nowCtx + 0.03 + wait;
+      this.lastHeard = { content: heard, until: this.nextWhen };
       this.outContent = seenT + (this.nextWhen - nowCtx) * this.speed;
       this.inPos = this.outContent;
       this.stretcher = null;
@@ -551,7 +584,9 @@ export class AudioEngine {
           const srcInfo = {
             node,
             when: this.nextWhen,
-            dur: len / this.stretcherRate
+            dur: len / this.stretcherRate,
+            // The content it starts at: where a resync reads what was heard.
+            content: this.outContent
           };
           this.sources.add(srcInfo);
           node.onended = () => this.sources.delete(srcInfo);
