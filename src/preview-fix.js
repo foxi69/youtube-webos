@@ -98,13 +98,16 @@ function coverOf(video) {
   const r = video.getBoundingClientRect();
   if (!(r.width > 0 && r.height > 0)) return [];
   const stack = stackAt(r.left + r.width / 2, r.top + r.height / 2);
+  // Only YouTube's own page is cleared. The app's own layers (the settings
+  // panel, What's New and the other dialogs, notifications) sit on <body>
+  // outside it and keep their look over a playing preview
+  // (NicholasBly/youtube-webos 4f7d787 for the panel).
+  const app = document.querySelector('ytlr-app');
   const out = [];
   for (let i = 0; i < stack.length; i++) {
     const el = stack[i];
     if (el === video || el.contains(video)) break;
-    // The settings panel open over a playing preview keeps its look
-    // (NicholasBly/youtube-webos 4f7d787).
-    if (el.closest && el.closest('.ytaf-ui-container')) continue;
+    if (app && !app.contains(el)) continue;
     if (el.classList.contains(CLEAR_CLASS) || paints(el)) out.push(el);
   }
   return out;
