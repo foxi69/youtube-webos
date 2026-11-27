@@ -387,7 +387,8 @@ The actions each key can take are listed under [Remote control](#-remote-control
 | Without a Crowdsourced Thumbnail (Random Frame, Start/Middle/End Frame, Original, Blank) | Random Frame |
 
 **Fit Page Beside Open Menu**: while the left menu is open, YouTube slides the page right and its right side leaves
-the screen; with this option the page shrinks to fit beside the menu instead. DeArrow asks sponsor.ajay.app by hash
+the screen; with this option the page shrinks to fit beside the menu instead. It needs webOS 5 or newer; on webOS 3
+and 4 the switch is not shown. DeArrow asks sponsor.ajay.app by hash
 prefix, like SponsorBlock; a thumbnail it shows (and the random frame's time) is asked for by the video's id. The
 Start Page is not used on a launch into a video. **Hide Left Menu Entries** lists the menu's fixed entries, not the
 subscribed channels or Home, once YouTube has loaded the menu; a ticked one is gone from the next start of the app.

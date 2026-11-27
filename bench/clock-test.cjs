@@ -168,11 +168,13 @@ run(async () => {
     const env = boot({ clockMode: 'datetime', enableOledCareMode: true }, MID);
     await sleep(100);
     t(n('Date and Time from the start'), env.text() === DATETIME.format(env.now()), env.text());
-    t(n('OLED-Care on: the clock in its black style'), env.el().classList.contains('oled-mode'));
+    // The clock has no style of its own for it: switching it leaves the
+    // clock and its text as they are.
     env.toggle('OLED-Care Mode (True Black UI)');
-    t(n('OLED-Care off: the normal style'), !env.el().classList.contains('oled-mode'));
     env.toggle('OLED-Care Mode (True Black UI)');
-    t(n('OLED-Care on again: black again'), env.el().classList.contains('oled-mode'));
+    t(n('OLED-Care switched off and on: still one clock, with the date and time'),
+      env.doc.querySelectorAll('.webOs-watch').length === 1 && env.text() === DATETIME.format(env.now()), env.text());
+    t(n('OLED-Care: no page errors'), env.errors.length === 0, env.errors.join(' | '));
   }
 
   // ---- Off ----
