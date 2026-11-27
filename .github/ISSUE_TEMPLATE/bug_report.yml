@@ -14,7 +14,7 @@ body:
     attributes:
       label: App version
       description: Shown in the heading of the settings panel (open it with the Green button), with the build in brackets on a test build. Also in Homebrew Channel's app list and in the name of the `.ipk` you installed.
-      placeholder: "0.11.0"
+      placeholder: "x.y.z"
     validations:
       required: true
 
