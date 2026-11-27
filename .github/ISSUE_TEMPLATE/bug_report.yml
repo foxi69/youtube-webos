@@ -27,7 +27,7 @@ body:
         - Legacy (`.ipk`, webOS 3-6)
         - Not sure
     validations:
-      required: true
+      required: false
 
   - type: dropdown
     id: install
@@ -39,7 +39,7 @@ body:
         - webOS CLI (ares-install)
         - Other
     validations:
-      required: true
+      required: false
 
   - type: input
     id: webos
