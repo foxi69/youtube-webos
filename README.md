@@ -129,10 +129,7 @@ webOS 1 and 2 (2014-2015 TVs) are not supported by this build.
 | The app is gone, or will not start (TV in Developer Mode) | LG's developer session ran out. Extend it in the Developer Mode app, see [webosbrew's guide](https://www.webosbrew.org/devmode/), then install the app again if it is gone. |
 | A filter has no effect, or is greyed out | All filters except AI Videos' *Mark* need **Ad Blocking** on. |
 | A video stays at 1× | On webOS 4-6 and 22 only videos with AAC audio change speed. webOS 3 has no speed control. |
-| Casting from a phone fails (webOS 25) | Turn off **Block webOS Cast Service** on the Interface tab. Turn it back on if the app starts freezing. |
 | Playback stops at 1:00 with a QR code (mostly webOS 6, LG C1) | A change on YouTube's servers; no fix is known yet. Follow [#104](https://github.com/foxi69/youtube-webos/issues/104). |
-
-More known issues are in [CHANGELOG.md](CHANGELOG.md#known-issues).
 
 **Reporting a bug:** open a [bug report](https://github.com/foxi69/youtube-webos/issues/new?template=bug_report.yml).
 It asks for the app version, the package (webOS 22+ or legacy), the webOS version (TV Settings → General → About
@@ -418,7 +415,9 @@ Compared to upstream NicholasBly 0.8.5 (2026-11-13). Much of 0.8.5 came from mir
 0.8.6 did, so what both now have is left out here: Load Rows Ahead, Smooth (SD) thumbnails, DeArrow, the date in
 the clock, Back closing the settings, and most fixes to SponsorBlock, Force Max Quality, Max Thumbnail Quality and
 Ad Blocking. Taken from webosbrew, NicholasBly's open pull requests and the other forks of the project; credits are
-in [CHANGELOG.md](CHANGELOG.md).
+in [CHANGELOG.md](CHANGELOG.md). 0.8.5 is still upstream's latest release (checked 2026-11-27). Its 0.8.6 test builds
+carry four of this fork's fixes: Fix Black Tile Previews on webOS 22 and newer, no unseen previews on playlist pages,
+a pinned codec no longer holding videos at 480p, and chapter skips landing on the chapter's start.
 
 **New**
 - *0.11.0:* SponsorBlock's Skip button for Manual Skip segments, Blue to take an auto skip back, community chapters,
@@ -467,8 +466,7 @@ in [CHANGELOG.md](CHANGELOG.md).
 <summary><b>Fixed</b></summary>
 
 - Ad blocking holds up against YouTube's "property locker"; previously playback could stall a few seconds in.
-- webOS 25: the webOS Cast service is no longer blocked when a cast starts the app. Casting can still fail while
-  the app is open; see *Known issues* in [CHANGELOG.md](CHANGELOG.md).
+- webOS 25: the webOS Cast service is no longer blocked when a cast starts the app.
 - Colour-button seeks no longer fire twice.
 - The OLED overlay no longer hides the notifications.
 - *0.8.6:* Ad Blocking on expanded shelves, held keys, Force Max Quality switched off from the home screen, and

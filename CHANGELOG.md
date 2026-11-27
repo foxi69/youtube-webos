@@ -413,10 +413,6 @@ No more "Are you still watching?" pauses, a clock that can show the date and sta
 + The JSON.parse and JSON.stringify hooks keep their `try`/`catch` in a small function of its own, since webOS 3's engine does not optimise a function that contains one; the hooks run on every parse and stringify the app makes. From mirijanristic's fork.
 + The Noto Sans Arabic and Noto Sans Math fonts that the webOS 3 and 4 emoji fix falls back to come in through a link of their own, and only on those TVs; webOS 5 and 6 no longer download them.
 
-## Known issues
-
-+ webOS 25: casting from a phone can still fail while the app is open: the TV does not show up as a cast target, or the cast keeps loading (webosbrew/youtube-webos#401). If it does, turn off **Block webOS Cast Service** on the Interface tab. That can bring back the freezes the block prevents (webosbrew/youtube-webos#343), so turn it back on if they return.
-
 ## [0.8.6] - 2026/10/12
 
 Bug fixes and features from mirijanristic's fork and from the NicholasBly/youtube-webos issue tracker, each checked against this codebase first. Ships both packages: `_webOS22+.ipk` for webOS 22 and newer, and the legacy `.ipk` for webOS 3-6.
