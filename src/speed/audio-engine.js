@@ -3,6 +3,9 @@ import { WsolaStretcher } from './wsola.js';
 const DRIFT_WINDOW = 30;
 // The last steps of the video's clock that tell its usual step (stallTicks()).
 const CLOCK_GAPS = 9;
+// Seconds of content the audio may be ahead of the picture and wait for it
+// (a short silence) instead of going back over what was heard (tick()).
+const MAX_WAIT_S = 0.6;
 
 export class AudioEngine {
   constructor({
@@ -474,7 +477,13 @@ export class AudioEngine {
     if (jumped || starving) {
       this.stopFuture();
       this.sources.clear();
-      this.nextWhen = nowCtx + 0.03;
+      // Ahead of a picture that plays slower for a while (after a reload at
+      // 1.5x a webOS 25 TV plays it at about 1.2x for 2 s): going back to it
+      // played the last words twice. Up to MAX_WAIT_S ahead it goes on from
+      // what was heard, once the picture is there: a short silence instead.
+      // Further ahead the video went back (a jump without an event): there.
+      const wait = !starving && drift > 0 && drift <= MAX_WAIT_S ? drift / this.speed : 0;
+      this.nextWhen = nowCtx + 0.03 + wait;
       this.outContent = seenT + (this.nextWhen - nowCtx) * this.speed;
       this.inPos = this.outContent;
       this.stretcher = null;

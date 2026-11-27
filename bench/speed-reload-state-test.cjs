@@ -128,6 +128,28 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
 }
 
 run(async () => {
+  for (const busy of [false, true]) {
+    // A speed key waits 800 ms for more presses while the video plays on: the
+    // reload goes on from where it is then, not from the key press (on a
+    // webOS 25 TV the last 0.8 s, 1.2 s at 1.5x, was heard twice). A player
+    // that cannot say where it is then: the time at the key press.
+    const name = 'reload after the key wait' + (busy ? ' (player busy)' : '');
+    const { win, p, log, speed } = boot(720);
+    t(name + ': precondition: the speed feature is installed', !!speed);
+    if (speed) {
+      let now = 50;
+      p.getCurrentTime = () => now;
+      speed.setSpeed(1.5);
+      await sleep(100);
+      t(name + ': precondition: no reload before the wait is over', log.reloads === 0, String(log.reloads));
+      now = 50.8;
+      if (busy) p.getCurrentTime = () => { throw new Error('buffering'); };
+      const reloaded = await until(() => log.reloads === 1, 2000);
+      t(name + ': loaded again from ' + (busy ? 'the key press (50 s)' : 'where it plays (50.8 s)'),
+        reloaded && log.loads[0] === 'abcdefghijk@' + (busy ? 50 : 50.8), log.loads.join());
+    }
+    win.close();
+  }
   {
     // Subtitles off, a 720p pick; to 1.5x.
     const { win, p, log, speed } = boot(720);

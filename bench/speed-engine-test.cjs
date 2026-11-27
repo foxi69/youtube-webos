@@ -532,4 +532,45 @@ runTest(async () => {
     t(`a ${jump} s jump without an event: no error`, env.errors.length === 0, env.errors.map(String).join());
     env.engine.destroy();
   }
+
+  // ---- A picture slower than the speed for a while ----
+  // After a reload at 1.5x a webOS 25 TV plays the picture at about 1.2x for
+  // its first 2 s: the audio runs ahead of it. Caught up, it must not go back
+  // over what was heard (the words played twice): it waits for the picture.
+  {
+    const env = setup(AudioEngine);
+    env.engine.configure(CFG);
+    await tick();
+    env.push(0, 30);
+    env.run(1);
+    for (let i = 0; i < 40; i++) {   // 2 s at 1.2x
+      env.video.currentTime += TICK_S * 1.2;
+      env.run(TICK_S, { frozen: true });
+    }
+    const c0 = env.ctx.currentTime;
+    env.run(3);
+    // What is heard, in order: each source from its start until it ends or is stopped.
+    const heard = env.ctx.sources.slice().sort((a, b) => a.when - b.when);
+    let last = -Infinity;
+    let replayed = 0;
+    for (const s of heard) {
+      const end = Math.min(s.when + s.buffer.length / RATE, s.stoppedAt === undefined ? Infinity : s.stoppedAt);
+      if (end <= s.when) continue;
+      // A restart fades in from silence (the samples scaled down): read 0.07 s
+      // in, past the fade, and count back to where the source starts.
+      const ch = s.buffer.data[0];
+      const upTo = Math.min(ch.length, Math.floor((end - s.when) * RATE));
+      const at = Math.floor(0.07 * RATE);
+      if (upTo <= at) continue;
+      replayed = Math.max(replayed, last - (ch[at] - (at / RATE) * 1.5));
+      last = ch[upTo - 1];
+    }
+    t('a picture slower for a while: nothing heard is played again', replayed < 0.02, `${replayed.toFixed(3)} s played twice`);
+    const v0 = env.video.currentTime - (env.ctx.currentTime - c0) * 1.5;
+    const q = live(env.ctx).filter((s) => s.when >= c0 + 1);
+    const off = offsets(q, (T) => v0 + (T - c0) * 1.5);
+    t('a picture slower for a while: the audio is back in step after it', q.length > 5 && within(off, 0.12),
+      `max ${max(off).toFixed(3)} s`);
+    env.engine.destroy();
+  }
 });

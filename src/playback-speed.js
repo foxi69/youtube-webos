@@ -491,7 +491,7 @@ export function createSpeedController({
     return 'hd1080';
   }
 
-  function applyReload({ position: at, fromSpeed }) {
+  function applyReload({ position: pressedAt, fromSpeed }) {
     // Back where the burst started: the playing MediaSource is already right.
     if (currentSpeed === fromSpeed) return;
     // Stop any previous Web Audio engine immediately so it doesn't keep playing
@@ -499,6 +499,14 @@ export function createSpeedController({
     releaseAudioSink();
     const player = getPlayer();
     if (!player) return;
+    // From where it plays now: the video went on through the key wait
+    // (RELOAD_DELAY_MS), and from the key press the last 0.8 s (1.2 s at 1.5x)
+    // was heard twice. A player that cannot say: the time at the key press.
+    let at = pressedAt;
+    try {
+      const now = player.getCurrentTime();
+      if (Number.isFinite(now) && now > 0) at = now;
+    } catch { /* busy: the time at the key press */ }
     // The last reload's checks would put back the subtitles from before it.
     stopCaptions();
     let videoData = null;
