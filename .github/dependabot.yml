@@ -3,9 +3,11 @@
 #
 # The npm dependencies are left out on purpose. They are almost all build
 # tools (webpack, Babel, postcss), and an update there can break the legacy
-# webOS 3-6 bundle in ways CI does not catch, since CI only checks that it
-# builds. Security alerts and security updates for them are separate, in the
-# repository settings (Code security), and do not need this file.
+# webOS 3-6 bundle in ways the tests may not catch, since no CI job runs on
+# such a TV. Security alerts and security updates for them are separate, in
+# the repository settings (Code security), and do not need this file: an npm
+# entry here with an allow list could narrow the security updates as well.
+# A new release of LG's CLI is reported by .github/workflows/cli-watch.yml.
 version: 2
 updates:
   - package-ecosystem: github-actions

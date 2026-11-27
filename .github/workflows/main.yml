@@ -10,10 +10,18 @@ on:
 
 # Read-only by default. Only the cleanup job, which runs none of the
 # repository's code, may write to Actions (delete artifacts): the build job
-# runs the branch's own package scripts, on the upstream sync branch code
-# nobody has reviewed yet, and its token must not reach that far.
+# runs the branch's own package scripts, on a pull request code nobody has
+# reviewed yet, and its token must not reach that far.
 permissions:
   contents: read
+
+# A new commit on a pull request stops the run of the one before it: the
+# superseded runs used to keep the runners busy for their full length and held
+# up the others. A push to main (its own commit) and a run started by hand are
+# never stopped by a pull request's.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   cleanup:
@@ -62,8 +70,11 @@ jobs:
 
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        # A fixed major, here and in the other workflows that build: with
+        # lts/* a new LTS would change the Node the packages are built with
+        # unnoticed. Raise it by hand, in all of them at once.
         with:
-          node-version: lts/*
+          node-version: 26
           cache: npm
 
       - run: npm ci
