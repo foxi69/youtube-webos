@@ -1,0 +1,27 @@
+name: Dependency review
+
+# On every pull request, compares the dependencies of the base and the head
+# (package-lock.json and the actions the workflows use) and fails if the pull
+# request adds or upgrades to a version with a known vulnerability of high or
+# critical severity. Dependabot does not update the npm dependencies here (see
+# .github/dependabot.yml), so a new or changed one only ever arrives in a pull
+# request, and this is where it is checked. Development dependencies count too:
+# webpack and Babel build the bundle the TV runs, and their helpers end up in
+# it. It reads the dependency graph through the API and runs none of the
+# repository's code, so it needs no checkout.
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/dependency-review-action@bbc44d14a204704ccc493733616cd1e93a0321ec # v5.0.1
+        with:
+          fail-on-severity: high
+          fail-on-scopes: runtime, development, unknown
