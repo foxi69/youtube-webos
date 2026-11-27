@@ -1,0 +1,69 @@
+name: LG CLI watch
+
+# Once a week, compares the newest @webos-tools/cli on npm with the version in
+# package-lock.json and opens an issue (label "cli-watch") when a newer one is
+# out. The CLI packs the .ipk, and it pins its own dependencies with an
+# npm-shrinkwrap.json, so the vulnerabilities reported in those can only be
+# fixed by a new CLI release. Nothing is changed in the repository: the update
+# is done by hand and checked by installing the package on a TV.
+#
+# Not a Dependabot version update on purpose: an npm entry in dependabot.yml
+# with an allow list for this one package may narrow Dependabot's security
+# updates to it as well, and those must keep covering every npm package.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '37 6 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cli-watch
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Reads two version numbers; runs none of the repository's code and
+      # installs nothing.
+      - name: Compare the installed CLI with the newest on npm
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PACKAGE: '@webos-tools/cli'
+        run: |
+          set -euo pipefail
+          ours="$(jq -r --arg p "node_modules/$PACKAGE" '.packages[$p].version' package-lock.json)"
+          latest="$(npm view "$PACKAGE" version)"
+          echo "package-lock.json: $ours, npm: $latest" | tee -a "$GITHUB_STEP_SUMMARY"
+          # A red run, not "up to date", when either version could not be read.
+          for v in "$ours" "$latest"; do
+            [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]] || { echo "::error::Could not read a version: '$v'"; exit 1; }
+          done
+          if [ "$ours" = "$latest" ]; then exit 0; fi
+          # The newer of the two: nothing to report while ours is ahead.
+          if [ "$(printf '%s\n%s\n' "$ours" "$latest" | sort -V | tail -n 1)" = "$ours" ]; then exit 0; fi
+          gh label create cli-watch --color FBCA04 --description "A newer @webos-tools/cli is out" --force
+          title="LG CLI $latest is out (the repository uses $ours)"
+          {
+            echo "\`$PACKAGE\` $latest is on npm; \`package-lock.json\` has $ours."
+            echo
+            echo "- Update it with \`npm install --save-dev $PACKAGE@$latest\`."
+            echo "- The CLI packs the \`.ipk\`: install the package of the pull request on a TV before merging."
+            echo "- Then check whether \`npm audit\` still reports the CLI's pinned dependencies (Scorecard alert 17 was dismissed for them)."
+          } > body.md
+          number="$(gh issue list --label cli-watch --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$number" ]; then
+            gh issue edit "$number" --title "$title" --body-file body.md
+          else
+            gh issue create --title "$title" --label cli-watch --body-file body.md
+          fi
