@@ -216,8 +216,30 @@ check('new_commits: a commit left out is remembered, so not asked about again',
 for name, want in (('src/README.md.js', False), ('package.json', False), ('assets/appinfo.json', False),
                    ('.github/workflows/main.yml', False), ('docs/x.js', True), ('NOTICE.txt', True),
                    ('src/vendor/LICENSE-MIT', True), ('assets/icon.svg', True), ('repo.json', True),
-                   ('tools/repo.json', False)):
+                   ('tools/repo.json', False),
+                   # The dot before an extension is a dot: "cmd" does not end in ".md".
+                   ('build-local.cmd', False), ('src/xmd', False), ('repoXjson', False), ('tools/a.ico.py', False)):
     check(f'DOCS_RE: {name} is {"not " if not want else ""}documentation', bool(fw.DOCS_RE.search(name)) == want)
+
+# --- is_docs_only(): a renamed file counts by both names; a dead network is not "no code" ---
+fw.request = Api({
+    '/repos/dev/youtube-webos/commits/moved-out': {'files': [
+        {'filename': 'docs/player.js', 'previous_filename': 'src/player.js', 'status': 'renamed'}]},
+    '/repos/dev/youtube-webos/commits/moved-within': {'files': [
+        {'filename': 'docs/new.md', 'previous_filename': 'docs/old.md', 'status': 'renamed'}]},
+    '/repos/dev/youtube-webos/commits/offline': urllib.error.URLError('network down'),
+    '/repos/dev/youtube-webos/commits/timeout': TimeoutError('timed out'),
+    '/repos/dev/youtube-webos/commits/forbidden': http_error(403),
+})
+check('is_docs_only: code renamed into docs/ is still code', fw.is_docs_only(FORK, 'moved-out') is False)
+check('is_docs_only: a document renamed within docs/ is documentation', fw.is_docs_only(FORK, 'moved-within') is True)
+check('is_docs_only: the network down: the commit is reported, the run goes on',
+      fw.is_docs_only(FORK, 'offline') is False and fw.is_docs_only(FORK, 'timeout') is False)
+try:
+    fw.is_docs_only(FORK, 'forbidden')
+    check('is_docs_only: a 403 (the rate limit) still stops the run', False, 'no error raised')
+except urllib.error.HTTPError as err:
+    check('is_docs_only: a 403 (the rate limit) still stops the run', err.code == 403, err.code)
 
 # --- watched_forks(): forks of forks are followed as deep as they go ---
 CHAIN = 12

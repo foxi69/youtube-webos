@@ -74,9 +74,9 @@ RETRY_DELAY_S = 5
 # files, pictures, and the Homebrew listing a release rewrites.
 DOCS_RE = re.compile(
     r'(^|/)(LICENSE|COPYING|NOTICE)[^/]*$'
-    r'|.(md|markdown|txt|rst|png|jpe?g|gif|webp|svg|ico)$'
+    r'|\.(md|markdown|txt|rst|png|jpe?g|gif|webp|svg|ico)$'
     r'|^(docs|screenshots)/'
-    r'|^repo[^/]*.json$', re.I)
+    r'|^repo[^/]*\.json$', re.I)
 # A commit lists at most this many files in one answer: one that fills it may
 # change more than was read, so it is not judged by them.
 MAX_COMMIT_FILES = 300
@@ -277,17 +277,22 @@ def is_bot(commit):
 def is_docs_only(fork, sha):
     """Whether the commit changes nothing but documentation, pictures or the
     Homebrew listing (DOCS_RE). A commit whose files cannot be read, that lists
-    none or that fills the answer is not: it is reported, as before."""
+    none or that fills the answer is not: it is reported, as before. A renamed
+    file counts by both its names: code moved into docs/ is still code."""
     try:
         info = get(f"/repos/{fork['full_name']}/commits/{sha}")
     except urllib.error.HTTPError as err:
         if err.code < 500:
             raise
         return False
+    except (urllib.error.URLError, TimeoutError):
+        # The network gave out after the retries: reported, not a failed run.
+        return False
     files = (info or {}).get('files') or []
     if not files or len(files) >= MAX_COMMIT_FILES:
         return False
-    return all(DOCS_RE.search(f.get('filename') or '') for f in files)
+    return all(DOCS_RE.search(name or '')
+               for f in files for name in (f.get('filename'), f.get('previous_filename') or f.get('filename')))
 
 
 def unrelated_commits(fork, branch, cutoff):
