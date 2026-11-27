@@ -1075,6 +1075,7 @@ export function initPlaybackSpeed() {
     // A higher limit chosen while the video was paused (a load would start
     // it): the video it was for, loaded again when it plays on.
     let raiseOnPlay = null;
+    // True when it set a range or loaded the video again (or waits to).
     const applyLimit = () => {
       if (!speedCapsQuality()) return;
       const player =
@@ -1098,7 +1099,7 @@ export function initPlaybackSpeed() {
         const now = QUALITY_HEIGHTS[player.getPlaybackQuality()] || 0;
         if (now > QUALITY_HEIGHTS[cap]) {
           speedInstance.controller.setRange(player, cap);
-          return;
+          return true;
         }
         // A higher limit than the one the video's formats were cut at: it is
         // read again where it is, and the cap then holds (reloadInPlace).
@@ -1107,6 +1108,7 @@ export function initPlaybackSpeed() {
           // Paused, or the reload could not read where it is (the player
           // buffering): tried again when the video plays.
           if (video.paused || !speedInstance.controller.reloadInPlace(cap)) raiseOnPlay = videoId;
+          return true;
         }
       } catch {
         // A player between two videos: applied when it plays.
@@ -1145,17 +1147,11 @@ export function initPlaybackSpeed() {
       speedInstance.controller.notePlay(player);
       if (!speedCapsQuality()) { limitMissed = false; return; }
       if (limitMissed) {
-        // Kept until the range goes through (or is not needed): a player that
-        // fails again gets it at its next play.
-        try {
-          const cap = speedInstance.controller.capQuality();
-          const above = (QUALITY_HEIGHTS[player.getPlaybackQuality()] || 0) > QUALITY_HEIGHTS[cap];
-          if (above) speedInstance.controller.setRange(player, cap);
-          limitMissed = false;
-          if (above) return;
-        } catch {
-          return;
-        }
+        // The whole limit, as the change would have applied it: a lower one
+        // sets the range, a higher one loads the cut video again. Kept until
+        // it goes through: a player that fails again gets it at its next play.
+        limitMissed = false;
+        if (applyLimit() || limitMissed) return;
       }
       if (ABOVE_1080.includes(player.getPlaybackQuality())) {
         speedInstance.controller.setRange(player, speedInstance.controller.capQuality());

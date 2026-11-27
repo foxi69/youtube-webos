@@ -180,9 +180,10 @@ run(async () => {
   }
   {
     // What an earlier build stored for the guest goes; the session starts from
-    // the shared settings and what it changes is not kept.
+    // the defaults, not from the shared settings (some account's), with the
+    // TV's device settings, and what it changes is not kept.
     const GUEST = { identityType: 'UNAUTHENTICATED_IDENTITY_TYPE_GUEST' };
-    const { win, errors, pump, holdRechecks } = boot({ perAccountSettings: true, enableReturnYouTubeDislike: true },
+    const { win, errors, pump, holdRechecks } = boot({ perAccountSettings: true, enableReturnYouTubeDislike: true, keyboardSearch: false },
       GUEST, { [CONFIG_KEY + '::guest']: { enableReturnYouTubeDislike: false } });
     await wait(300);
     t('guest: an old guest profile is removed', win.localStorage.getItem(CONFIG_KEY + '::guest') === null);
@@ -191,9 +192,11 @@ run(async () => {
     const status = win.document.querySelector('.ytaf-profile-status');
     const statusText = () => (status ? status.textContent : '');
     t('guest: panel says the guest\'s changes are not kept',
-      statusText() === 'Guest: starts from the shared settings each time, changes are not kept', statusText());
+      statusText() === 'Guest: starts from the default settings each time, changes are not kept', statusText());
     const ryd = checkbox(win, 'Return YouTube Dislike');
-    t('guest: starts from the shared settings', !!ryd && ryd.checked === true);
+    t('guest: starts from the defaults, not the shared settings', !!ryd && ryd.checked === false, ryd && String(ryd.checked));
+    const typing = checkbox(win, 'Type in Search with a Keyboard');
+    t('guest: the device settings of the TV still apply', !!typing && typing.checked === false, typing && String(typing.checked));
     toggle(win, ryd);
     await wait(300);
     t('guest: a change is not stored', profileKeys(win).length === 0 && read(win, CONFIG_KEY).enableReturnYouTubeDislike === true,
@@ -213,11 +216,14 @@ run(async () => {
     holdRechecks.on = true;
     await chooseAccount(win, GUEST);
     t('guest chosen again: at once, the session keeps its change and no profile change is told',
-      ryd.checked === false && profileChanges === 0, 'checked=' + ryd.checked + ' profile changes=' + profileChanges);
+      ryd.checked === true && profileChanges === 0, 'checked=' + ryd.checked + ' profile changes=' + profileChanges);
     const guestRechecks = runRechecks();
     t('guest chosen again: the session keeps its change, also after the selector\'s two rechecks',
-      guestRechecks === '1500,5000' && ryd.checked === false && profileChanges === 0,
+      guestRechecks === '1500,5000' && ryd.checked === true && profileChanges === 0,
       'rechecks=' + guestRechecks + ' checked=' + ryd.checked + ' profile changes=' + profileChanges);
+    // The guest's change back to the default, so the account's value shows.
+    toggle(win, ryd);
+    await wait(50);
     // Then an account: the switch does happen, from the shared settings.
     await chooseAccount(win, ACCOUNT_A);
     // At once, as the selector is left: before any recheck has run.
@@ -230,6 +236,13 @@ run(async () => {
       accountRechecks === '1500,5000' && ryd.checked === true && profileChanges === 1 &&
       statusText() === 'Using this account\'s own settings',
     'rechecks=' + accountRechecks + ' checked=' + ryd.checked + ' profile changes=' + profileChanges + ' ' + statusText());
+    // Back to guest from the account: a new guest session, from the defaults
+    // again, not from the account's settings or the shared ones.
+    await chooseAccount(win, GUEST);
+    await wait(50);
+    t('...guest chosen after the account: the defaults again', ryd.checked === false && statusText().indexOf('Guest') === 0,
+      'checked=' + ryd.checked + ' ' + statusText());
+    t('...and the device settings stay those of the TV', checkbox(win, 'Type in Search with a Keyboard').checked === false);
     t('guest: no errors', errors.length === 0, errors.join(' | '));
   }
 
@@ -281,5 +294,37 @@ run(async () => {
     await wait(100);
     t('storage that refuses the read: the panel opens', !!checkbox(win, RYD));
     t('...with no errors', errors.length === 0, errors.join(' | '));
+  }
+
+  // ---- The account selector: the previous account's settings are loaded
+  // there, so with per-account settings the panel waits for the choice ----
+  for (const perAccount of [true, false]) {
+    const name = 'selector (per-account ' + (perAccount ? 'on' : 'off') + ')';
+    const { win, errors, pump } = boot({ perAccountSettings: perAccount }, ACCOUNT_A);
+    await wait(100);
+    win.document.body.className = 'WEB_PAGE_TYPE_ACCOUNT_SELECTOR';
+    await wait(20);
+    key(win, GREEN);
+    await wait(50);
+    // The notice is revealed two frames after it is added (notifications.js).
+    pump();
+    const panel = () => win.document.querySelector('.ytaf-ui-container');
+    const shown = () => !!panel() && win.getComputedStyle(panel()).display !== 'none';
+    const notice = Array.from(win.document.querySelectorAll('.ytaf-notification-container .message'))
+      .find((m) => /Choose an account first/.test(m.textContent));
+    if (perAccount) {
+      t(name + ': Green opens no panel', !shown());
+      t(name + ': ...and says to choose an account first, shown', !!notice && !notice.classList.contains('message-hidden'),
+        notice ? notice.className : 'no notice');
+      win.localStorage.setItem(IDENTITY_KEY, JSON.stringify({ data: ACCOUNT_B }));
+      win.document.body.className = 'WEB_PAGE_TYPE_BROWSE';
+      await wait(50);
+      key(win, GREEN);
+      await wait(50);
+      t(name + ': an account chosen, Green opens the panel', shown());
+    } else {
+      t(name + ': Green opens the panel (shared settings everywhere)', shown());
+    }
+    t(name + ': no errors', errors.length === 0, errors.join(' | '));
   }
 });

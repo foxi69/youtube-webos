@@ -391,7 +391,10 @@ in [CHANGELOG.md](CHANGELOG.md).
 - Auto-Translate Subtitles to a language of your choice.
 - Auto Login: always ask who is watching.
 - Separate Settings for Each Account: each YouTube account on the TV keeps its own settings; guest mode starts
-  from the shared settings every time and keeps only the settings the whole TV shares.
+  from the default settings every time (the TV's own device settings, such as the codec, still apply). A
+  guest's changes to the account settings are not saved; a change to a device setting is, as it is the TV's.
+  On the account selector the settings panel does not open (the previous account's settings are loaded
+  there): choose an account first.
 - Bindable yellow button, Sleep Timer and Audio-Only Mode.
 - Magic Remote scroll-wheel seeking.
 - SponsorBlock picks up segments submitted while you watch: re-checked during playback.

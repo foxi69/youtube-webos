@@ -549,8 +549,9 @@ const changeListeners = new Map();
  * profile name is a hash of that record's id-like fields, so no account id is
  * stored; tokens and timestamps are skipped, they change while the account
  * stays the same. Guest mode gets a profile of its own that is never stored:
- * each guest session starts from the shared settings, like a new account, and
- * what it changes lasts until it ends (the device settings are still kept).
+ * each guest session starts from the defaults (not from the shared settings,
+ * which are some account's), and what it changes lasts until it ends (the
+ * device settings are the TV's, and are still kept).
  */
 const DEVICE_KEYS = new Set([
   'perAccountSettings',
@@ -668,6 +669,9 @@ if (sharedConfig.perAccountSettings) {
     // A new account starts from the shared settings, not from the defaults.
     if (stored) Object.assign(localConfig, pickAccountValues(stored));
     else profileSeeded = true;
+  } else if (activeProfile === GUEST_PROFILE) {
+    // A guest starts from the defaults (the device settings stay the TV's).
+    Object.assign(localConfig, pickAccountValues(defaultConfig));
   }
 }
 
@@ -1045,9 +1049,12 @@ function switchProfile(profile, restored = false) {
     const key = profileStorageKey(profile);
     incoming = unwrittenRecords[key] || loadStored(key) || (restoredRecords && restoredRecords[key]) || null;
   }
-  if (!incoming) {
-    // An account seen for the first time (and every guest session) starts
-    // from the shared settings.
+  if (!incoming && profile === GUEST_PROFILE) {
+    // Every guest session starts from the defaults: the shared settings are
+    // some account's (the one in use when per-account settings came on).
+    incoming = pickAccountValues(defaultConfig);
+  } else if (!incoming) {
+    // An account seen for the first time starts from the shared settings.
     incoming = pickAccountValues(Object.assign({}, defaultConfig, sharedConfig));
     seeded = true;
     if (storesProfile(profile)) scheduleWrite();

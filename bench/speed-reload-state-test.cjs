@@ -568,7 +568,7 @@ run(async () => {
     // record YouTube writes for the limit's level: still the limit's, not a
     // pick of the viewer's (seen on a webOS 25 TV at 1.5x). paused: chosen
     // while paused, loaded again only once it plays on.
-    for (const [at, variant] of [[1, ''], [1.5, ''], [1.5, 'key'], [1, 'paused'], [1.5, 'paused'], [1.5, 'busy']]) {
+    for (const [at, variant] of [[1, ''], [1.5, ''], [1.5, 'key'], [1, 'paused'], [1.5, 'paused'], [1.5, 'busy'], [1.5, 'nodata']]) {
       const { win, p, log, speed, emit, pump } = boot(0, { force: at === 1 ? 'up720' : 'up480' });
       const name = 'raise at ' + at + 'x' + (variant ? ' (' + variant + ')' : '');
       t(name + ': precondition: the speed feature is installed', !!speed);
@@ -600,6 +600,10 @@ run(async () => {
       // busy: the player cannot say where it is (buffering) when the raise
       // comes, so it cannot be loaded again there: tried when it plays.
       if (variant === 'busy') p.getCurrentTime = () => { throw new Error('buffering'); };
+      // nodata: the player cannot say which video it plays when the raise
+      // comes (getVideoData throws): the whole limit is applied at the next play.
+      const getVideoData = p.getVideoData;
+      if (variant === 'nodata') p.getVideoData = () => { throw new Error('between two videos'); };
       // Subtitles on: the reload turns them off (the mock), they come back.
       p.track = EN;
       const before = log.reloads;
@@ -628,6 +632,12 @@ run(async () => {
         t(name + ': not loaded while the player cannot say where it is', log.reloads === before, String(log.reloads - before));
         p.getCurrentTime = () => 50;
         p.querySelector('video').dispatchEvent(new win.Event('playing'));
+      }
+      if (variant === 'nodata') {
+        await sleep(1500);
+        t(name + ': not loaded while the player cannot say which video it plays', log.reloads === before, String(log.reloads - before));
+        p.getVideoData = getVideoData;
+        emit(1);
       }
       const reloaded = await until(() => log.reloads > before, 3000);
       const level = at === 1 ? 'hd1080' : 'hd720';
