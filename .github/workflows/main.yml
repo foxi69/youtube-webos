@@ -81,11 +81,10 @@ jobs:
 
       # Both bundles in a real Chromium (bench/chromium-smoke.cjs): layout and
       # CSS, trusted key presses, the engine's own fetch and Request, which
-      # jsdom does not have. Playwright is not a dependency of the package:
-      # this step installs it and its Chromium for itself.
+      # jsdom does not have. Playwright is a pinned devDependency, so the
+      # lockfile fixes its version and hash; this step adds its Chromium.
       - name: Chromium smoke
         run: |
-          npm install --no-save playwright@1.63.0
           npx playwright install --with-deps chromium
           npx webpack --mode=production --stats errors-warnings --env modern
           node bench/chromium-smoke.cjs dist/webOSUserScripts/userScript.js modern

@@ -35,8 +35,8 @@ on:
     branches: [main]
   workflow_dispatch:
 
-permissions:
-  contents: write
+# Nothing by default; the one job asks for what it needs.
+permissions: {}
 
 concurrency:
   group: draft-release
@@ -45,6 +45,10 @@ concurrency:
 jobs:
   draft:
     runs-on: ubuntu-latest
+    # contents: write creates and updates the draft release and its packages,
+    # moves its tag and deletes the drafts of other versions.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
