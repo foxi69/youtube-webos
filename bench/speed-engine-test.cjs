@@ -665,4 +665,36 @@ runTest(async () => {
       `${replayed.toFixed(3)} s played twice`);
     env.engine.destroy();
   }
+
+  // ---- A second resync during the wait ----
+  // A resync that waits for the picture queues its sources from what was
+  // heard plus its 30 ms lead. A second jump before they start (the audio
+  // 0.57 s ahead in all) must count what was heard, not that start 0.045 s
+  // on, which is past MAX_WAIT_S: it would go back over what was heard.
+  {
+    const env = setup(AudioEngine);
+    env.engine.configure(CFG);
+    await tick();
+    env.push(0, 30);
+    env.run(2);
+    env.video.currentTime -= 0.3;   // the picture back 0.3 s: a resync that waits 0.2 s
+    env.run(0.1);
+    env.video.currentTime -= 0.42;  // back 0.42 s more before its sources start
+    env.run(3);
+    const heard = env.ctx.sources.slice().sort((a, b) => a.when - b.when);
+    let last = -Infinity;
+    let replayed = 0;
+    for (const s of heard) {
+      const end = Math.min(s.when + s.buffer.length / RATE, s.stoppedAt === undefined ? Infinity : s.stoppedAt);
+      if (end <= s.when) continue;
+      const ch = s.buffer.data[0];
+      const upTo = Math.min(ch.length, Math.floor((end - s.when) * RATE));
+      if (upTo <= 0) continue;
+      replayed = Math.max(replayed, last - (ch[upTo - 1] - ((upTo - 1) / RATE) * 1.5));
+      last = ch[upTo - 1];
+    }
+    t('a second resync during the wait: nothing heard is played again', replayed < 0.02,
+      `${replayed.toFixed(3)} s played twice`);
+    env.engine.destroy();
+  }
 });

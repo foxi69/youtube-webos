@@ -428,6 +428,8 @@ export class AudioEngine {
 
     if (this.anchorPending && moving) {
       this.anchorPending = false;
+      // A new start (a seek, a pause, a stall): what was heard before it no longer counts.
+      this.lastHeard = null;
       this.nextWhen = nowCtx + 0.03;
       this.outContent = seenT + (this.nextWhen - nowCtx) * this.speed;
       this.inPos = this.outContent;
@@ -491,6 +493,9 @@ export class AudioEngine {
         const at = s.content + Math.min(nowCtx - s.when, s.dur) * this.speed;
         if (heard === null || at > heard) heard = at;
       }
+      // Still waiting after the last resync, its sources not started: what was
+      // heard then (their start is that plus the 30 ms lead).
+      if (heard === null && this.lastHeard && nowCtx < this.lastHeard.until) heard = this.lastHeard.content;
       if (heard === null) heard = next !== null ? next : this.outContent;
       const ahead = heard - seenT;
       this.stopFuture();
@@ -502,6 +507,7 @@ export class AudioEngine {
       // Further ahead the video went back (a jump without an event): there.
       const wait = !starving && ahead > 0 && ahead <= MAX_WAIT_S ? ahead / this.speed : 0;
       this.nextWhen = nowCtx + 0.03 + wait;
+      this.lastHeard = { content: heard, until: this.nextWhen };
       this.outContent = seenT + (this.nextWhen - nowCtx) * this.speed;
       this.inPos = this.outContent;
       this.stretcher = null;
