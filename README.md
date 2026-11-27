@@ -19,7 +19,7 @@
 
 <p align="center">
   <a href="#-installation"><b>Install</b></a> ·
-  <a href="#-troubleshooting"><b>Help</b></a> ·
+  <a href="#-troubleshooting"><b>Troubleshooting</b></a> ·
   <a href="#-highlights"><b>Highlights</b></a> ·
   <a href="#-remote-control"><b>Remote</b></a> ·
   <a href="#%EF%B8%8F-settings"><b>Settings</b></a> ·
