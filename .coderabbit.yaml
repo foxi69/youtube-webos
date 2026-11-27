@@ -30,6 +30,12 @@ reviews:
     enabled: true
     drafts: false
     auto_incremental_review: true
+    # Pull requests titled "CI: ..." (workflow changes, the monthly Dependabot
+    # update of the actions) are not reviewed automatically: they are small,
+    # and CodeQL's actions analysis already checks the workflows. Comment
+    # "@coderabbitai review" on one to have it reviewed anyway.
+    ignore_title_keywords:
+      - "CI:"
 
   finishing_touches:
     docstrings:
