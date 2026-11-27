@@ -78,7 +78,7 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
   if (pickHeight) writeQuality(win, pickHeight, 2160);
 
   const p = win.document.getElementById('ytlr-player__player-container-player');
-  const log = { ranges: [], reloads: 0, sets: [] };
+  const log = { ranges: [], reloads: 0, sets: [], loads: [] };
   let state = 1;
   let quality = 'hd720';
   let onStateChange = null;
@@ -109,8 +109,9 @@ function boot(pickHeight, { force = false, manualPlayback = false, lateRecord = 
     getCurrentTime: () => 50,
     getPlayerState: () => state,
     seekTo() {},
-    loadVideoById() {
+    loadVideoById(videoId, at) {
       log.reloads++;
+      log.loads.push(videoId + '@' + at);
       // YouTube starts the reloaded video with its own subtitles choice.
       state = 3;
       if (this.reloadTrack !== undefined) this.track = this.reloadTrack;
@@ -553,9 +554,161 @@ run(async () => {
     win.close();
   }
   {
+    // A video read under a lower limit (its bigger formats left out), then a
+    // higher one chosen in the panel: it is loaded again where it is, through
+    // the speed's reload (subtitles and position kept), at 1x and at 1.5x.
+    const formats = () => [
+      { itag: 401, mimeType: 'video/webm; codecs="vp9"', width: 3840, height: 2160, qualityLabel: '2160p' },
+      { itag: 399, mimeType: 'video/webm; codecs="vp9"', width: 1920, height: 1080, qualityLabel: '1080p' },
+      { itag: 398, mimeType: 'video/webm; codecs="vp9"', width: 1280, height: 720, qualityLabel: '720p' },
+      { itag: 397, mimeType: 'video/webm; codecs="vp9"', width: 854, height: 480, qualityLabel: '480p' },
+      { itag: 251, mimeType: 'audio/webm; codecs="opus"' }
+    ];
+    // key: a key pressed (the OK that opened the video, say) before the
+    // record YouTube writes for the limit's level: still the limit's, not a
+    // pick of the viewer's (seen on a webOS 25 TV at 1.5x). paused: chosen
+    // while paused, loaded again only once it plays on.
+    for (const [at, variant] of [[1, ''], [1.5, ''], [1.5, 'key'], [1, 'paused'], [1.5, 'paused'], [1.5, 'busy'], [1.5, 'nodata'], [1.5, 'paused, no video data']]) {
+      const { win, p, log, speed, emit, pump } = boot(0, { force: at === 1 ? 'up720' : 'up480' });
+      const name = 'raise at ' + at + 'x' + (variant ? ' (' + variant + ')' : '');
+      t(name + ': precondition: the speed feature is installed', !!speed);
+      if (!speed) { win.close(); continue; }
+      let paused = false;
+      Object.defineProperty(p.querySelector('video'), 'paused', { configurable: true, get: () => paused });
+      win.dispatchEvent(new win.CustomEvent('yt-navigate-finish', { detail: { pageType: 'watch' } }));
+      await sleep(300);
+      const r = win.JSON.parse(win.JSON.stringify({ responseContext: { _pad: 'z'.repeat(600) },
+        videoDetails: { videoId: p.videoId }, streamingData: { adaptiveFormats: formats() } }));
+      const kept = r.streamingData.adaptiveFormats.map((x) => x.itag).join();
+      t(name + ': precondition: the read left the bigger formats out', kept === (at === 1 ? '398,397,251' : '397,251'), kept);
+      if (at > 1) {
+        speed.setSpeed(at, { immediate: true });
+        await sleep(900);
+      } else {
+        emit(-1); emit(3); emit(1); pump(); pump();
+        await sleep(300);
+      }
+      if (variant === 'key') {
+        // Written more than a second after the range, as YouTube did on the TV.
+        await sleep(1200);
+        pressKey(win);
+        await sleep(20);
+        writeQuality(win, HEIGHTS.large, 2160);
+        t(name + ': precondition: the 480p record counts as a pick so far', speed.viewerPick() === 'large', String(speed.viewerPick()));
+      }
+      if (variant.startsWith('paused')) paused = true;
+      // busy: the player cannot say where it is (buffering) when the raise
+      // comes, so it cannot be loaded again there: tried when it plays.
+      if (variant === 'busy') p.getCurrentTime = () => { throw new Error('buffering'); };
+      // nodata: the player cannot say which video it plays when the raise
+      // comes (getVideoData throws): the whole limit is applied at the next play.
+      const getVideoData = p.getVideoData;
+      if (variant === 'nodata') p.getVideoData = () => { throw new Error('between two videos'); };
+      // Subtitles on: the reload turns them off (the mock), they come back.
+      p.track = EN;
+      const before = log.reloads;
+      log.ranges.length = 0;
+      log.loads.length = 0;
+      trustedKey(win, 404);
+      await until(() => win.document.querySelector('.ytaf-ui-container .shortcut-control-row'), 2000);
+      const row = Array.from(win.document.querySelectorAll('.ytaf-ui-container .shortcut-control-row'))
+        .find((x) => x.querySelector('.shortcut-label') && x.querySelector('.shortcut-label').textContent.trim() === 'Force Max Quality');
+      const want = at === 1 ? 'Up to 1080p' : 'Up to 720p';
+      for (let i = 0; i < 10; i++) {
+        if (!row || row.querySelector('.current-value').textContent === want) break;
+        row.focus();
+        trustedKey(win, 37, row);
+      }
+      t(name + ': precondition: ' + want + ' chosen', !!row && row.querySelector('.current-value').textContent === want,
+        row ? row.querySelector('.current-value').textContent : 'no row');
+      if (variant.startsWith('paused')) {
+        await sleep(1500);
+        t(name + ': not loaded while paused (a load would start it)', log.reloads === before, String(log.reloads - before));
+        paused = false;
+        if (variant === 'paused, no video data') {
+          // Played on while the player cannot say which video it plays: the
+          // raise waits for a play that can.
+          p.getVideoData = () => { throw new Error('between two videos'); };
+          p.querySelector('video').dispatchEvent(new win.Event('playing'));
+          await sleep(300);
+          t(name + ': not loaded while the player cannot say which video it plays', log.reloads === before, String(log.reloads - before));
+          p.getVideoData = getVideoData;
+        }
+        p.querySelector('video').dispatchEvent(new win.Event('playing'));
+      }
+      if (variant === 'busy') {
+        await sleep(1500);
+        t(name + ': not loaded while the player cannot say where it is', log.reloads === before, String(log.reloads - before));
+        p.getCurrentTime = () => 50;
+        p.querySelector('video').dispatchEvent(new win.Event('playing'));
+      }
+      if (variant === 'nodata') {
+        await sleep(1500);
+        t(name + ': not loaded while the player cannot say which video it plays', log.reloads === before, String(log.reloads - before));
+        p.getVideoData = getVideoData;
+        emit(1);
+      }
+      const reloaded = await until(() => log.reloads > before, 3000);
+      const level = at === 1 ? 'hd1080' : 'hd720';
+      t(name + ': loaded again where it is, at ' + level, reloaded && log.reloads === before + 1 && log.ranges.includes(level),
+        log.reloads - before + ' ' + log.ranges.join());
+      t(name + ': the same video, at its position', log.loads.join() === 'abcdefghijk@50', log.loads.join());
+      await sleep(900);
+      t(name + ': the subtitles come back', p.track === EN, JSON.stringify(p.track));
+      if (at === 1 && !variant) {
+        const note = JSON.parse(win.localStorage.getItem('ytaf-force-record') || 'null');
+        t(name + ': the record of this range is noted as Force\'s', !!note && note.level === level, JSON.stringify(note));
+      }
+      win.close();
+    }
+  }
+  {
+    // Two raises before the first reload plays (the row moved on while it
+    // loaded): the second keeps the first one's subtitle snapshot, not the
+    // track the player shows meanwhile.
+    const { win, p, log, speed, emit } = boot(0, { manualPlayback: true });
+    t('raise twice: precondition: the speed feature is installed', !!speed);
+    if (speed) {
+      p.track = EN;
+      speed.reloadInPlace('hd720');
+      t('raise twice: precondition: the reload turned the subtitles off', !p.track.languageCode, JSON.stringify(p.track));
+      speed.reloadInPlace('hd1080');
+      emit(1);
+      await sleep(900);
+      t('raise twice: both reloads ran', log.reloads === 2, String(log.reloads));
+      t('raise twice: the subtitles chosen before the first come back', p.track === EN, JSON.stringify(p.track));
+    }
+    win.close();
+  }
+  {
+    // A player that throws on the quality range: above 1x the audio sink is
+    // gone already, so the reload still runs.
+    const { win, p, log, speed } = boot(0);
+    t('raise, range throws: precondition: the speed feature is installed', !!speed);
+    if (speed) {
+      speed.setSpeed(1.5, { immediate: true });
+      await sleep(900);
+      const reloads = log.reloads;
+      // Subtitles on; the range keeps failing when the reloaded video plays.
+      p.track = EN;
+      p.setPlaybackQualityRange = () => { throw new Error('range refused'); };
+      let ok;
+      try { ok = speed.reloadInPlace('hd720'); } catch { ok = 'threw'; }
+      t('raise, range throws: the video is loaded again all the same', ok === true && log.reloads === reloads + 1,
+        String(ok) + ' ' + (log.reloads - reloads));
+      await sleep(900);
+      t('raise, range throws: its subtitles come back once it plays, the cap failing again', p.track === EN, JSON.stringify(p.track));
+    }
+    win.close();
+  }
+  const tAll = t;
+  for (const nodata of [false, true]) {
     // Max at 1.5x (capped at 1080p), then Up to 480p chosen in the panel: the
-    // video playing goes down to 480p once the row stops.
-    const { win, log, speed } = boot(0, { force: true });
+    // video playing goes down to 480p once the row stops. Also when the
+    // player cannot say which video it plays then (getVideoData throws): a
+    // lower limit needs no video, only the quality playing.
+    const t = (name, ...rest) => tAll(nodata ? name + ' (no video data)' : name, ...rest);
+    const { win, p, log, speed } = boot(0, { force: true });
     // The fixture gives the speed feature what it needs: none is a failure, not a skip.
     t('Max to Up to 480p: precondition: the speed feature is installed', !!speed);
     if (speed) {
@@ -596,6 +749,7 @@ run(async () => {
         held.length > 2 && live.length === 2, held.length + ' set, ' + live.length + ' left');
       await sleep(50);
       t('Max to Up to 480p at 1.5x: nothing before the settle timer runs', log.ranges.length === 0, log.ranges.join());
+      if (nodata) p.getVideoData = () => { throw new Error('between two videos'); };
       for (const h of live) h.fn();
       win.setTimeout = realSet;
       win.clearTimeout = realClear;

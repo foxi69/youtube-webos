@@ -2,8 +2,8 @@ import { configRead, configAddChangeListener, forceQualityLines, forceQualityOn 
 import { showNotification } from './notifications.js';
 import { isWebOS25 } from './webos-utils.js';
 import { sendKey, REMOTE_KEYS, SELECTORS, SYNTHETIC_KEY_FLAG, isWatchPage, getVideo } from './utils.js';
-import { speedCapsQuality, speedKeepsQuality, speedRecordIsPick, clearSpeedQualityPick, noteForcedQuality } from './playback-speed.js';
-import { QUALITY_KEY, QUALITY_HEIGHTS, levelUpTo } from './speed/player-state.js';
+import { speedCapsQuality, speedKeepsQuality, speedRecordIsPick, clearSpeedQualityPick, noteForcedQuality, reloadForQuality } from './playback-speed.js';
+import { QUALITY_KEY, QUALITY_HEIGHTS, levelUpTo, formatsCutAt } from './speed/player-state.js';
 
 const DEBUG = false;
 
@@ -153,6 +153,14 @@ function levelsListed() {
   } catch {
     return false;
   }
+}
+
+// The level named for a limit's size (Up to 1440p: hd1440), 'highres' for Max.
+function levelNamed(lines) {
+  if (!lines) return 'highres';
+  const names = Object.keys(QUALITY_HEIGHTS);
+  for (let i = 0; i < names.length; i++) if (QUALITY_HEIGHTS[names[i]] === lines) return names[i];
+  return levelUpTo(names, lines);
 }
 
 // The level to force: 'highres' for Max; with Up to the best level the video
@@ -841,6 +849,17 @@ function handleNavigation(event) {
 // (setupListeners) this long after the row last moved.
 const APPLY_NOW_MS = 600;
 let applyNowTimer = null;
+// A raise chosen while the video was paused: the video it waits for, applied
+// once that one plays on (onPlayingAgain).
+let raiseOnPlay = null;
+function onPlayingAgain() {
+  if (!raiseOnPlay) return;
+  const waited = raiseOnPlay;
+  raiseOnPlay = null;
+  let id = null;
+  try { id = player?.getVideoData?.()?.video_id; } catch { /* none */ }
+  if (id === waited) applyToPlayingVideo();
+}
 function applyToPlayingVideo() {
   applyNowTimer = null;
   if (!player || isDestroyed || !isForceEnabled() || !isWatchPage() || videoBeingProcessed || !levelsListed()) return;
@@ -848,6 +867,28 @@ function applyToPlayingVideo() {
     const videoId = player.getVideoData?.()?.video_id;
     // Also a pick made while the change waited.
     if (!videoId || keepViewerPick()) return;
+    // Raised above the limit the video's formats were cut at when it was
+    // read: it has nothing bigger to go to, so it is read again where it is.
+    // A paused video is left (a load would start it) until it plays on.
+    const lines = forceQualityLines(configRead('forceQuality'));
+    const cut = formatsCutAt(videoId);
+    const video = getVideo();
+    if (cut && (!lines || lines > cut) && video && video.paused) {
+      raiseOnPlay = videoId;
+      return;
+    }
+    if (cut && (!lines || lines > cut) && video) {
+      const level = levelNamed(lines);
+      // The record YouTube writes for this range is Force's too.
+      noteForcedRecord(level);
+      // Checked again once it plays, with all its levels listed.
+      qualitySetForVideo.delete(videoId);
+      if (reloadForQuality(level)) return;
+      noteForcedQuality();
+      player.setPlaybackQualityRange(level, level);
+      player.loadVideoById(videoId, player.getCurrentTime());
+      return;
+    }
     const result = isQualityAlreadyMax() ? { success: true } : setQualityOnPlayer();
     if (result.success || result.rangeSet) qualitySetForVideo.add(videoId);
   } catch (e) {
@@ -881,6 +922,7 @@ function setupListeners() {
       qualitySetForVideo.clear();
       clearTimeout(applyNowTimer);
       applyNowTimer = null;
+      raiseOnPlay = null;
       if (keepViewerPick()) return;
       applyNowTimer = setTimeout(applyToPlayingVideo, APPLY_NOW_MS);
     });
@@ -889,6 +931,8 @@ function setupListeners() {
     // press of the Magic Remote's pointer, which picks in the menu with no key.
     window.addEventListener('keydown', noteKeyAfterForcedRange, true);
     window.addEventListener('mousedown', noteKeyAfterForcedRange, true);
+    // A paused video whose raise waited plays on (a <video> 'playing', caught on its way down).
+    document.addEventListener('playing', onPlayingAgain, true);
 
     // The picture's size changed (a <video> 'resize', caught on its way down).
     document.addEventListener('resize', onVideoResize, true);

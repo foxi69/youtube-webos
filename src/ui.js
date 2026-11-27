@@ -1101,7 +1101,7 @@ function createOptionsPanel() {
   // --- Page 2: Player ---
   makePage(1).appendChild(createSection('Video Player',
   [createAlignedCycleControl('forceQuality', forceQualityModes),
-  createElement('div', { text: 'Up to: the best quality up to that size; lower applies at once, higher from the next video', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
+  createElement('div', { text: 'Up to: the best quality up to that size; applies at once (raised while paused: when it plays on)', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   createConfigCheckbox('removeUpscaledFormats'),
   createElement('div', { text: 'YouTube\'s "Super resolution" levels are upscaled from a smaller video by AI; the real ones play instead', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   createAlignedCycleControl('showVideoQuality', videoQualityDisplayModes),

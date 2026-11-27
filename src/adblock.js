@@ -2,6 +2,7 @@ import { configGetAll, configAddChangeListener, forceQualityLines } from './conf
 import { streamsAudioOnly, makeAudioOnly } from './audio-only.js';
 import { isShortsPage, isSearchPage } from './utils';
 import { getWebOSVersion } from './webos-utils';
+import { noteFormatsCut } from './speed/player-state.js';
 import { FetchRegistry } from './hooks/fetch';
 import { upgradeResponseThumbnails } from './thumbnail-quality.js';
 import { raiseRowsAhead } from './rows-ahead.js';
@@ -1846,7 +1847,10 @@ function filterVideoFormats(holder, dropUpscaled, maxLines) {
   const fitsCap = (format) => formatLines(format) > 0 && formatLines(format) <= maxLines;
   const capFits = maxLines > 0 && formats.some((format) => isVideoFormat(format) && fitsCap(format) && canPlayFormat(format));
   if (dropUpscaled) dropFormats(formats, isUpscaledFormat, capFits ? fitsCap : undefined);
-  if (maxLines > 0) dropFormats(formats, (format) => formatLines(format) > maxLines, fitsCap);
+  const cut = maxLines > 0 && dropFormats(formats, (format) => formatLines(format) > maxLines, fitsCap);
+  const videoId = holder.videoDetails && holder.videoDetails.videoId;
+  // 0: read again with nothing left out (a reload under a higher limit).
+  if (typeof videoId === 'string' && videoId) noteFormatsCut(videoId, cut ? maxLines : 0);
 }
 
 /**
@@ -1863,7 +1867,8 @@ function canPlayFormat(format) {
 
 // A step drops its formats only when one the TV can play is left: an AV1
 // format kept on a TV without AV1 is no picture either. `fits`: which of
-// the formats left count as that one (all of them by default).
+// the formats left count as that one (all of them by default). True when it
+// dropped any.
 function dropFormats(formats, shouldDrop, fits) {
   let kept = 0;
   let dropped = 0;
@@ -1873,7 +1878,7 @@ function dropFormats(formats, shouldDrop, fits) {
     if (shouldDrop(format)) dropped++;
     else if ((!fits || fits(format)) && canPlayFormat(format)) kept++;
   }
-  if (!dropped || !kept) return;
+  if (!dropped || !kept) return false;
   let w = 0;
   for (let i = 0; i < formats.length; i++) {
     const format = formats[i];
@@ -1882,6 +1887,7 @@ function dropFormats(formats, shouldDrop, fits) {
   }
   formats.length = w;
   if (DEBUG) debugLog(`Video formats: dropped ${dropped}`);
+  return true;
 }
 
 // Tile previews never open full screen by themselves. Each preview's command

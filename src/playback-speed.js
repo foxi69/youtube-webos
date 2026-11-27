@@ -4,7 +4,7 @@ import { keepStretchableAudio, keepNonAv1Video, allowSpeedMenuOnSurround, LEGACY
 import { isLegacyWebOS } from './webos-utils.js';
 import { legacyAudioCodecs } from './speed/legacy-decoder.js';
 import { watchPosition } from './speed/position-watch.js';
-import { readCaptions, keepCaptions, readQualityRecord, QUALITY_KEY, QUALITY_HEIGHTS, levelUpTo } from './speed/player-state.js';
+import { readCaptions, keepCaptions, readQualityRecord, formatsCutAt, QUALITY_KEY, QUALITY_HEIGHTS, levelUpTo } from './speed/player-state.js';
 import { showNotification } from './notifications.js';
 import { configRead, configWrite, configAddChangeListener, forceQualityLines, forceQualityOn } from './config.js';
 import { SELECTORS, SYNTHETIC_KEY_FLAG } from './utils.js';
@@ -557,6 +557,50 @@ export function createSpeedController({
     }
   }
 
+  /**
+   * The video playing loaded again where it is, at `quality` (Force Max
+   * Quality raised above the limit its formats were cut at: they have to be
+   * read again). The subtitles and the position come back as after a speed
+   * reload, and above 1x the speed's cap holds. False when there is no
+   * player or video to load.
+   */
+  function reloadInPlace(quality) {
+    const player = getPlayer();
+    if (!player || typeof player.loadVideoById !== 'function') return false;
+    let videoId;
+    let at;
+    try {
+      videoId = player.getVideoData().video_id;
+      at = player.getCurrentTime();
+    } catch {
+      return false;
+    }
+    if (!videoId || !(at >= 0)) return false;
+    releaseAudioSink();
+    stopCaptions();
+    // A reload of this video that has not played yet keeps its snapshot: the
+    // player may show a subtitle track of its own until it does (applyReload).
+    if (keptCaptions && !keptCaptions.landed && keptCaptions.videoId === videoId) {
+      keptCaptions.keyAt = userKeyAt();
+    } else {
+      keptCaptions = { videoId, captions: readCaptions(player), landed: false, keyAt: userKeyAt() };
+    }
+    // The audio sink is gone already: a player that fails on the quality
+    // still gets the reload, or the video would go on without sound.
+    try {
+      if (currentSpeed > CAP_ABOVE) {
+        setRange(player, capQuality());
+      } else {
+        forcedRange = { from: Date.now() };
+        player.setPlaybackQualityRange(quality, quality);
+      }
+    } catch { /* the raise's reload goes on at the quality it has */ }
+    lastReloadAt = Date.now();
+    player.loadVideoById(videoId, at);
+    restorePosition(player, at, videoId, keptCaptions);
+    return true;
+  }
+
   function restorePosition(player, at, videoId, kept) {
     if (stopPositionWatch) stopPositionWatch();
     // True when it set a range (the watch then knows the video may reload).
@@ -569,7 +613,10 @@ export function createSpeedController({
       return true;
     };
     const onPlaying = () => {
-      const capped = setCap();
+      // A player that fails on the cap still gets its subtitles back: the
+      // watch counts this play as handled and calls no second time.
+      let capped = false;
+      try { capped = setCap(); } catch { /* the video plays on at the quality it has */ }
       kept.landed = true;
       stopCaptions = keepCaptions(win, player, kept.captions, userKeyAt, kept);
       return capped;
@@ -847,6 +894,7 @@ export function createSpeedController({
     keepsQuality,
     viewerPick,
     clearQualityPick,
+    reloadInPlace,
     noteForcedRange() {
       const now = Date.now();
       forcedRange = { from: now };
@@ -876,6 +924,14 @@ export function speedRecordIsPick() {
 /** Force Max Quality is about to set a range: the record that follows is not the viewer's pick. */
 export function noteForcedQuality() {
   if (speedInstance) speedInstance.controller.noteForcedRange();
+}
+
+/**
+ * Loads the video playing again where it is, at `quality` (see the
+ * controller's reloadInPlace). False when the speed feature is not there.
+ */
+export function reloadForQuality(quality) {
+  return !!speedInstance && speedInstance.controller.reloadInPlace(quality);
 }
 
 /** Explicitly enabling Force Max Quality releases the previously retained pick. */
@@ -1008,37 +1064,86 @@ export function initPlaybackSpeed() {
     configAddChangeListener('enablePlaybackSpeed', ({ detail }) => {
       if (!detail.newValue) speedInstance.controller.stop();
     });
-    // A lower limit set in Force Max Quality above 1x (Up to 480p at 1.5x):
-    // the video playing above it goes down to it at once, once the row stops
-    // (as video-quality.js does at 1x). Raised again by the next video.
+    // A new limit in Force Max Quality above 1x, applied to the video playing
+    // once the row stops (as video-quality.js does at 1x): a lower one (Up to
+    // 480p at 1.5x) takes it down; a higher one than its formats were cut at
+    // loads it again where it is.
     let limitTimer = null;
     // A lower limit that could not be applied (a player between two videos):
     // the next play applies it once, as the change would have.
     let limitMissed = false;
+    // A higher limit chosen while the video was paused (a load would start
+    // it): the video it was for, loaded again when it plays on.
+    let raiseOnPlay = null;
+    // True when it set a range or loaded the video again (or waits to).
+    const applyLimit = () => {
+      if (!speedCapsQuality()) return;
+      const player =
+        document.getElementById(SELECTORS.PLAYER_ID) ||
+        document.querySelector('.html5-video-player');
+      // No player that can take it now (one being built again): missed too.
+      if (!player || typeof player.getPlaybackQuality !== 'function' || typeof player.setPlaybackQualityRange !== 'function') {
+        limitMissed = true;
+        return;
+      }
+      try {
+        // Not needed for a lower limit: only a raise asks which video it is.
+        let videoId = null;
+        try { videoId = player.getVideoData().video_id; } catch { /* a player between two videos */ }
+        const cut = videoId ? formatsCutAt(videoId) : 0;
+        // The record YouTube wrote for a level at or above the cut was the
+        // old limit's: the formats left offered nothing bigger to pick, even
+        // with a key pressed since (the OK that opened the video). No pick of
+        // the viewer's, so the new limit is the cap.
+        const pick = speedInstance.controller.viewerPick();
+        if (cut && pick && (QUALITY_HEIGHTS[pick] || 0) >= cut) speedInstance.controller.clearQualityPick();
+        const cap = speedInstance.controller.capQuality();
+        const now = QUALITY_HEIGHTS[player.getPlaybackQuality()] || 0;
+        if (now > QUALITY_HEIGHTS[cap]) {
+          speedInstance.controller.setRange(player, cap);
+          return true;
+        }
+        // Not known which video it is: whether it was cut, the next play tells.
+        if (!videoId) {
+          limitMissed = true;
+          return false;
+        }
+        // A higher limit than the one the video's formats were cut at: it is
+        // read again where it is, and the cap then holds (reloadInPlace).
+        const video = document.querySelector('video');
+        if (cut && cut < QUALITY_HEIGHTS[cap] && now <= cut && video) {
+          // Paused, or the reload could not read where it is (the player
+          // buffering): tried again when the video plays.
+          if (video.paused || !speedInstance.controller.reloadInPlace(cap)) raiseOnPlay = videoId;
+          return true;
+        }
+      } catch {
+        // A player between two videos: applied when it plays.
+        limitMissed = true;
+      }
+    };
     configAddChangeListener('forceQuality', () => {
       clearTimeout(limitTimer);
       limitMissed = false;
+      raiseOnPlay = null;
       limitTimer = setTimeout(() => {
         limitTimer = null;
         settledQuality = configRead('forceQuality');
-        if (!speedCapsQuality()) return;
-        const player =
-          document.getElementById(SELECTORS.PLAYER_ID) ||
-          document.querySelector('.html5-video-player');
-        // No player that can take it now (one being built again): missed too.
-        if (!player || typeof player.getPlaybackQuality !== 'function' || typeof player.setPlaybackQualityRange !== 'function') {
-          limitMissed = true;
-          return;
-        }
-        try {
-          const cap = speedInstance.controller.capQuality();
-          if ((QUALITY_HEIGHTS[player.getPlaybackQuality()] || 0) > QUALITY_HEIGHTS[cap]) speedInstance.controller.setRange(player, cap);
-        } catch {
-          // A player between two videos: applied when it plays.
-          limitMissed = true;
-        }
+        applyLimit();
       }, LIMIT_APPLY_MS);
     });
+    // The paused video plays on: the raise it waited for, once.
+    document.addEventListener('playing', () => {
+      if (!raiseOnPlay) return;
+      const player = document.getElementById(SELECTORS.PLAYER_ID) || document.querySelector('.html5-video-player');
+      let id = null;
+      try { id = player && player.getVideoData().video_id; } catch { /* none */ }
+      // Not known which video plays: kept for a play that can tell.
+      if (!id) return;
+      const waited = raiseOnPlay;
+      raiseOnPlay = null;
+      if (id === waited) applyLimit();
+    }, true);
     // The next video (autoplay, a tile) keeps the speed but starts at the
     // quality YouTube picks: 2160p on a 4K TV, capped once it plays, or one
     // below the cap (capNext).
@@ -1051,17 +1156,11 @@ export function initPlaybackSpeed() {
       speedInstance.controller.notePlay(player);
       if (!speedCapsQuality()) { limitMissed = false; return; }
       if (limitMissed) {
-        // Kept until the range goes through (or is not needed): a player that
-        // fails again gets it at its next play.
-        try {
-          const cap = speedInstance.controller.capQuality();
-          const above = (QUALITY_HEIGHTS[player.getPlaybackQuality()] || 0) > QUALITY_HEIGHTS[cap];
-          if (above) speedInstance.controller.setRange(player, cap);
-          limitMissed = false;
-          if (above) return;
-        } catch {
-          return;
-        }
+        // The whole limit, as the change would have applied it: a lower one
+        // sets the range, a higher one loads the cut video again. Kept until
+        // it goes through: a player that fails again gets it at its next play.
+        limitMissed = false;
+        if (applyLimit() || limitMissed) return;
       }
       if (ABOVE_1080.includes(player.getPlaybackQuality())) {
         speedInstance.controller.setRange(player, speedInstance.controller.capQuality());
