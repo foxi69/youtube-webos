@@ -3,21 +3,16 @@
 # GitHub Actions: one grouped pull request. It touches CI, never the TV
 # packages.
 #
-# npm: every package is watched. A pull request here is only a notice;
-# nothing reaches main until it is merged. Minor and patch updates come in
-# two grouped pull requests, each major version in its own.
+# npm: only LG's CLI (@webos-tools/cli), which packs the .ipk. It pins its
+# own dependencies with an npm-shrinkwrap.json, so a vulnerability in one of
+# them can only be fixed by a new CLI release. Its update is checked by
+# installing the package on a TV before the merge.
 #
-# - "tools": the lint, type-check and test tools and LG's CLI. They cannot
-#   change the bundle, and CI fails if one of them breaks. LG's CLI packs the
-#   .ipk, so its update is checked by installing the package on a TV.
-# - "bundle": everything that produces the bundle (webpack, Babel, postcss,
-#   cssnano, terser and the runtime dependencies). An update there can change
-#   the legacy webOS 3-6 bundle in ways CI does not catch, and there is no
-#   such TV to test on. Do not merge these as routine: merge one only on
-#   purpose, or close it. The same goes for a major version of these.
-#
-# Security alerts and security updates are separate, in the repository
-# settings (Code security), and do not need this file.
+# The other npm dependencies are left out on purpose. They are almost all
+# build tools (webpack, Babel, postcss), and an update there can break the
+# legacy webOS 3-6 bundle in ways CI does not catch. Security alerts and
+# security updates for them are separate, in the repository settings (Code
+# security), and do not need this file.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -34,28 +29,7 @@ updates:
     directory: /
     schedule:
       interval: monthly
-    open-pull-requests-limit: 20
-    groups:
-      bundle:
-        patterns:
-          - '@babel/*'
-          - '@twemoji/api'
-          - '*-webpack-plugin'
-          - babel-loader
-          - cssnano
-          - 'postcss*'
-          - tiny-sha256
-          - webpack
-          - webpack-cli
-          - whatwg-fetch
-        update-types:
-          - minor
-          - patch
-      tools:
-        patterns:
-          - '*'
-        update-types:
-          - minor
-          - patch
+    allow:
+      - dependency-name: '@webos-tools/cli'
     commit-message:
-      prefix: Dependencies
+      prefix: CI
