@@ -1087,7 +1087,9 @@ export function initPlaybackSpeed() {
         return;
       }
       try {
-        const videoId = player.getVideoData().video_id;
+        // Not needed for a lower limit: only a raise asks which video it is.
+        let videoId = null;
+        try { videoId = player.getVideoData().video_id; } catch { /* a player between two videos */ }
         const cut = videoId ? formatsCutAt(videoId) : 0;
         // The record YouTube wrote for a level at or above the cut was the
         // old limit's: the formats left offered nothing bigger to pick, even
@@ -1100,6 +1102,11 @@ export function initPlaybackSpeed() {
         if (now > QUALITY_HEIGHTS[cap]) {
           speedInstance.controller.setRange(player, cap);
           return true;
+        }
+        // Not known which video it is: whether it was cut, the next play tells.
+        if (!videoId) {
+          limitMissed = true;
+          return false;
         }
         // A higher limit than the one the video's formats were cut at: it is
         // read again where it is, and the cap then holds (reloadInPlace).
@@ -1131,6 +1138,8 @@ export function initPlaybackSpeed() {
       const player = document.getElementById(SELECTORS.PLAYER_ID) || document.querySelector('.html5-video-player');
       let id = null;
       try { id = player && player.getVideoData().video_id; } catch { /* none */ }
+      // Not known which video plays: kept for a play that can tell.
+      if (!id) return;
       const waited = raiseOnPlay;
       raiseOnPlay = null;
       if (id === waited) applyLimit();

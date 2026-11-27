@@ -568,7 +568,7 @@ run(async () => {
     // record YouTube writes for the limit's level: still the limit's, not a
     // pick of the viewer's (seen on a webOS 25 TV at 1.5x). paused: chosen
     // while paused, loaded again only once it plays on.
-    for (const [at, variant] of [[1, ''], [1.5, ''], [1.5, 'key'], [1, 'paused'], [1.5, 'paused'], [1.5, 'busy'], [1.5, 'nodata']]) {
+    for (const [at, variant] of [[1, ''], [1.5, ''], [1.5, 'key'], [1, 'paused'], [1.5, 'paused'], [1.5, 'busy'], [1.5, 'nodata'], [1.5, 'paused, no video data']]) {
       const { win, p, log, speed, emit, pump } = boot(0, { force: at === 1 ? 'up720' : 'up480' });
       const name = 'raise at ' + at + 'x' + (variant ? ' (' + variant + ')' : '');
       t(name + ': precondition: the speed feature is installed', !!speed);
@@ -596,7 +596,7 @@ run(async () => {
         writeQuality(win, HEIGHTS.large, 2160);
         t(name + ': precondition: the 480p record counts as a pick so far', speed.viewerPick() === 'large', String(speed.viewerPick()));
       }
-      if (variant === 'paused') paused = true;
+      if (variant.startsWith('paused')) paused = true;
       // busy: the player cannot say where it is (buffering) when the raise
       // comes, so it cannot be loaded again there: tried when it plays.
       if (variant === 'busy') p.getCurrentTime = () => { throw new Error('buffering'); };
@@ -621,10 +621,19 @@ run(async () => {
       }
       t(name + ': precondition: ' + want + ' chosen', !!row && row.querySelector('.current-value').textContent === want,
         row ? row.querySelector('.current-value').textContent : 'no row');
-      if (variant === 'paused') {
+      if (variant.startsWith('paused')) {
         await sleep(1500);
         t(name + ': not loaded while paused (a load would start it)', log.reloads === before, String(log.reloads - before));
         paused = false;
+        if (variant === 'paused, no video data') {
+          // Played on while the player cannot say which video it plays: the
+          // raise waits for a play that can.
+          p.getVideoData = () => { throw new Error('between two videos'); };
+          p.querySelector('video').dispatchEvent(new win.Event('playing'));
+          await sleep(300);
+          t(name + ': not loaded while the player cannot say which video it plays', log.reloads === before, String(log.reloads - before));
+          p.getVideoData = getVideoData;
+        }
         p.querySelector('video').dispatchEvent(new win.Event('playing'));
       }
       if (variant === 'busy') {
@@ -692,10 +701,14 @@ run(async () => {
     }
     win.close();
   }
-  {
+  const tAll = t;
+  for (const nodata of [false, true]) {
     // Max at 1.5x (capped at 1080p), then Up to 480p chosen in the panel: the
-    // video playing goes down to 480p once the row stops.
-    const { win, log, speed } = boot(0, { force: true });
+    // video playing goes down to 480p once the row stops. Also when the
+    // player cannot say which video it plays then (getVideoData throws): a
+    // lower limit needs no video, only the quality playing.
+    const t = (name, ...rest) => tAll(nodata ? name + ' (no video data)' : name, ...rest);
+    const { win, p, log, speed } = boot(0, { force: true });
     // The fixture gives the speed feature what it needs: none is a failure, not a skip.
     t('Max to Up to 480p: precondition: the speed feature is installed', !!speed);
     if (speed) {
@@ -736,6 +749,7 @@ run(async () => {
         held.length > 2 && live.length === 2, held.length + ' set, ' + live.length + ' left');
       await sleep(50);
       t('Max to Up to 480p at 1.5x: nothing before the settle timer runs', log.ranges.length === 0, log.ranges.join());
+      if (nodata) p.getVideoData = () => { throw new Error('between two videos'); };
       for (const h of live) h.fn();
       win.setTimeout = realSet;
       win.clearTimeout = realClear;
