@@ -134,6 +134,7 @@ webOS 1 and 2 (2014-2015 TVs) are not supported by this build.
 | The app is gone, or will not start (TV in Developer Mode) | LG's developer session ran out. Extend it in the Developer Mode app, see [webosbrew's guide](https://www.webosbrew.org/devmode/), then install the app again if it is gone. |
 | A filter has no effect, or is greyed out | All filters except AI Videos' *Mark* need **Ad Blocking** on. |
 | A video stays at 1× | On webOS 4-6 and 22 only videos with AAC audio change speed. webOS 3 has no speed control. |
+| Casting from a phone does not work | Turn off **Block webOS Cast Service** on the Interface tab and try again. If the app starts freezing after that, turn it back on. |
 | Playback stops at 1:00 with a QR code (mostly webOS 6, LG C1) | A change on YouTube's servers; no fix is known yet. Follow [#104](https://github.com/foxi69/youtube-webos/issues/104). |
 
 **Reporting a bug:** open a [bug report](https://github.com/foxi69/youtube-webos/issues/new?template=bug_report.yml).
