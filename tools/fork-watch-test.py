@@ -179,6 +179,63 @@ check('new_commits: ...asked since the cutoff, for that branch only',
 check('new_commits: ...and a branch that compares with nothing ahead asks for none',
       not any(c[3] and c[3].get('sha') == 'same' for c in asked), asked)
 
+# --- new_commits(): a commit that changes no code is left out ---
+def files(*names):
+    return {'files': [{'filename': n} for n in names]}
+
+
+SHAS = {name: letter * 40 for name, letter in (
+    ('docs', '1'), ('code', '2'), ('mixed', '3'), ('listing', '4'), ('nofiles', '5'), ('error', '6'), ('huge', '7'))}
+api = Api({
+    '/repos/dev/youtube-webos/branches': [{'name': 'good'}],
+    '/repos/me/youtube-webos/compare/main...dev:good': {'ahead_by': 7, 'total_commits': 7, 'commits': [
+        commit(SHAS['docs'], 'Readme and a screenshot'), commit(SHAS['code'], 'A fix'),
+        commit(SHAS['mixed'], 'A fix with its notes'), commit(SHAS['listing'], 'Update repo.json'),
+        commit(SHAS['nofiles'], 'Files not listed'), commit(SHAS['error'], 'Files not readable'),
+        commit(SHAS['huge'], 'Three hundred pictures')]},
+    '/repos/dev/youtube-webos/commits/' + SHAS['docs']: files('README.md', 'docs/setup.txt', 'screenshots/a.PNG', 'LICENSE'),
+    '/repos/dev/youtube-webos/commits/' + SHAS['code']: files('src/ui.js'),
+    '/repos/dev/youtube-webos/commits/' + SHAS['mixed']: files('CHANGELOG.md', 'src/ui.js'),
+    '/repos/dev/youtube-webos/commits/' + SHAS['listing']: files('repo.json', 'repo-webos22.json'),
+    '/repos/dev/youtube-webos/commits/' + SHAS['nofiles']: {'files': []},
+    '/repos/dev/youtube-webos/commits/' + SHAS['error']: http_error(502),
+    '/repos/dev/youtube-webos/commits/' + SHAS['huge']: files(*[f'screenshots/{i}.png' for i in range(300)]),
+})
+fw.request = api
+known = {}
+found = fw.new_commits(FORK, NOW - dt.timedelta(days=30), set(), known, '2026-11-11', set())
+titles = sorted(c['title'] for c in found)
+check('new_commits: only documentation, pictures or the Homebrew listing changed: left out',
+      'Readme and a screenshot' not in titles and 'Update repo.json' not in titles, titles)
+check('new_commits: code changed, alone or with its notes: reported',
+      'A fix' in titles and 'A fix with its notes' in titles, titles)
+check('new_commits: files not listed, not readable (502) or filling the answer: reported',
+      titles == ['A fix', 'A fix with its notes', 'Files not listed', 'Files not readable', 'Three hundred pictures'], titles)
+check('new_commits: a commit left out is remembered, so not asked about again',
+      SHAS['docs'][:12] in known and SHAS['listing'][:12] in known, sorted(known))
+for name, want in (('src/README.md.js', False), ('package.json', False), ('assets/appinfo.json', False),
+                   ('.github/workflows/main.yml', False), ('docs/x.js', True), ('NOTICE.txt', True),
+                   ('src/vendor/LICENSE-MIT', True), ('assets/icon.svg', True), ('repo.json', True),
+                   ('tools/repo.json', False)):
+    check(f'DOCS_RE: {name} is {"not " if not want else ""}documentation', bool(fw.DOCS_RE.search(name)) == want)
+
+# --- watched_forks(): forks of forks are followed as deep as they go ---
+CHAIN = 12
+routes = {'/repos/up/youtube-webos': {'full_name': 'up/youtube-webos', 'forks_count': 1, 'pushed_at': None}}
+parent = 'up/youtube-webos'
+for i in range(CHAIN):
+    name = f'f{i}/youtube-webos'
+    routes[f'/repos/{parent}/forks'] = [dict(FORK, full_name=name, owner={'login': f'f{i}'},
+                                             forks_count=1 if i < CHAIN - 1 else 0,
+                                             pushed_at='2026-11-11T11:30:00Z')]
+    parent = name
+fw.request = api = Api(routes)
+names = [f['full_name'] for f in fw.watched_forks(NOW - dt.timedelta(hours=1))]
+check(f'watched_forks: a chain of {CHAIN} forks of forks is followed to its end',
+      sorted(names) == sorted(f'f{i}/youtube-webos' for i in range(CHAIN)), names)
+check('watched_forks: ...and the last fork, which has none, is not asked for its forks',
+      not any(c[1] == f'/repos/f{CHAIN - 1}/youtube-webos/forks' for c in api.calls), [c[1] for c in api.calls][-3:])
+
 # --- a fork that could not be read in full is read again in the next run ---
 check('new_commits: the fork with the failed compare is kept for a retry', fw.FAILED == {'dev/youtube-webos'}, fw.FAILED)
 api = Api({('PATCH', '/repos/me/youtube-webos/issues/1'): {}})

@@ -30,7 +30,8 @@ work that a fork took in again under another sha (squash-merged pull
 requests, a rebase), and so are commits made by this repository's owner:
 our own branch commits that a fork took in before we squash-merged them
 under another title. Bot commits (dependabot and the
-like) are skipped.
+like) are skipped, and so are commits that change no code: only
+documentation, pictures or the Homebrew listing (DOCS_RE).
 
 Environment: GITHUB_TOKEN, GITHUB_REPOSITORY (owner/name), optional
 ROOT_REPOS (comma separated), FIRST_RUN_DAYS, MAX_BRANCHES, DRY_RUN=1.
@@ -57,7 +58,6 @@ LOOKBACK_DAYS = int(os.environ.get('LOOKBACK_DAYS', '30'))
 # Reported commits are remembered this long, then forgotten to keep the
 # state small; anything older than LOOKBACK_DAYS is never reported anyway.
 KNOWN_KEEP_DAYS = LOOKBACK_DAYS + 15
-MAX_FORK_DEPTH = 6
 MAX_COMMITS_SHOWN = 15
 MAX_MAIN_TITLES = 1000
 # A compare lists up to 250 commits unless it is paged; past that many, the
@@ -70,6 +70,16 @@ MAX_COMPARE_COMMITS = 1000
 MAX_BODY = 60000
 MAX_KNOWN = 1800
 RETRY_DELAY_S = 5
+# A commit that changes nothing but these is left out of the report: text
+# files, pictures, and the Homebrew listing a release rewrites.
+DOCS_RE = re.compile(
+    r'(^|/)(LICENSE|COPYING|NOTICE)[^/]*$'
+    r'|.(md|markdown|txt|rst|png|jpe?g|gif|webp|svg|ico)$'
+    r'|^(docs|screenshots)/'
+    r'|^repo[^/]*.json$', re.I)
+# A commit lists at most this many files in one answer: one that fills it may
+# change more than was read, so it is not judged by them.
+MAX_COMMIT_FILES = 300
 DRY_RUN = os.environ.get('DRY_RUN') == '1'
 LABEL = 'fork-watch'
 STATE_TITLE = 'Fork watch state'
@@ -226,18 +236,19 @@ def watched_forks(since, retry=frozenset()):
         info = get(f'/repos/{root}')
         if info and info['full_name'] not in seen:
             seen[info['full_name']] = info
-            queue.append((info, 0))
-    # Breadth-first through forks of forks; forks_count says whether a
-    # repository has any, so leaves cost no request.
+            queue.append(info)
+    # Breadth-first through forks of forks, as deep as they go: a repository
+    # is read once (`seen`), so the walk ends, and forks_count says whether it
+    # has any forks, so leaves cost no request.
     while queue:
-        repo, depth = queue.pop(0)
-        if depth >= MAX_FORK_DEPTH or not repo.get('forks_count'):
+        repo = queue.pop(0)
+        if not repo.get('forks_count'):
             continue
         for fork in get_all(f"/repos/{repo['full_name']}/forks", {'sort': 'newest'}, limit=3000):
             if fork['full_name'] in seen:
                 continue
             seen[fork['full_name']] = fork
-            queue.append((fork, depth + 1))
+            queue.append(fork)
     me = REPO.lower()
     out = []
     for name, info in seen.items():
@@ -261,6 +272,22 @@ def is_ours(commit):
 def is_bot(commit):
     login = (commit.get('author') or {}).get('login') or ''
     return login.endswith('[bot]') or commit['commit']['author']['name'].endswith('[bot]')
+
+
+def is_docs_only(fork, sha):
+    """Whether the commit changes nothing but documentation, pictures or the
+    Homebrew listing (DOCS_RE). A commit whose files cannot be read, that lists
+    none or that fills the answer is not: it is reported, as before."""
+    try:
+        info = get(f"/repos/{fork['full_name']}/commits/{sha}")
+    except urllib.error.HTTPError as err:
+        if err.code < 500:
+            raise
+        return False
+    files = (info or {}).get('files') or []
+    if not files or len(files) >= MAX_COMMIT_FILES:
+        return False
+    return all(DOCS_RE.search(f.get('filename') or '') for f in files)
 
 
 def unrelated_commits(fork, branch, cutoff):
@@ -310,6 +337,11 @@ def new_commits(fork, cutoff, seen, known, today, ours):
             if title in ours:
                 continue
             known[c['sha'][:12]] = today
+            # Asked last, for the few commits that would be reported: one
+            # request each. Remembered like a reported one, so not asked again.
+            if is_docs_only(fork, c['sha']):
+                print(f"{fork['full_name']} {c['sha'][:12]}: no code changed, left out ({title[:60]})")
+                continue
             found[c['sha']] = {
                 'sha': c['sha'],
                 'branch': branch['name'],

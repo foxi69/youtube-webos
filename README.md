@@ -652,10 +652,11 @@ is published as a full release (step 3). Drafts of other versions are deleted.
 ### New work on other forks
 
 The [Fork watch](.github/workflows/fork-watch.yml) workflow runs every day. It checks the fork tree of
-FriedChickenButt, webosbrew and NicholasBly (forks of forks included, six levels deep), and the pull requests and
+FriedChickenButt, webosbrew and NicholasBly (forks of forks included, as deep as they go), and the pull requests and
 new issues on those three repositories. When it finds new work, it opens an issue labelled `fork-watch` with links to it. These are only
-suggestions: nothing is merged. It leaves out commits NicholasBly already has, bot commits, private forks and
-copies uploaded as new repositories.
+suggestions: nothing is merged. It leaves out commits NicholasBly already has, bot commits, commits that change
+no code (only documentation, pictures or the Homebrew listing), private forks and copies uploaded as new
+repositories.
 </details>
 
 ## ☕ Support
