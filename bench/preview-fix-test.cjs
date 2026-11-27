@@ -273,7 +273,26 @@ run(async () => {
     t("webOS 23: What's New over the preview is not cleared, the page under it is",
       !backdrop.classList.contains(CLEARED) && !dialog.classList.contains(CLEARED) &&
       env.el('browse').classList.contains(CLEARED), env.cleared());
-    env.state.order.splice(0, 2);
+    // The same with YouTube's root not found: the panel and the dialog are
+    // still left alone by name, the page under them is cleared.
+    const realQuery = env.doc.querySelector;
+    env.doc.querySelector = function querySelector(sel) { return sel === 'ytlr-app' ? null : realQuery.call(this, sel); };
+    const panel2 = env.doc.createElement('div');
+    panel2.id = 'panelbox';
+    panel2.className = 'ytaf-ui-container';
+    panel2.setAttribute('style', BLACK);
+    env.doc.body.appendChild(panel2);
+    RECTS.panelbox = FULL;
+    env.state.order.unshift('panelbox');
+    env.doc.body.dispatchEvent(new env.win.Event('focusin', { bubbles: true }));
+    await wait(100);
+    t("webOS 23: without ytlr-app, the panel and What's New are not cleared, the page under them is",
+      !panel2.classList.contains(CLEARED) && !backdrop.classList.contains(CLEARED) &&
+      !dialog.classList.contains(CLEARED) && env.el('browse').classList.contains(CLEARED), env.cleared());
+    env.doc.querySelector = realQuery;
+    env.state.order.splice(0, 3);
+    panel2.remove();
+    delete RECTS.panelbox;
     backdrop.remove();
     delete RECTS.dlgbackdrop;
     delete RECTS.dlgbox;

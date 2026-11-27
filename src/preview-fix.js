@@ -32,6 +32,8 @@ import { isLegacyWebOS } from './webos-utils.js';
  */
 
 const CLEAR_CLASS = 'ytaf-pfix-cleared';
+// The app's own layers on <body>, as src/ui.js names them.
+const OWN_UI = '.ytaf-ui-container, .ytaf-dialog-backdrop, .ytaf-notification-container';
 const ON_CLASS = 'ytaf-pfix-clear';
 const TICK_MS = 1000;
 const RESCAN_MS = 5000;
@@ -101,13 +103,14 @@ function coverOf(video) {
   // Only YouTube's own page is cleared. The app's own layers (the settings
   // panel, What's New and the other dialogs, notifications) sit on <body>
   // outside it and keep their look over a playing preview
-  // (NicholasBly/youtube-webos 4f7d787 for the panel).
+  // (NicholasBly/youtube-webos 4f7d787 for the panel). Without YouTube's
+  // root, the panel and the dialogs are still left alone by name.
   const app = document.querySelector('ytlr-app');
   const out = [];
   for (let i = 0; i < stack.length; i++) {
     const el = stack[i];
     if (el === video || el.contains(video)) break;
-    if (app && !app.contains(el)) continue;
+    if (app ? !app.contains(el) : el.closest && el.closest(OWN_UI)) continue;
     if (el.classList.contains(CLEAR_CLASS) || paints(el)) out.push(el);
   }
   return out;
