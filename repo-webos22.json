@@ -11,6 +11,7 @@
       "title": "YouTube Foxtended (webOS 22+)",
       "description": "Ad-free YouTube for webOS 22 and newer, with SponsorBlock, Return YouTube Dislike and DeArrow. The lighter build for newer TVs.",
       "shortDescription": "Ad-free YouTube for webOS 22 and newer, with SponsorBlock, Return YouTube Dislike and DeArrow. The lighter build for newer TVs.",
+      "fullDescriptionUrl": "https://raw.githubusercontent.com/foxi69/youtube-webos/main/homebrew/description-webos22.html",
       "iconUri": "https://raw.githubusercontent.com/foxi69/youtube-webos/main/assets/icon.png",
       "manifest": {
         "id": "youtube.leanback.v4",

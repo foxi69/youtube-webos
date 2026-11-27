@@ -189,8 +189,12 @@ jobs:
                   "id": pkg_id,
                   "title": title,
                   "description": description,
-                  # What the Homebrew Channel shows on the entry's page.
+                  # What the Homebrew Channel shows on the entry's page when the
+                  # full description below cannot be loaded.
                   "shortDescription": description,
+                  # The entry's page shows this HTML file, read from main, so a
+                  # change to the text needs no release.
+                  "fullDescriptionUrl": f"https://raw.githubusercontent.com/{repo_name}/main/homebrew/{'description-webos22' if is_modern else 'description'}.html",
                   "iconUri": f"https://raw.githubusercontent.com/{repo_name}/main/{ICON_PATH_IN_REPO}",
                   "manifest": manifest
               }
