@@ -1749,12 +1749,14 @@ function selectChapterRow(index) {
   chapterList.index = index;
   const row = rows[index];
   row.classList.add('selected');
-  // Scrolled by hand: scrollIntoView takes no options before Chrome 61.
+  // Scrolled by hand: scrollIntoView takes no options before Chrome 61. From
+  // the boxes, not offsetTop: rows are fractions of a pixel high, and whole
+  // pixels left every fifth row's bottom a pixel or two out of sight.
   const list = box.querySelector('.ytaf-chapter-rows');
-  if (row.offsetTop < list.scrollTop) list.scrollTop = row.offsetTop;
-  else if (row.offsetTop + row.offsetHeight > list.scrollTop + list.clientHeight) {
-    list.scrollTop = row.offsetTop + row.offsetHeight - list.clientHeight;
-  }
+  const listBox = list.getBoundingClientRect();
+  const rowBox = row.getBoundingClientRect();
+  if (rowBox.top < listBox.top) list.scrollTop -= Math.ceil(listBox.top - rowBox.top);
+  else if (rowBox.bottom > listBox.bottom) list.scrollTop += Math.ceil(rowBox.bottom - listBox.bottom);
 }
 
 function closeChapterList() {
