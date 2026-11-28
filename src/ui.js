@@ -2713,6 +2713,9 @@ const eventHandler = (evt) => {
 
   evt.preventDefault();
   evt.stopPropagation();
+  // Show Chapters' key, opening or closing the list, reaches no other
+  // listener on window either (YouTube's sits there too).
+  if (action === 'chapter_list') evt.stopImmediatePropagation();
   handleShortcutAction(action);
 
   return false;

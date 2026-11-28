@@ -1297,8 +1297,8 @@ run(async () => {
     await press(env.win, KEY_4);
     passed.length = 0;
     await press(env.win, KEY_4);
-    t(n('show chapters: the key again closes it, its keyup kept from the page'),
-      !list() && passed.indexOf('keyup:52') === -1, passed.join(' '));
+    t(n('show chapters: the key again closes it, its keydown and keyup kept from the page'),
+      !list() && passed.length === 0, passed.join(' '));
     await press(env.win, KEY_4);
     env.win.dispatchEvent(new env.win.HashChangeEvent('hashchange'));
     await wait(50);
