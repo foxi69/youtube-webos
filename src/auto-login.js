@@ -346,7 +346,7 @@ function setupActiveBypassListener() {
     if (document.body && document.body.classList.contains(SELECTORS.ACCOUNT_SELECTOR)) attemptActiveBypass();
 }
 
-export function initAutoLogin() {
+function initAutoLogin() {
   if (configRead('enableAutoLogin')) {
     console.info('[Auto Login] Initializing...');
     if (configRead('autoSelectAccount')) disableWhosWatching();

@@ -32,7 +32,7 @@
  * The webOS calls (install, launch) go through PalmServiceBridge and are best
  * effort: a firmware that has no bridge or refuses the call gets a toast.
  */
-import { configRead, configAddChangeListener, configResetAll } from './config.js';
+import { configRead, configAddChangeListener, configResetAll, CONFIG_KEY } from './config.js';
 import { showNotification } from './notifications.js';
 import { VERSION_LABEL } from './version.js';
 import { REMOTE_KEYS } from './utils.js';
@@ -47,8 +47,8 @@ const LISTING = typeof __YTAF_UPDATE_LISTING__ === 'string' && __YTAF_UPDATE_LIS
 const RAW = 'https://raw.githubusercontent.com/foxi69/youtube-webos/main/';
 const CHANGELOG_URL = RAW + 'CHANGELOG.md';
 const REPO_JSON_URL = (LISTING || RAW) + (FLAVOR === 'modern' ? 'repo-webos22.json' : 'repo.json');
-export const SUPPORT_URL = 'ko-fi.com/foxi69';
-export const PROJECT_URL = 'github.com/foxi69/youtube-webos';
+const SUPPORT_URL = 'ko-fi.com/foxi69';
+const PROJECT_URL = 'github.com/foxi69/youtube-webos';
 const RELEASE_URL = 'github.com/foxi69/youtube-webos/releases/latest';
 const HOMEBREW_ID = 'org.webosbrew.hbchannel';
 
@@ -65,7 +65,7 @@ const SEEN_KEY = 'ytaf-seen-version';
 export const INSTALLED = (VERSION_LABEL.match(/^\d+(?:\.\d+)*/) || [''])[0];
 
 /** Compares dotted versions numerically: <0, 0 or >0. */
-export function compareVersions(a, b) {
+function compareVersions(a, b) {
   const pa = String(a).split('.');
   const pb = String(b).split('.');
   for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
@@ -157,7 +157,7 @@ function setUpdateState(state) {
 }
 
 /** Calls `fn` with the update state now and on every change. */
-export function onUpdateState(fn) {
+function onUpdateState(fn) {
   stateListeners.push(fn);
   fn(updateState);
 }
@@ -271,7 +271,7 @@ function installUpdate(ipk, report) {
  * CHANGELOG.md as [{ version, date, blocks: [{ type: 'h' | 'li' | 'p', text }] }],
  * newest first, as the file has them.
  */
-export function parseChangelog(md) {
+function parseChangelog(md) {
   const out = [];
   let entry = null;
   const lines = String(md).replace(/\r/g, '').split('\n');
@@ -706,7 +706,7 @@ function whatsNewAfterUpdate() {
     seen = window.localStorage.getItem(SEEN_KEY);
     // Versions before this one stored no seen version: settings of their own
     // mean an update from one of them, not a first install.
-    existingUser = !!window.localStorage.getItem('ytaf-configuration');
+    existingUser = !!window.localStorage.getItem(CONFIG_KEY);
   } catch { return; }
   const remember = () => {
     try { window.localStorage.setItem(SEEN_KEY, INSTALLED); } catch { /* shown again next time */ }

@@ -209,7 +209,7 @@ shortcutKeys.forEach(key => {
 // Element#matches / Element#closest polyfills now live in polyfills.js,
 // imported via utils.js so every module gets them regardless of import order.
 
-const simulateBack = () => { console.log('[Shortcut] Simulating Back/Escape...'); sendKey(REMOTE_KEYS.BACK); };
+const simulateBack = () => { sendKey(REMOTE_KEYS.BACK); };
 
 // Engagement panel detection. The two renderers are alternative shells YouTube
 // uses depending on the panel type (comments/description vs. title-header
@@ -1357,7 +1357,6 @@ function endOledBlackout() {
 
 function showOptionsPanel(visible) {
   if (panelInitBlock) {
-      console.log('[UI] Options panel toggle blocked due to initialization lock.');
       return;
   }
   if (visible === undefined || visible === null) visible = true;
@@ -1378,7 +1377,6 @@ function showOptionsPanel(visible) {
 
     // Lazy Initialization
     if (!optionsPanel) {
-        console.log('[UI] Initializing Options Panel (Lazy Load)...');
 		panelInitBlock = true;
         setTimeout(() => { panelInitBlock = false; }, 500);
         optionsPanel = createOptionsPanel();
@@ -1814,13 +1812,12 @@ window.addEventListener('keyup', handleSeekStepKey, true);
 function triggerInternal(element, name) {
   if (!element) return false;
   let success = false;
-  try { element.click(); console.log(`[Shortcut] Standard click triggered for ${name}`); success = true; } 
+  try { element.click(); success = true; } 
   catch (e) { console.warn(`[Shortcut] Standard click failed for ${name}:`, e); }
   
   // Try to access internal React/Polymer instance for robust clicking
   const instance = element.__instance;
   if (instance && typeof instance.onSelect === 'function') {
-    console.log(`[Shortcut] Also calling internal onSelect() for ${name}`);
     try {
       const mockEvent = { type: 'click', stopPropagation: () => {}, preventDefault: () => {}, target: element, currentTarget: element, bubbles: true, cancelable: true };
       instance.onSelect(mockEvent);
@@ -2085,7 +2082,6 @@ function toggleDescriptionLogic() {
     else if (triggerInternal(target, 'Description')) {
             setTimeout(() => {
                 if (window.returnYouTubeDislike) {
-                    console.log('[Shortcut] Manually triggering RYD check for description panel...');
                     window.returnYouTubeDislike.observeBodyForPanel();
                 }
             }, 350);
@@ -2129,7 +2125,6 @@ function refreshPageLogic() {
     };
 
     const appRoot = document.querySelector('ytlr-app') || document.body;
-    console.log('[Shortcut] Triggering soft reload...');
     
     appRoot.dispatchEvent(new CustomEvent('innertube-command', {
         bubbles: true,

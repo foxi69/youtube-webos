@@ -19,7 +19,7 @@ class Watch {
     this._globalListeners = [];
     
     // Constants
-    this._PLAYER_SELECTOR = 'ytlr-watch-default'; // Kept specific to this clock feature if needed, or could use SELECTORS.PLAYER_CONTAINER if appropriate.
+    this._PLAYER_SELECTOR = 'ytlr-watch-default';
     this._DEBOUNCE_DELAY = 50;
 	this._cachedPlayer = null;
     this._cachedOverlay = null;
@@ -144,11 +144,7 @@ class Watch {
       this._timer = null;
     }
     
-    // Note: Debounce internal timer is managed by closure in shared helper, 
-    // so strictly speaking we can't cancel it externally easily unless debounce returns a cancel method.
-    // For this use case (UI visibility), letting a pending check run once after destroy is harmless, 
-    // but the shared debounce usually doesn't expose cancel.
-    // If strict cleanup is needed, update the shared debounce to return { run, cancel }.
+    // A debounced visibility check still pending runs once more: harmless.
 
     configRemoveChangeListener('clockDuringPlayback', this.updateVisibility);
     configRemoveChangeListener('showWatchTime', this.refreshText);
