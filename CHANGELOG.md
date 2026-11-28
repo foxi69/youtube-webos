@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Changed
 
++ With **Ad Blocking** off, the rows that need it (Reduce Telemetry & Tracking, the Cosmetic Filtering switches and the Feed Filters section) say "(needs Ad Blocking)" beside their greyed-out label. A box ticked there looked switched on but did nothing; it stays ticked and works again once Ad Blocking is back on.
++ Player page: the description of **Subtitle Position** is under its own row again; it was under Subtitle Delay's.
 + **Fit Page Beside Open Menu** is no longer shown in the settings on webOS 3 and 4, where it could be switched on but did nothing: it needs a browser feature (ResizeObserver) those TVs do not have.
 + With **Separate Settings for Each Account** on, the settings panel no longer opens on the account selector: the previous account's settings are still loaded there, so a change made there went to that account, not to the one chosen next. A notice says to choose an account first; once one (or guest) is chosen the panel opens as before. With the option off nothing changes.
 + With **Separate Settings for Each Account** on, a guest session starts from the default settings, not from the shared ones: those are the settings of whichever account was in use when the option came on, so a guest got that account's theme, filters and SponsorBlock choices. The device settings (codec, auto login and the like) are still the TV's. A new account still starts from the shared settings.
