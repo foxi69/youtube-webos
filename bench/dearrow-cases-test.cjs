@@ -125,7 +125,7 @@ function boot(cfg, { copySize = 1000 } = {}) {
       trustedKey(win, GREEN);
       for (let i = 0; i < 20; i++) pump();
     }
-    const input = Array.from(win.document.querySelectorAll('#ytaf-page-ui-tweaks label'))
+    const input = Array.from(win.document.querySelectorAll('.ytaf-ui-container label'))
       .find((l) => l.querySelector('.label-text')?.textContent === label)?.querySelector('input');
     if (!input) throw new Error(label + ' switch missing');
     input.checked = on;
@@ -273,6 +273,60 @@ run(async () => {
     t('casual off: the crowdsourced title, casual votes or not', shownTitle(el) === 'Calm casualfine2', shownTitle(el));
     win.close();
   }
+  // ---- Show Original Titles with DeArrow off ----
+  {
+    // Title Case, emoji removal and a fallback frame all set up to change
+    // something: with DeArrow off none of them may.
+    const { win, parse, known, uploaded, fetched, images, toggle, errors } = boot({
+      enableDeArrow: false, dearrowUntranslatedTitles: true, dearrowTitleFormatting: 'title_case',
+      dearrowCleanEmojis: true, dearrowCrowdThumbnails: true, dearrowThumbnailFallback: 'start'
+    });
+    known.add('origonly001');
+    uploaded.set('origonly001', 'how i built a boat 🚤');
+    const el = render(win, 'origonly001', 'Hogyan építettem csónakot');
+    const r = parse(browse([tile('origonly001', 'Hogyan építettem csónakot')]));
+    await waitFor(() => shownTitle(el) === 'how i built a boat 🚤', 2000);
+    await wait(300);
+    const dearrowAsked = () => fetched.filter((u) => u.indexOf('ajay.app') !== -1);
+    t('original titles, DeArrow off: the title exactly as uploaded (no Title Case, emoji kept)',
+      shownTitle(el) === 'how i built a boat 🚤', shownTitle(el));
+    t('original titles, DeArrow off: the stored response has it too',
+      tileTitle(itemsOf(r)[0]) === 'how i built a boat 🚤', tileTitle(itemsOf(r)[0]));
+    t('original titles, DeArrow off: YouTube\'s oEmbed asked once, DeArrow never',
+      fetched.filter((u) => u.indexOf('https://www.youtube.com/oembed?') === 0).length === 1 && dearrowAsked().length === 0,
+      fetched.join(' '));
+    t('original titles, DeArrow off: no thumbnail loaded, YouTube\'s stays',
+      images.length === 0 && shownThumb(el).includes('i.ytimg.com/vi/origonly001/hqdefault.jpg'), images.join(' ') + ' | ' + shownThumb(el));
+    t('original titles, DeArrow off: no badge', lineItems(itemsOf(r)[0]).length === 1, JSON.stringify(lineItems(itemsOf(r)[0])));
+
+    // DeArrow switched on later: the video seen without it is asked now.
+    toggle('DeArrow', true);
+    await waitFor(() => /^calm /i.test(shownTitle(el)) && shownThumb(el).includes('COPY'), 3000);
+    t('original titles, DeArrow switched on later: DeArrow asked now, its title and thumbnail shown',
+      /^calm /i.test(shownTitle(el)) && shownThumb(el).includes('COPY') && dearrowAsked().length > 0,
+      shownTitle(el) + ' | ' + dearrowAsked().join(' '));
+
+    // And off again, the original titles still on: they alone stay.
+    toggle('DeArrow', false);
+    await waitFor(() => shownTitle(el) === 'how i built a boat 🚤' && !shownThumb(el).includes('COPY'), 3000);
+    t('original titles, DeArrow off again: the title as uploaded, YouTube\'s thumbnail, no badge',
+      shownTitle(el) === 'how i built a boat 🚤' && shownThumb(el).includes('i.ytimg.com/vi/origonly001/hqdefault.jpg') &&
+      lineItems(itemsOf(r)[0]).length === 1, shownTitle(el) + ' | ' + shownThumb(el));
+    t('no jsdomError (original titles, DeArrow off)', errors.length === 0, errors[0]);
+    win.close();
+  }
+  {
+    const { win, parse, known, uploaded, fetched, images } = boot({ enableDeArrow: false, dearrowUntranslatedTitles: false });
+    known.add('bothoff0001');
+    uploaded.set('bothoff0001', 'How I built a boat');
+    const el = render(win, 'bothoff0001', 'Hogyan építettem csónakot');
+    parse(browse([tile('bothoff0001', 'Hogyan építettem csónakot')]));
+    await wait(500);
+    const asked = fetched.filter((u) => u.indexOf('/oembed?') !== -1 || u.indexOf('ajay.app') !== -1);
+    t('DeArrow and original titles off: nothing asked or loaded, the title as shown',
+      asked.length === 0 && images.length === 0 && shownTitle(el) === 'Hogyan építettem csónakot', asked.join(' ') + ' | ' + shownTitle(el));
+    win.close();
+  }
   // ---- Untranslated Titles ----
   {
     const { win, parse, known, uploaded, fetched, errors } = boot({ dearrowUntranslatedTitles: true, dearrowCrowdTitles: false });
@@ -333,9 +387,9 @@ run(async () => {
     const asked = () => fetched.filter((u) => u.indexOf('/oembed?') !== -1).length;
     t('untranslated, failed request: precondition: asked once, the title as shown',
       asked() === 1 && shownTitle(el) === 'Hogyan építettem csónakot', `${asked()} ${shownTitle(el)}`);
-    toggle('Untranslated Titles', false);
+    toggle('Show Original Titles (Not Translated)', false);
     await wait(300);
-    toggle('Untranslated Titles', true);
+    toggle('Show Original Titles (Not Translated)', true);
     await waitFor(() => shownTitle(el) === 'How I built a boat', 3000);
     t('untranslated, failed request: looked up again, it is asked again and shown as uploaded',
       asked() === 2 && shownTitle(el) === 'How I built a boat', `${asked()} ${shownTitle(el)}`);
@@ -382,7 +436,7 @@ run(async () => {
     parse(browse([tile('flakyvideo3', 'Hogyan építettem csónakot')]));
     await waitFor(() => shownThumb(el).includes('COPY'), 2000);
     const asked = () => fetched.filter((u) => u.indexOf('/oembed?') !== -1).length;
-    toggle('Untranslated Titles', false);
+    toggle('Show Original Titles (Not Translated)', false);
     await wait(500);
     win.Date.now = () => t0 + 61000;
     parse(browse([tile('flakyvideo3', 'Hogyan építettem csónakot')]));

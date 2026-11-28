@@ -503,7 +503,8 @@ const configOptions = new Map([
   // dearrow/titles.js: YouTube's title stays where casual voters found it fine.
   ['dearrowCasualMode', { default: false, desc: 'Casual Mode: Keep Titles Voted Fine' }],
   // dearrow/lookup.js: titles as uploaded, not translated by YouTube (oEmbed).
-  ['dearrowUntranslatedTitles', { default: false, desc: 'Untranslated Titles' }],
+  // The key keeps DeArrow's name from when it was a DeArrow option: no migration.
+  ['dearrowUntranslatedTitles', { default: false, desc: 'Show Original Titles (Not Translated)' }],
   // Every title shown, crowdsourced or YouTube's own (the legacy build: Title Case alone).
   ['dearrowTitleFormatting', { default: isEnglishUI ? 'title_case' : 'disable', desc: 'Title Formatting' }],
   ['dearrowCleanEmojis', { default: true, desc: 'Remove Emojis and Fancy Text' }],
