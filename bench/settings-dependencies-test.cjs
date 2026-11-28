@@ -100,7 +100,7 @@ run(async () => {
     box('Reduce Telemetry').checked === true && box('Reduce Telemetry').disabled === false, `${labelOf('Reduce Telemetry')} | ${feedTitle()}`);
   // Subtitle Position's description right under its own row (it was under Subtitle Delay's).
   const playerRows = [...win.document.querySelectorAll('.ytaf-ui-container *')]
-    .map((e) => e.children.length === 0 ? e.textContent.trim() : '').filter((s) => /^(Subtitle Position|Subtitle Delay|Lifts the subtitles|For subtitles out of step)/.test(s))
+    .map((e) => e.children.length === 0 ? e.textContent.trim() : '').filter((s) => /^(?:Subtitle Position|Subtitle Delay|Lifts the subtitles|For subtitles out of step)/.test(s))
     .map((s) => s.split(/[ ,.]/).slice(0, 2).join(' '));
   t(n('Player page: each subtitle row has its own description under it'),
     JSON.stringify(playerRows) === JSON.stringify(['Subtitle Position', 'Lifts the', 'Subtitle Delay', 'For subtitles']), JSON.stringify(playerRows));
