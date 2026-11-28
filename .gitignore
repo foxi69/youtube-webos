@@ -5,3 +5,10 @@ dist/
 dist-modern/
 coverage/
 dist-mut/
+
+# Made locally: the packages (out/, legacy/, as build_repo.yml packs them;
+# _ipk_stash/ by build-local modern.cmd) and release-notes.sh's notes.md.
+/out/
+/legacy/
+/_ipk_stash/
+/notes.md
