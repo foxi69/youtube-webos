@@ -16,9 +16,9 @@
 // What is shown follows the extension: the top title or thumbnail unless it
 // is the original or voted below zero (a locked one always wins), with the
 // extension's own title formatter (src/vendor/dearrow).
-import { configRead, configAddChangeListener } from '../config.js';
+import { configAddChangeListener } from '../config.js';
 import { CACHE_LIMIT, DEARROW_CONFIG_KEYS, SWEEP_DELAY } from './constants.js';
-import { videos, nextGeneration } from './state.js';
+import { videos, nextGeneration, deArrowOn, titlesActive } from './state.js';
 import { forgetThumbs, thumbsFull, prioritizeThumbs } from './thumbs.js';
 import { patchResponseTiles, unpatchResponses, applyToVideo } from './tiles.js';
 import { sweepTiles } from './sweep.js';
@@ -40,7 +40,7 @@ function cancelSweep() {
  * rest; the other rendered ones decided under old settings in the background.
  */
 function scheduleSweep() {
-  if (sweepTimer || !configRead('enableDeArrow')) return;
+  if (sweepTimer || !titlesActive()) return;
   sweepTimer = setTimeout(() => {
     sweepTimer = null;
     const found = sweepTiles(false);
@@ -106,6 +106,11 @@ function onSettingsChange({ detail }) {
  */
 function switchOff() {
   restoreTiles();
+  dropThumbs();
+}
+
+/** The thumbnail copies freed, and what pointed at them. */
+function dropThumbs() {
   videos.forEach((video) => {
     video.thumb = null;
     video.crowdThumb = false;
@@ -125,7 +130,7 @@ function refresh() {
   refreshTimer = null;
   const badgeOnly = changedKeys.size === 1 && changedKeys.has('dearrowShowBadge');
   changedKeys.clear();
-  if (configRead('enableDeArrow') && badgeOnly) {
+  if (deArrowOn() && badgeOnly) {
     videos.forEach((video) => {
       if (video.resolved && !video.stale) applyToVideo(video);
     });
@@ -136,12 +141,30 @@ function refresh() {
   // Stored responses get the new output when a tile shows the video again.
   unpatchResponses();
   clearQueue();
-  if (!configRead('enableDeArrow')) {
+  if (!titlesActive()) {
     switchOff();
     return;
   }
+  // The original titles alone (DeArrow off): the titles stay on screen until
+  // decided again, the thumbnails go back to YouTube's now. Put back before
+  // they are freed: the sweep knows DeArrow's on a tile by shownThumb.
+  if (!deArrowOn()) {
+    videos.forEach((video) => {
+      video.thumb = null;
+      video.crowdThumb = false;
+    });
+    cancelSweep();
+    sweepTiles(false);
+    dropThumbs();
+  }
   videos.forEach((video) => {
     video.stale = true;
+    // Seen with DeArrow off, so never asked: DeArrow on now, it is asked.
+    if (video.brandingSkipped && deArrowOn()) {
+      video.brandingSkipped = false;
+      video.fetched = false;
+      video.retryAt = 0;
+    }
   });
   cancelSweep();
   scheduleSweep();

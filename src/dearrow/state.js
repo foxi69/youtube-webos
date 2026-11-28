@@ -1,6 +1,19 @@
 // What DeArrow knows, shared by its modules: the videos seen, and the
 // generation that a settings change or a wipe bumps so that work started
 // before it does not write stale output.
+import { configRead } from '../config.js';
+
+/** DeArrow itself on: crowdsourced titles, thumbnails, formatting and the badge. */
+export const deArrowOn = () => !!configRead('enableDeArrow');
+
+/**
+ * Show Original Titles with DeArrow off: the titles as uploaded and nothing
+ * else - no request to DeArrow, no formatting, thumbnails and badges left alone.
+ */
+export const titlesOnly = () => !deArrowOn() && !!configRead('dearrowUntranslatedTitles');
+
+/** Whether the tiles are looked at at all: DeArrow on, or the original titles alone. */
+export const titlesActive = () => deArrowOn() || !!configRead('dearrowUntranslatedTitles');
 
 /**
  * videoId -> {
@@ -9,6 +22,8 @@
  *                                       random frames and putting it back
  *   raw                                 the branding answer (null: none)
  *   fetched, fetching                   whether it was answered / the request
+ *   brandingSkipped                     "fetched" with DeArrow off, never
+ *                                       asked: asked once DeArrow is on
  *   queued                              waiting in the lookup queue
  *   title, thumb                        what to show (null: YouTube's own)
  *   crowdTitle, crowdThumb              whether those are crowdsourced (the badge)

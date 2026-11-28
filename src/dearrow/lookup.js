@@ -25,7 +25,7 @@ import {
   RANDOM_FRAME_RETRIES_MS,
   THUMBNAIL_API
 } from './constants.js';
-import { videos, currentGeneration } from './state.js';
+import { videos, currentGeneration, deArrowOn, titlesOnly, titlesActive } from './state.js';
 import { loadThumb, thumbsEpoch } from './thumbs.js';
 import { isTrusted, resolveTitle, crowdsourcedTitle, uploadedTitleMatters } from './titles.js';
 
@@ -40,7 +40,7 @@ const OEMBED_URL = 'https://www.youtube.com/oembed?format=json&url=https%3A%2F%2
 const OEMBED_TIMEOUT_MS = 8000;
 
 /**
- * Untranslated Titles: the title as uploaded, kept on the video as
+ * Show Original Titles: the title as uploaded, kept on the video as
  * `untranslated` even when this tile already shows it (a later tile of the
  * video may be translated); asked for once per video. An empty answer leaves
  * the title as YouTube shows it; so does a failed request (no connection, a
@@ -186,7 +186,7 @@ async function randomFrameTime(videoId, video) {
  */
 
 async function resolveThumb(videoId, video, gen, show) {
-  if (!configRead('dearrowCrowdThumbnails')) {
+  if (!crowdThumbsOn()) {
     show(null);
     return;
   }
@@ -259,7 +259,7 @@ async function resolveThumb(videoId, video, gen, show) {
  * an older generation is dropped.
  */
 async function resolve(videoId, video) {
-  if (!configRead('enableDeArrow')) return;
+  if (!titlesActive()) return;
   const gen = currentGeneration();
   const title = await resolveTitle(video);
   if (gen !== currentGeneration()) return;
@@ -287,6 +287,9 @@ async function resolve(videoId, video) {
   });
 }
 
+// Thumbnails are DeArrow's alone: the original titles without it leave them be.
+const crowdThumbsOn = () => deArrowOn() && !!configRead('dearrowCrowdThumbnails');
+
 /**
  * YouTube's frame the Without a Crowdsourced Thumbnail setting falls back to
  * (Start, Middle or End; the Start frame stands in for the random one), or
@@ -307,7 +310,7 @@ function fallbackFrameUrl(videoId) {
  * that comes in time to cancel.
  */
 function showEarlyFrame(videoId, video) {
-  const url = configRead('dearrowCrowdThumbnails') ? fallbackFrameUrl(videoId) : null;
+  const url = crowdThumbsOn() ? fallbackFrameUrl(videoId) : null;
   if (!url || video.thumb) return null;
   const gen = currentGeneration();
   return setTimeout(async () => {
@@ -330,7 +333,7 @@ function showEarlyFrame(videoId, video) {
  * unless the answer brings a crowdsourced thumbnail instead.
  */
 function prefetchFallback(videoId) {
-  const url = configRead('dearrowCrowdThumbnails') ? fallbackFrameUrl(videoId) : null;
+  const url = crowdThumbsOn() ? fallbackFrameUrl(videoId) : null;
   if (url) loadThumb(url, videoId);
 }
 
@@ -347,7 +350,13 @@ async function lookup(videoId, prefetch) {
   if (video.fetched && video.resolved && !video.stale && !untranslatedDue(video)) return;
   video.looking = true;
   try {
-    if (!video.fetched) {
+    if (!video.fetched && titlesOnly()) {
+      // The original titles alone: DeArrow is not asked. Marked, so it is
+      // asked once DeArrow is switched on (index.js refresh).
+      video.raw = null;
+      video.fetched = true;
+      video.brandingSkipped = true;
+    } else if (!video.fetched) {
       if (!video.prefix) video.prefix = prefixOf(videoId);
       if (prefetch) prefetchFallback(videoId);
       const early = showEarlyFrame(videoId, video);
@@ -375,7 +384,7 @@ async function lookup(videoId, prefetch) {
  * scrolling brings on screen never waits for the rest of the page.
  */
 function pump() {
-  while (active < MAX_CONCURRENT && configRead('enableDeArrow')) {
+  while (active < MAX_CONCURRENT && titlesActive()) {
     let videoId;
     let background = false;
     if (onScreen.length) {
