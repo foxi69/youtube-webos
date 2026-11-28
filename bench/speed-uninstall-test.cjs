@@ -84,7 +84,7 @@ function makePlayer() {
     getAvailableQualityLevels: () => ['hd1080', 'hd720'],
     setPlaybackQualityRange() {},
     seekTo() {},
-    // YouTube's own speed menu bound (native-menu.js): a reload puts it in
+    // YouTube's own speed menu bound (enableNativeSpeedMenu): a reload puts it in
     // line 2.5 s later.
     rate: 1,
     rateSets: 0,

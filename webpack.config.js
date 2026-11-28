@@ -68,7 +68,6 @@ const makeConfig = (env) => {
           {
             test: /\.[mc]?[jt]s$/i,
             loader: 'babel-loader',
-            // Restore original exclude for legacy to maintain compatibility
             // Modern build excludes all node_modules for speed
             exclude: isModern 
               ? /node_modules/ 
@@ -88,10 +87,8 @@ const makeConfig = (env) => {
                   modules: false,
                   useBuiltIns: false
                 }]
-                // REMOVED missing '@babel/preset-typescript'
               ],
               plugins: [
-                 // Use the plugin you already have installed instead of the preset
                  ['@babel/plugin-transform-typescript', { strictMode: true }]
               ]
             } : {

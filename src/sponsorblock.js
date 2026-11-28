@@ -1988,19 +1988,6 @@ class SponsorBlockHandler {
         // Trust nextSegmentStart to avoid unnecessary searches
         const timeToNext = this.nextSegmentStart - currentTime;
 
-		// Removed sleep timer due to possible bugs with buffering/frame drops
-        // if (timeToNext > 3.0 && !this.currentManualSegment) {
-            // const sleepTime = timeToNext - 1.0;
-            // if (sleepTime > 1.0) {
-                // this.toggleTimeListener(false);
-                // this.longDistanceTimer = setTimeout(() => {
-                    // this.longDistanceTimer = null;
-                    // this.toggleTimeListener(true);
-                // }, sleepTime * 1000);
-                // return;
-            // }
-        // }
-
         if (timeToNext > 0 && !this.currentManualSegment) {
             if (timeToNext < 1.0 && !this.pollingRafId) {
                 this.startHighFreqLoop();

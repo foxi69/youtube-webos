@@ -597,9 +597,9 @@ function handleStateChange(state) {
 
   const actualState = (state && state.data !== undefined) ? state.data : state;
 
-  // Publish FIRST. This event is shared infrastructure: watch.js (clock
-  // visibility) and sponsorblock.js (overlay cache invalidation, observer
-  // re-arm, chain-skip re-arm, high-freq loop teardown) both subscribe to it.
+  // Publish FIRST. This event is shared infrastructure: the clock,
+  // SponsorBlock, playback speed, the quality tag, the subtitles, the panel
+  // and the queue all subscribe to it.
   // It must not be suppressed by an unrelated quality setting.
   // The video the player has now, read here: lastVideoId is quality forcing's
   // own and kept only while it is on (and is the previous video's on a new
