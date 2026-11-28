@@ -286,7 +286,7 @@ Return YouTube Dislike sends the id of every video you open to returnyoutubedisl
 </details>
 
 <details>
-<summary><b>🖥️ Interface</b>: theme, login, thumbnails, clock</summary>
+<summary><b>🖥️ Interface</b>: theme, login, thumbnails, original titles, clock</summary>
 <br>
 <p align="center"><img src="screenshots/tab-3-interface.png" alt="Interface tab" width="480"></p>
 
@@ -297,6 +297,7 @@ Return YouTube Dislike sends the id of every video you open to returnyoutubedisl
 | Auto Login (off: always ask who is watching; needs Bypass Nag Screens) | On |
 | Separate Settings for Each Account | Off |
 | Max Thumbnail Quality (Off, Original, Fast, Smooth (SD)) | Off |
+| Show Original Titles (Not Translated): video titles as their uploader wrote them, where YouTube shows them translated | Off |
 | YouTube Logo (Default, Premium, Hidden) | Default |
 | Clock in UI (Off, Time, Date and Time) | Off |
 | Keep the Clock On During Playback | Off |
@@ -380,14 +381,15 @@ The actions each key can take are listed under [Remote control](#-remote-control
 | Show the DeArrow Logo on Crowdsourced Titles/Thumbnails | On |
 | Crowdsourced Titles | On |
 | Casual Mode: Keep Titles Voted Fine | Off |
-| Untranslated Titles | Off |
 | Title Formatting (Disabled, Title Case; on the webOS 22+ package also Sentence case, lower case, First letter uppercase, Capitalize Words) | Title Case on an English TV, else Disabled |
 | Remove Emojis and Fancy Text | On |
 | Crowdsourced Thumbnails | On |
 | Without a Crowdsourced Thumbnail (Random Frame, Start/Middle/End Frame, Original, Blank) | Random Frame |
 
 **Fit Page Beside Open Menu**: while the left menu is open, YouTube slides the page right and its right side leaves
-the screen; with this option the page shrinks to fit beside the menu instead. DeArrow asks sponsor.ajay.app by hash
+the screen; with this option the page shrinks to fit beside the menu instead. **Show Original Titles** (Interface)
+asks YouTube's own oEmbed (youtube.com) once per video shown, nothing else; with DeArrow on, its crowdsourced title
+still comes first and the original is formatted as Title Formatting says. DeArrow asks sponsor.ajay.app by hash
 prefix, like SponsorBlock; a thumbnail it shows (and the random frame's time) is asked for by the video's id. The
 Start Page is not used on a launch into a video. **Hide Left Menu Entries** lists the menu's fixed entries, not the
 subscribed channels or Home, once YouTube has loaded the menu; a ticked one is gone from the next start of the app.
