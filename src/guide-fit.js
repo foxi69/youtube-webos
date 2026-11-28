@@ -91,7 +91,14 @@ function watch() {
   if (watched) update(watched);
 }
 
-if (typeof ResizeObserver === 'function' && typeof document !== 'undefined') {
+/**
+ * Whether the feature can run here. It needs ResizeObserver (Chrome 64), which
+ * webOS 3 and 4 do not have: there nothing is watched, and the settings panel
+ * leaves the switch out (ui.js).
+ */
+export const GUIDE_FIT_SUPPORTED = typeof ResizeObserver === 'function' && typeof document !== 'undefined';
+
+if (GUIDE_FIT_SUPPORTED) {
   watch();
   setInterval(watch, 2000);
   configAddChangeListener('fitPageBesideGuide', watch);
