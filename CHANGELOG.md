@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## Added
+
++ **Show Chapters**, a new action for a coloured button or a number key (Shortcuts tab): a list of the video's chapters over the player, with their start times and the one playing marked. Up and Down (or the Magic Remote's wheel) move, OK (or a click) jumps to the start of a chapter and closes the list, and Back (or the same key again) closes it. On a video with no chapters of its own, the community's chapters from SponsorBlock are listed, with Use Community Chapters on. YouTube's TV app has no chapter list of its own.
+
 ## Changed
 
 + **Show Original Titles (Not Translated)**, formerly DeArrow's **Untranslated Titles**, is on the Interface page and works with DeArrow off too: video titles as their uploader wrote them, where YouTube shows them translated into the TV's language. With DeArrow off it asks only YouTube's own oEmbed (one request per video shown, on youtube.com), never DeArrow's server, and shows the title exactly as uploaded: no Title Case, no emoji removal, thumbnails and badges left alone. With DeArrow on nothing changes. The setting is the same one: if you had it on with DeArrow off, the titles on the tiles now show as uploaded after the update.

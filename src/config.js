@@ -120,6 +120,7 @@ export const shortcutActions = {
   refresh_page: 'Refresh Page',
   chapter_skip: 'Skip to Next Chapter',
   chapter_skip_prev: 'Skip to Previous Chapter',
+  chapter_list: 'Show Chapters',
   sb_skip_prev: 'Skip to Last SponsorBlock Segment',
   seek_15_fwd: 'Fast Forward (Burst)',
   seek_15_back: 'Rewind (Burst)',

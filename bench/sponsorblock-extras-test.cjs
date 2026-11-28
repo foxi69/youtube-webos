@@ -1245,6 +1245,153 @@ run(async () => {
     await wait(700);
     t(n('chapters: native start times without markers win over community chapters'), env.state.time === 120, String(env.state.time));
   }
+  // ---- Show Chapters (the chapter_list action) ----
+  {
+    const KEY_4 = 52, UP = 38, DOWN = 40, LEFT = 37, ENTER = 13, BACK = 461;
+    // The video's own chapters, named as the bar's data names them (simpleText or runs; the last has none),
+    // beside community chapters, which they win over.
+    const env = await boot({ shortcut_key_4: 'chapter_list' },
+      [Object.assign(seg('chapter', 30, 60, 'chapter'), { description: 'Community intro' })], { bar: BAR_MULTI });
+    env.win.document.querySelector('ytlr-multi-markers-player-bar-renderer').__instance = { props: { data: { chapters: [
+      { start: 0, title: { simpleText: 'Intro' } }, { start: 60, title: { runs: [{ text: 'Main ' }, { text: 'part' }] } }, { start: 3700 }
+    ] } } };
+    // The keys that get past the list to the page, the mod's own included. On window in the capture phase,
+    // where YouTube's handler sits, so a key only stopPropagation()'d would still be counted.
+    const passed = [];
+    const record = (e) => passed.push(`${e.type}:${e.keyCode}`);
+    env.win.addEventListener('keydown', record, true);
+    env.win.addEventListener('keyup', record, true);
+    const list = () => env.win.document.querySelector('.ytaf-chapter-list');
+    const rows = () => Array.prototype.map.call(env.win.document.querySelectorAll('.ytaf-chapter-row'),
+      (r) => r.textContent + (r.classList.contains('current') ? ' [current]' : '') + (r.classList.contains('selected') ? ' [selected]' : ''));
+    await env.playTo(70);
+    // The first press on a bar with no chapter pieces sends the Enter that loads it, and the Back that
+    // puts the controls away once the list is open: neither closes it.
+    await press(env.win, KEY_4);
+    await wait(900);
+    t(n('show chapters: the list opens with names and starts, the playing one marked and selected'),
+      JSON.stringify(rows()) === JSON.stringify(['0:00Intro', '1:00Main part [current] [selected]', '1:01:40Chapter 3']),
+      JSON.stringify(rows()));
+    t(n('show chapters: the Back that closes the controls opened for the lookup passes, the list stays'),
+      !!list() && passed.indexOf('keydown:461') !== -1, passed.join(' '));
+    passed.length = 0;
+    await press(env.win, DOWN);
+    await press(env.win, DOWN);
+    await press(env.win, LEFT);
+    t(n('show chapters: Down moves down and stops at the last; Left does not seek; none reaches the page'),
+      rows()[2].indexOf('[selected]') !== -1 && env.state.time === 70 && passed.length === 0,
+      `${JSON.stringify(rows())} ${env.state.time} ${passed.join(' ')}`);
+    await press(env.win, UP);
+    await press(env.win, UP);
+    await press(env.win, UP);
+    await press(env.win, ENTER);
+    t(n('show chapters: OK jumps to the selected chapter and closes the list; its Enter does not reach the page'),
+      env.state.time === 0 && !list() && passed.length === 0, `${env.state.time} ${!!list()} ${passed.join(' ')}`);
+    await press(env.win, KEY_4);
+    t(n('show chapters: the next press opens it at once, the chapter playing now marked'),
+      !!list() && rows()[0].indexOf('[current]') !== -1, JSON.stringify(rows()));
+    passed.length = 0;
+    await press(env.win, BACK);
+    t(n('show chapters: Back closes the list, its keydown and keyup kept from the page'),
+      !list() && env.state.time === 0 && passed.length === 0, `${!!list()} ${passed.join(' ')}`);
+    await press(env.win, KEY_4);
+    passed.length = 0;
+    await press(env.win, KEY_4);
+    t(n('show chapters: the key again closes it, its keydown and keyup kept from the page'),
+      !list() && passed.length === 0, passed.join(' '));
+    await press(env.win, KEY_4);
+    env.win.dispatchEvent(new env.win.HashChangeEvent('hashchange'));
+    await wait(50);
+    t(n('show chapters: another page closes it'), !list());
+    passed.length = 0;
+    await press(env.win, DOWN);
+    t(n('show chapters: closed, the keys reach the page again'), passed.join(' ') === 'keydown:40 keyup:40', passed.join(' '));
+    // Open while playing: the mark follows a chapter change, the selection stays where it was.
+    await env.playTo(30);
+    await press(env.win, KEY_4);
+    await env.playTo(65);
+    t(n('show chapters: the mark follows the playback into the next chapter, the selection stays'),
+      JSON.stringify(rows()) === JSON.stringify(['0:00Intro [selected]', '1:00Main part [current]', '1:01:40Chapter 3']),
+      JSON.stringify(rows()));
+    // The Magic Remote's wheel: a notch down selects the next chapter, up the one before; none reaches the page.
+    const wheels = [];
+    env.win.addEventListener('wheel', () => wheels.push(1), true);
+    const notch = (dy) => env.win.document.querySelector('.ytaf-chapter-rows')
+      .dispatchEvent(new env.win.WheelEvent('wheel', { deltaY: dy, bubbles: true, cancelable: true }));
+    notch(120); notch(120); notch(120); notch(-120);
+    t(n('show chapters: wheel notches move the selection (down, down, down stops at the last, up), none reaches the page'),
+      rows()[1].indexOf('[selected]') !== -1 && wheels.length === 0, `${JSON.stringify(rows())} ${wheels.length}`);
+    notch(-120);
+    // YouTube puts every element that scrolls back to its top (a capture listener on window): the list's
+    // scrolling never reaches it.
+    const scrolled = [];
+    env.win.addEventListener('scroll', (e) => scrolled.push(e.target.className), true);
+    env.win.document.querySelector('.ytaf-chapter-rows').dispatchEvent(new env.win.Event('scroll'));
+    t(n('show chapters: the list\'s scrolling is kept from YouTube\'s scroll reset'), scrolled.length === 0, scrolled.join(' '));
+    await press(env.win, BACK);
+  }
+  {
+    // Left/Right Seek Step with the player's controls hidden: no seek behind the open list; once it is closed, Right
+    // seeks by the step again.
+    const env = await boot({ shortcut_key_4: 'chapter_list', seekStep: '10' }, [], { bar: BAR_MULTI });
+    env.win.document.querySelector('ytlr-multi-markers-player-bar-renderer').__instance =
+      { props: { data: { chapters: [{ start: 0, title: { simpleText: 'Intro' } }, { start: 60, title: { simpleText: 'Main' } }] } } };
+    const controls = env.win.document.createElement('yt-focus-container');
+    controls.setAttribute('idomkey', 'controls');
+    env.win.document.body.appendChild(controls);
+    await env.playTo(70);
+    await press(env.win, 52);
+    await wait(900);
+    await press(env.win, 39);
+    await wait(1200);
+    t(n('show chapters, seek step: Right with the list open does not seek behind it'),
+      !!env.win.document.querySelector('.ytaf-chapter-list') && env.state.time === 70, String(env.state.time));
+    await press(env.win, 461);
+    await press(env.win, 39);
+    await wait(1200);
+    t(n('show chapters, seek step: closed, Right seeks by the step again'), env.state.time === 80, String(env.state.time));
+  }
+  {
+    // The settings panel opened while the chapters load: the list does not open over it.
+    const env = await boot({ shortcut_key_4: 'chapter_list' }, [], { bar: BAR_MULTI });
+    env.win.document.querySelector('ytlr-multi-markers-player-bar-renderer').__instance =
+      { props: { data: { chapters: [{ start: 0, title: { simpleText: 'Intro' } }, { start: 60, title: { simpleText: 'Main' } }] } } };
+    await env.playTo(70);
+    trustedKey(env.win, 52, env.win.document.body, 'keydown');
+    trustedKey(env.win, 52, env.win.document.body, 'keyup');
+    await wait(100);
+    trustedKey(env.win, 404, env.win.document.body, 'keydown');
+    trustedKey(env.win, 404, env.win.document.body, 'keyup');
+    await wait(900);
+    const panel = env.win.document.querySelector('.ytaf-ui-container');
+    t(n('show chapters: the settings opened during the lookup keep the screen, no list over them'),
+      !!panel && panel.style.display === 'block' && !env.win.document.querySelector('.ytaf-chapter-list'),
+      `${panel && panel.style.display} ${!!env.win.document.querySelector('.ytaf-chapter-list')}`);
+  }
+  {
+    // No chapters of its own: the community's, with their names; between two of them none is playing.
+    const chapter = (start, end, name) => Object.assign(seg('chapter', start, end, 'chapter'), { description: name });
+    const env = await boot({ shortcut_key_4: 'chapter_list' }, [chapter(30, 60, 'Intro'), chapter(100, 200, 'Main part')],
+      { bar: BAR_MULTI });
+    await env.playTo(70);
+    await press(env.win, 52);
+    await wait(900);
+    const rows = Array.prototype.map.call(env.win.document.querySelectorAll('.ytaf-chapter-row'),
+      (r) => r.textContent + (r.classList.contains('current') ? ' [current]' : '') + (r.classList.contains('selected') ? ' [selected]' : ''));
+    t(n('show chapters, community: listed with their names, none current after one ended, the first selected'),
+      JSON.stringify(rows) === JSON.stringify(['0:30Intro [selected]', '1:40Main part']), JSON.stringify(rows));
+    await press(env.win, 13);
+    t(n('show chapters, community: OK jumps to its start'), env.state.time === 30, String(env.state.time));
+  }
+  {
+    const env = await boot({ shortcut_key_4: 'chapter_list', sbCommunityChapters: false },
+      [Object.assign(seg('chapter', 30, 60, 'chapter'), { description: 'Intro' })], { bar: BAR_MULTI });
+    await env.playTo(10);
+    await press(env.win, 52);
+    await wait(900);
+    t(n('show chapters, community chapters off: no list, "No chapters found"'),
+      !env.win.document.querySelector('.ytaf-chapter-list') && env.toasts().indexOf('No chapters found') !== -1, env.toasts());
+  }
   // ---- The Skip button of a Manual Skip segment ----
   {
     const env = await boot({ sbMode_sponsor: 'manual_skip' }, [seg('sponsor', 30, 60)]);

@@ -8,9 +8,10 @@ import { initLogoStyle } from './logo-style.js';
 import { initMathLetters } from './math-letters.js';
 import { initPlaybackSpeed, stepSpeed, resetSpeed, toggleSpeed } from './playback-speed.js';
 import { toggleChannelWhitelist, formatTimeSaved, titleTrayChannel } from './sponsorblock-extras.js';
+import { formatTime } from './sponsorblock-labels.js';
 import { toggleAudioOnly } from './audio-only.js';
 import sponsorBlockUI from './Sponsorblock-UI.js';
-import { sendKey, REMOTE_KEYS, COLOR_CODE_MAP, isGuestMode, isWatchPage, isShortsPage, isSearchPage, SELECTORS, getVideo, SYNTHETIC_KEY_FLAG, isSyntheticKeyEcho, isAutoplayOn, isLiveStream, rendererChapterStarts } from './utils.js';
+import { sendKey, REMOTE_KEYS, COLOR_CODE_MAP, isGuestMode, isWatchPage, isShortsPage, isSearchPage, SELECTORS, getVideo, SYNTHETIC_KEY_FLAG, isSyntheticKeyEcho, isAutoplayOn, isLiveStream, rendererChapterStarts, rendererChapters } from './utils.js';
 import { initTrackingBlock, destroyTrackingBlock } from './adblock.js';
 import logoOrangeUrl from './icons/logo-orange.png';
 import logoBlueUrl from './icons/logo-blue.png';
@@ -32,10 +33,11 @@ import { onWebClientRefused } from './web-client.js';
 // YouTube puts every element that scrolls back to its top (a capture "scroll"
 // listener on window), which pinned the settings pages there: the remote moved
 // the focus below the panel's edge and the page never followed. Registered
-// before YouTube's, at load, so it never sees the panel's own scrolling.
+// before YouTube's, at load, so it never sees the panel's own scrolling, nor
+// the chapter list's (Show Chapters).
 window.addEventListener('scroll', (evt) => {
   const target = evt.target;
-  if (target instanceof Element && target.closest('.ytaf-ui-container, .ytaf-dialog-backdrop')) evt.stopImmediatePropagation();
+  if (target instanceof Element && target.closest('.ytaf-ui-container, .ytaf-dialog-backdrop, .ytaf-chapter-list')) evt.stopImmediatePropagation();
 }, true);
 
 let lastSafeFocus = null;
@@ -171,6 +173,7 @@ const ACTION_SCOPES = {
     refresh_page: 'NON_VIDEO',
     chapter_skip: 'VIDEO',
     chapter_skip_prev: 'VIDEO',
+    chapter_list: 'VIDEO',
     seek_15_fwd: 'VIDEO',
     seek_15_back: 'VIDEO',
     play_pause: 'VIDEO',
@@ -1515,11 +1518,12 @@ function resetPendingSeek() {
 function cancelDelayedPlaybackActions() {
   playbackActionGeneration++;
   resetPendingSeek();
+  closeChapterList();
   // A chapter lookup waiting for the old playback lets go: a press on the new
   // one is taken, and may send its own Enter.
-  if (skipChapter.loading) {
-    skipChapter.loading = null;
-    skipChapter.hasForced = false;
+  if (chapterLoad.loading) {
+    chapterLoad.loading = null;
+    chapterLoad.hasForced = false;
   }
 }
 window.addEventListener('hashchange', cancelDelayedPlaybackActions);
@@ -1559,10 +1563,15 @@ function chapterStarts(chapterEls, duration) {
  * with Use Community Chapters on. Their starts and ends are the stops; the
  * chapter's name comes with the notice. False when there are none.
  */
-function skipCommunityChapter(video, direction) {
+/** The community's chapters (sponsorblock.js communityChapters) with Use Community Chapters on; [] otherwise. */
+function communityChapterList() {
   if (!configRead('sbCommunityChapters') || !window.sponsorblock ||
-      typeof window.sponsorblock.communityChapters !== 'function') return false;
-  const chapters = window.sponsorblock.communityChapters();
+      typeof window.sponsorblock.communityChapters !== 'function') return [];
+  return window.sponsorblock.communityChapters();
+}
+
+function skipCommunityChapter(video, direction) {
+  const chapters = communityChapterList();
   if (!chapters.length) return false;
   const stops = [0];
   for (const chapter of chapters) stops.push(chapter.start, chapter.end);
@@ -1593,14 +1602,24 @@ function skipCommunityChapter(video, direction) {
   return true;
 }
 
-async function skipChapter(direction = 'next') {
-  if(isShortsPage()) return;
-  // A press during the wait below would find no chapters yet.
-  if (skipChapter.loading) return;
-  const video = getVideo();
-  if (!video || !video.duration) return;
+// The chapter lookup's state, shared by Skip to Next/Previous Chapter and
+// Show Chapters: the Enter that makes the player load its chapter bar is
+// sent once per video.
+const chapterLoad = { loading: null, hasForced: false, lastBase: null, lastId: null };
 
-  skipChapter.hasForced = skipChapter.hasForced || false;
+/**
+ * The video and its chapter bar's elements, for the chapter actions. With no
+ * bar on the page yet, the first call for a video sends an Enter (the player's
+ * controls load it) and waits for it. Null when there is nothing to do: no
+ * video, Shorts, a lookup already waiting, or another playback by its end.
+ * `closeForcedControls` puts the controls that Enter opened away again.
+ */
+async function loadChapters() {
+  if(isShortsPage()) return null;
+  // A press during the wait below would find no chapters yet.
+  if (chapterLoad.loading) return null;
+  const video = getVideo();
+  if (!video || !video.duration) return null;
 
   // Another video: another address or source, or another readable id. An id
   // the player cannot give now is no change (the last readable one stays).
@@ -1612,11 +1631,11 @@ async function skipChapter(direction = 'next') {
   };
   let wasForcedNow = false;
   
-  if (skipChapter.lastBase !== base || (id && skipChapter.lastId && id !== skipChapter.lastId)) {
-    skipChapter.lastBase = base;
-    skipChapter.lastId = id;
-    skipChapter.hasForced = false;
-  } else if (id) skipChapter.lastId = id;
+  if (chapterLoad.lastBase !== base || (id && chapterLoad.lastId && id !== chapterLoad.lastId)) {
+    chapterLoad.lastBase = base;
+    chapterLoad.lastId = id;
+    chapterLoad.hasForced = false;
+  } else if (id) chapterLoad.lastId = id;
 
   const getChapterEls = () => {
     const bar = document.querySelector('ytlr-multi-markers-player-bar-renderer [idomkey="progress-bar"]');
@@ -1629,26 +1648,32 @@ async function skipChapter(direction = 'next') {
   let chapterEls = getChapterEls();
 
   // Hack: Force UI to load chapters if they aren't in DOM
-  if (chapterEls.length === 0 && !skipChapter.hasForced) {
-    console.log('[Chapters] No chapters found. Forcing UI...');
-    skipChapter.hasForced = true;
+  if (chapterEls.length === 0 && !chapterLoad.hasForced) {
+    chapterLoad.hasForced = true;
     wasForcedNow = true;
     showNotification('Loading chapters...');
     sendKey(REMOTE_KEYS.ENTER);
     const lookup = {};
-    skipChapter.loading = lookup;
+    chapterLoad.loading = lookup;
     await new Promise(resolve => setTimeout(resolve, 500));
     // Released by a navigation: a newer lookup may own the state by now.
-    if (skipChapter.loading !== lookup) return;
-    skipChapter.loading = null;
+    if (chapterLoad.loading !== lookup) return null;
+    chapterLoad.loading = null;
     // Another playback by now (A -> B -> A included): the Enter loaded nothing
     // for this one, so the next press may send it again.
     if (!isCurrent()) {
-      skipChapter.hasForced = false;
-      return;
+      chapterLoad.hasForced = false;
+      return null;
     }
     chapterEls = getChapterEls();
   }
+  return { video, chapterEls, wasForcedNow, closeForcedControls };
+}
+
+async function skipChapter(direction = 'next') {
+  const loaded = await loadChapters();
+  if (!loaded) return;
+  const { video, chapterEls, wasForcedNow, closeForcedControls } = loaded;
 
   const currentTime = video.currentTime;
   // The renderer's own start times count even with no marker elements mounted.
@@ -1698,6 +1723,147 @@ async function skipChapter(direction = 'next') {
     if (wasForcedNow) closeForcedControls();
   }
 }
+
+// --- Show Chapters ---
+// The open chapter list: { box, rows, items, index, video }, or null.
+let chapterList = null;
+
+/**
+ * What Show Chapters lists: the video's own chapters (named from the bar's
+ * data; from the bar's widths, unnamed, when the data has no start times),
+ * or with none the community's (Use Community Chapters on). In order.
+ */
+function chapterListItems(video, chapterEls) {
+  const own = rendererChapters();
+  if (own.length) return own;
+  const starts = chapterStarts(chapterEls, video.duration);
+  if (starts.length) return starts.map((start) => ({ start, name: '' }));
+  return communityChapterList();
+}
+
+/** The chapter playing at `now`: the last one started, unless it has ended (a community chapter's end). -1 for none. */
+function currentChapterIndex(items, now) {
+  let current = -1;
+  for (let i = 0; i < items.length; i++) {
+    if (items[i].start > now) break;
+    current = typeof items[i].end === 'number' && now >= items[i].end ? -1 : i;
+  }
+  return current;
+}
+
+function selectChapterRow(index) {
+  const { box, rows } = chapterList;
+  if (rows[chapterList.index]) rows[chapterList.index].classList.remove('selected');
+  chapterList.index = index;
+  const row = rows[index];
+  row.classList.add('selected');
+  // Scrolled by hand: scrollIntoView takes no options before Chrome 61. From
+  // the boxes, not offsetTop: rows are fractions of a pixel high, and whole
+  // pixels left every fifth row's bottom a pixel or two out of sight.
+  const list = box.querySelector('.ytaf-chapter-rows');
+  const listBox = list.getBoundingClientRect();
+  const rowBox = row.getBoundingClientRect();
+  if (rowBox.top < listBox.top) list.scrollTop -= Math.ceil(listBox.top - rowBox.top);
+  else if (rowBox.bottom > listBox.bottom) list.scrollTop += Math.ceil(rowBox.bottom - listBox.bottom);
+}
+
+function closeChapterList() {
+  if (!chapterList) return;
+  chapterList.video.removeEventListener('timeupdate', chapterList.follow);
+  chapterList.box.remove();
+  chapterList = null;
+}
+
+function pickChapter(index) {
+  const { video, items } = chapterList;
+  closeChapterList();
+  if (video.isConnected) video.currentTime = items[index].start;
+}
+
+function openChapterList(video, items) {
+  const current = currentChapterIndex(items, video.currentTime);
+  const theme = configRead('uiTheme');
+  const rows = items.map((item, i) => createElement('div', {
+    class: 'ytaf-chapter-row' + (i === current ? ' current' : ''),
+    events: { click: () => { if (chapterList) pickChapter(i); } }
+  }, createElement('span', { class: 'ytaf-chapter-time', text: formatTime(item.start) }),
+     createElement('span', { class: 'ytaf-chapter-name', text: item.name || `Chapter ${i + 1}` })));
+  const box = createElement('div', {
+    class: 'ytaf-chapter-list' +
+      (configRead('enableOledCareMode') ? ' oled-care' : '') +
+      (theme === 'classic-red' || theme === 'fox' ? ` theme-${theme}` : '')
+  }, createElement('div', { class: 'ytaf-chapter-title', text: 'Chapters' }),
+     createElement('div', { class: 'ytaf-chapter-rows' }, ...rows));
+  document.body.appendChild(box);
+  // The mark follows the playback while the list is open; the selection stays.
+  let marked = current;
+  const follow = () => {
+    const now = currentChapterIndex(items, video.currentTime);
+    if (now === marked) return;
+    if (rows[marked]) rows[marked].classList.remove('current');
+    if (rows[now]) rows[now].classList.add('current');
+    marked = now;
+  };
+  video.addEventListener('timeupdate', follow);
+  chapterList = { box, rows, items, index: -1, video, follow };
+  selectChapterRow(current === -1 ? 0 : current);
+}
+
+/** Show Chapters: opens the list, or closes it when open (the same key again). */
+async function showChapterList() {
+  // Its key is held back until released, as Back's is.
+  if (chapterList) { closeChapterList(); swallowHeldKey(); return; }
+  const loaded = await loadChapters();
+  if (!loaded) return;
+  const { video, chapterEls, wasForcedNow, closeForcedControls } = loaded;
+  const items = chapterListItems(video, chapterEls);
+  // Its Back is the mod's own: the list lets it through to the player.
+  if (wasForcedNow) closeForcedControls();
+  if (!items.length) { showNotification('No chapters found'); return; }
+  // The settings panel opened during the lookup: it keeps the keys.
+  if (optionsPanelVisible) return;
+  openChapterList(video, items);
+}
+
+/**
+ * The list's keys, ahead of YouTube's: Up/Down move, OK jumps to the chapter,
+ * Back closes. Left/Right do nothing (they would seek). The key that closed
+ * the list is held back until released, as the settings panel's is. Keys the
+ * mod sends itself pass. Other keys go on, a bound one still runs its action.
+ */
+function handleChapterListKey(evt) {
+  if (!chapterList || isSyntheticKey(evt)) return;
+  const code = evt.keyCode;
+  const k = REMOTE_KEYS;
+  const handled = code === k.UP.code || code === k.DOWN.code || code === k.LEFT.code || code === k.RIGHT.code ||
+    code === k.ENTER.code || code === k.BACK.code || code === 27;
+  if (!handled) return;
+  evt.preventDefault();
+  evt.stopImmediatePropagation();
+  if (evt.type !== 'keydown') return;
+  const last = chapterList.rows.length - 1;
+  if (code === k.UP.code) selectChapterRow(Math.max(0, chapterList.index - 1));
+  else if (code === k.DOWN.code) selectChapterRow(Math.min(last, chapterList.index + 1));
+  else if (code === k.ENTER.code) { pickChapter(chapterList.index); swallowHeldKey(); }
+  else if (code === k.BACK.code || code === 27) { closeChapterList(); swallowHeldKey(); }
+}
+
+/**
+ * The Magic Remote's wheel while the list is open: a notch down selects the
+ * next chapter, up the one before. Taken from YouTube and from Scroll Wheel
+ * Seeks (registered below, after this), so it never seeks behind the list.
+ */
+function handleChapterListWheel(evt) {
+  if (!chapterList || !evt.deltaY) return;
+  evt.preventDefault();
+  evt.stopImmediatePropagation();
+  const last = chapterList.rows.length - 1;
+  selectChapterRow(Math.max(0, Math.min(last, chapterList.index + (evt.deltaY > 0 ? 1 : -1))));
+}
+window.addEventListener('wheel', handleChapterListWheel, { passive: false, capture: true });
+
+// Another page or video, or the settings panel opening: the list goes.
+window.addEventListener('ytaf-panel-show', closeChapterList);
 
 function performBurstSeek(seconds, video) {
     if (!video) video = getVideo();
@@ -1787,7 +1953,9 @@ function playerControlsShown() {
 }
 
 function handleSeekStepKey(evt) {
-  if (isSyntheticKey(evt)) return;
+  // The chapter list open: Left and Right are its own (it ignores them), never
+  // a seek behind it. This listener runs before the list's.
+  if (isSyntheticKey(evt) || chapterList) return;
   const code = evt.keyCode;
   if (code !== REMOTE_KEYS.LEFT.code && code !== REMOTE_KEYS.RIGHT.code) return;
   if (evt.type === 'keyup') {
@@ -2340,6 +2508,9 @@ function handleShortcutAction(action) {
     case 'chapter_skip_prev':
         skipChapter('prev');
         break;
+    case 'chapter_list':
+        showChapterList();
+        break;
     case 'seek_15_fwd':
         performBurstSeek(5, video);
         break;
@@ -2542,6 +2713,9 @@ const eventHandler = (evt) => {
 
   evt.preventDefault();
   evt.stopPropagation();
+  // Show Chapters' key, opening or closing the list, reaches no other
+  // listener on window either (YouTube's sits there too).
+  if (action === 'chapter_list') evt.stopImmediatePropagation();
   handleShortcutAction(action);
 
   return false;
@@ -2553,6 +2727,10 @@ const eventHandler = (evt) => {
 // a trusted yellow keydown at all. The userScript runs before YouTube's app
 // code, so registering here first resolves our binding before theirs. Keys
 // with no binding return without preventDefault and propagate as before.
+// The chapter list's keys: after the held-key tracking above (a key that
+// closes the list is held back with it), before the shortcuts and YouTube.
+window.addEventListener('keydown', handleChapterListKey, true);
+window.addEventListener('keyup', handleChapterListKey, true);
 window.addEventListener('keydown', eventHandler, true);
 
 // --- Initialization & CSS Injection ---
