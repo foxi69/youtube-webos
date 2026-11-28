@@ -1208,3 +1208,93 @@
   background: #ff4e45;
   color: #ffffff;
 }
+
+/* Show Chapters: the chapter list over the player (ui.js openChapterList). */
+.ytaf-chapter-list {
+  position: fixed;
+  top: 12vh;
+  right: 3.7vh;
+  width: 55vh;
+  z-index: 1150;
+  background: #002840;
+  border: 0.09vh solid rgba(0, 212, 255, 0.4);
+  border-left: 0.37vh solid #00d4ff;
+  border-radius: 1.1vh;
+  box-shadow: 0 0.5vh 1.4vh rgba(0, 0, 0, 0.5);
+  color: white;
+  font-size: 1.85vh;
+  padding: 1.1vh 0;
+}
+
+.ytaf-chapter-title {
+  font-weight: 600;
+  padding: 0.6vh 1.85vh 1.1vh;
+}
+
+.ytaf-chapter-rows {
+  position: relative;
+  max-height: 62vh;
+  overflow: hidden;
+}
+
+.ytaf-chapter-row {
+  display: flex;
+  padding: 0.9vh 1.85vh;
+  line-height: 1.4;
+}
+
+.ytaf-chapter-time {
+  flex: none;
+  width: 9vh;
+  opacity: 0.75;
+}
+
+.ytaf-chapter-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ytaf-chapter-row.current .ytaf-chapter-name {
+  color: #00d4ff;
+  font-weight: 600;
+}
+
+.ytaf-chapter-row.selected {
+  background: rgba(0, 212, 255, 0.25);
+}
+
+.ytaf-chapter-list.theme-classic-red {
+  background: #1a1a1a;
+  border-color: #3f3f3f;
+  border-left-color: #ff0000;
+}
+
+.ytaf-chapter-list.theme-classic-red .ytaf-chapter-row.current .ytaf-chapter-name {
+  color: #ff4444;
+}
+
+.ytaf-chapter-list.theme-classic-red .ytaf-chapter-row.selected {
+  background: rgba(255, 0, 0, 0.25);
+}
+
+.ytaf-chapter-list.theme-fox {
+  background: #1f1610;
+  border-color: rgba(255, 122, 26, 0.4);
+  border-left-color: #ff7a1a;
+}
+
+.ytaf-chapter-list.theme-fox .ytaf-chapter-row.current .ytaf-chapter-name {
+  color: #ff7a1a;
+}
+
+.ytaf-chapter-list.theme-fox .ytaf-chapter-row.selected {
+  background: rgba(255, 122, 26, 0.25);
+}
+
+.ytaf-chapter-list.oled-care {
+  background: #000000;
+  box-shadow: none;
+  color: #cccccc;
+}

@@ -128,12 +128,30 @@ export const isSearchPage = () => _isSearchPage;
  * chapters the bar does not draw: the renderer gives those a width of 0.
  */
 export function rendererChapterStarts(drawnOnly = false) {
+  return rendererChapters(drawnOnly).map((chapter) => chapter.start);
+}
+
+/**
+ * The chapters of rendererChapterStarts() with their names
+ * (chapters[].title.simpleText, or its runs): [{ start, name }], the name ''
+ * when there is none.
+ */
+export function rendererChapters(drawnOnly = false) {
   const host = document.querySelector('ytlr-multi-markers-player-bar-renderer');
   const props = host && host.__instance && host.__instance.props;
   const own = props && props.data && Array.isArray(props.data.chapters) ? props.data.chapters : [];
   const listed = drawnOnly ? own.filter((chapter) => !chapter || chapter.width !== 0) : own;
-  // A number only: Number(null) is 0, a chapter at the start that is not there.
-  return listed.map((chapter) => chapter && chapter.start).filter((s) => typeof s === 'number' && isFinite(s));
+  const out = [];
+  for (const chapter of listed) {
+    // A number only: Number(null) is 0, a chapter at the start that is not there.
+    if (!chapter || typeof chapter.start !== 'number' || !isFinite(chapter.start)) continue;
+    const title = chapter.title;
+    let name = '';
+    if (title && typeof title.simpleText === 'string') name = title.simpleText;
+    else if (title && Array.isArray(title.runs)) name = title.runs.map((run) => (run && run.text) || '').join('');
+    out.push({ start: chapter.start, name: name.trim() });
+  }
+  return out;
 }
 
 // Cached <video> lookup. Several shortcut handlers re-query

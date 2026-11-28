@@ -8,9 +8,10 @@ import { initLogoStyle } from './logo-style.js';
 import { initMathLetters } from './math-letters.js';
 import { initPlaybackSpeed, stepSpeed, resetSpeed, toggleSpeed } from './playback-speed.js';
 import { toggleChannelWhitelist, formatTimeSaved, titleTrayChannel } from './sponsorblock-extras.js';
+import { formatTime } from './sponsorblock-labels.js';
 import { toggleAudioOnly } from './audio-only.js';
 import sponsorBlockUI from './Sponsorblock-UI.js';
-import { sendKey, REMOTE_KEYS, COLOR_CODE_MAP, isGuestMode, isWatchPage, isShortsPage, isSearchPage, SELECTORS, getVideo, SYNTHETIC_KEY_FLAG, isSyntheticKeyEcho, isAutoplayOn, isLiveStream, rendererChapterStarts } from './utils.js';
+import { sendKey, REMOTE_KEYS, COLOR_CODE_MAP, isGuestMode, isWatchPage, isShortsPage, isSearchPage, SELECTORS, getVideo, SYNTHETIC_KEY_FLAG, isSyntheticKeyEcho, isAutoplayOn, isLiveStream, rendererChapterStarts, rendererChapters } from './utils.js';
 import { initTrackingBlock, destroyTrackingBlock } from './adblock.js';
 import logoOrangeUrl from './icons/logo-orange.png';
 import logoBlueUrl from './icons/logo-blue.png';
@@ -171,6 +172,7 @@ const ACTION_SCOPES = {
     refresh_page: 'NON_VIDEO',
     chapter_skip: 'VIDEO',
     chapter_skip_prev: 'VIDEO',
+    chapter_list: 'VIDEO',
     seek_15_fwd: 'VIDEO',
     seek_15_back: 'VIDEO',
     play_pause: 'VIDEO',
@@ -1509,11 +1511,12 @@ function resetPendingSeek() {
 function cancelDelayedPlaybackActions() {
   playbackActionGeneration++;
   resetPendingSeek();
+  closeChapterList();
   // A chapter lookup waiting for the old playback lets go: a press on the new
   // one is taken, and may send its own Enter.
-  if (skipChapter.loading) {
-    skipChapter.loading = null;
-    skipChapter.hasForced = false;
+  if (chapterLoad.loading) {
+    chapterLoad.loading = null;
+    chapterLoad.hasForced = false;
   }
 }
 window.addEventListener('hashchange', cancelDelayedPlaybackActions);
@@ -1587,14 +1590,24 @@ function skipCommunityChapter(video, direction) {
   return true;
 }
 
-async function skipChapter(direction = 'next') {
-  if(isShortsPage()) return;
-  // A press during the wait below would find no chapters yet.
-  if (skipChapter.loading) return;
-  const video = getVideo();
-  if (!video || !video.duration) return;
+// The chapter lookup's state, shared by Skip to Next/Previous Chapter and
+// Show Chapters: the Enter that makes the player load its chapter bar is
+// sent once per video.
+const chapterLoad = { loading: null, hasForced: false, lastBase: null, lastId: null };
 
-  skipChapter.hasForced = skipChapter.hasForced || false;
+/**
+ * The video and its chapter bar's elements, for the chapter actions. With no
+ * bar on the page yet, the first call for a video sends an Enter (the player's
+ * controls load it) and waits for it. Null when there is nothing to do: no
+ * video, Shorts, a lookup already waiting, or another playback by its end.
+ * `closeForcedControls` puts the controls that Enter opened away again.
+ */
+async function loadChapters() {
+  if(isShortsPage()) return null;
+  // A press during the wait below would find no chapters yet.
+  if (chapterLoad.loading) return null;
+  const video = getVideo();
+  if (!video || !video.duration) return null;
 
   // Another video: another address or source, or another readable id. An id
   // the player cannot give now is no change (the last readable one stays).
@@ -1606,11 +1619,11 @@ async function skipChapter(direction = 'next') {
   };
   let wasForcedNow = false;
   
-  if (skipChapter.lastBase !== base || (id && skipChapter.lastId && id !== skipChapter.lastId)) {
-    skipChapter.lastBase = base;
-    skipChapter.lastId = id;
-    skipChapter.hasForced = false;
-  } else if (id) skipChapter.lastId = id;
+  if (chapterLoad.lastBase !== base || (id && chapterLoad.lastId && id !== chapterLoad.lastId)) {
+    chapterLoad.lastBase = base;
+    chapterLoad.lastId = id;
+    chapterLoad.hasForced = false;
+  } else if (id) chapterLoad.lastId = id;
 
   const getChapterEls = () => {
     const bar = document.querySelector('ytlr-multi-markers-player-bar-renderer [idomkey="progress-bar"]');
@@ -1623,26 +1636,33 @@ async function skipChapter(direction = 'next') {
   let chapterEls = getChapterEls();
 
   // Hack: Force UI to load chapters if they aren't in DOM
-  if (chapterEls.length === 0 && !skipChapter.hasForced) {
+  if (chapterEls.length === 0 && !chapterLoad.hasForced) {
     console.log('[Chapters] No chapters found. Forcing UI...');
-    skipChapter.hasForced = true;
+    chapterLoad.hasForced = true;
     wasForcedNow = true;
     showNotification('Loading chapters...');
     sendKey(REMOTE_KEYS.ENTER);
     const lookup = {};
-    skipChapter.loading = lookup;
+    chapterLoad.loading = lookup;
     await new Promise(resolve => setTimeout(resolve, 500));
     // Released by a navigation: a newer lookup may own the state by now.
-    if (skipChapter.loading !== lookup) return;
-    skipChapter.loading = null;
+    if (chapterLoad.loading !== lookup) return null;
+    chapterLoad.loading = null;
     // Another playback by now (A -> B -> A included): the Enter loaded nothing
     // for this one, so the next press may send it again.
     if (!isCurrent()) {
-      skipChapter.hasForced = false;
-      return;
+      chapterLoad.hasForced = false;
+      return null;
     }
     chapterEls = getChapterEls();
   }
+  return { video, chapterEls, wasForcedNow, closeForcedControls };
+}
+
+async function skipChapter(direction = 'next') {
+  const loaded = await loadChapters();
+  if (!loaded) return;
+  const { video, chapterEls, wasForcedNow, closeForcedControls } = loaded;
 
   const currentTime = video.currentTime;
   // The renderer's own start times count even with no marker elements mounted.
@@ -1692,6 +1712,119 @@ async function skipChapter(direction = 'next') {
     if (wasForcedNow) closeForcedControls();
   }
 }
+
+// --- Show Chapters ---
+// The open chapter list: { box, rows, items, index, video }, or null.
+let chapterList = null;
+
+/**
+ * What Show Chapters lists: the video's own chapters (named from the bar's
+ * data; from the bar's widths, unnamed, when the data has no start times),
+ * or with none the community's (Use Community Chapters on). In order.
+ */
+function chapterListItems(video, chapterEls) {
+  const own = rendererChapters();
+  if (own.length) return own;
+  const starts = chapterStarts(chapterEls, video.duration);
+  if (starts.length) return starts.map((start) => ({ start, name: '' }));
+  if (!configRead('sbCommunityChapters') || !window.sponsorblock ||
+      typeof window.sponsorblock.communityChapters !== 'function') return [];
+  return window.sponsorblock.communityChapters();
+}
+
+/** The chapter playing at `now`: the last one started, unless it has ended (a community chapter's end). -1 for none. */
+function currentChapterIndex(items, now) {
+  let current = -1;
+  for (let i = 0; i < items.length; i++) {
+    if (items[i].start > now) break;
+    current = typeof items[i].end === 'number' && now >= items[i].end ? -1 : i;
+  }
+  return current;
+}
+
+function selectChapterRow(index) {
+  const { box, rows } = chapterList;
+  if (rows[chapterList.index]) rows[chapterList.index].classList.remove('selected');
+  chapterList.index = index;
+  const row = rows[index];
+  row.classList.add('selected');
+  // Scrolled by hand: scrollIntoView takes no options before Chrome 61.
+  const list = box.querySelector('.ytaf-chapter-rows');
+  if (row.offsetTop < list.scrollTop) list.scrollTop = row.offsetTop;
+  else if (row.offsetTop + row.offsetHeight > list.scrollTop + list.clientHeight) {
+    list.scrollTop = row.offsetTop + row.offsetHeight - list.clientHeight;
+  }
+}
+
+function closeChapterList() {
+  if (!chapterList) return;
+  chapterList.box.remove();
+  chapterList = null;
+}
+
+function pickChapter(index) {
+  const { video, items } = chapterList;
+  closeChapterList();
+  if (video.isConnected) video.currentTime = items[index].start;
+}
+
+function openChapterList(video, items) {
+  const current = currentChapterIndex(items, video.currentTime);
+  const theme = configRead('uiTheme');
+  const rows = items.map((item, i) => createElement('div', {
+    class: 'ytaf-chapter-row' + (i === current ? ' current' : ''),
+    events: { click: () => { if (chapterList) pickChapter(i); } }
+  }, createElement('span', { class: 'ytaf-chapter-time', text: formatTime(item.start) }),
+     createElement('span', { class: 'ytaf-chapter-name', text: item.name || `Chapter ${i + 1}` })));
+  const box = createElement('div', {
+    class: 'ytaf-chapter-list' +
+      (configRead('enableOledCareMode') ? ' oled-care' : '') +
+      (theme === 'classic-red' || theme === 'fox' ? ` theme-${theme}` : '')
+  }, createElement('div', { class: 'ytaf-chapter-title', text: 'Chapters' }),
+     createElement('div', { class: 'ytaf-chapter-rows' }, ...rows));
+  document.body.appendChild(box);
+  chapterList = { box, rows, items, index: -1, video };
+  selectChapterRow(current === -1 ? 0 : current);
+}
+
+/** Show Chapters: opens the list, or closes it when open (the same key again). */
+async function showChapterList() {
+  if (chapterList) { closeChapterList(); return; }
+  const loaded = await loadChapters();
+  if (!loaded) return;
+  const { video, chapterEls, wasForcedNow, closeForcedControls } = loaded;
+  const items = chapterListItems(video, chapterEls);
+  // Its Back is the mod's own: the list lets it through to the player.
+  if (wasForcedNow) closeForcedControls();
+  if (!items.length) { showNotification('No chapters found'); return; }
+  openChapterList(video, items);
+}
+
+/**
+ * The list's keys, ahead of YouTube's: Up/Down move, OK jumps to the chapter,
+ * Back closes. Left/Right do nothing (they would seek). The key that closed
+ * the list is held back until released, as the settings panel's is. Keys the
+ * mod sends itself pass. Other keys go on, a bound one still runs its action.
+ */
+function handleChapterListKey(evt) {
+  if (!chapterList || isSyntheticKey(evt)) return;
+  const code = evt.keyCode;
+  const k = REMOTE_KEYS;
+  const handled = code === k.UP.code || code === k.DOWN.code || code === k.LEFT.code || code === k.RIGHT.code ||
+    code === k.ENTER.code || code === k.BACK.code || code === 27;
+  if (!handled) return;
+  evt.preventDefault();
+  evt.stopImmediatePropagation();
+  if (evt.type !== 'keydown') return;
+  const last = chapterList.rows.length - 1;
+  if (code === k.UP.code) selectChapterRow(Math.max(0, chapterList.index - 1));
+  else if (code === k.DOWN.code) selectChapterRow(Math.min(last, chapterList.index + 1));
+  else if (code === k.ENTER.code) { pickChapter(chapterList.index); swallowHeldKey(); }
+  else if (code === k.BACK.code || code === 27) { closeChapterList(); swallowHeldKey(); }
+}
+
+// Another page or video, or the settings panel opening: the list goes.
+window.addEventListener('ytaf-panel-show', closeChapterList);
 
 function performBurstSeek(seconds, video) {
     if (!video) video = getVideo();
@@ -2337,6 +2470,9 @@ function handleShortcutAction(action) {
     case 'chapter_skip_prev':
         skipChapter('prev');
         break;
+    case 'chapter_list':
+        showChapterList();
+        break;
     case 'seek_15_fwd':
         performBurstSeek(5, video);
         break;
@@ -2550,6 +2686,10 @@ const eventHandler = (evt) => {
 // a trusted yellow keydown at all. The userScript runs before YouTube's app
 // code, so registering here first resolves our binding before theirs. Keys
 // with no binding return without preventDefault and propagate as before.
+// The chapter list's keys: after the held-key tracking above (a key that
+// closes the list is held back with it), before the shortcuts and YouTube.
+window.addEventListener('keydown', handleChapterListKey, true);
+window.addEventListener('keyup', handleChapterListKey, true);
 window.addEventListener('keydown', eventHandler, true);
 
 // --- Initialization & CSS Injection ---
