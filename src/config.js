@@ -1,6 +1,6 @@
 import { backupWrite, backupReadAll } from './config-backup.js';
 
-const CONFIG_KEY = 'ytaf-configuration';
+export const CONFIG_KEY = 'ytaf-configuration';
 
 export const segmentTypes = {
   sponsor: { color: '#00d400', opacity: '0.7', name: 'sponsored' },

@@ -75,7 +75,7 @@ function onPlaybackPage() {
   return body.classList.contains('WEB_PAGE_TYPE_WATCH') || body.classList.contains('WEB_PAGE_TYPE_SHORTS');
 }
 
-export function isPreviewPing(url) {
+function isPreviewPing(url) {
   if (onPlaybackPage()) return false;
   const ping = pingOf(url);
   return !!ping && AUTOPLAY_RE.test(ping.search) && VIS_RE.test(ping.search);

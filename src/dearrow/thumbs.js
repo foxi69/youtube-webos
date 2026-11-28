@@ -105,7 +105,7 @@ export const thumbsFull = () =>
  * How wide copies are drawn now: as wide as Max Thumbnail Quality
  * makes YouTube's tiles (COPY_WIDTHS), DATA_URL_WIDTH for data URLs.
  */
-export function copyWidth() {
+function copyWidth() {
   if (!canBlob()) return DATA_URL_WIDTH;
   return COPY_WIDTHS[configRead('thumbnailQuality')] || COPY_WIDTHS.off;
 }

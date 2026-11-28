@@ -66,7 +66,7 @@ export class SpeedTimeMap {
   }
 }
 
-export function attachElementShim(el, timeMap, { onRateRequest }) {
+function attachElementShim(el, timeMap, { onRateRequest }) {
   if (timeMap.speed === 1) return { detach: () => {}, isAttached: () => false };
 
   const originals = {};

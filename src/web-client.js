@@ -9,7 +9,7 @@
  * (ui.js shows it), instead of the features going quiet with nothing said.
  * No imports: the bench tests load the lookups in Node, without a page.
  */
-export const WEB_CLIENT_VERSION = '2.20250601.01.00';
+const WEB_CLIENT_VERSION = '2.20250601.01.00';
 
 /** The body of a `next` request for `videoId`, in English (the AI label is read by its English text). */
 export function webNextBody(videoId) {

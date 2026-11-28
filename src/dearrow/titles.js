@@ -58,7 +58,7 @@ function formatTitle(title, isCustom) {
  * one for an earlier title does not count. As DeArrow's own Casual mode with
  * its default settings (videoBranding.ts shouldShowCasualOnVideo).
  */
-export function casualKeepsOriginal(video) {
+function casualKeepsOriginal(video) {
   const votes = video.raw && Array.isArray(video.raw.casualVotes) ? video.raw.casualVotes : null;
   if (!votes || !votes.length) return false;
   const own = untranslatedOrOriginal(video);

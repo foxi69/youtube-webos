@@ -46,11 +46,7 @@ const makeConfig = (env) => {
             ? {}
             : { [path.resolve(__dirname, 'src/dearrow/formatter.js')]: path.resolve(__dirname, 'src/dearrow/formatter-legacy.js') }),
           ...(isModern ? {
-          // Strip global polyfills for modern build
-          'core-js-pure': false,
-          '@babel/runtime-corejs3': false,
-          'regenerator-runtime': false,
-          'regenerator-runtime/runtime': false,
+          // Strip the fetch polyfill for modern build
           'whatwg-fetch': false,
           
           // Strip local polyfills
@@ -68,13 +64,9 @@ const makeConfig = (env) => {
           {
             test: /\.[mc]?[jt]s$/i,
             loader: 'babel-loader',
-            // Modern build excludes all node_modules for speed
-            exclude: isModern 
-              ? /node_modules/ 
-              : [
-                  /node_modules[\\/]core-js/,
-                  /node_modules[\\/]webpack[\\/]buildin/
-                ],
+            // Modern build excludes all node_modules for speed; the legacy
+            // one transpiles the few it bundles.
+            exclude: isModern ? /node_modules/ : undefined,
             options: isModern ? {
               // modern config
               cacheDirectory: true,

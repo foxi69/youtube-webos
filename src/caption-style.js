@@ -55,7 +55,7 @@ function readRecord(raw) {
   } catch { return null; }
 }
 
-export function keepCaptionStyle() {
+function keepCaptionStyle() {
   lastCheck = Date.now();
   let storage;
   try { storage = window.localStorage; } catch { return; }
@@ -109,7 +109,7 @@ function injectPositionStyle() {
   (document.head || document.documentElement).appendChild(style);
 }
 
-export function applySubtitlePosition() {
+function applySubtitlePosition() {
   const mode = configRead('subtitlePosition');
   const root = document.documentElement;
   for (const name of Object.keys(POSITION_CLASSES)) {
@@ -128,7 +128,7 @@ export function applySubtitlePosition() {
  *   Applies to the next track loaded (subtitles turned off and on, another
  *   video). From MickLesk's fork (subtitle-offset.ts).
  */
-export function shiftCaptions(track, delayMs) {
+function shiftCaptions(track, delayMs) {
   if (!track || track.wireMagic !== 'pb3' || !Array.isArray(track.events) || !delayMs) return 0;
   let moved = 0;
   for (const event of track.events) {

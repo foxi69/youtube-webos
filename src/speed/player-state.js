@@ -51,7 +51,7 @@ export function formatsCutAt(videoId) {
 
 // After the reloaded video first plays: the captions module can still drop or
 // change the track on its own within a few seconds.
-export const CAPTION_CHECKS_MS = [1000, 2500, 5000];
+const CAPTION_CHECKS_MS = [1000, 2500, 5000];
 
 /** Whether a captions track is a real one (on), not the empty one (off). */
 const isOn = (track) => !!(track && (track.languageCode || track.vssId || track.vss_id));
@@ -71,7 +71,7 @@ export function readCaptions(player) {
 }
 
 /** Whether two captions states show the same thing. */
-export function sameCaptions(a, b) {
+function sameCaptions(a, b) {
   if (!isOn(a) || !isOn(b)) return isOn(a) === isOn(b);
   const translated = (t) => (t.translationLanguage && t.translationLanguage.languageCode) || '';
   return a.languageCode === b.languageCode &&
@@ -81,7 +81,7 @@ export function sameCaptions(a, b) {
 }
 
 /** Puts `saved` back; returns an error only when applying the track failed. */
-export function applyCaptions(player, saved) {
+function applyCaptions(player, saved) {
   if (!saved) return null;
   const now = readCaptions(player);
   // Unreadable now: only turning subtitles on is worth a try.

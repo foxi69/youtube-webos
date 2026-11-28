@@ -34,7 +34,7 @@ const KEEP_S = 20;
 const RATES = [96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350];
 
 /** The AAC configuration the description (AudioSpecificConfig) holds, or null when ADTS cannot carry it. */
-export function parseAacConfig(cfg) {
+function parseAacConfig(cfg) {
   if (!cfg || cfg.codec !== 'mp4a.40.2') return null;
   const d = cfg.description;
   if (!d || d.byteLength < 2) return null;
