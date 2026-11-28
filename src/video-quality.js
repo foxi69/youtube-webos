@@ -937,6 +937,9 @@ function setupListeners() {
     // The picture's size changed (a <video> 'resize', caught on its way down).
     document.addEventListener('resize', onVideoResize, true);
 
+    // YouTube's TV app does not send yt-navigate-finish (none came on a webOS
+    // 25 TV over a video opened and left, 2026-11-28; ytaf-page-update below
+    // is what catches its navigation). The tests send it to drive one.
     window.addEventListener('yt-navigate-finish', handleNavigation);
 
     // Passed directly: handleNavigation falls back to isWatchPage() when the

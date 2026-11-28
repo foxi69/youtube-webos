@@ -365,7 +365,7 @@ configAddChangeListener('forceVideoCodec', () => applyMode(true));
 
 applyMode(false);
 
-/** Exposed for the diagnostic report. */
+/** The mode in effect, or null (bench/force-codec-test.cjs reads it). */
 export function forceCodecActive() {
   return narrowing() ? mode : null;
 }
