@@ -38,7 +38,7 @@ function write(next) {
 }
 
 /** The rule for `label`, or '' for none. */
-export function buildTagCss(label) {
+function buildTagCss(label) {
   return label ? `${TAG_SELECTOR}{content:${cssString(label)};}` : '';
 }
 

@@ -11,7 +11,7 @@
 // reloadContinuationData is left as sent.
 
 /** Rows left below the focused one when the app asks for the next ones. */
-export const ROWS_AHEAD = 4;
+const ROWS_AHEAD = 4;
 
 // The section lists themselves (their `continuations` sit beside `contents`),
 // per response type as adblock.js detects it.

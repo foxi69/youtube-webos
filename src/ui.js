@@ -212,7 +212,7 @@ shortcutKeys.forEach(key => {
 // Element#matches / Element#closest polyfills now live in polyfills.js,
 // imported via utils.js so every module gets them regardless of import order.
 
-const simulateBack = () => { console.log('[Shortcut] Simulating Back/Escape...'); sendKey(REMOTE_KEYS.BACK); };
+const simulateBack = () => { sendKey(REMOTE_KEYS.BACK); };
 
 // Engagement panel detection. The two renderers are alternative shells YouTube
 // uses depending on the panel type (comments/description vs. title-header
@@ -1037,6 +1037,15 @@ function createOptionsPanel() {
   pageFilters.appendChild(createSection('Cosmetic Filtering', cosmeticGroup, 'ytaf-section-2col'));
 
   // Dependency Management
+  // A row greyed out with Ad Blocking off still shows its own value (a ticked
+  // box stays ticked, and counts again once Ad Blocking is back on); its label
+  // says why it does nothing now.
+  const markNeedsAdBlock = (el, enabled) => {
+    const text = el && el.querySelector('.label-text, .section-title');
+    if (!text) return;
+    if (text.ytafBaseText === undefined) text.ytafBaseText = text.textContent;
+    text.textContent = enabled ? text.ytafBaseText : text.ytafBaseText + ' (needs Ad Blocking)';
+  };
   const setState = (el, enabled) => { if (!el) return; const input = el.querySelector('input'); if (input) { input.disabled = !enabled; el.style.opacity = enabled ? '1' : '0.5'; }};
 
   // Tracking Block rides on the same JSON.parse hook and network hooks as Ad
@@ -1046,7 +1055,7 @@ function createOptionsPanel() {
   const adBlockDependents = [elTrackingBlock, elRemoveGlobalShorts, elRemoveLiveVideos, elRemoveTopLiveGames, elRemoveMostRelevant, elRemoveUpcoming, elRemoveMembersOnly, elRemoveMixes, elHideRecommended];
   const updateDependencyState = () => {
     const enabled = configRead('enableAdBlock');
-    adBlockDependents.forEach(el => { setState(el, enabled); });
+    adBlockDependents.forEach(el => { setState(el, enabled); markNeedsAdBlock(el, enabled); });
   };
   
   elAdBlock.querySelector('input').addEventListener('change', updateDependencyState);
@@ -1081,6 +1090,7 @@ function createOptionsPanel() {
     const updateFeedSection = () => {
       const enabled = configRead('enableAdBlock');
       feedSection.style.opacity = enabled ? '1' : '0.5';
+      markNeedsAdBlock(feedSection, enabled);
       const controls = feedSection.querySelectorAll('input, button');
       for (let i = 0; i < controls.length; i++) {
         if (controls[i].tabIndex !== -1 || controls[i].disabled) controls[i].disabled = !enabled;
@@ -1115,9 +1125,9 @@ function createOptionsPanel() {
   createAlignedCycleControl('subtitlesAtStart', subtitlesAtStartModes),
   createElement('div', { text: 'Off: no subtitles until you turn them on. Translated: only the Auto-Translate Subtitles language above', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   createAlignedCycleControl('subtitlePosition', subtitlePositionModes),
+  createElement('div', { text: 'Lifts the subtitles, for a TV or soundbar that covers the bottom of the picture. Their font, size and colours are in YouTube\'s own settings, and are kept now', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   createAlignedCycleControl('subtitleDelay', subtitleDelayModes),
   createElement('div', { text: 'For subtitles out of step with the sound. Applies to the next subtitles loaded: turn them off and on again', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
-  createElement('div', { text: 'Lifts the subtitles, for a TV or soundbar that covers the bottom of the picture. Their font, size and colours are in YouTube\'s own settings, and are kept now', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   createConfigCheckbox('forceOriginalAudio'),
   createConfigCheckbox('audioOnlyStream'),
   createElement('div', { text: 'With the Audio-Only Mode action: only the sound is downloaded and played, not the hidden picture. The video loads again where it is when the mode goes on or off. Only at 1x: at another speed the picture is only hidden', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
@@ -1358,7 +1368,6 @@ function endOledBlackout() {
 
 function showOptionsPanel(visible) {
   if (panelInitBlock) {
-      console.log('[UI] Options panel toggle blocked due to initialization lock.');
       return;
   }
   if (visible === undefined || visible === null) visible = true;
@@ -1379,7 +1388,6 @@ function showOptionsPanel(visible) {
 
     // Lazy Initialization
     if (!optionsPanel) {
-        console.log('[UI] Initializing Options Panel (Lazy Load)...');
 		panelInitBlock = true;
         setTimeout(() => { panelInitBlock = false; }, 500);
         optionsPanel = createOptionsPanel();
@@ -1980,13 +1988,12 @@ window.addEventListener('keyup', handleSeekStepKey, true);
 function triggerInternal(element, name) {
   if (!element) return false;
   let success = false;
-  try { element.click(); console.log(`[Shortcut] Standard click triggered for ${name}`); success = true; } 
+  try { element.click(); success = true; } 
   catch (e) { console.warn(`[Shortcut] Standard click failed for ${name}:`, e); }
   
   // Try to access internal React/Polymer instance for robust clicking
   const instance = element.__instance;
   if (instance && typeof instance.onSelect === 'function') {
-    console.log(`[Shortcut] Also calling internal onSelect() for ${name}`);
     try {
       const mockEvent = { type: 'click', stopPropagation: () => {}, preventDefault: () => {}, target: element, currentTarget: element, bubbles: true, cancelable: true };
       instance.onSelect(mockEvent);
@@ -2251,7 +2258,6 @@ function toggleDescriptionLogic() {
     else if (triggerInternal(target, 'Description')) {
             setTimeout(() => {
                 if (window.returnYouTubeDislike) {
-                    console.log('[Shortcut] Manually triggering RYD check for description panel...');
                     window.returnYouTubeDislike.observeBodyForPanel();
                 }
             }, 350);
@@ -2295,7 +2301,6 @@ function refreshPageLogic() {
     };
 
     const appRoot = document.querySelector('ytlr-app') || document.body;
-    console.log('[Shortcut] Triggering soft reload...');
     
     appRoot.dispatchEvent(new CustomEvent('innertube-command', {
         bubbles: true,

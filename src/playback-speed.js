@@ -9,10 +9,10 @@ import { showNotification } from './notifications.js';
 import { configRead, configWrite, configAddChangeListener, forceQualityLines, forceQualityOn } from './config.js';
 import { SELECTORS, SYNTHETIC_KEY_FLAG } from './utils.js';
 
-export const SPEED_BUTTON_TYPE = 'TRANSPORT_CONTROLS_BUTTON_TYPE_SPEED_BUTTON';
-export const SPEED_OVERLAY_TYPE = 'CLIENT_OVERLAY_TYPE_VIDEO_PLAYBACK_SPEED';
+const SPEED_BUTTON_TYPE = 'TRANSPORT_CONTROLS_BUTTON_TYPE_SPEED_BUTTON';
+const SPEED_OVERLAY_TYPE = 'CLIENT_OVERLAY_TYPE_VIDEO_PLAYBACK_SPEED';
 
-export function enableSpeedButton(response) {
+function enableSpeedButton(response) {
   const holder =
     response && response.transportControls
       ? response
@@ -44,7 +44,7 @@ export function enableSpeedButton(response) {
   return enabled;
 }
 
-export function installSpeedButtonPatch(win, isOn) {
+function installSpeedButtonPatch(win, isOn) {
   const json = win.JSON || JSON;
   const original = json.parse;
   const patched = function () {
@@ -75,7 +75,7 @@ export function installSpeedButtonPatch(win, isOn) {
 // `avoidAv1` (webOS 6 and older): above 1x it loses AV1 video too, when a
 // codec the TV can play is left (keepNonAv1Video). Below 1x the decoder shows
 // fewer frames a second, so AV1 stays.
-export function installAudioOfferFilter(win, getSpeed, stretchable, avoidAv1 = false) {
+function installAudioOfferFilter(win, getSpeed, stretchable, avoidAv1 = false) {
   const json = win.JSON || JSON;
   const original = json.parse;
   const patched = function () {
@@ -128,7 +128,7 @@ export function enableNativeSpeedMenu(win, isOn = () => true) {
   };
 }
 
-export function hookRateAssignments(win, controller, now = () => Date.now()) {
+function hookRateAssignments(win, controller, now = () => Date.now()) {
   const proto = (win.Object || Object).prototype;
   const previous = Object.getOwnPropertyDescriptor(proto, 'setPlaybackRate');
   Object.defineProperty(proto, 'setPlaybackRate', {
@@ -161,7 +161,7 @@ export function hookRateAssignments(win, controller, now = () => Date.now()) {
   };
 }
 
-export function bindPlayerRate(player, controller, now = () => Date.now()) {
+function bindPlayerRate(player, controller, now = () => Date.now()) {
   if (
     !player ||
     typeof player.setPlaybackRate !== 'function' ||
@@ -201,7 +201,7 @@ function wrapRate(original, controller, now) {
   return wrapped;
 }
 
-export const IGNORE_AFTER_RELOAD_MS = 3000;
+const IGNORE_AFTER_RELOAD_MS = 3000;
 
 export const SPEEDS = [1, 1.25, 1.5, 1.75, 2];
 
@@ -246,7 +246,7 @@ const KEY_TIMES = 16;
  * whether the viewer pressed a key after `from` and at or before `to`
  * (Date.now() times). Without it only the time window tells our records.
  */
-export function createSpeedController({
+function createSpeedController({
   win, getPlayer, notify, configRead, codecs, userKeyAt = () => 0, keyPressedBetween = () => true,
   onSpeed = () => {}
 }) {
