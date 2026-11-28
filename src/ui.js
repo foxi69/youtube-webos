@@ -1803,7 +1803,8 @@ function openChapterList(video, items) {
 
 /** Show Chapters: opens the list, or closes it when open (the same key again). */
 async function showChapterList() {
-  if (chapterList) { closeChapterList(); return; }
+  // Its key is held back until released, as Back's is.
+  if (chapterList) { closeChapterList(); swallowHeldKey(); return; }
   const loaded = await loadChapters();
   if (!loaded) return;
   const { video, chapterEls, wasForcedNow, closeForcedControls } = loaded;

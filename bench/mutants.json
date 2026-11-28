@@ -362,7 +362,7 @@
   {"id":"chapter-list-swallow-back","file":"src/ui.js","from":"{ closeChapterList(); swallowHeldKey(); }","to":"{ closeChapterList(); }","why":"the keyup of the Back that closed the list reaches YouTube"},
   {"id":"chapter-list-left","file":"src/ui.js","from":"code === k.LEFT.code || code === k.RIGHT.code ||\n","to":"","why":"Left and Right seek the video behind the open list"},
   {"id":"chapter-list-page","file":"src/ui.js","from":"  resetPendingSeek();\n  closeChapterList();","to":"  resetPendingSeek();","why":"the list stays open on another page"},
-  {"id":"chapter-list-toggle","file":"src/ui.js","from":"  if (chapterList) { closeChapterList(); return; }","to":"","why":"the bound key pressed again opens a second list instead of closing it"},
+  {"id":"chapter-list-toggle","file":"src/ui.js","from":"  if (chapterList) { closeChapterList(); swallowHeldKey(); return; }","to":"","why":"the bound key pressed again opens a second list instead of closing it"},
   {"id":"chapter-name-runs","file":"src/utils.js","from":"else if (title && Array.isArray(title.runs)) name = title.runs.map((run) => (run && run.text) || '').join('');","to":"","why":"a chapter named in runs is listed as Chapter N"},
   {"id": "titles-only-asks-dearrow", "file": "src/dearrow/lookup.js", "from": "if (!video.fetched && titlesOnly()) {", "to": "if (false) {", "why": "with DeArrow off, Show Original Titles sends every video's hash prefix to DeArrow's server"},
   {"id": "titles-only-formats", "file": "src/dearrow/titles.js", "from": "  if (!deArrowOn()) {\n    const own", "to": "  if (false) {\n    const own", "why": "with DeArrow off, the original titles get DeArrow's Title Case and emoji removal"},
@@ -373,5 +373,6 @@
   {"id":"chapter-list-follow","file":"src/ui.js","from":"  video.addEventListener('timeupdate', follow);\n","to":"","why":"the list opened before a chapter change keeps marking the chapter that ended"},
   {"id":"chapter-list-scroll-guard","file":"src/ui.js","from":"'.ytaf-ui-container, .ytaf-dialog-backdrop, .ytaf-chapter-list'","to":"'.ytaf-ui-container, .ytaf-dialog-backdrop'","why":"YouTube puts the chapter list back to its top, so a chapter selected below the fold is out of sight"},
   {"id":"chapter-list-panel-open","file":"src/ui.js","from":"  // The settings panel opened during the lookup: it keeps the keys.\n  if (optionsPanelVisible) return;\n","to":"","why":"the settings opened while the chapters load get the list over them, and lose their keys to it"},
-  {"id":"chapter-list-wheel","file":"src/ui.js","from":"window.addEventListener('wheel', handleChapterListWheel, { passive: false, capture: true });\n","to":"","why":"the Magic Remote's wheel does nothing in the chapter list"}
+  {"id":"chapter-list-wheel","file":"src/ui.js","from":"window.addEventListener('wheel', handleChapterListWheel, { passive: false, capture: true });\n","to":"","why":"the Magic Remote's wheel does nothing in the chapter list"},
+  {"id":"chapter-list-toggle-swallow","file":"src/ui.js","from":"{ closeChapterList(); swallowHeldKey(); return; }","to":"{ closeChapterList(); return; }","why":"the keyup of the bound key that closed the list reaches YouTube"}
 ]

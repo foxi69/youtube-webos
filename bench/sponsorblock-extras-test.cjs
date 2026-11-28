@@ -1255,11 +1255,12 @@ run(async () => {
     env.win.document.querySelector('ytlr-multi-markers-player-bar-renderer').__instance = { props: { data: { chapters: [
       { start: 0, title: { simpleText: 'Intro' } }, { start: 60, title: { runs: [{ text: 'Main ' }, { text: 'part' }] } }, { start: 3700 }
     ] } } };
-    // The keys that get past the list to the page (YouTube's handlers), the mod's own included.
+    // The keys that get past the list to the page, the mod's own included. On window in the capture phase,
+    // where YouTube's handler sits, so a key only stopPropagation()'d would still be counted.
     const passed = [];
     const record = (e) => passed.push(`${e.type}:${e.keyCode}`);
-    env.win.addEventListener('keydown', record);
-    env.win.addEventListener('keyup', record);
+    env.win.addEventListener('keydown', record, true);
+    env.win.addEventListener('keyup', record, true);
     const list = () => env.win.document.querySelector('.ytaf-chapter-list');
     const rows = () => Array.prototype.map.call(env.win.document.querySelectorAll('.ytaf-chapter-row'),
       (r) => r.textContent + (r.classList.contains('current') ? ' [current]' : '') + (r.classList.contains('selected') ? ' [selected]' : ''));
@@ -1294,8 +1295,10 @@ run(async () => {
     t(n('show chapters: Back closes the list, its keydown and keyup kept from the page'),
       !list() && env.state.time === 0 && passed.length === 0, `${!!list()} ${passed.join(' ')}`);
     await press(env.win, KEY_4);
+    passed.length = 0;
     await press(env.win, KEY_4);
-    t(n('show chapters: the key again closes it'), !list());
+    t(n('show chapters: the key again closes it, its keyup kept from the page'),
+      !list() && passed.indexOf('keyup:52') === -1, passed.join(' '));
     await press(env.win, KEY_4);
     env.win.dispatchEvent(new env.win.HashChangeEvent('hashchange'));
     await wait(50);
@@ -1312,7 +1315,7 @@ run(async () => {
       JSON.stringify(rows()));
     // The Magic Remote's wheel: a notch down selects the next chapter, up the one before; none reaches the page.
     const wheels = [];
-    env.win.addEventListener('wheel', () => wheels.push(1));
+    env.win.addEventListener('wheel', () => wheels.push(1), true);
     const notch = (dy) => env.win.document.querySelector('.ytaf-chapter-rows')
       .dispatchEvent(new env.win.WheelEvent('wheel', { deltaY: dy, bubbles: true, cancelable: true }));
     notch(120); notch(120); notch(120); notch(-120);
