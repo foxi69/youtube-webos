@@ -448,6 +448,9 @@ const configOptions = new Map([
   ['searchDuration', { default: 'any', desc: 'Search: Duration' }],
   ['searchType', { default: 'any', desc: 'Search: Type' }],
   ['searchFeature', { default: 'any', desc: 'Search: Only' }],
+  // Named after what it first did (black borders); it now turns on the Liquid
+  // Glass UI (html.ytaf-remove-borders). Not renamed: settings are never
+  // migrated, so a new key would switch it off for everyone who has it on.
   ['removeBlackBorders', { default: false, desc: 'New Liquid Glass UI' }],
   ['videoPreviews', { default: 'default', desc: 'Video Previews' }],
   // OK on a playing preview carries it on instead of loading the video again (adblock.js).

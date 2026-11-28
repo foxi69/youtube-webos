@@ -30,7 +30,7 @@ const ua = (chrome, year) => 'Mozilla/5.0 (Web0S; Linux/SmartTV) AppleWebKit/537
 // Without a year, webos-utils.js falls back to the firmware version
 // (_TV_O18/33 and up: webOS 25), then to the Chrome version (simulator mode:
 // 120 and up 25, 53 and below 4, else 6). In simulator mode the cast block
-// stays off even as webOS 25 (userScript.js), while the panel still offers it.
+// stays off even as webOS 25 (userScript.js), and the panel does not offer it.
 const MATRIX = {
   legacy: [
     { name: 'webOS 3', ua: ua('38.0.2125.122', 2016), version: 3 },
@@ -155,8 +155,8 @@ run(async () => {
     t(n + 'the settings panel opens', !panelThrew && text !== null, panelThrew && panelThrew.message);
     if (text !== null) {
       const has = (label) => text.indexOf(label) !== -1;
-      t(n + `panel: Block webOS Cast Service ${v >= 25 ? 'offered' : 'not offered'}`,
-        has('Block webOS Cast Service') === (v >= 25));
+      t(n + `panel: Block webOS Cast Service ${blocks ? 'offered' : 'not offered'}`,
+        has('Block webOS Cast Service') === blocks);
       t(n + 'panel: Fix Black Tile Previews offered', has('Fix Black Tile Previews'));
     }
     t(n + 'no console.error / jsdomError', errors.length === 0, errors.slice(0, 2).join(' || '));

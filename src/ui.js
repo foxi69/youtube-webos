@@ -16,7 +16,7 @@ import logoOrangeUrl from './icons/logo-orange.png';
 import logoBlueUrl from './icons/logo-blue.png';
 import logoRedUrl from './icons/logo-red.png';
 import logoDarkUrl from './icons/logo-dark.png';
-import { isWebOS25 } from './webos-utils.js';
+import { isWebOS25, simulatorMode } from './webos-utils.js';
 import { GUIDE_FIT_SUPPORTED } from './guide-fit.js';
 import { subtitleTranslateLanguages, pickTrack, currentTarget } from './subtitle-translate.js';
 import { showNotification, setNotificationOled, setNotificationTheme } from './notifications.js';
@@ -1155,7 +1155,8 @@ function createOptionsPanel() {
   updateAutoLoginRow();
   const interfaceGroup = [createAlignedCycleControl('uiTheme', uiThemes), createConfigCheckbox('enableAutoLogin'), elAutoSelectAccount, createPerAccountControl(), createAlignedCycleControl('thumbnailQuality', thumbnailQualityModes), createConfigCheckbox('dearrowUntranslatedTitles'), createElement('div', { text: 'Video titles as their uploader wrote them, where YouTube shows them translated into your language. One request to YouTube per video shown', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }), createLogoControl(), createAlignedCycleControl('clockMode', clockModes), elClockDuringPlayback, elShowWatchTime, createConfigCheckbox('enableOledCareMode'), createConfigCheckbox('disableNotifications'), createConfigCheckbox('keyboardSearch'), createAlignedCycleControl('searchUploadDate', searchUploadDateModes), createAlignedCycleControl('searchDuration', searchDurationModes), createAlignedCycleControl('searchType', searchTypeModes), createAlignedCycleControl('searchFeature', searchFeatureModes), createConfigCheckbox('pointerSettingsButton'), createConfigCheckbox('disableAnimations'), createConfigCheckbox('keepAppOpenWhenPaused')];
   // The cast block only exists on webOS 25 (see userScript.js).
-  if (isWebOS25()) interfaceGroup.push(createConfigCheckbox('blockWebosCast'));
+  // Shown only where userScript.js starts it: webOS 25, not the simulator.
+  if (isWebOS25() && !simulatorMode) interfaceGroup.push(createConfigCheckbox('blockWebosCast'));
   // --- Page 3: Interface ---
   makePage(2).appendChild(createSection('Interface', interfaceGroup));
 
