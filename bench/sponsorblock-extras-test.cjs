@@ -1303,6 +1303,37 @@ run(async () => {
     passed.length = 0;
     await press(env.win, DOWN);
     t(n('show chapters: closed, the keys reach the page again'), passed.join(' ') === 'keydown:40 keyup:40', passed.join(' '));
+    // Open while playing: the mark follows a chapter change, the selection stays where it was.
+    await env.playTo(30);
+    await press(env.win, KEY_4);
+    await env.playTo(65);
+    t(n('show chapters: the mark follows the playback into the next chapter, the selection stays'),
+      JSON.stringify(rows()) === JSON.stringify(['0:00Intro [selected]', '1:00Main part [current]', '1:01:40Chapter 3']),
+      JSON.stringify(rows()));
+    // YouTube puts every element that scrolls back to its top (a capture listener on window): the list's
+    // scrolling never reaches it.
+    const scrolled = [];
+    env.win.addEventListener('scroll', (e) => scrolled.push(e.target.className), true);
+    env.win.document.querySelector('.ytaf-chapter-rows').dispatchEvent(new env.win.Event('scroll'));
+    t(n('show chapters: the list\'s scrolling is kept from YouTube\'s scroll reset'), scrolled.length === 0, scrolled.join(' '));
+    await press(env.win, BACK);
+  }
+  {
+    // The settings panel opened while the chapters load: the list does not open over it.
+    const env = await boot({ shortcut_key_4: 'chapter_list' }, [], { bar: BAR_MULTI });
+    env.win.document.querySelector('ytlr-multi-markers-player-bar-renderer').__instance =
+      { props: { data: { chapters: [{ start: 0, title: { simpleText: 'Intro' } }, { start: 60, title: { simpleText: 'Main' } }] } } };
+    await env.playTo(70);
+    trustedKey(env.win, 52, env.win.document.body, 'keydown');
+    trustedKey(env.win, 52, env.win.document.body, 'keyup');
+    await wait(100);
+    trustedKey(env.win, 404, env.win.document.body, 'keydown');
+    trustedKey(env.win, 404, env.win.document.body, 'keyup');
+    await wait(900);
+    const panel = env.win.document.querySelector('.ytaf-ui-container');
+    t(n('show chapters: the settings opened during the lookup keep the screen, no list over them'),
+      !!panel && panel.style.display === 'block' && !env.win.document.querySelector('.ytaf-chapter-list'),
+      `${panel && panel.style.display} ${!!env.win.document.querySelector('.ytaf-chapter-list')}`);
   }
   {
     // No chapters of its own: the community's, with their names; between two of them none is playing.

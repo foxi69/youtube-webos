@@ -1215,7 +1215,8 @@
   top: 12vh;
   right: 3.7vh;
   width: 55vh;
-  z-index: 1150;
+  /* Above the player, below the OLED black overlay (1100) and the notices (1200). */
+  z-index: 1050;
   background: #002840;
   border: 0.09vh solid rgba(0, 212, 255, 0.4);
   border-left: 0.37vh solid #00d4ff;

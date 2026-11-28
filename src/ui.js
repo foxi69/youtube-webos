@@ -33,10 +33,11 @@ import { onWebClientRefused } from './web-client.js';
 // YouTube puts every element that scrolls back to its top (a capture "scroll"
 // listener on window), which pinned the settings pages there: the remote moved
 // the focus below the panel's edge and the page never followed. Registered
-// before YouTube's, at load, so it never sees the panel's own scrolling.
+// before YouTube's, at load, so it never sees the panel's own scrolling, nor
+// the chapter list's (Show Chapters).
 window.addEventListener('scroll', (evt) => {
   const target = evt.target;
-  if (target instanceof Element && target.closest('.ytaf-ui-container, .ytaf-dialog-backdrop')) evt.stopImmediatePropagation();
+  if (target instanceof Element && target.closest('.ytaf-ui-container, .ytaf-dialog-backdrop, .ytaf-chapter-list')) evt.stopImmediatePropagation();
 }, true);
 
 let lastSafeFocus = null;
@@ -1758,6 +1759,7 @@ function selectChapterRow(index) {
 
 function closeChapterList() {
   if (!chapterList) return;
+  chapterList.video.removeEventListener('timeupdate', chapterList.follow);
   chapterList.box.remove();
   chapterList = null;
 }
@@ -1783,7 +1785,17 @@ function openChapterList(video, items) {
   }, createElement('div', { class: 'ytaf-chapter-title', text: 'Chapters' }),
      createElement('div', { class: 'ytaf-chapter-rows' }, ...rows));
   document.body.appendChild(box);
-  chapterList = { box, rows, items, index: -1, video };
+  // The mark follows the playback while the list is open; the selection stays.
+  let marked = current;
+  const follow = () => {
+    const now = currentChapterIndex(items, video.currentTime);
+    if (now === marked) return;
+    if (rows[marked]) rows[marked].classList.remove('current');
+    if (rows[now]) rows[now].classList.add('current');
+    marked = now;
+  };
+  video.addEventListener('timeupdate', follow);
+  chapterList = { box, rows, items, index: -1, video, follow };
   selectChapterRow(current === -1 ? 0 : current);
 }
 
@@ -1797,6 +1809,8 @@ async function showChapterList() {
   // Its Back is the mod's own: the list lets it through to the player.
   if (wasForcedNow) closeForcedControls();
   if (!items.length) { showNotification('No chapters found'); return; }
+  // The settings panel opened during the lookup: it keeps the keys.
+  if (optionsPanelVisible) return;
   openChapterList(video, items);
 }
 
