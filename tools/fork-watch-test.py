@@ -179,6 +179,97 @@ check('new_commits: ...asked since the cutoff, for that branch only',
 check('new_commits: ...and a branch that compares with nothing ahead asks for none',
       not any(c[3] and c[3].get('sha') == 'same' for c in asked), asked)
 
+# --- new_commits(): a commit that changes no code is left out ---
+def files(*names):
+    return {'files': [{'filename': n} for n in names]}
+
+
+SHAS = {name: letter * 40 for name, letter in (
+    ('docs', '1'), ('code', '2'), ('mixed', '3'), ('listing', '4'), ('nofiles', '5'), ('error', '6'), ('huge', '7'))}
+api = Api({
+    '/repos/dev/youtube-webos/branches': [{'name': 'good'}],
+    '/repos/me/youtube-webos/compare/main...dev:good': {'ahead_by': 7, 'total_commits': 7, 'commits': [
+        commit(SHAS['docs'], 'Readme and a screenshot'), commit(SHAS['code'], 'A fix'),
+        commit(SHAS['mixed'], 'A fix with its notes'), commit(SHAS['listing'], 'Update repo.json'),
+        commit(SHAS['nofiles'], 'Files not listed'), commit(SHAS['error'], 'Files not readable'),
+        commit(SHAS['huge'], 'Three hundred pictures')]},
+    '/repos/dev/youtube-webos/commits/' + SHAS['docs']: files('README.md', 'docs/setup.txt', 'screenshots/a.PNG', 'LICENSE'),
+    '/repos/dev/youtube-webos/commits/' + SHAS['code']: files('src/ui.js'),
+    '/repos/dev/youtube-webos/commits/' + SHAS['mixed']: files('CHANGELOG.md', 'src/ui.js'),
+    '/repos/dev/youtube-webos/commits/' + SHAS['listing']: files('repo.json', 'repo-webos22.json'),
+    '/repos/dev/youtube-webos/commits/' + SHAS['nofiles']: {'files': []},
+    '/repos/dev/youtube-webos/commits/' + SHAS['error']: http_error(502),
+    '/repos/dev/youtube-webos/commits/' + SHAS['huge']: files(*[f'screenshots/{i}.png' for i in range(300)]),
+})
+fw.request = api
+known = {}
+found = fw.new_commits(FORK, NOW - dt.timedelta(days=30), set(), known, '2026-11-11', set())
+titles = sorted(c['title'] for c in found)
+check('new_commits: only documentation, pictures or the Homebrew listing changed: left out',
+      'Readme and a screenshot' not in titles and 'Update repo.json' not in titles, titles)
+check('new_commits: code changed, alone or with its notes: reported',
+      'A fix' in titles and 'A fix with its notes' in titles, titles)
+check('new_commits: files not listed, not readable (502) or filling the answer: reported',
+      titles == ['A fix', 'A fix with its notes', 'Files not listed', 'Files not readable', 'Three hundred pictures'], titles)
+check('new_commits: a commit left out is not marked as reported yet (a report has not listed it)',
+      SHAS['docs'][:12] not in known and SHAS['listing'][:12] not in known and SHAS['code'][:12] in known, sorted(known))
+check("new_commits: ...it is kept for the report's folded list, with its fork",
+      sorted(c['title'] for c in fw.SKIPPED) == ['Readme and a screenshot', 'Update repo.json'] and
+      all(c['fork'] == 'dev/youtube-webos' for c in fw.SKIPPED), fw.SKIPPED)
+for name, want in (('src/README.md.js', False), ('package.json', False), ('assets/appinfo.json', False),
+                   ('.github/workflows/main.yml', False), ('docs/x.js', True), ('NOTICE.txt', True),
+                   ('src/vendor/LICENSE-MIT', True), ('assets/icon.svg', True), ('repo.json', True),
+                   ('tools/repo.json', False),
+                   # The dot before an extension is a dot: "cmd" does not end in ".md".
+                   ('build-local.cmd', False), ('src/xmd', False), ('repoXjson', False), ('tools/a.ico.py', False),
+                   # A licence file has no extension, or a document's: a script named after one is code.
+                   ('LICENSE', True), ('LICENSE.txt', True), ('COPYING', True),
+                   ('src/license-check.js', False), ('tools/notice.py', False),
+                   # A .txt file a build reads is code.
+                   ('CMakeLists.txt', False), ('native/cmakelists.txt', False), ('requirements.txt', False),
+                   ('tools/requirements-dev.txt', False), ('NOTES.txt', True), ('src/notes.txt', True)):
+    check(f'DOCS_RE: {name} is {"not " if not want else ""}documentation', bool(fw.DOCS_RE.search(name)) == want)
+
+# --- is_docs_only(): a renamed file counts by both names; a dead network is not "no code" ---
+fw.request = Api({
+    '/repos/dev/youtube-webos/commits/moved-out': {'files': [
+        {'filename': 'docs/player.js', 'previous_filename': 'src/player.js', 'status': 'renamed'}]},
+    '/repos/dev/youtube-webos/commits/moved-within': {'files': [
+        {'filename': 'docs/new.md', 'previous_filename': 'docs/old.md', 'status': 'renamed'}]},
+    '/repos/dev/youtube-webos/commits/offline': urllib.error.URLError('network down'),
+    '/repos/dev/youtube-webos/commits/timeout': TimeoutError('timed out'),
+    '/repos/dev/youtube-webos/commits/forbidden': http_error(403),
+    '/repos/dev/youtube-webos/commits/cutoff': fw.http.client.IncompleteRead(b'{"fi', 100),
+})
+check('is_docs_only: code renamed into docs/ is still code', fw.is_docs_only(FORK, 'moved-out') is False)
+check('is_docs_only: a document renamed within docs/ is documentation', fw.is_docs_only(FORK, 'moved-within') is True)
+check('is_docs_only: the network down: the commit is reported, the run goes on',
+      fw.is_docs_only(FORK, 'offline') is False and fw.is_docs_only(FORK, 'timeout') is False)
+check('is_docs_only: an answer cut off while read (IncompleteRead): reported, the run goes on',
+      fw.is_docs_only(FORK, 'cutoff') is False)
+try:
+    fw.is_docs_only(FORK, 'forbidden')
+    check('is_docs_only: a 403 (the rate limit) still stops the run', False, 'no error raised')
+except urllib.error.HTTPError as err:
+    check('is_docs_only: a 403 (the rate limit) still stops the run', err.code == 403, err.code)
+
+# --- watched_forks(): forks of forks are followed as deep as they go ---
+CHAIN = 12
+routes = {'/repos/up/youtube-webos': {'full_name': 'up/youtube-webos', 'forks_count': 1, 'pushed_at': None}}
+parent = 'up/youtube-webos'
+for i in range(CHAIN):
+    name = f'f{i}/youtube-webos'
+    routes[f'/repos/{parent}/forks'] = [dict(FORK, full_name=name, owner={'login': f'f{i}'},
+                                             forks_count=1 if i < CHAIN - 1 else 0,
+                                             pushed_at='2026-11-11T11:30:00Z')]
+    parent = name
+fw.request = api = Api(routes)
+names = [f['full_name'] for f in fw.watched_forks(NOW - dt.timedelta(hours=1))]
+check(f'watched_forks: a chain of {CHAIN} forks of forks is followed to its end',
+      sorted(names) == sorted(f'f{i}/youtube-webos' for i in range(CHAIN)), names)
+check('watched_forks: ...and the last fork, which has none, is not asked for its forks',
+      not any(c[1] == f'/repos/f{CHAIN - 1}/youtube-webos/forks' for c in api.calls), [c[1] for c in api.calls][-3:])
+
 # --- a fork that could not be read in full is read again in the next run ---
 check('new_commits: the fork with the failed compare is kept for a retry', fw.FAILED == {'dev/youtube-webos'}, fw.FAILED)
 api = Api({('PATCH', '/repos/me/youtube-webos/issues/1'): {}})
@@ -248,6 +339,21 @@ try:
     check('request: a failed POST is not sent again', False, 'no error')
 except urllib.error.HTTPError:
     check('request: a failed POST is not sent again', st['n'] == 1, st)
+def urlopen_cut_off(times):
+    state = {'n': 0}
+
+    def urlopen(req, timeout=None):
+        state['n'] += 1
+        if state['n'] <= times:
+            raise fw.http.client.IncompleteRead(b'{"o', 20)
+        return Res(b'{"ok": true}')
+    return urlopen, state
+
+
+opener, st = urlopen_cut_off(2)
+fw.urllib.request.urlopen = opener
+check('request: a GET whose answer is cut off twice, then whole, succeeds',
+      fw.get('/x') == {'ok': True} and st['n'] == 3, st)
 opener, st = urlopen_failing(1, 404)
 fw.urllib.request.urlopen = opener
 check('request: a GET 404 is skipped at once', fw.get('/x') is None and st['n'] == 1, st)
@@ -260,6 +366,11 @@ check('cut: under the limit', len(short) <= fw.MAX_BODY, len(short))
 check('cut: at a line, with a note', short.rstrip().endswith('summary has all of it.') and
       '\n- line' in short, short[-200:])
 check('cut: a short body is left alone', fw.cut('abc') == 'abc')
+folded = '<details>\n<summary>many</summary>\n\n' + long_body + '\n\n</details>\n'
+short = fw.cut(folded)
+check('cut: inside the folded list, the list is closed before the note',
+      len(short) <= fw.MAX_BODY and short.count('</details>') == 1 and
+      short.index('</details>') < short.index('cut here'), short[-200:])
 
 # --- save_state(): the memory stays under the body limit, newest kept ---
 api = Api({('PATCH', '/repos/me/youtube-webos/issues/1'): {}})
@@ -334,6 +445,65 @@ if posts:
           '### [dev399/youtube-webos]' in summary and '### [dev399/youtube-webos]' not in report and
           'cut here' not in summary,
           (len(summary), summary[:80]))
+
+# --- main(): commits left out are listed in a report, and alone open none ---
+def run_main(commits, files_of, cut=None):
+    spec.loader.exec_module(fw)
+    fw.time.sleep = lambda s: None
+    if cut:
+        fw.cut = cut
+    routes = {
+        '/repos/me/youtube-webos/issues': lambda p: [],
+        '/repos/me/youtube-webos/labels/fork-watch': {'name': 'fork-watch'},
+        '/repos/me/youtube-webos/commits': [],
+        '/repos/up/youtube-webos': {'full_name': 'up/youtube-webos', 'forks_count': 1, 'pushed_at': None},
+        '/repos/up/youtube-webos/forks': [FORK],
+        '/repos/up/youtube-webos/pulls': [],
+        '/repos/up/youtube-webos/issues': [],
+        '/repos/dev/youtube-webos/branches': [{'name': 'main'}],
+        '/repos/me/youtube-webos/compare/main...dev:main':
+            {'ahead_by': len(commits), 'total_commits': len(commits), 'commits': commits},
+    }
+    for c in commits:
+        routes['/repos/dev/youtube-webos/commits/' + c['sha']] = files(*files_of[c['sha']])
+    api = Api(routes)
+
+    def route(method, path, body=None, params=None):
+        if method == 'POST' and path == '/repos/me/youtube-webos/issues':
+            api.calls.append((method, path, body, params))
+            return {'number': 7}, ''
+        return api(method, path, body, params)
+    fw.request = route
+    fw.get = lambda path, params=None: route('GET', path, params=params)[0]
+    fw.dt = type('dtmod', (), {'datetime': FixedNow, 'timedelta': dt.timedelta, 'timezone': dt.timezone})
+    fw.main()
+    posts = [c[2] for c in api.calls if c[0] == 'POST' and c[1] == '/repos/me/youtube-webos/issues']
+    reports = [b for b in posts if b['title'] != fw.STATE_TITLE]
+    state = {'body': [b for b in posts if b['title'] == fw.STATE_TITLE][-1]['body']}
+    return reports, fw.known_commits(state), fw.retry_forks(state)
+
+
+docs_c = commit('8' * 40, 'Typo in the README')
+code_c = commit('9' * 40, 'A real fix')
+reports, known, retry = run_main([docs_c], {docs_c['sha']: ['README.md']})
+check('main: only commits left out: no issue is opened', reports == [], [r['title'] for r in reports])
+check('main: ...the commit is not marked as reported', known is not None and docs_c['sha'][:12] not in known, known)
+check('main: ...and its fork is read again next run, pushed or not', retry == {'dev/youtube-webos'}, retry)
+reports, known, retry = run_main([docs_c, code_c], {docs_c['sha']: ['README.md'], code_c['sha']: ['src/ui.js']})
+body = reports[0]['body'] if reports else ''
+check('main: a report lists the commits left out at its end, folded',
+      len(reports) == 1 and '<details>' in body and '1 commit(s) left out: no code changed' in body and
+      'Typo in the README' in body.split('<details>')[1] and 'A real fix' in body.split('<details>')[0], body)
+check('main: ...the title counts only the reported commits', reports and ': 1 commit(s) on 1 fork(s)' in reports[0]['title'],
+      reports and reports[0]['title'])
+check('main: ...and once listed, the commit is marked as reported, its fork not kept for a retry',
+      known and docs_c['sha'][:12] in known and code_c['sha'][:12] in known and retry == set(), (known, retry))
+reports, known, retry = run_main([docs_c, code_c], {docs_c['sha']: ['README.md'], code_c['sha']: ['src/ui.js']},
+                                 cut=lambda body, limit=None: body.split('<details>')[0])
+check('main: a commit left out that the cut issue no longer lists stays pending, its fork kept for a retry',
+      len(reports) == 1 and docs_c['sha'][:12] not in known and code_c['sha'][:12] in known and
+      retry == {'dev/youtube-webos'}, (known, retry))
+
 shutil.rmtree(SUMMARY_DIR, ignore_errors=True)
 
 print(f'\n{failures} failed' if failures else '\nAll passed')
