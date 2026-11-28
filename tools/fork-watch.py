@@ -78,10 +78,12 @@ RETRY_DELAY_S = 5
 # (IncompleteRead, a reset connection), which urllib does not wrap in URLError.
 NET_ERRORS = (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException)
 # A commit that changes nothing but these is left out of the report: text
-# files, pictures, and the Homebrew listing a release rewrites.
+# files, pictures, and the Homebrew listing a release rewrites. A .txt file
+# is text unless a build reads it (CMakeLists.txt, requirements.txt).
 DOCS_RE = re.compile(
     r'(^|/)(LICENSE|COPYING|NOTICE)[^/.]*$'
-    r'|\.(md|markdown|txt|rst|png|jpe?g|gif|webp|svg|ico)$'
+    r'|\.(md|markdown|rst|png|jpe?g|gif|webp|svg|ico)$'
+    r'|(^|/)(?!CMakeLists\.txt$|requirements[^/]*\.txt$)[^/]*\.txt$'
     r'|^(docs|screenshots)/'
     r'|^repo[^/]*\.json$', re.I)
 # A commit lists at most this many files in one answer: one that fills it may

@@ -224,7 +224,10 @@ for name, want in (('src/README.md.js', False), ('package.json', False), ('asset
                    ('build-local.cmd', False), ('src/xmd', False), ('repoXjson', False), ('tools/a.ico.py', False),
                    # A licence file has no extension, or a document's: a script named after one is code.
                    ('LICENSE', True), ('LICENSE.txt', True), ('COPYING', True),
-                   ('src/license-check.js', False), ('tools/notice.py', False)):
+                   ('src/license-check.js', False), ('tools/notice.py', False),
+                   # A .txt file a build reads is code.
+                   ('CMakeLists.txt', False), ('native/cmakelists.txt', False), ('requirements.txt', False),
+                   ('tools/requirements-dev.txt', False), ('NOTES.txt', True), ('src/notes.txt', True)):
     check(f'DOCS_RE: {name} is {"not " if not want else ""}documentation', bool(fw.DOCS_RE.search(name)) == want)
 
 # --- is_docs_only(): a renamed file counts by both names; a dead network is not "no code" ---
