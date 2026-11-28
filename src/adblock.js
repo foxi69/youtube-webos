@@ -95,6 +95,7 @@ const CONFIG_KEYS = {
   FORCE_QUALITY: 'forceQuality',
   LONG_PRESS: 'extendLongPressMenu',
   DEARROW: 'enableDeArrow',
+  ORIGINAL_TITLES: 'dearrowUntranslatedTitles',
   HIDDEN_SIDEBAR: 'hiddenSidebarEntries',
   PREVIEW_HANDOVER: 'continuePreviews'
 };
@@ -366,7 +367,8 @@ function recomputeFilterFlags() {
   cfgFlags.feedFilters = !!(cfgFlags.hideWatched || cfgFlags.minLengthSeconds ||
     cfgFlags.blockedChannels || cfgFlags.blockedKeywords || cfgFlags.maxAgeDays || cfgFlags.hideDuplicates);
   cfgFlags.extendLongPress = !!cfgSnapshot[CONFIG_KEYS.LONG_PRESS];
-  cfgFlags.deArrow = !!cfgSnapshot[CONFIG_KEYS.DEARROW];
+  // Show Original Titles works through DeArrow's tile code, with DeArrow off too.
+  cfgFlags.deArrow = !!cfgSnapshot[CONFIG_KEYS.DEARROW] || !!cfgSnapshot[CONFIG_KEYS.ORIGINAL_TITLES];
   cfgFlags.decorateItems = cfgFlags.extendLongPress;
   // A UI setting, not a filter: on with Ad Blocking off too.
   cfgFlags.sidebar = sidebarHookRequired();

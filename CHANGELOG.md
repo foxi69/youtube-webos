@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Changed
 
++ **Show Original Titles (Not Translated)**, formerly DeArrow's **Untranslated Titles**, is on the Interface page and works with DeArrow off too: video titles as their uploader wrote them, where YouTube shows them translated into the TV's language. With DeArrow off it asks only YouTube's own oEmbed (one request per video shown, on youtube.com), never DeArrow's server, and shows the title exactly as uploaded: no Title Case, no emoji removal, thumbnails and badges left alone. With DeArrow on nothing changes. The setting is the same one: if you had it on with DeArrow off, the titles on the tiles now show as uploaded after the update.
 + With **Ad Blocking** off, the rows that need it (Reduce Telemetry & Tracking, the Cosmetic Filtering switches and the Feed Filters section) say "(needs Ad Blocking)" beside their greyed-out label. A box ticked there looked switched on but did nothing; it stays ticked and works again once Ad Blocking is back on.
 + Player page: the description of **Subtitle Position** is under its own row again; it was under Subtitle Delay's.
 + **Fit Page Beside Open Menu** is no longer shown in the settings on webOS 3 and 4, where it could be switched on but did nothing: it needs a browser feature (ResizeObserver) those TVs do not have.

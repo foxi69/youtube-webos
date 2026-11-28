@@ -4,6 +4,7 @@
 // formatter-legacy.js).
 import { configRead } from '../config.js';
 import { formatTitleInternal, TitleFormatting, formattingSupported } from './formatter.js';
+import { deArrowOn } from './state.js';
 
 /** Whether titles can be formatted here. */
 export const titleFormattingSupported = formattingSupported;
@@ -68,7 +69,7 @@ export function casualKeepsOriginal(video) {
 
 /** The crowdsourced title the settings let a video show: the top one when it is trusted, else null. */
 export function crowdsourcedTitle(video) {
-  if (!configRead('dearrowCrowdTitles')) return null;
+  if (!deArrowOn() || !configRead('dearrowCrowdTitles')) return null;
   if (configRead('dearrowCasualMode') && casualKeepsOriginal(video)) return null;
   const custom = video.raw && Array.isArray(video.raw.titles) ? video.raw.titles[0] : null;
   return isTrusted(custom) && typeof custom.title === 'string' ? custom : null;
@@ -80,7 +81,7 @@ export function crowdsourcedTitle(video) {
  * compare with it.
  */
 export function uploadedTitleMatters(video) {
-  if (!configRead('dearrowCrowdTitles')) return true;
+  if (!deArrowOn() || !configRead('dearrowCrowdTitles')) return true;
   const raw = video.raw;
   const custom = raw && Array.isArray(raw.titles) ? raw.titles[0] : null;
   if (!isTrusted(custom) || typeof custom.title !== 'string') return true;
@@ -93,10 +94,15 @@ export function uploadedTitleMatters(video) {
  * changes it.
  */
 export async function resolveTitle(video) {
+  // Show Original Titles with DeArrow off: the title as uploaded, exactly.
+  if (!deArrowOn()) {
+    const own = configRead('dearrowUntranslatedTitles') ? video.untranslated : null;
+    return own && own !== video.original ? own : null;
+  }
   const custom = crowdsourcedTitle(video);
   if (custom) return (await formatTitle(custom.title, true)) || null;
 
-  // Untranslated Titles: the title as uploaded, where YouTube shows a translation.
+  // Show Original Titles: the title as uploaded, where YouTube shows a translation.
   const untranslated = configRead('dearrowUntranslatedTitles') ? video.untranslated : null;
   if (untranslated) return (await formatTitle(untranslated, false)) || untranslated;
 
@@ -105,7 +111,7 @@ export async function resolveTitle(video) {
   return formatted && formatted !== video.original ? formatted : null;
 }
 
-/** YouTube's own title of a video: as uploaded when Untranslated Titles knows it, else as shown. */
+/** YouTube's own title of a video: as uploaded when Show Original Titles knows it, else as shown. */
 function untranslatedOrOriginal(video) {
   return (configRead('dearrowUntranslatedTitles') && video.untranslated) || video.original;
 }
