@@ -656,7 +656,8 @@ FriedChickenButt, webosbrew and NicholasBly (forks of forks included, as deep as
 new issues on those three repositories. When it finds new work, it opens an issue labelled `fork-watch` with links to it. These are only
 suggestions: nothing is merged. It leaves out commits NicholasBly already has, bot commits, commits that change
 no code (only documentation, pictures or the Homebrew listing), private forks and copies uploaded as new
-repositories.
+repositories. Commits left out for changing no code are still listed, folded, at the end of the next issue, if
+one opens within 30 days of the commit; on their own they open none.
 </details>
 
 ## ☕ Support
