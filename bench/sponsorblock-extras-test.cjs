@@ -1331,6 +1331,27 @@ run(async () => {
     await press(env.win, BACK);
   }
   {
+    // Left/Right Seek Step with the player's controls hidden: no seek behind the open list; once it is closed, Right
+    // seeks by the step again.
+    const env = await boot({ shortcut_key_4: 'chapter_list', seekStep: '10' }, [], { bar: BAR_MULTI });
+    env.win.document.querySelector('ytlr-multi-markers-player-bar-renderer').__instance =
+      { props: { data: { chapters: [{ start: 0, title: { simpleText: 'Intro' } }, { start: 60, title: { simpleText: 'Main' } }] } } };
+    const controls = env.win.document.createElement('yt-focus-container');
+    controls.setAttribute('idomkey', 'controls');
+    env.win.document.body.appendChild(controls);
+    await env.playTo(70);
+    await press(env.win, 52);
+    await wait(900);
+    await press(env.win, 39);
+    await wait(1200);
+    t(n('show chapters, seek step: Right with the list open does not seek behind it'),
+      !!env.win.document.querySelector('.ytaf-chapter-list') && env.state.time === 70, String(env.state.time));
+    await press(env.win, 461);
+    await press(env.win, 39);
+    await wait(1200);
+    t(n('show chapters, seek step: closed, Right seeks by the step again'), env.state.time === 80, String(env.state.time));
+  }
+  {
     // The settings panel opened while the chapters load: the list does not open over it.
     const env = await boot({ shortcut_key_4: 'chapter_list' }, [], { bar: BAR_MULTI });
     env.win.document.querySelector('ytlr-multi-markers-player-bar-renderer').__instance =

@@ -1945,7 +1945,9 @@ function playerControlsShown() {
 }
 
 function handleSeekStepKey(evt) {
-  if (isSyntheticKey(evt)) return;
+  // The chapter list open: Left and Right are its own (it ignores them), never
+  // a seek behind it. This listener runs before the list's.
+  if (isSyntheticKey(evt) || chapterList) return;
   const code = evt.keyCode;
   if (code !== REMOTE_KEYS.LEFT.code && code !== REMOTE_KEYS.RIGHT.code) return;
   if (evt.type === 'keyup') {
