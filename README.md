@@ -387,7 +387,8 @@ The actions each key can take are listed under [Remote control](#-remote-control
 | Without a Crowdsourced Thumbnail (Random Frame, Start/Middle/End Frame, Original, Blank) | Random Frame |
 
 **Fit Page Beside Open Menu**: while the left menu is open, YouTube slides the page right and its right side leaves
-the screen; with this option the page shrinks to fit beside the menu instead. **Show Original Titles** (Interface)
+the screen; with this option the page shrinks to fit beside the menu instead. It needs webOS 5 or newer; on webOS 3
+and 4 the switch is not shown. **Show Original Titles** (Interface)
 asks YouTube's own oEmbed (youtube.com) once per video shown, nothing else; with DeArrow on, its crowdsourced title
 still comes first and the original is formatted as Title Formatting says. DeArrow asks sponsor.ajay.app by hash
 prefix, like SponsorBlock; a thumbnail it shows (and the random frame's time) is asked for by the video's id. The
@@ -654,10 +655,12 @@ is published as a full release (step 3). Drafts of other versions are deleted.
 ### New work on other forks
 
 The [Fork watch](.github/workflows/fork-watch.yml) workflow runs every day. It checks the fork tree of
-FriedChickenButt, webosbrew and NicholasBly (forks of forks included, six levels deep), and the pull requests and
+FriedChickenButt, webosbrew and NicholasBly (forks of forks included, as deep as they go), and the pull requests and
 new issues on those three repositories. When it finds new work, it opens an issue labelled `fork-watch` with links to it. These are only
-suggestions: nothing is merged. It leaves out commits NicholasBly already has, bot commits, private forks and
-copies uploaded as new repositories.
+suggestions: nothing is merged. It leaves out commits NicholasBly already has, bot commits, commits that change
+no code (only documentation, pictures or the Homebrew listing), private forks and copies uploaded as new
+repositories. Commits left out for changing no code are still listed, folded, at the end of the next issue, if
+one opens within 30 days of the commit; on their own they open none.
 </details>
 
 ## ☕ Support

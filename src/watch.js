@@ -25,7 +25,6 @@ class Watch {
     this._cachedOverlay = null;
 
     // Bind methods
-    this.onOledChange = this.onOledChange.bind(this);
     this.updateVisibility = this.updateVisibility.bind(this);
     
     // Use shared debounce
@@ -37,24 +36,12 @@ class Watch {
     this.startClock();
     this.setupGlobalListeners();
     
-    this.applyOledMode(configRead('enableOledCareMode'));
-    configAddChangeListener('enableOledCareMode', this.onOledChange);
     configAddChangeListener('clockDuringPlayback', this.updateVisibility);
     this.refreshText = this.refreshText.bind(this);
     configAddChangeListener('showWatchTime', this.refreshText);
 
     // Initial check
     this.updateVisibility();
-  }
-
-  onOledChange(evt) {
-    this.applyOledMode(evt.detail.newValue);
-  }
-
-  applyOledMode(enabled) {
-    if (this._watch) {
-      this._watch.classList.toggle('oled-mode', enabled);
-    }
   }
 
   createElement() {
@@ -163,7 +150,6 @@ class Watch {
     // but the shared debounce usually doesn't expose cancel.
     // If strict cleanup is needed, update the shared debounce to return { run, cancel }.
 
-    configRemoveChangeListener('enableOledCareMode', this.onOledChange);
     configRemoveChangeListener('clockDuringPlayback', this.updateVisibility);
     configRemoveChangeListener('showWatchTime', this.refreshText);
     

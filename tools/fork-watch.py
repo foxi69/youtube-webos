@@ -16,8 +16,8 @@ GitHub notification. Nothing is merged or pushed - porting stays a decision.
 A branch with no commit in common with our main (a fork that rewrote its
 history, as NicholasBly did at 0.8.5) cannot be compared: its own commits
 since the last run are read instead.
-Forks of forks are followed too, MAX_FORK_DEPTH levels deep: the forks API
-only lists direct forks, so the tree is walked from each root.
+Forks of forks are followed too, to any depth: the forks API only lists
+direct forks, so the tree is walked from each root.
 
 A commit is reported once. The state - the time of the last run and the
 commits already reported, with their dates - is kept as hidden markers in
@@ -30,13 +30,18 @@ work that a fork took in again under another sha (squash-merged pull
 requests, a rebase), and so are commits made by this repository's owner:
 our own branch commits that a fork took in before we squash-merged them
 under another title. Bot commits (dependabot and the
-like) are skipped.
+like) are skipped, and so are commits that change no code: only
+documentation, pictures or the Homebrew listing (DOCS_RE). Those are not
+dropped unseen: a report lists them at its end, folded, so a filter that
+went wrong shows. They alone open no issue; until a report lists one, its
+fork is read again in the next run (up to LOOKBACK_DAYS).
 
 Environment: GITHUB_TOKEN, GITHUB_REPOSITORY (owner/name), optional
 ROOT_REPOS (comma separated), FIRST_RUN_DAYS, MAX_BRANCHES, DRY_RUN=1.
 """
 
 import datetime as dt
+import http.client
 import json
 import os
 import re
@@ -57,7 +62,6 @@ LOOKBACK_DAYS = int(os.environ.get('LOOKBACK_DAYS', '30'))
 # Reported commits are remembered this long, then forgotten to keep the
 # state small; anything older than LOOKBACK_DAYS is never reported anyway.
 KNOWN_KEEP_DAYS = LOOKBACK_DAYS + 15
-MAX_FORK_DEPTH = 6
 MAX_COMMITS_SHOWN = 15
 MAX_MAIN_TITLES = 1000
 # A compare lists up to 250 commits unless it is paged; past that many, the
@@ -70,6 +74,21 @@ MAX_COMPARE_COMMITS = 1000
 MAX_BODY = 60000
 MAX_KNOWN = 1800
 RETRY_DELAY_S = 5
+# The network giving out: no answer, or one cut off while it was read
+# (IncompleteRead, a reset connection), which urllib does not wrap in URLError.
+NET_ERRORS = (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException)
+# A commit that changes nothing but these is left out of the report: text
+# files, pictures, and the Homebrew listing a release rewrites. A .txt file
+# is text unless a build reads it (CMakeLists.txt, requirements.txt).
+DOCS_RE = re.compile(
+    r'(^|/)(LICENSE|COPYING|NOTICE)[^/.]*$'
+    r'|\.(md|markdown|rst|png|jpe?g|gif|webp|svg|ico)$'
+    r'|(^|/)(?!CMakeLists\.txt$|requirements[^/]*\.txt$)[^/]*\.txt$'
+    r'|^(docs|screenshots)/'
+    r'|^repo[^/]*\.json$', re.I)
+# A commit lists at most this many files in one answer: one that fills it may
+# change more than was read, so it is not judged by them.
+MAX_COMMIT_FILES = 300
 DRY_RUN = os.environ.get('DRY_RUN') == '1'
 LABEL = 'fork-watch'
 STATE_TITLE = 'Fork watch state'
@@ -79,6 +98,9 @@ RETRY_RE = re.compile(r'<!-- fork-watch-retry: (\[.*?\]) -->', re.S)
 # Forks with a branch GitHub could not compare in this run: read again in the
 # next one, pushed since or not, as the last-run marker moves past them.
 FAILED = set()
+# Commits left out as changing no code in this run, for the report's folded
+# list. Marked as reported only when a report lists them.
+SKIPPED = []
 
 
 def request(method, path, body=None, params=None):
@@ -112,7 +134,7 @@ def request(method, path, body=None, params=None):
                 return None, ''
             if method != 'GET' or err.code < 500 or attempt == 2:
                 raise
-        except (urllib.error.URLError, TimeoutError):
+        except NET_ERRORS:
             if method != 'GET' or attempt == 2:
                 raise
         time.sleep(RETRY_DELAY_S * (attempt + 1))
@@ -226,18 +248,19 @@ def watched_forks(since, retry=frozenset()):
         info = get(f'/repos/{root}')
         if info and info['full_name'] not in seen:
             seen[info['full_name']] = info
-            queue.append((info, 0))
-    # Breadth-first through forks of forks; forks_count says whether a
-    # repository has any, so leaves cost no request.
+            queue.append(info)
+    # Breadth-first through forks of forks, as deep as they go: a repository
+    # is read once (`seen`), so the walk ends, and forks_count says whether it
+    # has any forks, so leaves cost no request.
     while queue:
-        repo, depth = queue.pop(0)
-        if depth >= MAX_FORK_DEPTH or not repo.get('forks_count'):
+        repo = queue.pop(0)
+        if not repo.get('forks_count'):
             continue
         for fork in get_all(f"/repos/{repo['full_name']}/forks", {'sort': 'newest'}, limit=3000):
             if fork['full_name'] in seen:
                 continue
             seen[fork['full_name']] = fork
-            queue.append((fork, depth + 1))
+            queue.append(fork)
     me = REPO.lower()
     out = []
     for name, info in seen.items():
@@ -261,6 +284,27 @@ def is_ours(commit):
 def is_bot(commit):
     login = (commit.get('author') or {}).get('login') or ''
     return login.endswith('[bot]') or commit['commit']['author']['name'].endswith('[bot]')
+
+
+def is_docs_only(fork, sha):
+    """Whether the commit changes nothing but documentation, pictures or the
+    Homebrew listing (DOCS_RE). A commit whose files cannot be read, that lists
+    none or that fills the answer is not: it is reported, as before. A renamed
+    file counts by both its names: code moved into docs/ is still code."""
+    try:
+        info = get(f"/repos/{fork['full_name']}/commits/{sha}")
+    except urllib.error.HTTPError as err:
+        if err.code < 500:
+            raise
+        return False
+    except NET_ERRORS:
+        # The network gave out after the retries: reported, not a failed run.
+        return False
+    files = (info or {}).get('files') or []
+    if not files or len(files) >= MAX_COMMIT_FILES:
+        return False
+    return all(DOCS_RE.search(name or '')
+               for f in files for name in (f.get('filename'), f.get('previous_filename') or f.get('filename')))
 
 
 def unrelated_commits(fork, branch, cutoff):
@@ -309,8 +353,7 @@ def new_commits(fork, cutoff, seen, known, today, ours):
             title = c['commit']['message'].splitlines()[0] if c['commit']['message'] else ''
             if title in ours:
                 continue
-            known[c['sha'][:12]] = today
-            found[c['sha']] = {
+            entry = {
                 'sha': c['sha'],
                 'branch': branch['name'],
                 'title': title[:120],
@@ -320,6 +363,14 @@ def new_commits(fork, cutoff, seen, known, today, ours):
                 # no branch of this repository.
                 'url': f"{fork['html_url']}/commit/{c['sha']}",
             }
+            # Asked last, for the few commits that would be reported: one
+            # request each, and again in each run until a report lists it.
+            if is_docs_only(fork, c['sha']):
+                print(f"{fork['full_name']} {c['sha'][:12]}: no code changed, left out ({title[:60]})")
+                SKIPPED.append(dict(entry, fork=fork['full_name']))
+                continue
+            known[c['sha'][:12]] = today
+            found[c['sha']] = entry
     return sorted(found.values(), key=lambda c: c['date'], reverse=True)
 
 
@@ -394,11 +445,14 @@ def cut(body, limit=MAX_BODY):
     if len(body) <= limit:
         return body
     note = '\n\n... cut here: the report is too long for one issue. The run\'s summary has all of it.\n'
-    end = body.rfind('\n', 0, limit - len(note))
-    return body[:max(end, 0)] + note
+    close = '\n\n</details>'
+    end = body.rfind('\n', 0, limit - len(note) - len(close))
+    head = body[:max(end, 0)]
+    # Cut inside the folded list: closed, so the note is not folded away.
+    return head + (close if head.count('<details>') > head.count('</details>') else '') + note
 
 
-def build_report(since, forks, pulls, issues):
+def build_report(since, forks, pulls, issues, skipped=()):
     lines = [f'New work in the youtube-webos fork network since {fmt_time(since)}.',
              '', 'These are suggestions only - nothing has been merged. '
              'Pick what is worth porting and ask for it (or cherry-pick it).', '']
@@ -427,6 +481,12 @@ def build_report(since, forks, pulls, issues):
             if len(commits) > MAX_COMMITS_SHOWN:
                 lines.append(f'- ... and {len(commits) - MAX_COMMITS_SHOWN} more')
             lines.append('')
+    if skipped:
+        lines += ['<details>', f'<summary>{len(skipped)} commit(s) left out: no code changed</summary>', '']
+        for c in sorted(skipped, key=lambda c: c['date'], reverse=True):
+            lines.append(f"- [`{c['sha'][:7]}`]({c['url']}) {esc(c['title'])} "
+                         f"- {esc(c['author'])}, {c['date']}, {c['fork']} branch {code(c['branch'])}")
+        lines += ['', '</details>', '']
     return '\n'.join(lines)
 
 
@@ -494,12 +554,14 @@ def main():
     print(f'{len(issues)} new open issue(s)')
 
     if not forks and not pulls and not issues:
-        print('Nothing new.')
-        save_state(now, state, known, FAILED)
+        # Commits left out alone open no issue: their forks are read again
+        # next run, so a later report still lists them.
+        print(f'Nothing new ({len(SKIPPED)} commit(s) left out, kept for the next report).')
+        save_state(now, state, known, FAILED | {c['fork'] for c in SKIPPED})
         return
 
     title = f"Fork watch {now.strftime('%Y-%m-%d')}: {sum(len(c) for _, c in forks)} commit(s) on {len(forks)} fork(s), {len(pulls)} PR(s), {len(issues)} issue(s)"
-    body = build_report(since, forks, pulls, issues)
+    body = build_report(since, forks, pulls, issues, SKIPPED)
     summary = os.environ.get('GITHUB_STEP_SUMMARY')
     if summary:
         with open(summary, 'a', encoding='utf-8') as f:
@@ -508,9 +570,18 @@ def main():
         print(title)
         print(body)
         return
-    request('POST', f'/repos/{REPO}/issues', {'title': title, 'body': cut(body), 'labels': [LABEL]})
+    posted = cut(body)
+    request('POST', f'/repos/{REPO}/issues', {'title': title, 'body': posted, 'labels': [LABEL]})
     print('Opened issue:', title)
-    save_state(now, state, known, FAILED)
+    # Marked only when the issue lists it: one cut off the end stays pending,
+    # and its fork is read again for the next report.
+    pending = set()
+    for c in SKIPPED:
+        if c['url'] in posted:
+            known[c['sha'][:12]] = today
+        else:
+            pending.add(c['fork'])
+    save_state(now, state, known, FAILED | pending)
 
 
 if __name__ == '__main__':

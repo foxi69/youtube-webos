@@ -253,6 +253,50 @@ run(async () => {
     env.state.order.shift();
     panel.remove();
     delete RECTS.panelbox;
+    // What's New (any of the app's dialogs) over the playing preview: its
+    // backdrop and box keep their background too.
+    const backdrop = env.doc.createElement('div');
+    backdrop.id = 'dlgbackdrop';
+    backdrop.className = 'ytaf-dialog-backdrop';
+    backdrop.setAttribute('style', 'background-color: rgba(0, 0, 0, 0.6)');
+    const dialog = env.doc.createElement('div');
+    dialog.id = 'dlgbox';
+    dialog.className = 'ytaf-dialog';
+    dialog.setAttribute('style', BLACK);
+    backdrop.appendChild(dialog);
+    env.doc.body.appendChild(backdrop);
+    RECTS.dlgbackdrop = FULL;
+    // Over the preview's centre (340, 330), the point the lookup samples.
+    RECTS.dlgbox = box(200, 200, 1120, 360);
+    env.state.order.unshift('dlgbox', 'dlgbackdrop');
+    env.doc.body.dispatchEvent(new env.win.Event('focusin', { bubbles: true }));
+    await wait(100);
+    t("webOS 23: What's New over the preview is not cleared, the page under it is",
+      !backdrop.classList.contains(CLEARED) && !dialog.classList.contains(CLEARED) &&
+      env.el('browse').classList.contains(CLEARED), env.cleared());
+    // The same with YouTube's root not found: the panel and the dialog are
+    // still left alone by name, the page under them is cleared.
+    const realQuery = env.doc.querySelector;
+    env.doc.querySelector = function querySelector(sel) { return sel === 'ytlr-app' ? null : realQuery.call(this, sel); };
+    const panel2 = env.doc.createElement('div');
+    panel2.id = 'panelbox';
+    panel2.className = 'ytaf-ui-container';
+    panel2.setAttribute('style', BLACK);
+    env.doc.body.appendChild(panel2);
+    RECTS.panelbox = FULL;
+    env.state.order.unshift('panelbox');
+    env.doc.body.dispatchEvent(new env.win.Event('focusin', { bubbles: true }));
+    await wait(100);
+    t("webOS 23: without ytlr-app, the panel and What's New are not cleared, the page under them is",
+      !panel2.classList.contains(CLEARED) && !backdrop.classList.contains(CLEARED) &&
+      !dialog.classList.contains(CLEARED) && env.el('browse').classList.contains(CLEARED), env.cleared());
+    env.doc.querySelector = realQuery;
+    env.state.order.splice(0, 3);
+    panel2.remove();
+    delete RECTS.panelbox;
+    backdrop.remove();
+    delete RECTS.dlgbackdrop;
+    delete RECTS.dlgbox;
     // YouTube draws the browse page anew with nothing moving: the 5 s re-check clears it.
     const old = env.el('browse');
     const fresh = old.cloneNode(true);
