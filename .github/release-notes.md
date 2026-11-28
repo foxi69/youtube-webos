@@ -44,8 +44,7 @@
 - ⌨️ **[webOS TV CLI tools](https://webostv.developer.lge.com/develop/tools/cli-installation)**:
   `ares-install youtube.leanback.v4_@VERSION@_all_webOS22+.ipk`
 
-Once it is up, press 🟩 **Green** (or the 🦊 button the Magic Remote pointer shows) to open the settings. Every
-setting and its default is in the [README](https://github.com/foxi69/youtube-webos#%EF%B8%8F-settings).
+Once it is up, press 🟩 **Green** (or the 🦊 button the Magic Remote pointer shows) to open the settings. Every setting and its default is in the [README](https://github.com/foxi69/youtube-webos#%EF%B8%8F-settings).
 
 <details>
 <summary>Homebrew Channel offers "YouTube AdFree 0.5.3" as an update?</summary>
@@ -55,9 +54,6 @@ Ignore it: that is the older webosbrew build under the same app id, from the def
 
 ## 🙏 Credits
 
-[FriedChickenButt](https://github.com/FriedChickenButt/youtube-webos) (the original project),
-[webosbrew](https://github.com/webosbrew/youtube-webos) (the community continuation),
-[NicholasBly](https://github.com/NicholasBly/youtube-webos) (the rewrite this fork builds on), and the authors of
-the forks whose work is ported here, credited per change above.
+[FriedChickenButt](https://github.com/FriedChickenButt/youtube-webos) (the original project), [webosbrew](https://github.com/webosbrew/youtube-webos) (the community continuation), [NicholasBly](https://github.com/NicholasBly/youtube-webos) (the rewrite this fork builds on), and the authors of the forks whose work is ported here, credited per change above.
 
 **📜 Full changelog:** [CHANGELOG.md](https://github.com/foxi69/youtube-webos/blob/main/CHANGELOG.md)

@@ -318,7 +318,11 @@ run(async () => {
         notice ? notice.className : 'no notice');
       win.localStorage.setItem(IDENTITY_KEY, JSON.stringify({ data: ACCOUNT_B }));
       win.document.body.className = 'WEB_PAGE_TYPE_BROWSE';
-      await wait(50);
+      // Well past the 100 ms in which a second press of the same key is
+      // dropped (shortcutDebounceTime, ui.js). With 50 here, as after the
+      // first press, the two presses were just 100 ms apart, and now and then
+      // this one was swallowed.
+      await wait(150);
       key(win, GREEN);
       await wait(50);
       t(name + ': an account chosen, Green opens the panel', shown());

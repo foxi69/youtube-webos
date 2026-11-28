@@ -144,7 +144,9 @@ const configs = [
   {
     // `ignores` field must be in the very bottom config.
     // src/vendor: third-party code, kept as its authors wrote it.
-    ignores: ['dist/**/*', 'dist-modern/**/*', '**/*-polyfill.*', 'src/vendor/**/*']
+    // dist-mut (the mutation sweep's builds) and coverage (c8's HTML report)
+    // are generated too; .gitignore lists them, but ESLint does not read it.
+    ignores: ['dist/**/*', 'dist-modern/**/*', 'dist-mut/**/*', 'coverage/**/*', '**/*-polyfill.*', 'src/vendor/**/*']
   }
 ] as const satisfies Linter.Config[];
 

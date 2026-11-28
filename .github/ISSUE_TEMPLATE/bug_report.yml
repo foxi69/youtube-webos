@@ -13,8 +13,8 @@ body:
     id: version
     attributes:
       label: App version
-      description: Shown in Homebrew Channel's app list, or in the name of the `.ipk` you installed.
-      placeholder: "0.8.8"
+      description: Shown in the heading of the settings panel (open it with the Green button), with the build in brackets on a test build. Also in Homebrew Channel's app list and in the name of the `.ipk` you installed.
+      placeholder: "x.y.z"
     validations:
       required: true
 
