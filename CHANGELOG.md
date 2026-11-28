@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## Added
+
++ **Show Chapters**, a new action for a coloured button or a number key (Shortcuts tab): a list of the video's chapters over the player, with their start times and the one playing marked. Up and Down move, OK jumps to the start of a chapter and closes the list, and Back (or the same key again) closes it. On a video with no chapters of its own, the community's chapters from SponsorBlock are listed, with Use Community Chapters on. YouTube's TV app has no chapter list of its own.
+
 ## Changed
 
 + **Fit Page Beside Open Menu** is no longer shown in the settings on webOS 3 and 4, where it could be switched on but did nothing: it needs a browser feature (ResizeObserver) those TVs do not have.

@@ -166,7 +166,9 @@ starting it again.
 Every coloured button and number key can be set to any of these actions on the **Shortcuts** tab:
 
 - **Playback:** Play/Pause, Fast Forward (Burst), Rewind (Burst), Skip to Next / Previous Chapter,
-  **Jump to Live** (back to the live edge of a live stream), Playback Speed +, Playback Speed -, Playback Speed
+  **Show Chapters** (a list of the video's chapters with their start times, the one playing marked: Up/Down
+  to move, OK to jump to one, Back to close; on a video with none, SponsorBlock's community chapters with
+  *Use Community Chapters* on), **Jump to Live** (back to the live edge of a live stream), Playback Speed +, Playback Speed -, Playback Speed
   Reset (1x), **Toggle Speed (1x / Last)** (from 1× to the last other speed, 1.5× before any, and back),
   **Repeat Video** (the video starts again at its end instead of going on to the next one; ends with
   that video; not on live streams or videos of 1.2 s or less)

@@ -1637,7 +1637,6 @@ async function loadChapters() {
 
   // Hack: Force UI to load chapters if they aren't in DOM
   if (chapterEls.length === 0 && !chapterLoad.hasForced) {
-    console.log('[Chapters] No chapters found. Forcing UI...');
     chapterLoad.hasForced = true;
     wasForcedNow = true;
     showNotification('Loading chapters...');
