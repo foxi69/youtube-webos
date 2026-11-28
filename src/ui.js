@@ -1034,6 +1034,15 @@ function createOptionsPanel() {
   pageFilters.appendChild(createSection('Cosmetic Filtering', cosmeticGroup, 'ytaf-section-2col'));
 
   // Dependency Management
+  // A row greyed out with Ad Blocking off still shows its own value (a ticked
+  // box stays ticked, and counts again once Ad Blocking is back on); its label
+  // says why it does nothing now.
+  const markNeedsAdBlock = (el, enabled) => {
+    const text = el && el.querySelector('.label-text, .section-title');
+    if (!text) return;
+    if (text.ytafBaseText === undefined) text.ytafBaseText = text.textContent;
+    text.textContent = enabled ? text.ytafBaseText : text.ytafBaseText + ' (needs Ad Blocking)';
+  };
   const setState = (el, enabled) => { if (!el) return; const input = el.querySelector('input'); if (input) { input.disabled = !enabled; el.style.opacity = enabled ? '1' : '0.5'; }};
 
   // Tracking Block rides on the same JSON.parse hook and network hooks as Ad
@@ -1043,7 +1052,7 @@ function createOptionsPanel() {
   const adBlockDependents = [elTrackingBlock, elRemoveGlobalShorts, elRemoveLiveVideos, elRemoveTopLiveGames, elRemoveMostRelevant, elRemoveUpcoming, elRemoveMembersOnly, elRemoveMixes, elHideRecommended];
   const updateDependencyState = () => {
     const enabled = configRead('enableAdBlock');
-    adBlockDependents.forEach(el => { setState(el, enabled); });
+    adBlockDependents.forEach(el => { setState(el, enabled); markNeedsAdBlock(el, enabled); });
   };
   
   elAdBlock.querySelector('input').addEventListener('change', updateDependencyState);
@@ -1078,6 +1087,7 @@ function createOptionsPanel() {
     const updateFeedSection = () => {
       const enabled = configRead('enableAdBlock');
       feedSection.style.opacity = enabled ? '1' : '0.5';
+      markNeedsAdBlock(feedSection, enabled);
       const controls = feedSection.querySelectorAll('input, button');
       for (let i = 0; i < controls.length; i++) {
         if (controls[i].tabIndex !== -1 || controls[i].disabled) controls[i].disabled = !enabled;
@@ -1112,9 +1122,9 @@ function createOptionsPanel() {
   createAlignedCycleControl('subtitlesAtStart', subtitlesAtStartModes),
   createElement('div', { text: 'Off: no subtitles until you turn them on. Translated: only the Auto-Translate Subtitles language above', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   createAlignedCycleControl('subtitlePosition', subtitlePositionModes),
+  createElement('div', { text: 'Lifts the subtitles, for a TV or soundbar that covers the bottom of the picture. Their font, size and colours are in YouTube\'s own settings, and are kept now', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   createAlignedCycleControl('subtitleDelay', subtitleDelayModes),
   createElement('div', { text: 'For subtitles out of step with the sound. Applies to the next subtitles loaded: turn them off and on again', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
-  createElement('div', { text: 'Lifts the subtitles, for a TV or soundbar that covers the bottom of the picture. Their font, size and colours are in YouTube\'s own settings, and are kept now', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
   createConfigCheckbox('forceOriginalAudio'),
   createConfigCheckbox('audioOnlyStream'),
   createElement('div', { text: 'With the Audio-Only Mode action: only the sound is downloaded and played, not the hidden picture. The video loads again where it is when the mode goes on or off. Only at 1x: at another speed the picture is only hidden', style: { color: '#aaa', fontSize: '18px', padding: '4px 12px 12px 4.3vh' } }),
