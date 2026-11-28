@@ -1554,10 +1554,15 @@ function chapterStarts(chapterEls, duration) {
  * with Use Community Chapters on. Their starts and ends are the stops; the
  * chapter's name comes with the notice. False when there are none.
  */
-function skipCommunityChapter(video, direction) {
+/** The community's chapters (sponsorblock.js communityChapters) with Use Community Chapters on; [] otherwise. */
+function communityChapterList() {
   if (!configRead('sbCommunityChapters') || !window.sponsorblock ||
-      typeof window.sponsorblock.communityChapters !== 'function') return false;
-  const chapters = window.sponsorblock.communityChapters();
+      typeof window.sponsorblock.communityChapters !== 'function') return [];
+  return window.sponsorblock.communityChapters();
+}
+
+function skipCommunityChapter(video, direction) {
+  const chapters = communityChapterList();
   if (!chapters.length) return false;
   const stops = [0];
   for (const chapter of chapters) stops.push(chapter.start, chapter.end);
@@ -1724,9 +1729,7 @@ function chapterListItems(video, chapterEls) {
   if (own.length) return own;
   const starts = chapterStarts(chapterEls, video.duration);
   if (starts.length) return starts.map((start) => ({ start, name: '' }));
-  if (!configRead('sbCommunityChapters') || !window.sponsorblock ||
-      typeof window.sponsorblock.communityChapters !== 'function') return [];
-  return window.sponsorblock.communityChapters();
+  return communityChapterList();
 }
 
 /** The chapter playing at `now`: the last one started, unless it has ended (a community chapter's end). -1 for none. */
