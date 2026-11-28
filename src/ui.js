@@ -1839,6 +1839,20 @@ function handleChapterListKey(evt) {
   else if (code === k.BACK.code || code === 27) { closeChapterList(); swallowHeldKey(); }
 }
 
+/**
+ * The Magic Remote's wheel while the list is open: a notch down selects the
+ * next chapter, up the one before. Taken from YouTube and from Scroll Wheel
+ * Seeks (registered below, after this), so it never seeks behind the list.
+ */
+function handleChapterListWheel(evt) {
+  if (!chapterList || !evt.deltaY) return;
+  evt.preventDefault();
+  evt.stopImmediatePropagation();
+  const last = chapterList.rows.length - 1;
+  selectChapterRow(Math.max(0, Math.min(last, chapterList.index + (evt.deltaY > 0 ? 1 : -1))));
+}
+window.addEventListener('wheel', handleChapterListWheel, { passive: false, capture: true });
+
 // Another page or video, or the settings panel opening: the list goes.
 window.addEventListener('ytaf-panel-show', closeChapterList);
 

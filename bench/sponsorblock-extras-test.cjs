@@ -1310,6 +1310,15 @@ run(async () => {
     t(n('show chapters: the mark follows the playback into the next chapter, the selection stays'),
       JSON.stringify(rows()) === JSON.stringify(['0:00Intro [selected]', '1:00Main part [current]', '1:01:40Chapter 3']),
       JSON.stringify(rows()));
+    // The Magic Remote's wheel: a notch down selects the next chapter, up the one before; none reaches the page.
+    const wheels = [];
+    env.win.addEventListener('wheel', () => wheels.push(1));
+    const notch = (dy) => env.win.document.querySelector('.ytaf-chapter-rows')
+      .dispatchEvent(new env.win.WheelEvent('wheel', { deltaY: dy, bubbles: true, cancelable: true }));
+    notch(120); notch(120); notch(120); notch(-120);
+    t(n('show chapters: wheel notches move the selection (down, down, down stops at the last, up), none reaches the page'),
+      rows()[1].indexOf('[selected]') !== -1 && wheels.length === 0, `${JSON.stringify(rows())} ${wheels.length}`);
+    notch(-120);
     // YouTube puts every element that scrolls back to its top (a capture listener on window): the list's
     // scrolling never reaches it.
     const scrolled = [];

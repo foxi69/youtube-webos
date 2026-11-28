@@ -372,5 +372,6 @@
   {"id": "titles-only-thumbs-left", "file": "src/dearrow/index.js", "from": "    cancelSweep();\n    sweepTiles(false);\n    dropThumbs();", "to": "    cancelSweep();\n    dropThumbs();", "why": "DeArrow switched off with the original titles on: its thumbnails stay on the tiles"},
   {"id":"chapter-list-follow","file":"src/ui.js","from":"  video.addEventListener('timeupdate', follow);\n","to":"","why":"the list opened before a chapter change keeps marking the chapter that ended"},
   {"id":"chapter-list-scroll-guard","file":"src/ui.js","from":"'.ytaf-ui-container, .ytaf-dialog-backdrop, .ytaf-chapter-list'","to":"'.ytaf-ui-container, .ytaf-dialog-backdrop'","why":"YouTube puts the chapter list back to its top, so a chapter selected below the fold is out of sight"},
-  {"id":"chapter-list-panel-open","file":"src/ui.js","from":"  // The settings panel opened during the lookup: it keeps the keys.\n  if (optionsPanelVisible) return;\n","to":"","why":"the settings opened while the chapters load get the list over them, and lose their keys to it"}
+  {"id":"chapter-list-panel-open","file":"src/ui.js","from":"  // The settings panel opened during the lookup: it keeps the keys.\n  if (optionsPanelVisible) return;\n","to":"","why":"the settings opened while the chapters load get the list over them, and lose their keys to it"},
+  {"id":"chapter-list-wheel","file":"src/ui.js","from":"window.addEventListener('wheel', handleChapterListWheel, { passive: false, capture: true });\n","to":"","why":"the Magic Remote's wheel does nothing in the chapter list"}
 ]

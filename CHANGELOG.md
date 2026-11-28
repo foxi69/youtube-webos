@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Added
 
-+ **Show Chapters**, a new action for a coloured button or a number key (Shortcuts tab): a list of the video's chapters over the player, with their start times and the one playing marked. Up and Down move, OK jumps to the start of a chapter and closes the list, and Back (or the same key again) closes it. On a video with no chapters of its own, the community's chapters from SponsorBlock are listed, with Use Community Chapters on. YouTube's TV app has no chapter list of its own.
++ **Show Chapters**, a new action for a coloured button or a number key (Shortcuts tab): a list of the video's chapters over the player, with their start times and the one playing marked. Up and Down (or the Magic Remote's wheel) move, OK (or a click) jumps to the start of a chapter and closes the list, and Back (or the same key again) closes it. On a video with no chapters of its own, the community's chapters from SponsorBlock are listed, with Use Community Chapters on. YouTube's TV app has no chapter list of its own.
 
 ## Changed
 
