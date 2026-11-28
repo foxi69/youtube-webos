@@ -266,7 +266,8 @@ run(async () => {
     backdrop.appendChild(dialog);
     env.doc.body.appendChild(backdrop);
     RECTS.dlgbackdrop = FULL;
-    RECTS.dlgbox = box(400, 360, 1120, 360);
+    // Over the preview's centre (340, 330), the point the lookup samples.
+    RECTS.dlgbox = box(200, 200, 1120, 360);
     env.state.order.unshift('dlgbox', 'dlgbackdrop');
     env.doc.body.dispatchEvent(new env.win.Event('focusin', { bubbles: true }));
     await wait(100);
